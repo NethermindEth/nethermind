@@ -137,29 +137,16 @@ public class BlockAccessListStore : IBlockAccessListStore
     /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
-        if (fromInclusive >= toExclusive) return;
-        if (_balDb is not IRangeRemovableKeyValueStore rangeRemovable)
-        {
-            throw new NotSupportedException($"The block access list database ({_balDb.GetType().Name}) cannot remove a key range.");
-        }
-
         if (_pending is not null)
         {
-            _pending.RemoveRange(fromInclusive, toExclusive, () => RemoveRangeFromDb(rangeRemovable, fromInclusive, toExclusive));
+            _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
         }
         else
         {
-            RemoveRangeFromDb(rangeRemovable, fromInclusive, toExclusive);
+            _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
         }
-    }
 
-    private static void RemoveRangeFromDb(IRangeRemovableKeyValueStore rangeRemovable, ulong fromInclusive, ulong toExclusive)
-    {
-        Span<byte> from = stackalloc byte[KeyLength];
-        Span<byte> to = stackalloc byte[KeyLength];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, from);
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, to);
-        rangeRemovable.RemoveRange(from, to);
+        _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
     }
 
     [SkipLocalsInit]

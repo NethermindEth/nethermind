@@ -210,7 +210,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
 
-    public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new NotImplementedException();
 
     public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();
 

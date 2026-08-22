@@ -180,8 +180,6 @@ namespace Nethermind.Blockchain
         /// </remarks>
         void ReportBadBlock(Block badBlock);
 
-        void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);
-
         /// <summary>Deletes every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever
         /// their hashes and whether or not a chain level lists them.</summary>
         void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive);

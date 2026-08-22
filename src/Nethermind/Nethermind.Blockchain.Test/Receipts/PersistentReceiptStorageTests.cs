@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -57,9 +58,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
-    // The sweep is what keeps the index bounded once range reclaim stopped deleting its entries per block, so its
-    // predicate is load-bearing: an entry whose block is still retained must survive, and the legacy hash-valued form
-    // carries no number to judge by and must be left alone rather than guessed at.
     [Test]
     public void SweepTransactionIndex_DropsOnlyEntriesNamingReclaimedBlocks()
     {
@@ -72,15 +70,59 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         txIndex.Set(retained, Rlp.Encode(50UL).Bytes);
         txIndex.Set(legacy, TestItem.KeccakD.BytesToArray());
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, out int removed);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(txIndex.Get(stale), Is.Null, "its block is below the boundary, so the entry can only resolve to a block that is gone");
-            Assert.That(txIndex.Get(retained), Is.Not.Null, "its block is still retained");
-            Assert.That(txIndex.Get(legacy), Is.Not.Null, "the legacy hash form carries no block number and must not be guessed at");
+            Assert.That(txIndex.Get(stale), Is.Null);
+            Assert.That(txIndex.Get(retained), Is.Not.Null);
+            Assert.That(txIndex.Get(legacy), Is.Not.Null, "a hash whose header does not resolve is left alone rather than guessed at");
             Assert.That(removed, Is.EqualTo(1));
-            Assert.That(cursor, Is.Null, "walking the whole column to the end reports no resume point, so the caller starts over");
+            Assert.That(cursor, Is.Null, "reaching the end reports no resume point");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_DropsEntriesStoredAsBlockHash()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Block stale = Build.A.Block.WithNumber(5).TestObject;
+        Block retained = Build.A.Block.WithNumber(50).TestObject;
+        _blockTree.FindHeader(stale.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(stale.Header);
+        _blockTree.FindHeader(retained.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(retained.Header);
+
+        txIndex.Set(TestItem.KeccakA, stale.Hash!.BytesToArray());
+        txIndex.Set(TestItem.KeccakB, retained.Hash!.BytesToArray());
+
+        _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txIndex.Get(TestItem.KeccakA), Is.Null,
+                "CompactTxIndex=false stores the block hash, and this one names a block below the boundary - the only mechanism that reclaims it");
+            Assert.That(txIndex.Get(TestItem.KeccakB), Is.Not.Null);
+            Assert.That(removed, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_CancelledMidWalk_ReportsWhereToResume()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        foreach (Hash256 key in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD })
+        {
+            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+        }
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, cts.Token, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cursor, Is.Not.Null, "a cancelled walk must report a resume point or its progress is lost");
+            Assert.That(removed, Is.EqualTo(1), "the entry it had already decided on is still committed");
         }
     }
 
@@ -94,13 +136,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             txIndex.Set(key, Rlp.Encode(5UL).Bytes);
         }
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, out int firstRemoved);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, CancellationToken.None, out int firstRemoved);
         Assert.That(cursor, Is.Not.Null, "stopping on budget has to report where to pick up, or the tail is never reached");
 
         int total = firstRemoved;
         while (cursor is not null)
         {
-            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, out int removed);
+            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, CancellationToken.None, out int removed);
             total += removed;
         }
 

@@ -1182,14 +1182,63 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
-            // Goes through a batch rather than the db directly: a range tombstone is a write like any other and
-            // has to reach the WAL, so a crash cannot resurrect the range.
+            // The binding exposes DeleteRange only on a batch, which also puts the tombstone in the WAL.
             using WriteBatch batch = new();
             batch.DeleteRange(
                 firstKeyInclusive.ToArray(), (ulong)firstKeyInclusive.Length,
                 lastKeyExclusive.ToArray(), (ulong)lastKeyExclusive.Length,
                 cf);
             _db.Write(batch, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        ReclaimRange(firstKeyInclusive, lastKeyExclusive, null);
+
+    /// <remarks>A range tombstone frees nothing and does not count towards pending-compaction bytes, so the disk can
+    /// stay occupied for weeks. This unlinks the SST files lying entirely inside the range - nearly all of them, for
+    /// ascending block-number keys - and hints for the rest.</remarks>
+    internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        nint db = _db.Handle;
+        UIntPtr fromLength = (UIntPtr)firstKeyInclusive.Length;
+        UIntPtr toLength = (UIntPtr)lastKeyExclusive.Length;
+
+        try
+        {
+            fixed (byte* from = &MemoryMarshal.GetReference(firstKeyInclusive))
+            fixed (byte* to = &MemoryMarshal.GetReference(lastKeyExclusive))
+            {
+                IntPtr errPtr;
+                if (cf is null)
+                {
+                    Native.Instance.rocksdb_delete_file_in_range(db, from, fromLength, to, toLength, out errPtr);
+                }
+                else
+                {
+                    Native.Instance.rocksdb_delete_file_in_range_cf(db, cf.Handle, from, fromLength, to, toLength, out errPtr);
+                }
+
+                if (errPtr != IntPtr.Zero) throw new RocksDbException(errPtr);
+
+                if (cf is null)
+                {
+                    Native.Instance.rocksdb_suggest_compact_range(db, from, fromLength, to, toLength, out errPtr);
+                }
+                else
+                {
+                    Native.Instance.rocksdb_suggest_compact_range_cf(db, cf.Handle, from, fromLength, to, toLength, out errPtr);
+                }
+
+                if (errPtr != IntPtr.Zero) throw new RocksDbException(errPtr);
+            }
         }
         catch (RocksDbSharpException e)
         {

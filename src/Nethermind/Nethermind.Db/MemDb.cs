@@ -87,17 +87,17 @@ namespace Nethermind.Db
         /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests.</summary>
         public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
         {
-            byte[] first = firstKeyInclusive.ToArray();
-            byte[] last = lastKeyExclusive.ToArray();
-
             foreach (byte[] key in Keys)
             {
-                if (Bytes.BytesComparer.Compare(key, first) >= 0 && Bytes.BytesComparer.Compare(key, last) < 0)
+                if (Bytes.BytesComparer.Compare(key, firstKeyInclusive) >= 0 && Bytes.BytesComparer.Compare(key, lastKeyExclusive) < 0)
                 {
                     Remove(key);
                 }
             }
         }
+
+        // Removing already returned the memory; there is no deferred storage to give back.
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) { }
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 

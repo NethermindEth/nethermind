@@ -796,9 +796,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
-            => _blockStore.Delete(blockNumber, blockHash);
-
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
             => _blockStore.DeleteRange(fromInclusive, toExclusive);
 

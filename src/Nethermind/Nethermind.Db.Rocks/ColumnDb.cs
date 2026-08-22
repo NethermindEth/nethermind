@@ -132,6 +132,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
         _mainDb.RemoveRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
 
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.ReclaimRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
     public void Compact() =>

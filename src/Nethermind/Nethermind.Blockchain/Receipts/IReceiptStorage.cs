@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using System;
+using System.Threading;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -31,20 +32,15 @@ namespace Nethermind.Blockchain.Receipts
         void EnsureCanonical(Block block);
         void RemoveReceipts(Block block);
 
-        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation,
-        /// without reading any of them. Leaves the transaction index to <see cref="SweepTransactionIndex"/>.
-        /// </summary>
+        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> without reading any of
+        /// them. Leaves the transaction index to <see cref="SweepTransactionIndex"/>.</summary>
         void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => throw new NotSupportedException();
 
-        /// <summary>
-        /// Drops transaction-index entries pointing at blocks below <paramref name="retainedFromBlock"/>, at most
-        /// <paramref name="maxEntries"/> of them, starting from <paramref name="resumeFrom"/>. The index is keyed by
-        /// transaction hash so it cannot be addressed by block range, but each value carries the block number, which
-        /// is enough to decide staleness without reading a block.
-        /// </summary>
-        /// <returns>The key to resume from, or <c>null</c> once the column has been walked end to end - at which
-        /// point a caller should start over, since the retained boundary will have moved on.</returns>
-        byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, out int removed)
+        /// <summary>Drops up to <paramref name="maxEntries"/> transaction-index entries naming blocks below
+        /// <paramref name="retainedFromBlock"/>, from <paramref name="resumeFrom"/> on. Keyed by transaction hash, so
+        /// the column has to be walked.</summary>
+        /// <returns>Where to resume, on cancellation as well as on budget exhaustion, or <c>null</c> at the end.</returns>
+        byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
             return null;

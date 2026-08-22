@@ -120,11 +120,8 @@ internal sealed class DeferredWriteOverlay<TPayload>(
         }
     }
 
-    /// <summary>
-    /// Same guarantee as <see cref="Remove"/> for a whole block range, so a caller deleting by range cannot have a
-    /// queued write land after its delete and resurrect the entry. Entries are keyed by hash, so this scans - the
-    /// overlay only ever holds writes still in flight, so it is small.
-    /// </summary>
+    /// <summary>Same guarantee as <see cref="Remove"/> for a whole range. Keyed by hash, so it scans - the overlay
+    /// only ever holds writes still in flight.</summary>
     public void RemoveRange(ulong fromInclusive, ulong toExclusive, Action alsoUnderLock)
     {
         lock (_lock)

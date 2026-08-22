@@ -41,6 +41,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
 
+        private const int SweepDeleteSliceSize = 4096;
+
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
@@ -842,9 +844,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
-            // Kept for removing one block by hash - a reorg or a targeted delete. Ancient-history pruning reclaims
-            // by range instead. Under deferral the removal runs under the
-            // shared lock (via the overlay) so a queued write cannot interleave and resurrect the data.
+            // Under deferral this runs under the overlay lock so a queued write cannot resurrect the data.
             if (_pendingReceipts is not null)
             {
                 _pendingReceipts.Remove(block.Hash!, () => RemoveReceiptsCore(block));
@@ -872,77 +872,114 @@ namespace Nethermind.Blockchain.Receipts
             RemoveBlockTx(block);
         }
 
-        /// <summary>
-        /// Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation.
-        /// </summary>
-        /// <remarks>
-        /// Deliberately leaves the transaction index alone. Its entries are keyed by transaction hash, so they cannot
-        /// be addressed by block range, and enumerating them is what forces a full body read per block - the whole
-        /// cost this exists to avoid. They are an accelerator, not the record: an entry resolving to a block that is
-        /// gone already answers "not found", which is the correct answer once the block has been pruned.
-        /// </remarks>
+        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
+        /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
         {
-            if (fromInclusive >= toExclusive) return;
-            if (_receiptsDb is not IRangeRemovableKeyValueStore rangeRemovable)
+            // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing it
+            // would permanently drop the tx-index write of every block queued near the head.
+            if (_pendingReceipts is not null)
             {
-                throw new NotSupportedException($"The receipts database ({_receiptsDb.GetType().Name}) cannot remove a key range.");
+                _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => RemoveReceiptsRangeFromDb(fromInclusive, toExclusive));
+            }
+            else
+            {
+                RemoveReceiptsRangeFromDb(fromInclusive, toExclusive);
             }
 
-            Span<byte> from = stackalloc byte[40];
-            Span<byte> to = stackalloc byte[40];
-            GetBlockNumPrefixedKey(fromInclusive, Keccak.Zero, from);
-            GetBlockNumPrefixedKey(toExclusive, Keccak.Zero, to);
-            rangeRemovable.RemoveRange(from, to);
-
-            // Keyed by hash, so it cannot be narrowed to the range, and it would otherwise serve receipts whose
-            // block is gone. _pendingCanonical is deliberately NOT touched: it is a cancellation ledger, not a
-            // cache - PersistDeferredCanonical skips any entry missing from it - so clearing it would permanently
-            // drop the tx-index write of every block queued near the head. Nothing queued can be inside a pruned
-            // range anyway, so there is nothing here to cancel.
-            _receiptsCache.Clear();
+            _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
         }
 
-        /// <remarks>
-        /// This is what keeps the index bounded once range reclaim stopped deleting its entries per block. The
-        /// TxLookupLimit path cannot do it: by the time that horizon reaches a block, history pruning has already
-        /// removed the body it needs to enumerate the block's transactions.
-        /// </remarks>
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, out int removed)
+        private void RemoveReceiptsRangeFromDb(ulong fromInclusive, ulong toExclusive)
+        {
+            _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+            if (fromInclusive < toExclusive) _receiptsCache.Clear();
+        }
+
+        [SkipLocalsInit]
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
             if (retainedFromBlock == 0 || maxEntries <= 0 || _transactionDb is not ISortedKeyValueStore sorted) return null;
 
-            // One byte wider than a hash, so it is strictly above every key the column can hold.
+            // Below the TxLookupLimit horizon the per-block path already does this, at no read cost. On shipping
+            // defaults the retained window is the wider of the two, so without this the walk never finds anything.
+            if (_receiptConfig.TxLookupLimit is ulong limit && limit > 0 && limit != ulong.MaxValue)
+            {
+                ulong head = _blockTree.Head?.Number ?? 0;
+                if (head > limit && retainedFromBlock <= head - limit) return null;
+            }
+
             Span<byte> upperBound = stackalloc byte[Hash256.Size + 1];
             upperBound.Fill(0xFF);
 
             int examined = 0;
-            byte[]? lastKey = null;
-            using IWriteBatch batch = _transactionDb.StartWriteBatch();
-            using ISortedView view = sorted.GetViewBetween(resumeFrom ?? ReadOnlySpan<byte>.Empty, upperBound);
-
-            while (view.MoveNext())
+            int sliceDeletes = 0;
+            byte[]? resumeKey = null;
+            IWriteBatch batch = _transactionDb.StartWriteBatch();
+            try
             {
-                lastKey = view.CurrentKey.ToArray();
-                if (PointsBelow(view.CurrentValue, retainedFromBlock))
-                {
-                    batch[lastKey] = null;
-                    removed++;
-                }
+                using ISortedView view = sorted.GetViewBetween(resumeFrom ?? ReadOnlySpan<byte>.Empty, upperBound);
 
-                // Resuming from the last key examined re-reads it once, which is cheaper than carrying a successor.
-                if (++examined >= maxEntries) return lastKey;
+                while (view.MoveNext())
+                {
+                    if (PointsBelow(view.CurrentValue, retainedFromBlock))
+                    {
+                        batch[view.CurrentKey] = null;
+                        removed++;
+
+                        if (++sliceDeletes >= SweepDeleteSliceSize)
+                        {
+                            CommitSweepSlice(ref batch);
+                            sliceDeletes = 0;
+                        }
+                    }
+
+                    // Re-reads the last key examined once, cheaper than carrying a successor. The walk's only
+                    // allocation - everything above it reads the iterator's own buffer.
+                    if (++examined >= maxEntries || cancellationToken.IsCancellationRequested)
+                    {
+                        resumeKey = view.CurrentKey.ToArray();
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                lock (_writeLock)
+                {
+                    batch.Dispose();
+                }
             }
 
-            return null;
+            return resumeKey;
         }
 
-        /// <summary>Whether an index value names a block at or below the last reclaimed one. A 32-byte value is the
-        /// legacy block-hash form, which carries no number - deciding it would need a lookup, so it stays.</summary>
-        private static bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        /// <summary>Commits what the walk has accumulated and starts a fresh batch. Sliced because one
+        /// multi-thousand-key write stalls every other writer here, and taken under the canonical writer's lock.
+        /// </summary>
+        private void CommitSweepSlice(ref IWriteBatch batch)
         {
-            if (value.Length == 0 || value.Length == Hash256.Size) return false;
+            lock (_writeLock)
+            {
+                batch.Dispose();
+            }
+
+            batch = _transactionDb.StartWriteBatch();
+        }
+
+        /// <summary>Whether an index value names a block at or below the last reclaimed one. Under
+        /// <see cref="IReceiptConfig.CompactTxIndex"/> the value is the number, otherwise the hash, and the header
+        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.</summary>
+        private bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        {
+            if (value.Length == 0) return false;
+
+            if (value.Length == Hash256.Size)
+            {
+                return _blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    is { Number: ulong number } && number < retainedFromBlock;
+            }
 
             try
             {

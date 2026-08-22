@@ -346,8 +346,6 @@ public class HistoryPrunerTests
         Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(storedPointer));
     }
 
-    // The boundary is what a pruning node promises on the wire, so an off-by-one here means serving a range it
-    // cannot answer. Pins both sides of it against the reclaim.
     [Test]
     public async Task Reclaim_stops_exactly_at_the_published_boundary()
     {
@@ -407,6 +405,76 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Reclaim_backlog_survives_a_restart()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        HistoryPruner interrupted = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        interrupted.TryPruneHistory(cancelled.Token);
+
+        ulong boundary = interrupted.OldestBlockHeader?.Number ?? 0;
+        Assert.That(boundary, Is.EqualTo(36UL), "precondition: the interrupted pass published the boundary and reclaimed nothing behind it");
+
+        // A second instance over the same metadata db is what a restart is: the backlog is only found again if
+        // the cursor reached disk, not merely the field.
+        HistoryPruner afterRestart = NewPrunerOver(testBlockchain);
+        afterRestart.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong number = 1; number < boundary; number++)
+            {
+                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null, $"block {number}");
+            }
+
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Reclaim_on_a_database_with_no_cursor_starts_level_with_the_published_boundary()
+    {
+        const int blocks = 100;
+        const ulong storedBoundary = 50;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        // A database pruned by the per-block code has a boundary and no cursor, and everything below it is gone.
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(storedBoundary).Bytes);
+
+        NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(1UL, BlockTreeLookupOptions.None), Is.Not.Null,
+                "the cursor defaulted below the boundary and reclaimed ground the boundary never covered");
+            Assert.That(testBlockchain.BlockTree.FindBlock(storedBoundary - 1, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain) => new(
+        testBlockchain.Container.Resolve<IBlockTree>(),
+        testBlockchain.Container.Resolve<IReceiptStorage>(),
+        testBlockchain.Container.Resolve<IBlockAccessListStore>(),
+        testBlockchain.Container.Resolve<ISpecProvider>(),
+        testBlockchain.Container.Resolve<IChainLevelInfoRepository>(),
+        testBlockchain.Container.Resolve<IDbProvider>(),
+        testBlockchain.Container.Resolve<IHistoryConfig>(),
+        testBlockchain.Container.Resolve<IBlocksConfig>(),
+        testBlockchain.Container.Resolve<ISyncConfig>(),
+        testBlockchain.Container.Resolve<IProcessExitSource>(),
+        testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
+        testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
+        LimboLogs.Instance);
+
+    [Test]
     public async Task Reclaim_never_touches_genesis_or_the_sync_pivot()
     {
         const int blocks = 100;
@@ -427,24 +495,6 @@ public class HistoryPrunerTests
                 "the sync pivot is the floor of what re-execution can start from and must never be reclaimed");
             Assert.That(historyPruner.OldestBlockHeader?.Number, Is.LessThanOrEqualTo(syncPivot));
         }
-    }
-
-    [Test]
-    public async Task Reclaim_leaves_the_transaction_index_for_the_read_path_to_resolve()
-    {
-        const int blocks = 100;
-
-        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
-        List<Hash256> blockHashes = [];
-        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
-
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
-
-        // Not deleting it is the whole reason a pass no longer reads a block body; a lookup landing below the
-        // boundary resolves to a block that is gone, which is already the right answer.
-        Assert.That(testBlockchain.ReceiptStorage.HasBlock(1UL, blockHashes[1]), Is.False,
-            "the receipts themselves are reclaimed");
     }
 
     private static void CheckGenesisPreserved(BasicTestBlockchain testBlockchain, Hash256 genesisHash)

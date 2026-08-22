@@ -379,8 +379,6 @@ namespace Nethermind.Db.Test
             Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
         }
 
-        // The bounds are the whole safety story for range removal: one byte wrong at either end and a node deletes
-        // history it has told the network it still serves. These pin both ends and the reopen.
         [Test]
         public void RemoveRange_RemovesTheRangeAndNothingTouchingIt()
         {
@@ -449,8 +447,6 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
-            // Two competing hashes per height, which is what the per-block loop misses when a level record does not
-            // list an orphan.
             for (ulong number = 1; number <= 5; number++)
             {
                 foreach (byte tag in new byte[] { 0xAA, 0xBB })
@@ -472,6 +468,50 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void ReclaimRange_GivesBackTheDiskTheRemovedRangeStillHolds()
+        {
+            // Auto-compaction off so each flush stays its own file, as a real block-numbered bottom level is.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            for (ulong number = 1; number <= 8; number++)
+            {
+                for (byte tag = 0; tag < 32; tag++)
+                {
+                    db.PutSpan(BlockKey(number, tag), value, WriteFlags.None);
+                }
+
+                db.Flush();
+            }
+
+            long before = SstBytes(DbPath);
+            Assert.That(before, Is.GreaterThan(0), "the data has to be in SST files for there to be anything to give back");
+
+            db.RemoveRange(BlockKey(1, 0x00), BlockKey(5, 0x00));
+            long afterRemove = SstBytes(DbPath);
+
+            db.ReclaimRange(BlockKey(1, 0x00), BlockKey(5, 0x00));
+            long afterReclaim = SstBytes(DbPath);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterRemove, Is.GreaterThanOrEqualTo(before),
+                    "a range tombstone is a write: on its own it frees nothing, which is the whole reason this method exists");
+                Assert.That(afterReclaim, Is.LessThan(before * 2 / 3),
+                    "half the heights were reclaimed, so the disk has to come back now rather than whenever compaction next happens to run");
+                Assert.That(GetValue(db, BlockKey(5, 0x00)), Is.Not.Null,
+                    "the first retained height must survive: the upper bound is exclusive for the unlink too");
+                Assert.That(GetValue(db, BlockKey(8, 31)), Is.Not.Null);
+                Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Null);
+            }
+        }
+
+        private static long SstBytes(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
+
         private static byte[] BlockKey(ulong blockNumber, byte hashTag)
         {
             byte[] key = new byte[40];
@@ -480,9 +520,7 @@ namespace Nethermind.Db.Test
             return key;
         }
 
-        // The column-family path, which is the one receipts actually take: PersistentReceiptStorage resolves a
-        // ColumnDb, so every production receipt reclaim goes through the _cf overload rather than the plain one the
-        // tests above cover.
+        // The column-family overload, which is the one every production receipt reclaim takes.
         [Test]
         public void RemoveRange_OnAColumn_HoldsTheBoundsAndLeavesOtherColumnsAlone()
         {
