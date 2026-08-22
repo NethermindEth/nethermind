@@ -477,10 +477,15 @@ public struct EvmPooledMemory
         Debug.Assert(length != 0);
         Debug.Assert(offset + length <= Size);
 
+        ulong overwriteEnd = offset + length;
+        ulong initializedSize = _initializedSize;
         byte[]? memory = _memory;
-        return memory is null || Size > (ulong)memory.Length || Size > _initializedSize
-            ? RentForOverwriteSlow(offset, offset + length)
-            : 0;
+        if (memory is null || overwriteEnd > (ulong)memory.Length || offset > initializedSize)
+        {
+            return RentForOverwriteSlow(offset, overwriteEnd);
+        }
+
+        return overwriteEnd > initializedSize ? overwriteEnd : 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -619,7 +624,7 @@ public struct EvmPooledMemory
     private void RentSlow()
     {
         ulong initializedSize = _initializedSize;
-        byte[] memory = EnsureCapacity(ref initializedSize);
+        byte[] memory = EnsureCapacity(Size, ref initializedSize);
 
         ulong size = Size;
         if (size > initializedSize)
@@ -638,39 +643,28 @@ public struct EvmPooledMemory
     private ulong RentForOverwriteSlow(ulong overwriteStart, ulong overwriteEnd)
     {
         ulong initializedSize = _initializedSize;
-        byte[] memory = EnsureCapacity(ref initializedSize);
+        byte[] memory = EnsureCapacity(overwriteEnd, ref initializedSize);
 
-        const ulong zeroChunk = 4 * 1024;
-        ulong target = Math.Max(
-            initializedSize,
-            Math.Min((ulong)memory.Length, (Size + (zeroChunk - 1)) & ~(zeroChunk - 1)));
-        ulong beforeOverwriteEnd = Math.Min(overwriteStart, target);
-        if (beforeOverwriteEnd > initializedSize)
+        if (overwriteStart > initializedSize)
         {
-            Array.Clear(memory, (int)initializedSize, (int)(beforeOverwriteEnd - initializedSize));
+            Array.Clear(memory, (int)initializedSize, (int)(overwriteStart - initializedSize));
         }
 
-        ulong afterOverwriteStart = Math.Max(overwriteEnd, initializedSize);
-        if (target > afterOverwriteStart)
-        {
-            Array.Clear(memory, (int)afterOverwriteStart, (int)(target - afterOverwriteStart));
-        }
-
-        return target;
+        return Math.Max(initializedSize, overwriteEnd);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[] EnsureCapacity(ref ulong initializedSize)
+    private byte[] EnsureCapacity(ulong minimumSize, ref ulong initializedSize)
     {
         byte[]? memory = _memory;
         if (memory is null)
         {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong rentedInitializedSize);
+            _memory = memory = Rent((int)Math.Max((uint)minimumSize, MinRentSize), out ulong rentedInitializedSize);
             initializedSize = rentedInitializedSize;
         }
-        else if (Size > (ulong)memory.Length)
+        else if (minimumSize > (ulong)memory.Length)
         {
-            byte[] grown = Rent(TruncateToInt32(Size), out ulong rentedInitializedSize);
+            byte[] grown = Rent(TruncateToInt32(minimumSize), out ulong rentedInitializedSize);
             Array.Copy(memory, 0, grown, 0, (int)initializedSize);
             Return(memory);
             _memory = memory = grown;

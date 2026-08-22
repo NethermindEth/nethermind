@@ -12,9 +12,27 @@ public class EvmPooledMemoryBenchmarks
 {
     private const int FourKiB = 4 * 1024;
     private const int OneMiB = 1 << 20;
+    private const int SmallPayloadSize = 97;
 
     private static readonly byte[] FourKiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(FourKiB);
     private static readonly byte[] OneMiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(OneMiB);
+    private static readonly byte[] SmallPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(SmallPayloadSize);
+
+    [Benchmark]
+    public ulong SmallUnalignedExternalOverwrite()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            UInt256 destination = UInt256.Zero;
+            memory.TrySave(in destination, SmallPayload);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
 
     [Benchmark]
     public ulong FullOneMiBExternalOverwrite()
