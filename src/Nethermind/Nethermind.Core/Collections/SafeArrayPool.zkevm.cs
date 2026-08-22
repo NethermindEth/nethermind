@@ -21,9 +21,15 @@ namespace Nethermind.Core.Collections;
 /// </remarks>
 public static class SafeArrayPool<T>
 {
-    public static readonly ArrayPool<T> Shared = new SingleThreadedPow2Pool();
+    private static readonly SingleThreadedPow2Pool Pool = new();
 
-    private sealed class SingleThreadedPow2Pool : ArrayPool<T>
+    /// <summary>Gets the shared zkVM array pool.</summary>
+    public static SingleThreadedPow2Pool Shared => Pool;
+
+    internal static T[] Rent(int minimumLength, out bool isFresh) => Pool.Rent(minimumLength, out isFresh);
+
+    /// <summary>A single-threaded, power-of-two array pool for the zkVM guest.</summary>
+    public sealed class SingleThreadedPow2Pool : ArrayPool<T>
     {
         private const int MinBucketLog = 0;   // 1 element
         private const int MaxBucketLog = 28;  // 256 Mi elements
@@ -31,18 +37,34 @@ public static class SafeArrayPool<T>
 
         private readonly Stack<T[]>?[] _buckets = new Stack<T[]>?[BucketCount];
 
-        public override T[] Rent(int minimumLength)
+        public override T[] Rent(int minimumLength) => Rent(minimumLength, out _);
+
+        public T[] Rent(int minimumLength, out bool isFresh)
         {
-            if (minimumLength == 0) return Array.Empty<T>();
+            if (minimumLength == 0)
+            {
+                isFresh = true;
+                return Array.Empty<T>();
+            }
+
             ArgumentOutOfRangeException.ThrowIfNegative(minimumLength);
 
             int bucketIndex = BucketFor(minimumLength);
-            if (bucketIndex < 0) return new T[minimumLength];
+            if (bucketIndex < 0)
+            {
+                isFresh = true;
+                return new T[minimumLength];
+            }
 
             Stack<T[]>? bucket = _buckets[bucketIndex];
-            return bucket is { Count: > 0 }
-                ? bucket.Pop()
-                : new T[1 << (bucketIndex + MinBucketLog)];
+            if (bucket is { Count: > 0 })
+            {
+                isFresh = false;
+                return bucket.Pop();
+            }
+
+            isFresh = true;
+            return new T[1 << (bucketIndex + MinBucketLog)];
         }
 
         public override void Return(T[] array, bool clearArray = false)

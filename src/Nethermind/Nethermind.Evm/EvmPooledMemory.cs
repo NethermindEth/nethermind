@@ -556,8 +556,9 @@ public struct EvmPooledMemory
 #if ZK_EVM
     private static byte[] RentLarge(int minLength, out ulong initializedExtent)
     {
-        initializedExtent = 0;
-        return SafeArrayPool<byte>.Shared.Rent(minLength);
+        byte[] array = SafeArrayPool<byte>.Rent(minLength, out bool isFresh);
+        initializedExtent = isFresh ? (ulong)array.Length : 0;
+        return array;
     }
 
     private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
