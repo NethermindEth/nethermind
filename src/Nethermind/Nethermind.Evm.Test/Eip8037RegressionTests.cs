@@ -600,40 +600,6 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE")]
-    [TestCase(true, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE2")]
-    public void Eip8037_nested_storage_only_collision_refunds_create_state_gas(bool create2)
-    {
-        byte[] initCode = Prepare.EvmCode
-            .Op(Instruction.STOP)
-            .Done;
-        byte[] salt = [0x01];
-        Address collisionAddress = create2
-            ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
-            : ContractAddress.From(Recipient, 0);
-        TestState.CreateAccount(collisionAddress, 0);
-        TestState.Set(new StorageCell(collisionAddress, 0), [0x01]);
-
-        Prepare codeBuilder = create2
-            ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
-            : Prepare.EvmCode.Create(initCode, UInt256.Zero);
-        byte[] code = codeBuilder
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done;
-        ulong creatorNonceBefore = TestState.GetNonce(Recipient);
-
-        TestAllTracerWithOutput tracer = Execute(Activation, 600_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(creatorNonceBefore + 1));
-            AssertStorage(new StorageCell(collisionAddress, 0), (UInt256)1);
-        }
-    }
-
     [TestCase(false, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
     [TestCase(false, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
     [TestCase(true, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]

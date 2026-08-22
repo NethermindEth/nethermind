@@ -67,7 +67,6 @@ namespace Nethermind.Evm.Test
                 TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
-                Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             }
 
             Execute(callCode);
@@ -77,34 +76,27 @@ namespace Nethermind.Evm.Test
             AssertEip1014(expectedAddress, []);
         }
 
-        /// <summary>
-        /// EIP-7610: storage written earlier in the same block is not in the storage root yet - block
-        /// processing merkleizes once at the end of the block - so the collision check must consult the
-        /// block-level changes, not only the committed root.
-        /// </summary>
-        [Test]
-        public void Test_existing_account_with_unmerkleized_storage_is_not_empty()
-        {
-            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
-
-            TestState.CreateAccount(expectedAddress, 1.Ether);
-            TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
-            TestState.Commit(Spec, commitRoots: false);
-
-            Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
-
-            Execute(callCode);
-
-            Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
-            AssertEip1014(expectedAddress, []);
-        }
-
         [Test]
         public void Test_out_of_gas_non_existing_account()
         {
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
             Execute(callCode);
             Assert.That(TestState.AccountExists(expectedAddress), Is.False);
+        }
+
+        [Test]
+        public void Test_storage_without_nonce_or_code_is_not_a_collision()
+        {
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode);
+            TestState.CreateAccount(expectedAddress, 1.Ether);
+            TestState.Set(new StorageCell(expectedAddress, 1), [1]);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+
+            Execute(callCode);
+
+            AssertEip1014(expectedAddress, _defaultDeployedCode);
+            Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
         }
 
         [Test]
