@@ -19,7 +19,7 @@ public class EvmPooledMemoryMStoreBenchmarks
         FourKiB + EvmPooledMemory.WordSize,
         2 * FourKiB,
         OneMiB,
-        FourMiB + EvmPooledMemory.WordSize)]
+        FourMiB + FourKiB)]
     // Covers word/page boundaries, large expansion, and sequential growth beyond pooled capacity.
     public int MemorySize { get; set; }
 
