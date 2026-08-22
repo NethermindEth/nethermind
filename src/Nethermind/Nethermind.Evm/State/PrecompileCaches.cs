@@ -36,7 +36,7 @@ public sealed class PrecompileCaches
     public const int EntryOverheadBytes = 160;
 
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
-    public const int MaxSurvivingEntryBytes = 2048;
+    private const int MaxSurvivingEntryBytes = 2048;
 
     private const int PartitionInitialCapacity = 1024;
 
@@ -45,6 +45,9 @@ public sealed class PrecompileCaches
 
     private readonly FrozenDictionary<AddressAsKey, Partition> _partitions;
 
+    /// <summary> Bounded by entry count and by <see cref="MaxSurvivingEntryBytes"/>, and is never cleared. </summary>
+    private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
+
     public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config)
         : this(CacheableAddresses(precompileProvider), config) { }
 
@@ -52,17 +55,17 @@ public sealed class PrecompileCaches
     {
         // equal shares per precompile for now
         long partitionSize = addresses.Count == 0 ? 0 : config.PrecompileCacheMaxBytes / addresses.Count;
+        _survivingCache = new ClockCache<Key, Result<byte[]>>(config.SurvivingPrecompileCacheMaxEntries, comparer: EqualityComparer<Key>.Default);
 
         Dictionary<AddressAsKey, Partition> partitions = new(addresses.Count);
         foreach (AddressAsKey address in addresses)
-            partitions[address] = new Partition(partitionSize);
+            partitions[address] = new Partition(partitionSize, _survivingCache);
 
         _partitions = partitions.ToFrozenDictionary();
-        SurvivingCache = new ClockCache<Key, Result<byte[]>>(config.SurvivingPrecompileCacheMaxEntries, comparer: EqualityComparer<Key>.Default);
     }
 
-    /// <summary> Bounded by entry count and by <see cref="MaxSurvivingEntryBytes"/>, and is never cleared. </summary>
-    public ClockCache<Key, Result<byte[]>> SurvivingCache { get; }
+    /// <summary> Entries held by the surviving tier, across every precompile. </summary>
+    public int SurvivingCacheCount => _survivingCache.Count;
 
     /// <summary> The per-block partition for <paramref name="address"/>, or <c>false</c> if it is not cached. </summary>
     public bool TryGetPartition(Address address, [NotNullWhen(true)] out Partition? partition) =>
@@ -99,42 +102,39 @@ public sealed class PrecompileCaches
         private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries =
             new(CollectionExtensions.LockPartitions, PartitionInitialCapacity);
 
+        private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
+
         private long _bytes;
 
         public long MaxBytes { get; }
         public long UsedBytes => Volatile.Read(ref _bytes);
         internal int Count => _entries.Count;
 
-        internal Partition(long maxBytes) => MaxBytes = maxBytes;
-
-        public bool TryGet(in Key key, out Result<byte[]> result) => _entries.TryGetValue(key, out result);
-
-        /// <summary>
-        /// Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>,
-        /// unless the partition is at its byte budget or another thread stored the same input first.
-        /// </summary>
-        public bool TryAdd(in Key key, Result<byte[]> result, int entryBytes, out Key storedKey)
+        internal Partition(long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
         {
-            storedKey = default;
+            MaxBytes = maxBytes;
+            _survivingCache = survivingCache;
+        }
+
+        public bool TryGet(in Key key, out Result<byte[]> result) =>
+            _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
+
+        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, in whichever tiers accept it. </summary>
+        public void TryAdd(in Key key, Result<byte[]> result, int entryBytes)
+        {
+            bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
 
             long reservation = entryBytes + EntryOverheadBytes;
-            if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
-            {
-                Interlocked.Add(ref _bytes, -reservation);
-                return false;
-            }
+            bool wantBlock = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
+            if (!wantBlock) Interlocked.Add(ref _bytes, -reservation);
+
+            if (!wantBlock && !wantSurviving) return;
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
-            if (!_entries.TryAdd(copiedKey, result))
-            {
-                Interlocked.Add(ref _bytes, -reservation);
-                return false;
-            }
-
-            storedKey = copiedKey;
-            return true;
+            if (wantBlock && !_entries.TryAdd(copiedKey, result)) Interlocked.Add(ref _bytes, -reservation);
+            if (wantSurviving) _survivingCache.Set(copiedKey, result);
         }
 
         internal void Clear()

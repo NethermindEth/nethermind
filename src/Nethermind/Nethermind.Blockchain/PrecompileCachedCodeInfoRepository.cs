@@ -58,14 +58,13 @@ public class PrecompileCachedCodeInfoRepository(
 
         return !precompile.SupportsCaching || !caches.TryGetPartition(originalPrecompile.Key.Value, out PrecompileCaches.Partition? partition)
             ? originalPrecompile.Value
-            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, partition, caches.SurvivingCache));
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, partition));
     }
 
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        PrecompileCaches.Partition blockCache,
-        ClockCache<PrecompileCaches.Key, Result<byte[]>> survivingCache) : IPrecompile
+        PrecompileCaches.Partition cache) : IPrecompile
     {
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
@@ -75,12 +74,7 @@ public class PrecompileCachedCodeInfoRepository(
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
             PrecompileCaches.Key key = new(address, effectiveInput, releaseSpec);
-            if (blockCache.TryGet(key, out Result<byte[]> result))
-            {
-                return result;
-            }
-
-            if (survivingCache.TryGet(key, out result))
+            if (cache.TryGet(key, out Result<byte[]> result))
             {
                 return result;
             }
@@ -92,15 +86,7 @@ public class PrecompileCachedCodeInfoRepository(
             if (result is { IsError: true, Error: Errors.InvalidInputLength })
                 return result;
 
-            int entryBytes = effectiveInput.Length + (result.Data?.Length ?? 0);
-            bool storedInBlockTier = blockCache.TryAdd(key, result, entryBytes, out PrecompileCaches.Key storedKey);
-
-            if (entryBytes <= PrecompileCaches.MaxSurvivingEntryBytes)
-            {
-                // The key must own its data, as the VM may change the input buffer; reuse the block tier's copy.
-                survivingCache.Set(storedInBlockTier ? storedKey : key.WithCopiedData(), result);
-            }
-
+            cache.TryAdd(key, result, effectiveInput.Length + (result.Data?.Length ?? 0));
             return result;
         }
     }

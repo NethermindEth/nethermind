@@ -265,7 +265,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(3), "precondition: three distinct inputs must each compute");
-            Assert.That(caches.SurvivingCache.Count, Is.EqualTo(2), "the surviving tier must evict at capacity instead of growing");
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(2), "the surviving tier must evict at capacity instead of growing");
         }
     }
 
@@ -286,7 +286,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(2), "oversized entries must recompute after the per-block clear");
-            Assert.That(caches.SurvivingCache.Count, Is.EqualTo(0), "entries above the byte cap must not enter the surviving tier");
+            Assert.That(caches.SurvivingCacheCount, Is.EqualTo(0), "entries above the byte cap must not enter the surviving tier");
         }
     }
 
