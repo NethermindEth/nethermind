@@ -14,6 +14,12 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.TransactionProcessing;
 
 /// <summary>State helper for <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed nonces: NONCE_MANAGER slot derivation and per-key nonce reads/consumption.</summary>
+/// <remarks>
+/// Every read and write goes through the supplied state rather than around it, so the NONCE_MANAGER
+/// accesses enter the EIP-7928 block access list. A keyed nonce is consensus state a validator must be able
+/// to prefetch, unlike a precompile result, and a slot missing from the list makes a parallel validator
+/// reject a block every sequential node accepts.
+/// </remarks>
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
@@ -30,7 +36,7 @@ public static class KeyedNonceManager
         return new StorageCell(Eip8250Constants.NonceManagerAddress, index);
     }
 
-    public static ulong CurrentNonceSeq(IWorldState state, Address sender, in UInt256 nonceKey)
+    public static ulong CurrentNonceSeq(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey)
     {
         if (nonceKey.IsZero)
         {
@@ -40,15 +46,31 @@ public static class KeyedNonceManager
         return CurrentNonceSeq(state, StorageSlot(sender, nonceKey));
     }
 
-    private static ulong CurrentNonceSeq(IWorldState state, in StorageCell slot)
+    private static ulong CurrentNonceSeq(IReadOnlyStateProvider state, in StorageCell slot)
     {
         UInt256 stored = new(state.Get(slot), isBigEndian: true);
         // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
 
-    public static bool IsFirstUse(IWorldState state, Address sender, in UInt256 nonceKey) =>
+    public static bool IsFirstUse(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey) =>
         !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
+
+    /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
+    /// <remarks>
+    /// Charged against the approving frame's remaining gas, so it can exhaust that frame. Every path that
+    /// grants payment approval must charge it, or the cost depends on whether the approver carries code.
+    /// </remarks>
+    public static ulong FirstUseSurcharge(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
+    {
+        ulong firstUseCount = 0;
+        foreach (ref readonly UInt256 nonceKey in nonceKeys)
+        {
+            if (IsFirstUse(state, sender, in nonceKey)) firstUseCount++;
+        }
+
+        return firstUseCount * Eip8250Constants.KeyedNonceFirstUseGas;
+    }
 
     public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
@@ -81,6 +103,19 @@ public static class KeyedNonceManager
             state.Set(StorageSlot(sender, nonceKey), nextSeq);
         }
     }
+
+    /// <summary>Whether <paramref name="nonceKeys"/> selects protocol-managed nonce domains rather than the sender's account nonce.</summary>
+    /// <remarks>The set <c>[0]</c> aliases the account nonce, so only it keeps the account-nonce semantics every other transaction type has.</remarks>
+    public static bool UsesKeyedDomain(ReadOnlySpan<UInt256> nonceKeys) =>
+        nonceKeys.Length != 1 || !nonceKeys[0].IsZero;
+
+    /// <summary>Whether <paramref name="tx"/>'s replay protection lives in <c>NONCE_MANAGER</c> rather than the sender's account nonce.</summary>
+    /// <remarks>
+    /// The account-nonce filters and the sender bucket's nonce ordering are meaningless for such a transaction:
+    /// its sender may be a contract whose account nonce is unrelated to the sequence it consumes.
+    /// </remarks>
+    public static bool UsesKeyedNonce(Transaction tx) =>
+        tx.NonceKeys is { } nonceKeys && UsesKeyedDomain(nonceKeys);
 
     /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
     /// <remarks>
@@ -118,7 +153,7 @@ public static class KeyedNonceManager
     /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
     /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
     /// </remarks>
-    public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    public static bool IsNonceSetValid(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (!AreNonceKeysWellFormed(nonceKeys))
         {

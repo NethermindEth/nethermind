@@ -61,6 +61,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder<T>(factory));
         RegisterDecoder(TxType.Blob, new BlobTxDecoder<T>(factory));
         RegisterDecoder(TxType.SetCode, new SetCodeTxDecoder<T>(factory));
+        RegisterDecoder(TxType.FrameTx, new FrameTxDecoder<T>(factory));
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => RegisterDecoder(decoder.Type, decoder);

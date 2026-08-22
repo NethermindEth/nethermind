@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -995,6 +998,31 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.IsKnown(higherPriorityTx.Hash), Is.True);
                 Assert.That(_txPool.IsKnown(transaction.Hash), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task EvictTransaction_surfaces_a_drop_and_clears_the_hash_cache_so_the_tx_can_re_enter()
+        {
+            _txPool = CreatePool();
+            Transaction transaction = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithGasPrice(2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(transaction);
+            _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
+            Assert.That(_txPool.IsKnown(transaction.Hash), Is.True);
+
+            Transaction dropped = null;
+            _txPool.EvictedPending += (_, e) => dropped = e.Transaction;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.EvictTransaction(transaction), Is.True);
+                Assert.That(dropped, Is.SameAs(transaction), "the drop is surfaced to EvictedPending subscribers");
+                Assert.That(_txPool.IsKnown(transaction.Hash), Is.False, "the long-term cache is cleared so the tx can re-enter");
             }
         }
 
@@ -1999,6 +2027,9 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
+            // Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+            if (txType == TxType.FrameTx) return;
+
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
@@ -2039,6 +2070,829 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(expectedResult ? 1 : 0));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
                 Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(testTx));
+            }
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_RejectedAtIngressAsNotSupported()
+        {
+            _txPool = CreatePool();
+            Transaction frameTx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithNonce(0)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
+        {
+            // MAX_VERIFY_GAS disabled: this covers payer resolution, not the verify-gas bound.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            // A default-code self_verify frame tx: the sender is its own payer, resolved natively.
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "frame transactions must enter the pool once the EIP-8141 fork is active");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction must be pending");
+                Assert.That(frameTx.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "the self_verify payer must be resolved to the sender");
+            }
+        }
+
+        // Both filters are wired into the pool, and the placement filter runs ahead of the one that would
+        // otherwise claim the same layout — deleting either line leaves every filter fixture green.
+        [Test]
+        public void SubmitTx_FrameTransactionWithAVerifyFrameBehindThePrefix_IsRejected()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = SelfVerifyFrameTx(
+                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()),
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameTxVerifyAfterPrefix));
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransactionWithAMisplacedExpiryFrame_IsRejectedOnItsPlacement()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+            BinaryPrimitives.WriteUInt64BigEndian(expiryData, 1_000);
+            Transaction frameTx = SelfVerifyFrameTx(
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, expiryData));
+
+            // The placement verdict, not the one the trailing VERIFY frame would otherwise earn.
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameTxMisplacedExpiryFrame));
+        }
+
+        private Transaction SelfVerifyFrameTx(params TxFrame[] trailingFrames)
+        {
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    .. trailingFrames,
+                ],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            return frameTx;
+        }
+
+        [TestCase(100_000UL, 0UL, 0, true)]
+        [TestCase(118_000UL, 0UL, 0, false)]
+        [TestCase(10_000UL, 0UL, 4000, false)]
+        [TestCase(70_000UL, 70_000UL, 0, true)]
+        public void SubmitTx_FrameTransaction_IsGatedOnBlockDimensions(
+            ulong executionGasLimit,
+            ulong stateGasLimit,
+            int frameDataLength,
+            bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            _headInfo.BlockGasLimit = 130_000;
+
+            byte[] frameData = Enumerable.Repeat((byte)1, frameDataLength).ToArray();
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, frameData)],
+                FrameSignatures = [],
+                GasLimit = executionGasLimit + stateGasLimit,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result, expectedAccepted
+                ? Is.EqualTo(AcceptTxResult.Accepted)
+                : Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+        }
+
+        // EIP-8141: expired frame txs must be evicted on the new head; deadline == timestamp is still valid
+        // (the predeploy reverts only on strictly greater-than).
+        [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
+        [TestCase(2_000UL, 1_500UL, 1, TestName = "deadline in the future is retained")]
+        [TestCase(1_500UL, 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
+        public async Task Expired_frame_transaction_is_dropped_on_new_head(ulong deadline, ulong headTimestamp, int expectedPending)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending),
+                "expired frame transactions must be evicted on the new head, unexpired ones retained");
+        }
+
+        // The on-head expiry sweep is a removal path like any other: a reservation outliving the transaction
+        // locks the payer out of the pool until restart.
+        [Test]
+        public async Task Expired_frame_transaction_releases_its_payer_exposure_on_eviction()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 200_000 }, new TestSpecProvider(Bogota.Instance));
+
+            Transaction SignedFrameTx(ulong deadline)
+            {
+                Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            await AssertExpiredFrameTxReleasesItsPayerExposure(SignedFrameTx, TxHandlingOptions.PersistentBroadcast);
+        }
+
+        // A head under the deadline first, so the DEBUG bookkeeping check meets a live reservation rather than an
+        // empty ledger; then one past it, and a resubmission only a leaked reservation would reject.
+        private async Task AssertExpiredFrameTxReleasesItsPayerExposure(Func<ulong, Transaction> signedFrameTx, TxHandlingOptions options)
+        {
+            Transaction first = signedFrameTx(1_000);
+            int Pending() => first.CarriesBlobs ? _txPool.GetPendingBlobTransactionsCount() : _txPool.GetPendingTransactionsCount();
+
+            // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
+            UInt256 blobCost = (UInt256)(Eip4844Constants.GasPerBlob * (ulong)(first.BlobVersionedHashes?.Length ?? 0))
+                * (first.MaxFeePerBlobGas ?? UInt256.Zero);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)first.GasLimit * first.MaxFeePerGas + blobCost);
+
+            Assert.That(_txPool.SubmitTx(first, options), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
+            Assert.That(Pending(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_500).TestObject);
+            Assert.That(Pending(), Is.EqualTo(0), "the expired frame transaction must be evicted");
+
+            // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
+            Assert.That(_txPool.SubmitTx(signedFrameTx(2_000), options), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
+        // evict it, whatever the head timestamp.
+        [Test]
+        public async Task Frame_transaction_without_expiry_frame_survives_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "a frame transaction without an expiry frame has no deadline and must never be evicted by the expiry pass");
+        }
+
+        // Fast path: a non-frame tx is never counted or evicted by the expiry pass, even with the fork active
+        // and an extreme head timestamp.
+        [Test]
+        public async Task Regular_transaction_survives_expiry_pass_when_fork_active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "the expiry pass must only ever touch frame transactions carrying a deadline");
+        }
+
+        // Symmetry of _expiringFrameTxCount across the replacement path: replacing A with B fires Removed(A) and
+        // Inserted(B) inside a single DistinctValueSortedPool.InsertCore call. If those ever netted the count to
+        // zero the expiry pass would be skipped and B would silently survive past its deadline; assert it is evicted.
+        [Test]
+        public async Task Replaced_expiring_frame_transaction_is_still_evicted_on_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction a = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000);
+            Assert.That(_txPool.SubmitTx(a, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the original expiring frame transaction must first enter the pool");
+
+            // Same sender + nonce + deadline, both fees bumped well past the 10% replacement threshold.
+            Transaction b = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000, maxPriorityFeePerGas: 2.GWei, maxFeePerGas: 2.GWei);
+            Assert.That(_txPool.SubmitTx(b, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the fee-bumped replacement must be accepted");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the replacement must displace the original");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
+                "the replacement inherits the deadline and must still be evicted by the expiry pass");
+        }
+
+        // EIP-8141: a frame tx whose expiry deadline is already behind the current head must be rejected at submit —
+        // never pooled, never broadcast — mirroring the on-head eviction predicate. deadline == head timestamp is the
+        // boundary the expiry-verifier predeploy still accepts (strict >), so it must be admitted.
+        [TestCase(1_000UL, 1_500UL, false, TestName = "already-expired frame tx is rejected at ingress")]
+        [TestCase(2_000UL, 1_500UL, true, TestName = "not-yet-expired frame tx is accepted at ingress")]
+        [TestCase(1_500UL, 1_500UL, true, TestName = "boundary deadline equal to head timestamp is accepted at ingress")]
+        public async Task Expired_frame_transaction_is_rejected_at_ingress(ulong deadline, ulong headTimestamp, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            // Advance the head so the ingress filter has a current timestamp to compare the deadline against.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxExpired));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0),
+                    "an already-expired frame transaction must not enter the pool");
+            }
+
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_from_a_contract_sender_is_not_rejected_by_eip3607()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            // A smart-account sender is the normal case for a frame transaction: its code runs in the
+            // validation prefix and authorises the transaction there.
+            _stateProvider.InsertCode(TestItem.AddressA, "A"u8.ToArray(), Bogota.Instance);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.AddressA, deadline: null);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            // A legacy transaction from the same sender under the same spec pins that the exemption is
+            // by transaction type, not a disabled filter.
+            Transaction legacyTx = Build.A.Transaction
+                .WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AcceptTxResult legacyResult = _txPool.SubmitTx(legacyTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(legacyResult, Is.EqualTo(AcceptTxResult.SenderIsContract));
+            }
+        }
+
+        // A protocol-validated signature is invalid for every future chain state, so pooling one and
+        // gossiping it costs peers work they must repeat and can only end in a peer-side rejection.
+        [TestCase(FrameSignatureDefect.None, true)]
+        [TestCase(FrameSignatureDefect.HighS, false)]
+        [TestCase(FrameSignatureDefect.LegacyRecoveryId, false)]
+        [TestCase(FrameSignatureDefect.ForeignSigner, false)]
+        public void Frame_transaction_signatures_are_verified_at_ingress(FrameSignatureDefect defect, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+        }
+
+        // The pool must reach the same verdict as the processor: the EVM resolves P256VERIFY through the
+        // code-info repository, so gating it on a fork flag here would refuse — and disconnect the peer
+        // over — a transaction the processor accepts.
+        [TestCase(true, false, true, TestName = "P256VERIFY reached through EIP-7951")]
+        [TestCase(false, true, true, TestName = "P256VERIFY reached through RIP-7212")]
+        [TestCase(false, false, false, TestName = "P256VERIFY absent from the active precompiles")]
+        public void Frame_transaction_with_a_valid_p256_signature_is_pooled(bool eip7951, bool rip7212, bool expectedAccepted)
+        {
+            OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip7951Enabled = eip7951, IsRip7212Enabled = rip7212 };
+            _txPool = CreatePool(null, new TestSpecProvider(spec));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            frameTx.FrameSignatures = [P256Signature(frameTx)];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+        }
+
+        private static TxFrameSignature P256Signature(Transaction tx)
+        {
+            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            ECPoint q = key.ExportParameters(false).Q;
+            byte[] publicKey = [.. q.X!, .. q.Y!];
+            Address signer = new(Keccak.Compute(publicKey).Bytes[12..]);
+
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+            byte[] signature = key.SignHash(FrameTxSigHash.ComputeValue(tx).Bytes);
+
+            UInt256 s = new(signature.AsSpan(32, 32), isBigEndian: true);
+            if (s > SecP256r1Curve.HalfN)
+            {
+                (SecP256r1Curve.N - s).ToBigEndian(signature.AsSpan(32, 32));
+            }
+
+            byte[] raw = [.. signature, .. publicKey];
+            return new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw);
+        }
+
+        public enum FrameSignatureDefect { None, HighS, LegacyRecoveryId, ForeignSigner }
+
+        private static TxFrameSignature FrameSignature(Transaction tx, FrameSignatureDefect defect)
+        {
+            PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
+            Address signer = TestItem.PrivateKeyA.Address;
+            // compute_sig_hash covers the entry's scheme/signer/msg and elides only the raw bytes, so
+            // the hash is taken with the entry already installed.
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+            Signature signature = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
+
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+
+            switch (defect)
+            {
+                case FrameSignatureDefect.HighS:
+                    bytes[0] ^= 1;
+                    UInt256 s = new(bytes.AsSpan(33, 32), isBigEndian: true);
+                    (SecP256k1Curve.N - s).ToBigEndian(bytes.AsSpan(33, 32));
+                    break;
+                case FrameSignatureDefect.LegacyRecoveryId:
+                    bytes[0] += 27;
+                    break;
+            }
+
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
+        }
+
+        // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
+        // still consensus-valid, so the pool must refuse it at ingress rather than the validator.
+        [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
+        [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
+        [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
+        [TestCase(97_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withSignature, bool expectedAccepted)
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
+            if (withSignature)
+            {
+                // A secp256k1 entry verifies for 2 800 gas, so it decides the outcome on its own at a
+                // 97 200-gas prefix. It has to be a signature that verifies: the pool rejects one that
+                // does not before the budget is ever compared.
+                frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
+                frameTx.Hash = frameTx.CalculateHash();
+            }
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+
+            // Propagation is what the bound exists to stop, so the non-broadcast half is asserted too.
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_verify_gas_limit_of_zero_lifts_the_bound()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 15_000_000);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public void Frame_transaction_execution_gas_is_outside_the_verify_budget()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            // The validation prefix ends at the frame that approves payment; the execution frame after it
+            // is paid for out of the transaction's own gas and must not count against the budget.
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 100_000);
+            frameTx.Frames =
+            [
+                frameTx.Frames![0],
+                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 5_000_000, UInt256.Zero, default),
+            ];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        /// <summary>
+        /// Block production takes the ready-filtered bucket snapshot, so a sender holding several
+        /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed transactions must see all of them
+        /// there. Filtering on the account nonce instead drops the whole bucket, which is what kept keyed transactions
+        /// out of blocks.
+        /// </summary>
+        [Test]
+        public void Keyed_transactions_of_one_sender_are_all_ready_for_block_production()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8250Enabled = true }));
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sender, UInt256.MaxValue, AccountNonceUnrelatedToKeyedSequences);
+
+            Transaction[] keyed =
+            [
+                BuildFrameTx(nonce: 0, sender, deadline: null, nonceKeys: [1]),
+                BuildFrameTx(nonce: 0, sender, deadline: null, nonceKeys: [2]),
+            ];
+
+            foreach (Transaction tx in keyed)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true);
+
+            Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True,
+                "a bucket whose lowest entry is keyed must not be filtered out wholesale");
+            Assert.That(readyForSender, Has.Length.EqualTo(keyed.Length));
+        }
+
+        /// <summary>The sender's account nonce, deliberately unequal to the sequence the keyed transactions declare.</summary>
+        private const ulong AccountNonceUnrelatedToKeyedSequences = 7;
+
+        [Test]
+        public void SubmitTx_FrameTransactions_SharingSimulatedPayer_BoundByPayerBalance_ReleasedOnRemoval()
+        {
+            // Distinct senders share one opaque-prefix sponsor, so the exposure gate bounds its summed
+            // pending cost to its balance, and removing a tx releases the reservation.
+            Address sponsor = TestItem.AddressD;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
+        {
+            // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
+            // shape reaching the exposure gate here.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
+
+            Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
+            Transaction bumped = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
+            Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            // 6 + 7 exceeds the balance, but the bump displaces the incumbent rather than joining it, so
+            // the pending set never holds both and the payer's exposure ends at 7.
+            AcceptTxResult bumpedResult = _txPool.SubmitTx(bumped, TxHandlingOptions.None);
+            // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
+            // explicit release keeps the payer from leaking.
+            AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, distinctHash: true), TxHandlingOptions.None);
+            _txPool.RemoveTransaction(bumped.Hash);
+            AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(bumpedResult, Is.EqualTo(AcceptTxResult.Accepted), "a fee bump must not be gated on the reservation it displaces");
+                Assert.That(unreplaceableResult, Is.EqualTo(AcceptTxResult.ReplacementNotAllowed));
+                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "both the refused replacement and the removed tx must have released");
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_payer_exposure_counts_pending_nonces_above_the_replaced_one()
+        {
+            // The gate's teeth beyond BalanceTooLowFilter, which sums only nonces below tx.Nonce: here it
+            // admits the bump on its own count while the payer's summed pending cost exceeds the balance.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+
+            // Sized off the reservation itself, so a repricing of max_cost moves the balance with it:
+            // 3 pending at fee 3 fit within 10, the bump's 3 undiscounted plus its own 7 do not.
+            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)10 * unitCost);
+
+            for (ulong nonce = 0; nonce < 3; nonce++)
+            {
+                Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce, feePerGas: 3), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted), $"pending nonce {nonce} is within the payer's balance");
+            }
+
+            // Displacing the nonce-0 tx frees only its 3 of the 9 pending, so the bump is priced at 6 + 7.
+            AcceptTxResult overBound = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 7), TxHandlingOptions.None);
+
+            Assert.That(overBound, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false, UInt256[] nonceKeys = null)
+        {
+            Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, nonceKeys: nonceKeys);
+            // Naming the sender explicitly is still a self_verify frame and prices identically, so this
+            // varies the hash without touching any input the reservation is computed from.
+            if (distinctHash)
+            {
+                int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
+                Assert.That(i, Is.GreaterThanOrEqualTo(0), "the helper must still build a self_verify frame to retarget");
+                TxFrame frame = tx.Frames![i];
+                tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
+            }
+            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000, UInt256[] nonceKeys = null)
+        {
+            List<TxFrame> frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: verifyGasLimit, UInt256.Zero, default),
+            ];
+
+            if (deadline is not null)
+            {
+                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+                // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+                frames.Insert(0, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+            }
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = nonce,
+                SenderAddress = sender,
+                Frames = [.. frames],
+                NonceKeys = nonceKeys,
+                FrameSignatures = [],
+                GasLimit = TxGasLimit,
+                GasPrice = maxPriorityFeePerGas ?? 1.GWei,
+                DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        [Test]
+        public void Frame_transaction_payer_exposure_does_not_discount_a_different_keyed_nonce_domain()
+        {
+            // EIP-8250: a same-nonce transaction in another nonce-key domain does not compete, so both stay
+            // pending and the payer owes both. Discounting it would admit exposure beyond the balance.
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+
+            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)4 * unitCost); // fits one at fee 3, not two
+
+            AcceptTxResult first = _txPool.SubmitTx(
+                SelfPayingFrameTx(nonce: 0, feePerGas: 3, nonceKeys: [(UInt256)0]), TxHandlingOptions.None);
+            AcceptTxResult second = _txPool.SubmitTx(
+                SelfPayingFrameTx(nonce: 0, feePerGas: 3, nonceKeys: [(UInt256)0xbeef]), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded),
+                    "the keyed transaction joins the pending set rather than displacing the account-domain one");
+            }
+        }
+
+        // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = senderKey.Address,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                ],
+                FrameSignatures =
+                [
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
+                ],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
+            // signatures are taken with the entries already installed, then their bytes are filled in.
+            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+            tx.FrameSignatures =
+            [
+                Secp256k1FrameSignature(senderKey, in sigHash, signer: null),
+                Secp256k1FrameSignature(sponsorKey, in sigHash, signer: sponsorKey.Address),
+            ];
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        private const ulong KeyedFrameTxGasLimit = 1_000_000;
+
+        private static ISpecProvider KeyedNonceSpecProvider() =>
+            new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8250Enabled = true });
+
+        private Transaction BuildKeyedFrameTx(Address sender, UInt256 nonceKey, ulong seq, UInt256 value, UInt256 maxFee)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = seq,
+                SenderAddress = sender,
+                NonceKeys = [nonceKey],
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = KeyedFrameTxGasLimit,
+                Value = value,
+                GasPrice = maxFee,
+                DecodedMaxFeePerGas = maxFee,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer)
+        {
+            Signature signature = new Ecdsa().Sign(key, sigHash);
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
+        }
+
+        [Test]
+        public async Task Over_value_keyed_tx_does_not_dump_a_valid_plain_tx_from_the_same_sender()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction plain = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(1.Ether)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: 10.Ether, maxFee: 10.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            EnsureSenderBalance(sender, 5.Ether);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.IsKnown(plain.Hash), Is.True,
+                "a valid plain transaction must survive an over-value keyed transaction sharing its sender bucket");
+        }
+
+        [Test]
+        public async Task Keyed_tx_that_can_no_longer_fund_its_gas_is_evicted_and_may_re_enter()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            UInt256 maxFee = 1.GWei;
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: UInt256.Zero, maxFee: maxFee);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            UInt256 gasCost = maxFee * (UInt256)KeyedFrameTxGasLimit;
+            EnsureSenderBalance(sender, gasCost - UInt256.One);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
+                    "a keyed transaction the sender can no longer fund must be evicted, not left pending until block production");
+                Assert.That(_txPool.IsKnown(keyed.Hash), Is.False,
+                    "the eviction clears the long-term cache so the transaction can re-enter once the balance recovers");
             }
         }
 
@@ -2463,6 +3317,9 @@ namespace Nethermind.TxPool.Test
                     case TxType.SetCode:
                         builder.WithAuthorizationCodeIfAuthorizationListTx();
                         break;
+                    case TxType.FrameTx:
+                        //Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+                        continue;
                     case TxType.DepositTx:
                         continue;
                 }
@@ -2495,7 +3352,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2519,7 +3377,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
                 new HeadTxValidator(),
-                thereIsPriorityContract);
+                thereIsPriorityContract,
+                frameTxPrefixSimulator);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

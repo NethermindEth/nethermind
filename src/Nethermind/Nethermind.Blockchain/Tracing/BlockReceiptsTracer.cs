@@ -15,9 +15,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
+
+    // EIP-8141: reported by the transaction processor before MarkAsSuccess/MarkAsFailed and
+    // attached to the receipt of the current frame transaction, then cleared.
+    private Address? _frameTxPayer;
+    private TxFrameReceipt[]? _frameTxReceipts;
+
+    public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        _frameTxPayer = payer;
+        _frameTxReceipts = frameReceipts;
+    }
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -70,7 +81,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string error, Hash256? stateRoot)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
+        // EIP-7906: a failed assertion discards the body but keeps the validation prefix, whose logs
+        // stay in the surviving frame receipts and so in the transaction's log set and bloom.
+        LogEntry[] logs = _frameTxReceipts is { } frameReceipts ? TxFrameReceipt.ConcatLogs(frameReceipts) : [];
+        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, logs, stateRoot);
         receipt.Error = error;
         return receipt;
     }
@@ -128,7 +142,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
             EffectiveGasPrice = effectiveGasPrice,
             Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
+            ContractAddress = transaction.CreatesTopLevelContract ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot
         };
@@ -147,6 +161,23 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (gasConsumed.BlockStateGas > 0)
         {
             txReceipt.StorageGasUsed = gasConsumed.BlockStateGas;
+        }
+
+        if (transaction.Type == TxType.FrameTx)
+        {
+            txReceipt.Payer = _frameTxPayer;
+            txReceipt.FrameReceipts = _frameTxReceipts;
+            if (_frameTxReceipts is not null)
+            {
+                // The tx is charged and included whatever its frames did, so the processor always goes
+                // through MarkAsSuccess; the status a caller sees has to come from the frames instead.
+                // Without reported frame receipts there is nothing to derive from, and overwriting
+                // would promote a failed receipt to success.
+                txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
+            }
+
+            _frameTxPayer = null;
+            _frameTxReceipts = null;
         }
 
         return txReceipt;

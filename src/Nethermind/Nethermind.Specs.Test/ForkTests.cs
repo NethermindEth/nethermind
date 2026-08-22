@@ -59,4 +59,17 @@ public class ForkTests
             Assert.That(Amsterdam.Instance.IsEip7928Enabled, Is.True);
         }
     }
+
+    [Test]
+    public void Eip8141Prototype_enables_only_frame_transactions_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8141Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Eip8141Prototype.Instance.IsEip8141Enabled, Is.True, "prototype fork must enable frame transactions");
+            Assert.That(Eip8141Prototype.Instance.IsEip7928Enabled, Is.True, "Amsterdam-era flags must be inherited");
+            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False, "no production fork may enable frame transactions");
+            Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
+        }
+    }
 }

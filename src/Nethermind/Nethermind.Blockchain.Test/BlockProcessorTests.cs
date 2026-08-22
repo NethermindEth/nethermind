@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -251,16 +252,18 @@ public class BlockProcessorTests
 
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        ISpecProvider? specProvider = null)
     {
+        specProvider ??= HoodiSpecProvider.Instance;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            stateProvider, specProvider, balManager, LimboLogs.Instance);
+        BlockProcessor processor = new(specProvider,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
             transactionsExecutor,
@@ -275,13 +278,96 @@ public class BlockProcessorTests
 
         BranchProcessor branchProcessor = new(
             processor,
-            HoodiSpecProvider.Instance,
+            specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
+    }
+
+    /// <summary>
+    /// Installs the execution-request predeploys (EIP-7002/7251/8282) that Amsterdam-based specs read
+    /// while processing a post-genesis block; without them ProcessExecutionRequests rejects the block.
+    /// </summary>
+    private static void InstallExecutionRequestPredeploys(IWorldState stateProvider, IReleaseSpec spec)
+    {
+        stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
+    }
+
+    private static IEnumerable<TestCaseData> PredeployInstallCases()
+    {
+        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
+        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
+            .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
+            .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
+        // code-only idempotency probe would never fire it.
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
+            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
+    }
+
+    [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
+    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code, ulong expectedNonce)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
+        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        // First post-activation block installs the predeploy: its code, and its nonce where the EIP mandates one.
+        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
+        if (!spec.IsEip8250Enabled)
+        {
+            // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
+            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
+        }
+
+        // The install must appear in the generated block-level access list (code + nonce change).
+        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
+        Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
+            if (code.Length != 0)
+            {
+                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            }
+
+            // No nonce entry at all where the EIP mandates none: an unmandated one moves the BAL hash and the
+            // block is rejected before execution.
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
+            if (expectedNonce != 0)
+            {
+                Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
+            }
+        }
+
+        // Second block is a no-op: state unchanged and no BAL entry for the predeploy.
+        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
+        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
+            "a re-install must not churn state or the BAL once the code is already present");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1604,6 +1690,10 @@ public class BlockProcessorTests
         }
 
         public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+        {
+        }
+
+        public void InstallPredeploys(IReleaseSpec spec)
         {
         }
 

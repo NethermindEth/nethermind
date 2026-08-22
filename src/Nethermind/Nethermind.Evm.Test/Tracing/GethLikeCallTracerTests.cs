@@ -662,6 +662,20 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
     }
 
+    [Test]
+    public void Test_CallTrace_ReportLog_EmptyCallStack_DoesNotThrow()
+    {
+        // A frame transaction running entirely through default code (an EOA sender's codeless
+        // SENDER transfer) emits an EIP-7708 transfer log without any ReportAction, so the call
+        // stack is empty. debug_traceTransaction with callTracer and withLog must not throw.
+        Transaction tx = Build.A.Transaction.TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+
+        Assert.That(
+            () => tracer.ReportLog(new LogEntry(TestItem.AddressA, [], [])),
+            Throws.Nothing);
+    }
+
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
