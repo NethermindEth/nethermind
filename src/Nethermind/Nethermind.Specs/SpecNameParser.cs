@@ -63,6 +63,7 @@ namespace Nethermind.Specs
                 "BPO5" => BPO5.Instance,
                 "Amsterdam" => Amsterdam.Instance,
                 "Bogota" => Bogota.Instance,
+                "bogota" => Bogota.Instance,
                 _ => throw new NotSupportedException(specName == unambiguousSpecName
                     ? $"Unknown fork name '{specName}'"
                     : $"Unknown fork name '{specName}' (resolved to '{unambiguousSpecName}')")

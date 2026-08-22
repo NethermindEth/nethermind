@@ -72,4 +72,12 @@ public class ForkTests
             Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
         }
     }
+
+    [TestCase("Bogota")]
+    [TestCase("bogota")]
+    public void SpecNameParser_resolves_bogota(string name)
+    {
+        IReleaseSpec spec = SpecNameParser.Parse(name);
+        Assert.That(spec, Is.SameAs(Bogota.Instance));
+    }
 }

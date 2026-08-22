@@ -41,6 +41,11 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
 
+    /// <summary>The explicit payload sender, distinct from the inherited <c>from</c>; supplied by callers that
+    /// carry a pre-signed or contract sender rather than deriving it from a signing key.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Sender { get; set; }
+
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
