@@ -123,7 +123,10 @@ public class BlockStore : IBlockStore, IClearableCache
     /// </summary>
     /// <remarks>
     /// Leaves the legacy hash-only keys, which carry no block number and so cannot be addressed by range - they are a
-    /// lookup accelerator, and one pointing at a block that is gone already answers "not found".
+    /// lookup accelerator, and one pointing at a block that is gone already answers "not found". Being 32 bytes they
+    /// do sort inside a 40-byte range whenever their leading bytes happen to look like a covered height, which would
+    /// drop a live block's legacy key; the odds of a hash doing that are negligible and the consequence is one extra
+    /// lookup miss, so it is accepted rather than guarded.
     /// The deferred-write overlay is not consulted: it only ever holds blocks near the head, and callers prune far
     /// below it, so a pending write cannot fall inside the range.
     /// </remarks>

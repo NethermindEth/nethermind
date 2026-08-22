@@ -480,6 +480,43 @@ namespace Nethermind.Db.Test
             return key;
         }
 
+        // The column-family path, which is the one receipts actually take: PersistentReceiptStorage resolves a
+        // ColumnDb, so every production receipt reclaim goes through the _cf overload rather than the plain one the
+        // tests above cover.
+        [Test]
+        public void RemoveRange_OnAColumn_HoldsTheBoundsAndLeavesOtherColumnsAlone()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory, LimboLogs.Instance,
+                new List<ReceiptsColumns> { ReceiptsColumns.Blocks, ReceiptsColumns.Transactions });
+
+            IDb target = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            IDb bystander = columnsDb.GetColumnDb(ReceiptsColumns.Transactions);
+
+            for (ulong number = 1; number <= 5; number++)
+            {
+                target.PutSpan(BlockKey(number, 0xAA), [(byte)number], WriteFlags.None);
+                bystander.PutSpan(BlockKey(number, 0xAA), [(byte)number], WriteFlags.None);
+            }
+
+            ((IRangeRemovableKeyValueStore)target).RemoveRange(BlockKey(2, 0x00), BlockKey(4, 0x00));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(target.Get(BlockKey(1, 0xAA)), Is.Not.Null);
+                Assert.That(target.Get(BlockKey(2, 0xAA)), Is.Null);
+                Assert.That(target.Get(BlockKey(3, 0xAA)), Is.Null);
+                Assert.That(target.Get(BlockKey(4, 0xAA)), Is.Not.Null, "the upper bound is exclusive on a column too");
+
+                for (ulong number = 1; number <= 5; number++)
+                {
+                    Assert.That(bystander.Get(BlockKey(number, 0xAA)), Is.Not.Null,
+                        $"height {number} of another column must be untouched - the tombstone has to be scoped to its column family");
+                }
+            }
+        }
+
         private static byte[]? GetValue(DbOnTheRocks db, ReadOnlySpan<byte> key) => ((IReadOnlyKeyValueStore)db).Get(key);
 
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)

@@ -17,11 +17,11 @@ public static class Metrics
     public static ulong? OldestStoredBlockAccessListBlockNumber { get; set; }
 
     [CounterMetric]
-    [Description("The number of the historical blocks that have been pruned (since restart).")]
+    [Description("The number of historical block heights reclaimed by pruning (since restart). Counts heights, not stored blocks: a range is dropped in one operation and never learns how many of its heights held a block.")]
     public static long BlocksPruned { get; set; }
 
     [CounterMetric]
-    [Description("The number of the historical block access lists that have been pruned (since restart).")]
+    [Description("The number of historical block access list heights reclaimed by pruning (since restart). Counts heights, not stored access lists - see BlocksPruned.")]
     public static long BlockAccessListsPruned { get; set; }
 
     [GaugeMetric]

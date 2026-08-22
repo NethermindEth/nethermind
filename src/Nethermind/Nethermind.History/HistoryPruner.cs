@@ -81,7 +81,6 @@ public class HistoryPruner : IHistoryPruner
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
-        _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _blockAccessListStore = blockAccessListStore;
@@ -371,8 +370,6 @@ public class HistoryPruner : IHistoryPruner
     private bool PruningIntervalHasElapsed()
         => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
-    private readonly int _deletionProgressLoggingInterval;
-
     /// <summary>
     /// Blocks reclaimed per range removal. The removal itself costs the same whatever it spans, so this is not a
     /// throughput knob - it bounds how much one irreversible step can affect, keeps progress visible in the log, and
@@ -426,20 +423,22 @@ public class HistoryPruner : IHistoryPruner
                 // After the removals, so a crash between the two only costs repeating a chunk - and repeating one is
                 // free, a range removal being idempotent.
                 _blocksReclaimCursor = to;
+                // Kept level per chunk rather than after the loop: a cancelling return used to skip it, leaving the
+                // access list pass to re-issue tombstones over a range it had already reclaimed.
+                if (_balsDeletePointer < to)
+                {
+                    _balsDeletePointer = to;
+                    Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+                }
+
                 SaveDeletePointers();
 
                 reclaimed += to - from;
                 Metrics.BlocksPruned += (long)(to - from);
-                Metrics.BlockAccessListsPruned += (long)(to - from);
                 if (_logger.IsInfo) _logger.Info($"Reclaimed historical blocks #{from} to #{to - 1}, {limit.SaturatingSub(to)} remaining.");
                 from = to;
             }
 
-            if (_balsDeletePointer < _blocksDeletePointer)
-            {
-                _balsDeletePointer = _blocksDeletePointer;
-                Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
-            }
         }
         finally
         {
@@ -447,7 +446,7 @@ public class HistoryPruner : IHistoryPruner
 
             if (!cancellationToken.IsCancellationRequested && _logger.IsInfo && reclaimed > 0)
             {
-                _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} blocks.");
+                _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
         }
     }
@@ -571,7 +570,10 @@ public class HistoryPruner : IHistoryPruner
         _blocksDeletePointer = newDeletePointer;
         Metrics.OldestStoredBlockNumber = _blocksDeletePointer;
         _blockTree.NewOldestBlock(_blocksDeletePointer);
-        BlockHeader? oldest = _blockTree.FindBlock(_blocksDeletePointer)?.Header;
+        // Headers are never pruned, so this is both the reliable source and the cheap one. Reading the body would
+        // make the announcement conditional on data the reclaim is about to erase - and the boundary now moves in
+        // one jump, so a single miss would leave peers uninformed instead of self-healing next iteration.
+        BlockHeader? oldest = _blockTree.FindHeader(_blocksDeletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (oldest is not null)
         {
             _oldestBlockHeader = oldest;

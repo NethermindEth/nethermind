@@ -894,10 +894,12 @@ namespace Nethermind.Blockchain.Receipts
             GetBlockNumPrefixedKey(toExclusive, Keccak.Zero, to);
             rangeRemovable.RemoveRange(from, to);
 
-            // Both are keyed by hash and so cannot be narrowed to the range. The cache would otherwise serve receipts
-            // whose block is gone, and the pending overlay would write them back.
+            // Keyed by hash, so it cannot be narrowed to the range, and it would otherwise serve receipts whose
+            // block is gone. _pendingCanonical is deliberately NOT touched: it is a cancellation ledger, not a
+            // cache - PersistDeferredCanonical skips any entry missing from it - so clearing it would permanently
+            // drop the tx-index write of every block queued near the head. Nothing queued can be inside a pruned
+            // range anyway, so there is nothing here to cancel.
             _receiptsCache.Clear();
-            _pendingCanonical.Clear();
         }
 
         private void RemoveBlockTx(Block block)
