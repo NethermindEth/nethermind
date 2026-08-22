@@ -31,7 +31,9 @@ internal sealed class FrameTxSimulationFilter(
             return AcceptTxResult.Accepted;
         }
 
-        FrameTxSimulationResult result = simulator.Simulate(tx);
+        // FrameTxSignatureFilter is earlier in this same chain and rejects, so reaching here means every
+        // frame_signatures entry already verified under the head spec.
+        FrameTxSimulationResult result = simulator.Simulate(tx, signaturesPreValidated: true);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
