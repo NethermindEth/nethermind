@@ -53,6 +53,9 @@ public class HistoryPruner : IHistoryPruner
     // How far the disk has actually been given back, which trails the published boundary above and is nobody's
     // business but this class's. Split from the pointer on purpose: the boundary is a promise, this is bookkeeping.
     private ulong _blocksReclaimCursor = 1;
+    // Where the rolling transaction-index sweep left off, in that column's own key order. Null means start over.
+    private byte[]? _txIndexSweepCursor;
+    private bool _txIndexSweepCursorLoaded;
     private ulong _balsDeletePointer = 1;
     private ulong _lastSavedBlocksDeletePointer = 1;
     private ulong _lastSavedBlocksReclaimCursor = 1;
@@ -270,6 +273,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
+                SweepTransactionIndex(cancellationToken);
 
                 // Unconditional: gating this on the blocks pass finishing meant that whenever that pass was cut
                 // short - which was every pass - access lists were never pruned at all. It checks the token itself
@@ -377,6 +381,13 @@ public class HistoryPruner : IHistoryPruner
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
     /// <summary>
+    /// Index entries examined per pass. The index is keyed by transaction hash, so it cannot be dropped by range and
+    /// has to be walked - bounded per pass so the walk never competes with a block. Passes are frequent enough that
+    /// this outruns the chain's transaction rate by orders of magnitude while still catching a backlog up.
+    /// </summary>
+    private const int TxIndexSweepEntriesPerPass = 100_000;
+
+    /// <summary>
     /// Publishes the boundary for the whole span first, then gives the disk back behind it. That order is what makes
     /// the pass safe to interrupt: the announced boundary is a policy decision costing one metadata write, so it can
     /// never be starved, and everything the reclaim touches has already been declared absent. A reclaim that is slow,
@@ -453,6 +464,35 @@ public class HistoryPruner : IHistoryPruner
                 _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
         }
+    }
+
+    /// <summary>
+    /// Reclaims transaction-index entries whose block is gone. Range reclaim deliberately leaves them - enumerating
+    /// them is what forced a body read per block - and the TxLookupLimit path cannot pick them up either, since by
+    /// the time that horizon reaches a block its body has already been reclaimed. So they are swept here instead:
+    /// bounded, resumable, and reading nothing but the index itself.
+    /// </summary>
+    private void SweepTransactionIndex(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested || _blocksDeletePointer <= _minDeletableBlockNumber) return;
+
+        LoadTxIndexSweepCursor();
+        byte[]? next = _receiptStorage.SweepTransactionIndex(
+            _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, out int removed);
+        Metrics.TransactionIndexEntriesPruned += removed;
+
+        // Null means the column has been walked end to end; starting over is deliberate, since the boundary has
+        // moved on and entries that were live on the last pass are not necessarily live now.
+        _txIndexSweepCursor = next;
+        _metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, next);
+    }
+
+    private void LoadTxIndexSweepCursor()
+    {
+        if (_txIndexSweepCursorLoaded) return;
+
+        _txIndexSweepCursor = _metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor);
+        _txIndexSweepCursorLoaded = true;
     }
 
     /// <summary>Access lists past the block cutoff, whose blocks are still retained. Unlike
@@ -549,17 +589,20 @@ public class HistoryPruner : IHistoryPruner
             return;
         }
 
+        // The cursor goes first, and the order is load-bearing. These are independent writes: if the boundary landed
+        // first and the process died, a restart would find no cursor key, take it to mean "level with the boundary",
+        // and treat an unreclaimed backlog as finished - disk never returned, silently, forever.
+        if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
+        {
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
+            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+        }
+
         if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
         {
             _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
-        }
-
-        if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
-        {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
-            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
         }
 
         if (_balsDeletePointer != _lastSavedBalsDeletePointer)

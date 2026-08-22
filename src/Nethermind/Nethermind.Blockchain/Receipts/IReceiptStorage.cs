@@ -32,9 +32,23 @@ namespace Nethermind.Blockchain.Receipts
         void RemoveReceipts(Block block);
 
         /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation,
-        /// without reading any of them. Leaves the transaction index, which self-heals against the pruning floor.
+        /// without reading any of them. Leaves the transaction index to <see cref="SweepTransactionIndex"/>.
         /// </summary>
         void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => throw new NotSupportedException();
+
+        /// <summary>
+        /// Drops transaction-index entries pointing at blocks below <paramref name="retainedFromBlock"/>, at most
+        /// <paramref name="maxEntries"/> of them, starting from <paramref name="resumeFrom"/>. The index is keyed by
+        /// transaction hash so it cannot be addressed by block range, but each value carries the block number, which
+        /// is enough to decide staleness without reading a block.
+        /// </summary>
+        /// <returns>The key to resume from, or <c>null</c> once the column has been walked end to end - at which
+        /// point a caller should start over, since the retained boundary will have moved on.</returns>
+        byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, out int removed)
+        {
+            removed = 0;
+            return null;
+        }
 
         /// <summary>
         /// Receipts for canonical chain changed.

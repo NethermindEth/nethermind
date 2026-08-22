@@ -127,8 +127,9 @@ public class BlockStore : IBlockStore, IClearableCache
     /// do sort inside a 40-byte range whenever their leading bytes happen to look like a covered height, which would
     /// drop a live block's legacy key; the odds of a hash doing that are negligible and the consequence is one extra
     /// lookup miss, so it is accepted rather than guarded.
-    /// The deferred-write overlay is not consulted: it only ever holds blocks near the head, and callers prune far
-    /// below it, so a pending write cannot fall inside the range.
+    /// The deferred-write overlay is drained for the range under its own lock, so a queued write cannot land after
+    /// the removal and resurrect a block. In practice it holds only writes near the head and callers prune far below
+    /// it, but the guarantee is enforced rather than assumed.
     /// </remarks>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
@@ -138,15 +139,27 @@ public class BlockStore : IBlockStore, IClearableCache
             throw new NotSupportedException($"The blocks database ({_blockDb.GetType().Name}) cannot remove a key range.");
         }
 
+        if (_pending is not null)
+        {
+            _pending.RemoveRange(fromInclusive, toExclusive, () => RemoveRangeFromDb(rangeRemovable, fromInclusive, toExclusive));
+        }
+        else
+        {
+            RemoveRangeFromDb(rangeRemovable, fromInclusive, toExclusive);
+        }
+
+        // Keyed by hash, so it cannot be narrowed to the range. Dropping it whole costs a few misses and is the only
+        // way to stop a block that is no longer on disk being served out of memory.
+        _blockCache.Clear();
+    }
+
+    private static void RemoveRangeFromDb(IRangeRemovableKeyValueStore rangeRemovable, ulong fromInclusive, ulong toExclusive)
+    {
         Span<byte> from = stackalloc byte[40];
         Span<byte> to = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, from);
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, to);
         rangeRemovable.RemoveRange(from, to);
-
-        // Keyed by hash, so it cannot be narrowed to the range. Dropping it whole costs a few misses and is the only
-        // way to stop a block that is no longer on disk being served out of memory.
-        _blockCache.Clear();
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)

@@ -24,5 +24,6 @@ namespace Nethermind.Db
         public const int BlockAccessListPruningDeletePointer = 17;
         public const int FlatDbCompactionOffset = 18;
         public const int HistoryPruningReclaimCursor = 19;
+        public const int HistoryPruningTxIndexSweepCursor = 20;
     }
 }

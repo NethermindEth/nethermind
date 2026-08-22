@@ -57,6 +57,63 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
+    // The sweep is what keeps the index bounded once range reclaim stopped deleting its entries per block, so its
+    // predicate is load-bearing: an entry whose block is still retained must survive, and the legacy hash-valued form
+    // carries no number to judge by and must be left alone rather than guessed at.
+    [Test]
+    public void SweepTransactionIndex_DropsOnlyEntriesNamingReclaimedBlocks()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Hash256 stale = TestItem.KeccakA;
+        Hash256 retained = TestItem.KeccakB;
+        Hash256 legacy = TestItem.KeccakC;
+
+        txIndex.Set(stale, Rlp.Encode(5UL).Bytes);
+        txIndex.Set(retained, Rlp.Encode(50UL).Bytes);
+        txIndex.Set(legacy, TestItem.KeccakD.BytesToArray());
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txIndex.Get(stale), Is.Null, "its block is below the boundary, so the entry can only resolve to a block that is gone");
+            Assert.That(txIndex.Get(retained), Is.Not.Null, "its block is still retained");
+            Assert.That(txIndex.Get(legacy), Is.Not.Null, "the legacy hash form carries no block number and must not be guessed at");
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(cursor, Is.Null, "walking the whole column to the end reports no resume point, so the caller starts over");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_HonoursItsBudgetAndResumes()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Hash256[] keys = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+        foreach (Hash256 key in keys)
+        {
+            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+        }
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, out int firstRemoved);
+        Assert.That(cursor, Is.Not.Null, "stopping on budget has to report where to pick up, or the tail is never reached");
+
+        int total = firstRemoved;
+        while (cursor is not null)
+        {
+            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, out int removed);
+            total += removed;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(total, Is.EqualTo(keys.Length), "resuming from the reported key must eventually cover every entry");
+            foreach (Hash256 key in keys)
+            {
+                Assert.That(txIndex.Get(key), Is.Null);
+            }
+        }
+    }
+
     private void CreateStorage(bool captureHealthy = true)
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);

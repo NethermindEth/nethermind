@@ -842,7 +842,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
-            // Only production caller is ancient-history pruning. Under deferral the removal runs under the
+            // Kept for removing one block by hash - a reorg or a targeted delete. Ancient-history pruning reclaims
+            // by range instead. Under deferral the removal runs under the
             // shared lock (via the overlay) so a queued write cannot interleave and resurrect the data.
             if (_pendingReceipts is not null)
             {
@@ -900,6 +901,57 @@ namespace Nethermind.Blockchain.Receipts
             // drop the tx-index write of every block queued near the head. Nothing queued can be inside a pruned
             // range anyway, so there is nothing here to cancel.
             _receiptsCache.Clear();
+        }
+
+        /// <remarks>
+        /// This is what keeps the index bounded once range reclaim stopped deleting its entries per block. The
+        /// TxLookupLimit path cannot do it: by the time that horizon reaches a block, history pruning has already
+        /// removed the body it needs to enumerate the block's transactions.
+        /// </remarks>
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, out int removed)
+        {
+            removed = 0;
+            if (retainedFromBlock == 0 || maxEntries <= 0 || _transactionDb is not ISortedKeyValueStore sorted) return null;
+
+            // One byte wider than a hash, so it is strictly above every key the column can hold.
+            Span<byte> upperBound = stackalloc byte[Hash256.Size + 1];
+            upperBound.Fill(0xFF);
+
+            int examined = 0;
+            byte[]? lastKey = null;
+            using IWriteBatch batch = _transactionDb.StartWriteBatch();
+            using ISortedView view = sorted.GetViewBetween(resumeFrom ?? ReadOnlySpan<byte>.Empty, upperBound);
+
+            while (view.MoveNext())
+            {
+                lastKey = view.CurrentKey.ToArray();
+                if (PointsBelow(view.CurrentValue, retainedFromBlock))
+                {
+                    batch[lastKey] = null;
+                    removed++;
+                }
+
+                // Resuming from the last key examined re-reads it once, which is cheaper than carrying a successor.
+                if (++examined >= maxEntries) return lastKey;
+            }
+
+            return null;
+        }
+
+        /// <summary>Whether an index value names a block at or below the last reclaimed one. A 32-byte value is the
+        /// legacy block-hash form, which carries no number - deciding it would need a lookup, so it stays.</summary>
+        private static bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        {
+            if (value.Length == 0 || value.Length == Hash256.Size) return false;
+
+            try
+            {
+                return new RlpReader(value).DecodeULong() < retainedFromBlock;
+            }
+            catch (RlpException)
+            {
+                return false;
+            }
         }
 
         private void RemoveBlockTx(Block block)

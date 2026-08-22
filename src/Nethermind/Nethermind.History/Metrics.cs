@@ -25,6 +25,9 @@ public static class Metrics
     public static long BlockAccessListsPruned { get; set; }
 
     [GaugeMetric]
+    [Description("The number of transaction index entries dropped because the block they name is no longer retained (since restart).")]
+    public static long TransactionIndexEntriesPruned { get; set; }
+
     [Description("The cutoff block number from which historical blocks will be pruned.")]
     public static ulong? PruningCutoffBlocknumber { get; set; }
 

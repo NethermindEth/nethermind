@@ -119,4 +119,29 @@ internal sealed class DeferredWriteOverlay<TPayload>(
             alsoUnderLock();
         }
     }
+
+    /// <summary>
+    /// Same guarantee as <see cref="Remove"/> for a whole block range, so a caller deleting by range cannot have a
+    /// queued write land after its delete and resurrect the entry. Entries are keyed by hash, so this scans - the
+    /// overlay only ever holds writes still in flight, so it is small.
+    /// </summary>
+    public void RemoveRange(ulong fromInclusive, ulong toExclusive, Action alsoUnderLock)
+    {
+        lock (_lock)
+        {
+            if (Volatile.Read(ref _pendingCount) != 0)
+            {
+                foreach (KeyValuePair<ValueHash256, Entry> entry in _pending)
+                {
+                    if (entry.Value.BlockNumber < fromInclusive || entry.Value.BlockNumber >= toExclusive) continue;
+                    if (_pending.TryRemove(entry.Key, out _))
+                    {
+                        Interlocked.Decrement(ref _pendingCount);
+                    }
+                }
+            }
+
+            alsoUnderLock();
+        }
+    }
 }
