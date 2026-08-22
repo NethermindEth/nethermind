@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -20,7 +19,9 @@ public struct EvmPooledMemory
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
-    private ulong _lastZeroedSize;
+    // Bytes below this prefix are valid; Size may exceed both it and the backing array until a read
+    // materializes the logical zero tail.
+    private ulong _initializedSize;
 
     private byte[]? _memory;
     public ulong Size { get; private set; }
@@ -61,8 +62,8 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        UpdateSize(newLength, rentIfNeeded: false);
+        SaveAfterGas(in location, value);
         return true;
     }
 
@@ -109,26 +110,12 @@ public struct EvmPooledMemory
     }
 
     public bool TrySave(in UInt256 location, byte[] value)
-    {
-        if (value.Length == 0)
-        {
-            return true;
-        }
-
-        ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
-        if (isViolation) return false;
-
-        UpdateSize(newLength);
-
-        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
-        return true;
-    }
+        => TrySave(in location, value.AsSpan());
 
     /// <summary>
     /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
     /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
-    /// <paramref name="value"/>.Length) — which both bounds-checks and grows/rents the buffer —
+    /// <paramref name="value"/>.Length), which bounds-checks and updates the logical memory size,
     /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -142,10 +129,10 @@ public struct EvmPooledMemory
 
         Debug.Assert(location.IsUint64);
         Debug.Assert(location.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(location.u0 + (ulong)length);
-
         int intLocation = TruncateToInt32(location.u0);
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length);
         value.CopyTo(_memory.AsSpan(intLocation, length));
+        CommitOverwrite(preparedInitializedSize);
     }
 
     /// <summary>
@@ -166,13 +153,12 @@ public struct EvmPooledMemory
 
         Debug.Assert(destination.IsUint64);
         Debug.Assert(destination.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(destination.u0 + (ulong)length);
-
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, (ulong)length);
         Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), length);
         int copiedLength = 0;
         if (sourceOffset < source.Length)
         {
-            int intSourceOffset = (int)sourceOffset;
+            int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
             source.Slice(intSourceOffset, copiedLength).CopyTo(target);
         }
@@ -181,6 +167,8 @@ public struct EvmPooledMemory
         {
             target[copiedLength..].Clear();
         }
+
+        CommitOverwrite(preparedInitializedSize);
     }
 
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
@@ -269,11 +257,11 @@ public struct EvmPooledMemory
 
     private void ClearForTracing(ulong size)
     {
-        if (_memory is not null && size > _lastZeroedSize)
+        if (_memory is not null && size > _initializedSize)
         {
-            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
-            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize += (uint)lengthToClear;
+            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _initializedSize);
+            Array.Clear(_memory, (int)_initializedSize, lengthToClear);
+            _initializedSize += (uint)lengthToClear;
         }
     }
 
@@ -305,13 +293,20 @@ public struct EvmPooledMemory
         return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
+    /// <summary>Stores a 32-byte word after memory expansion gas has been charged.</summary>
+    /// <remarks>
+    /// <paramref name="word"/> must not alias this memory instance because preparing the destination
+    /// can replace and return the underlying buffer before the source bytes are read.
+    /// </remarks>
+    /// <param name="location">The start of the destination word.</param>
+    /// <param name="word">The 32 source bytes to store.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
+        EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
@@ -322,7 +317,9 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
-        _memory![offset] = value;
+        // The after-gas contract proves offset < Size; preparation guarantees Size <= _memory.Length.
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.Add(ref memory, offset) = value;
     }
 
     /// <summary>
@@ -361,12 +358,28 @@ public struct EvmPooledMemory
             return;
         }
 
-        int destinationOffset = TruncateToInt32(destination.u0);
-        int sourceOffset = TruncateToInt32(source.u0);
+        Debug.Assert(destination.IsUint64);
+        Debug.Assert(source.IsUint64);
+        Debug.Assert(destination.u0 + length <= Size);
+        Debug.Assert(source.u0 + length <= Size);
         int intLength = TruncateToInt32(length);
+        ulong sourceAvailable = source.u0 < _initializedSize
+            ? Math.Min(length, _initializedSize - source.u0)
+            : 0;
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, length);
+        Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), intLength);
 
-        PrepareAccessAfterGas(destination.u0 + length);
-        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+        if (sourceAvailable != 0)
+        {
+            _memory.AsSpan(TruncateToInt32(source.u0), TruncateToInt32(sourceAvailable)).CopyTo(target);
+        }
+
+        if (sourceAvailable != length)
+        {
+            target[TruncateToInt32(sourceAvailable)..].Clear();
+        }
+
+        CommitOverwrite(preparedInitializedSize);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -380,15 +393,14 @@ public struct EvmPooledMemory
 
         ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
         ulong activeWords = Size >> 5;
+        Size = newActiveWords << 5;
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
         // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
-        // newActiveWords >= activeWords by the gating condition in UpdateSize, so the subtractions are safe.
+        // newActiveWords >= activeWords by the caller's gating condition, so the subtractions are safe.
         ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
-
-        UpdateSize(newSize, rentIfNeeded: false);
 
         return cost;
     }
@@ -417,6 +429,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
+            _initializedSize = 0;
             Return(memory);
         }
     }
@@ -451,11 +464,47 @@ public struct EvmPooledMemory
         EnsureRented();
     }
 
+    /// <summary>Prepares a range that will be completely overwritten after gas has been charged.</summary>
+    /// <remarks>
+    /// The caller must write every byte in the range before passing the result to
+    /// <see cref="CommitOverwrite"/>. A zero result is a sentinel indicating that the range was
+    /// already initialized and no commit is required. Preparation guarantees backing capacity only
+    /// through the end of the overwrite; bytes above it remain lazy.
+    /// </remarks>
+    /// <param name="offset">The start of the overwrite range.</param>
+    /// <param name="length">The length of the overwrite range.</param>
+    /// <returns>The initialized prefix to commit, or zero when no commit is required.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong PrepareOverwriteAfterGas(ulong offset, ulong length)
+    {
+        Debug.Assert(length != 0);
+        Debug.Assert(offset + length <= Size);
+
+        ulong overwriteEnd = offset + length;
+        ulong initializedSize = _initializedSize;
+        byte[]? memory = _memory;
+        if (memory is null || overwriteEnd > (ulong)memory.Length || offset > initializedSize)
+        {
+            return RentForOverwriteSlow(offset, overwriteEnd);
+        }
+
+        return overwriteEnd > initializedSize ? overwriteEnd : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CommitOverwrite(ulong preparedInitializedSize)
+    {
+        if (preparedInitializedSize != 0)
+        {
+            _initializedSize = preparedInitializedSize;
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented()
     {
         byte[]? memory = _memory;
-        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
+        if (memory is null || Size > (ulong)memory.Length || Size > _initializedSize)
         {
             RentSlow();
         }
@@ -478,8 +527,9 @@ public struct EvmPooledMemory
     [ThreadStatic] private static int _cachedArrayCount;
     [ThreadStatic] private static int _cachedArrayBytes;
 
-    // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
-    private static byte[] Rent(int minLength)
+    // Explicit allocations are runtime-zeroed, while cached and pooled arrays are untrusted.
+    // The initialized prefix lets the slow paths preserve that distinction through growth.
+    private static byte[] Rent(int minLength, out ulong initializedSize)
     {
         byte[]?[]? cache = _cachedArrays;
         int cachedArrayCount = _cachedArrayCount - 1;
@@ -488,6 +538,7 @@ public struct EvmPooledMemory
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
+                initializedSize = 0;
                 _cachedArrayCount = cachedArrayCount;
                 _cachedArrayBytes -= candidate.Length;
                 cache[i] = cache[cachedArrayCount];
@@ -498,10 +549,12 @@ public struct EvmPooledMemory
 
         if (minLength > MaxNewAllocLength)
         {
-            return RentLarge(minLength);
+            return RentLarge(minLength, out initializedSize);
         }
 
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
+        initializedSize = (ulong)fresh.Length;
+        return fresh;
     }
 
     private static void Return(byte[] array)
@@ -526,23 +579,43 @@ public struct EvmPooledMemory
     }
 
 #if ZK_EVM
-    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+    private static byte[] RentLarge(int minLength, out ulong initializedSize)
+    {
+        byte[] array = SafeArrayPool<byte>.Rent(minLength, out bool isFresh);
+        initializedSize = isFresh ? (ulong)array.Length : 0;
+        return array;
+    }
 
     private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 #else
     private const int MaxSharedArrayLength = 1 << 20;
-    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    // Buffers above this limit are allocated directly and are never returned to a pool.
     private const int MaxLargePooledArrayLength = 1 << 22;
     private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
         System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
 
-    private static byte[] RentLarge(int minLength)
-        => minLength > MaxSharedArrayLength
+    private static byte[] RentLarge(int minLength, out ulong initializedSize)
+    {
+        if (minLength > MaxLargePooledArrayLength)
+        {
+            byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
+            initializedSize = (ulong)fresh.Length;
+            return fresh;
+        }
+
+        initializedSize = 0;
+        return minLength > MaxSharedArrayLength
             ? _largeArrayPool.Rent(minLength)
             : SafeArrayPool<byte>.Shared.Rent(minLength);
+    }
 
     private static void ReturnLarge(byte[] array)
     {
+        if (array.Length > MaxLargePooledArrayLength)
+        {
+            return;
+        }
+
         if (array.Length > MaxSharedArrayLength)
             _largeArrayPool.Return(array);
         else
@@ -553,29 +626,55 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        byte[]? memory = _memory;
-        if (memory is null)
-        {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
-            _lastZeroedSize = 0;
-        }
-        else if (Size > (ulong)memory.LongLength)
-        {
-            byte[] grown = Rent(TruncateToInt32(Size));
-            Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
-            Return(memory);
-            _memory = memory = grown;
-        }
+        ulong initializedSize = _initializedSize;
+        byte[] memory = EnsureCapacity(Size, ref initializedSize);
 
         ulong size = Size;
-        if (size > _lastZeroedSize)
+        if (size > initializedSize)
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
             const ulong zeroChunk = 4 * 1024;
             ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
-            _lastZeroedSize = target;
+            Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
+            initializedSize = target;
         }
+
+        _initializedSize = initializedSize;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ulong RentForOverwriteSlow(ulong overwriteStart, ulong overwriteEnd)
+    {
+        ulong initializedSize = _initializedSize;
+        byte[] memory = EnsureCapacity(overwriteEnd, ref initializedSize);
+
+        if (overwriteStart > initializedSize)
+        {
+            Array.Clear(memory, (int)initializedSize, (int)(overwriteStart - initializedSize));
+        }
+
+        return Math.Max(initializedSize, overwriteEnd);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] EnsureCapacity(ulong minimumSize, ref ulong initializedSize)
+    {
+        byte[]? memory = _memory;
+        if (memory is null)
+        {
+            _memory = memory = Rent((int)Math.Max((uint)minimumSize, MinRentSize), out ulong rentedInitializedSize);
+            initializedSize = rentedInitializedSize;
+        }
+        else if (minimumSize > (ulong)memory.Length)
+        {
+            byte[] grown = Rent(TruncateToInt32(minimumSize), out ulong rentedInitializedSize);
+            Array.Copy(memory, 0, grown, 0, (int)initializedSize);
+            Return(memory);
+            _memory = memory = grown;
+            initializedSize = Math.Max(initializedSize, rentedInitializedSize);
+        }
+
+        return memory;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a

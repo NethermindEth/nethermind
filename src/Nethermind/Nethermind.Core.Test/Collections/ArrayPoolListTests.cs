@@ -444,3 +444,33 @@ public class ArrayPoolListTests
     }
 #endif
 }
+
+public class ArrayPoolUtilitiesTests
+{
+    private static TestCaseData[] CapacityCases() =>
+    [
+        new TestCaseData(1, 1)
+            .SetName("Power_of_two_capacity_preserves_one"),
+        new TestCaseData(3, 4)
+            .SetName("Power_of_two_capacity_rounds_three"),
+        new TestCaseData((1 << 28) + 1, 1 << 29)
+            .SetName("Power_of_two_capacity_rounds_zkevm_oversized_boundary"),
+        new TestCaseData((1 << 30) + 1, (1 << 30) + 1)
+            .SetName("Power_of_two_capacity_preserves_length_above_signed_power_of_two_limit"),
+        new TestCaseData(Array.MaxLength, Array.MaxLength)
+            .SetName("Power_of_two_capacity_preserves_maximum_array_length"),
+        new TestCaseData(int.MaxValue, int.MaxValue)
+            .SetName("Power_of_two_capacity_preserves_maximum_integer_length"),
+    ];
+
+    [TestCaseSource(nameof(CapacityCases))]
+    public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    public void Get_power_of_two_capacity_requires_positive_length(int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+}
