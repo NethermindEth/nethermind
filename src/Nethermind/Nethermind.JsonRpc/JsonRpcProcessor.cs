@@ -640,6 +640,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
+        if (requestCount == 0)
+        {
+            await WriteInvalidRequestAsync(sink, Stopwatch.GetTimestamp(), cancellationToken);
+            return;
+        }
+
         await sink.BeginBatchAsync(cancellationToken);
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -648,12 +654,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             foreach (JsonElement item in rootElement.EnumerateArray())
             {
-                JsonRpcRequest jsonRpcRequest = CreateRequest(item);
-                JsonRpcResult.Entry response = isStopped
-                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                    : await HandleSingleRequest(jsonRpcRequest, context);
+                requestIndex++;
+                JsonRpcRequest? jsonRpcRequest = item.ValueKind == JsonValueKind.Object ? CreateRequest(item) : null;
+                JsonRpcResult.Entry response = await DispatchBatchItem(jsonRpcRequest, isStopped, context);
 
-                if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                if (_logger.IsTrace) _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest?.ToString() ?? "invalid request"} handled after {response.Report.HandlingTimeMicroseconds}");
                 if (_logger.IsTrace) TraceResult(response);
 
                 await WriteBatchEntryAsync(response, sink, cancellationToken);
@@ -705,6 +710,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
         }
 
+        if (requestCount == 0 || (requestCount is null && JsonRpcArrayReader.IsEmpty(batchBody)))
+        {
+            await WriteInvalidRequestAsync(sink, Stopwatch.GetTimestamp(), cancellationToken);
+            return;
+        }
+
         await sink.BeginBatchAsync(cancellationToken);
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -719,17 +730,17 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             while (JsonRpcArrayReader.TryReadNextItem(batchBody, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> itemBody))
             {
                 requestIndex++;
-                JsonRpcRequest jsonRpcRequest = DeserializeBatchItem(itemBody, out JsonDocument? ownedRequestDocument);
-                batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
+                if (TryDeserializeBatchItem(itemBody, out JsonRpcRequest? jsonRpcRequest, out JsonDocument? ownedRequestDocument))
+                {
+                    batchRequestJsonLifetime.TrackUntilBatchEnd(jsonRpcRequest, ownedRequestDocument);
+                }
 
-                JsonRpcResult.Entry response = isStopped
-                    ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                    : await HandleSingleRequest(jsonRpcRequest, context);
+                JsonRpcResult.Entry response = await DispatchBatchItem(jsonRpcRequest, isStopped, context);
 
                 if (_logger.IsTrace)
                 {
                     string progress = requestCount is null ? requestIndex.ToString() : $"{requestIndex}/{requestCount}";
-                    _logger.Trace($"  {progress} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                    _logger.Trace($"  {progress} JSON RPC request - {jsonRpcRequest?.ToString() ?? "invalid request"} handled after {response.Report.HandlingTimeMicroseconds}");
                     TraceResult(response);
                 }
 
@@ -752,18 +763,39 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private JsonRpcRequest DeserializeBatchItem(ReadOnlyMemory<byte> itemBody, out JsonDocument? requestDocument)
+    private ValueTask<JsonRpcResult.Entry> DispatchBatchItem(
+        JsonRpcRequest? request,
+        bool isStopped,
+        JsonRpcContext context) =>
+        request is null
+            ? ValueTask.FromResult(CreateInvalidRequestEntry(Stopwatch.GetTimestamp()))
+            : isStopped
+                ? ValueTask.FromResult(CreateBatchResponseLimitEntry(request))
+                : HandleSingleRequest(request, context);
+
+    private static bool TryDeserializeBatchItem(
+        ReadOnlyMemory<byte> itemBody,
+        [NotNullWhen(true)] out JsonRpcRequest? request,
+        out JsonDocument? requestDocument)
     {
-        if (TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
+        request = null;
+        if (itemBody.IsEmpty || itemBody.Span[0] != (byte)'{')
         {
             requestDocument = null;
-            return directRequest;
+            return false;
+        }
+
+        if (TryReadObjectRequest(itemBody, out request))
+        {
+            requestDocument = null;
+            return true;
         }
 
         requestDocument = JsonDocument.Parse(itemBody);
         try
         {
-            return CreateRequest(requestDocument.RootElement);
+            request = CreateRequest(requestDocument.RootElement);
+            return true;
         }
         catch
         {
@@ -778,17 +810,22 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime,
         CancellationToken cancellationToken)
     {
-        Metrics.JsonRpcInvalidRequests++;
-        JsonRpcErrorResponse invalidResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
+        JsonRpcResult.Entry result = CreateInvalidRequestEntry(startTime);
 
         if (_logger.IsTrace)
         {
-            TraceResult(invalidResponse);
+            TraceResult(result);
             _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        JsonRpcResult.Entry result = new(invalidResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
         await WriteSingleEntryAsync(result, sink, cancellationToken);
+    }
+
+    private JsonRpcResult.Entry CreateInvalidRequestEntry(long startTime)
+    {
+        Metrics.JsonRpcInvalidRequests++;
+        JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
+        return new JsonRpcResult.Entry(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
     private async ValueTask WriteShutdownResponseAsync(IJsonRpcResponseSink sink, CancellationToken cancellationToken)
