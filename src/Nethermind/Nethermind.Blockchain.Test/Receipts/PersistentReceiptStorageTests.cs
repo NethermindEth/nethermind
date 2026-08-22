@@ -132,7 +132,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void SweepTransactionIndex_CancelledMidWalk_ReportsWhereToResume()
+    public void SweepTransactionIndex_CancelledWalk_StillCoversItsMinimumSlice()
     {
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
         foreach (Hash256 key in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD })
@@ -147,8 +147,33 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cursor, Is.Not.Null, "a cancelled walk must report a resume point or its progress is lost");
-            Assert.That(removed, Is.EqualTo(1), "the entry it had already decided on is still committed");
+            // Fewer entries than the minimum slice, so a spent budget must not stop the walk before it has done
+            // anything - this pass runs last and would otherwise never examine a single entry on a busy node.
+            Assert.That(removed, Is.EqualTo(4));
+            Assert.That(cursor, Is.Null, "the column ended before the slice did");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_CancelledPastItsMinimumSlice_ReportsWhereToResume()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        const int entries = 5000;
+        for (int i = 0; i < entries; i++)
+        {
+            txIndex.Set(Keccak.Compute(i.ToBigEndianByteArray()), Rlp.Encode(5UL).Bytes);
+        }
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: entries * 2, cts.Token, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cursor, Is.Not.Null, "past the minimum slice the token has to be honoured, or the budget means nothing");
+            Assert.That(removed, Is.LessThan(entries), "and it has to stop short of the column");
+            Assert.That(removed, Is.GreaterThan(0));
         }
     }
 

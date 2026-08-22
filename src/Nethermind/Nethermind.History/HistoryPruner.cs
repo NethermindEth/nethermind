@@ -366,6 +366,11 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
+    /// <summary>Step taken when the budget was already spent on arrival. Draining a backlog this way is slow, which
+    /// is the right answer: a node in that state has no room to prune, and the guarantee wanted is that progress
+    /// cannot reach zero, not that it is fast.</summary>
+    private const ulong MinimumReclaimChunkBlocks = 100_000;
+
     /// <summary>
     /// Ceiling on entries examined per pass, not the thing that governs the rate: with a non-zero
     /// <c>PruningTimeoutSeconds</c> the token almost always ends the walk first. The index therefore settles at some
@@ -396,7 +401,16 @@ public class HistoryPruner : IHistoryPruner
         {
             for (ulong from = start; from < limit;)
             {
-                ulong to = ulong.Min(from + ReclaimChunkBlocks, limit);
+                // A pass whose budget was already spent on arrival still has to move, but it does not have to move a
+                // full chunk. The only way a pass sees a spent token is the scheduler running an expired activity,
+                // which it does while block processing is active - and a chunk now unlinks SST files as well as
+                // writing tombstones. So the first chunk of such a pass is a fraction of the usual one: enough that
+                // progress cannot reach zero, small enough not to sit in front of a block.
+                ulong step = reclaimed == 0 && cancellationToken.IsCancellationRequested
+                    ? MinimumReclaimChunkBlocks
+                    : ReclaimChunkBlocks;
+
+                ulong to = ulong.Min(from + step, limit);
                 _blockTree.DeleteOldBlockRange(from, to);
                 _receiptStorage.RemoveReceiptsRange(from, to);
                 _blockAccessListStore.DeleteRange(from, to);
@@ -418,8 +432,7 @@ public class HistoryPruner : IHistoryPruner
 
                 // Checked after a chunk, not before one. The scheduler stamps its deadline at enqueue, so a pass that
                 // waited behind others arrives with the budget already spent - and a token checked first would then
-                // reclaim nothing, on every pass, while the boundary kept advancing. One chunk is three range
-                // tombstones over ground already declared absent; the point is that progress cannot reach zero.
+                // reclaim nothing, on every pass, while the boundary kept advancing.
                 if (from < limit && cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info(
@@ -451,7 +464,10 @@ public class HistoryPruner : IHistoryPruner
 
     private void SweepTransactionIndex(CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested || _blocksDeletePointer <= _minDeletableBlockNumber) return;
+        // No token check: this pass runs last, so it is the one most likely to arrive with the budget already gone,
+        // and refusing to start there is how it would end up never running at all. The walk honours the token itself,
+        // after a minimum slice, on the same rule as the reclaim chunks.
+        if (_blocksDeletePointer <= _minDeletableBlockNumber) return;
 
         LoadTxIndexSweepCursor();
 

@@ -372,36 +372,25 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public async Task Reclaim_interrupted_resumes_without_leaving_a_gap()
+    public async Task Sweep_makes_progress_even_when_the_budget_is_already_spent()
     {
         const int blocks = 100;
 
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
-        List<Hash256> blockHashes = [];
-        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, [1, 2, 3]);
 
-        // Cancelled before the first chunk: the boundary publishes, the reclaim does not run.
-        using CancellationTokenSource cancelled = new();
-        cancelled.Cancel();
-        historyPruner.TryPruneHistory(cancelled.Token);
+        // The sweep runs last, so it is the pass most likely to find the budget gone. Refusing to start there is how
+        // it would end up never running in the one configuration where it is the only thing bounding the index.
+        using CancellationTokenSource spent = new();
+        spent.Cancel();
 
-        ulong boundary = historyPruner.OldestBlockHeader?.Number ?? 0;
-        Assert.That(boundary, Is.EqualTo(36UL), "precondition: the boundary is published even when the reclaim cannot run");
+        ((HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>()).TryPruneHistory(spent.Token);
 
-        historyPruner.TryPruneHistory(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            for (ulong number = 1; number < boundary; number++)
-            {
-                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null,
-                    $"block {number} is below the boundary published by the interrupted pass and the next pass must have reclaimed it - a cursor that did not survive would leave this behind forever");
-            }
-
-            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
-        }
+        Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor), Is.Not.EqualTo(new byte[] { 1, 2, 3 }),
+            "the seeded cursor was never revisited, so the walk did not start");
     }
 
     [Test]

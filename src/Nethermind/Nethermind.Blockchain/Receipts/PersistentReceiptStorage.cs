@@ -43,6 +43,10 @@ namespace Nethermind.Blockchain.Receipts
 
         private const int SweepDeleteSliceSize = 4096;
 
+        /// <summary>Entries a pass examines before it will honour cancellation, so that a budget already spent on
+        /// arrival costs the tail of a walk rather than all of it.</summary>
+        private const int SweepMinimumEntriesPerPass = 4096;
+
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
@@ -939,7 +943,11 @@ namespace Nethermind.Blockchain.Receipts
 
                     // Re-reads the last key examined once, cheaper than carrying a successor. The walk's only
                     // allocation - everything above it reads the iterator's own buffer.
-                    if (++examined >= maxEntries || cancellationToken.IsCancellationRequested)
+                    // Cancellation is honoured only after a minimum slice, for the same reason the reclaim chunks
+                    // are: this walk runs last in a pass, so a token that is already spent on arrival would
+                    // otherwise stop it before it examined anything, on every pass.
+                    if (++examined >= maxEntries
+                        || (examined >= SweepMinimumEntriesPerPass && cancellationToken.IsCancellationRequested))
                     {
                         resumeKey = view.CurrentKey.ToArray();
                         break;

@@ -1213,15 +1213,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </remarks>
     internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
     {
-        ObjectDisposedException.ThrowIf(_isDisposing, this);
         if (firstKeyInclusive.IsEmpty || lastKeyExclusive.IsEmpty) return;
 
-        nint db = _db.Handle;
         UIntPtr fromLength = (UIntPtr)firstKeyInclusive.Length;
         UIntPtr toLength = (UIntPtr)lastKeyExclusive.Length;
 
         try
         {
+            // Inside the try, unlike every other method here: a pass racing shutdown must not turn a best-effort
+            // reclaim into an error, and the disposal check is one of the ways this can fail.
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
+            nint db = _db.Handle;
+
             // Both pointers are dereferenced only by the native calls inside the fixed scope, and their lengths come
             // from the spans that pin them. Neither span is empty, guarded above.
             fixed (byte* from = &MemoryMarshal.GetReference(firstKeyInclusive))
