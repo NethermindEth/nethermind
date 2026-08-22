@@ -105,6 +105,32 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    // Which side of the TxLookupLimit horizon the boundary sits on decides whether the sweep runs at all. Backwards,
+    // it either walks the whole index every pass finding nothing or lets the index grow without bound - and neither
+    // shows up as a failure, only as disk.
+    [TestCase(2_000_000ul, 500_000ul, false)]
+    [TestCase(1_000_000ul, 2_500_000ul, true)]
+    public void SweepTransactionIndex_RunsOnlyOncePastTheLookupHorizon(ulong txLookupLimit, ulong retainedFromBlock, bool expectSwept)
+    {
+        _receiptConfig.TxLookupLimit = txLookupLimit;
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(3_000_000).TestObject);
+        CreateStorage();
+
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        txIndex.Set(TestItem.KeccakA, Rlp.Encode(100UL).Bytes);
+
+        _storage.SweepTransactionIndex(retainedFromBlock, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(expectSwept ? 1 : 0));
+            Assert.That(txIndex.Get(TestItem.KeccakA), expectSwept ? Is.Null : Is.Not.Null,
+                expectSwept
+                    ? "above the horizon the per-block path can no longer reach these, so the sweep is the only mechanism"
+                    : "below the horizon the per-block path still covers them, and walking the index finds nothing");
+        }
+    }
+
     [Test]
     public void SweepTransactionIndex_CancelledMidWalk_ReportsWhereToResume()
     {

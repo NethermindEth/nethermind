@@ -132,12 +132,12 @@ public class BlockStore : IBlockStore, IClearableCache
             _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
         }
 
-        _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
-
         if (fromInclusive >= toExclusive) return;
 
-        // Keyed by hash, so it cannot be narrowed to the range, and a block already off disk must stop being served.
+        // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
+        // disk must stop being served whatever the reclaim does.
         _blockCache.Clear();
+        _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
