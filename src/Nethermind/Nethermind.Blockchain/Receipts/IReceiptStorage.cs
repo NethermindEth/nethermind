@@ -31,6 +31,11 @@ namespace Nethermind.Blockchain.Receipts
         void EnsureCanonical(Block block);
         void RemoveReceipts(Block block);
 
+        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation,
+        /// without reading any of them. Leaves the transaction index, which self-heals against the pruning floor.
+        /// </summary>
+        void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => throw new NotSupportedException();
+
         /// <summary>
         /// Receipts for canonical chain changed.
         /// </summary>

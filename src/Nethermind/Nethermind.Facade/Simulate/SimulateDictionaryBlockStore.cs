@@ -21,6 +21,17 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         _blockNumDict[block.Number] = block;
     }
 
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        for (ulong number = fromInclusive; number < toExclusive; number++)
+        {
+            if (_blockNumDict.Remove(number, out Block? block) && block.Hash is not null)
+            {
+                _blockDict.Remove(block.Hash);
+            }
+        }
+    }
+
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockDict.Remove(blockHash);

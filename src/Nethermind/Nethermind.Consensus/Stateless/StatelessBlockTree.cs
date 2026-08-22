@@ -212,6 +212,8 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new NotImplementedException();
 
+    public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();
+
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated
     {
         add => throw new NotSupportedException();

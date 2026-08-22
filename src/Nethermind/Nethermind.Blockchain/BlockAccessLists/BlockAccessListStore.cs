@@ -133,6 +133,23 @@ public class BlockAccessListStore : IBlockAccessListStore
         }
     }
 
+    /// <summary>Drops every access list in <c>[fromInclusive, toExclusive)</c> in one operation - see
+    /// <see cref="IBlockStore.DeleteRange"/> for why the deferred overlay cannot overlap the range.</summary>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        if (fromInclusive >= toExclusive) return;
+        if (_balDb is not IRangeRemovableKeyValueStore rangeRemovable)
+        {
+            throw new NotSupportedException($"The block access list database ({_balDb.GetType().Name}) cannot remove a key range.");
+        }
+
+        Span<byte> from = stackalloc byte[KeyLength];
+        Span<byte> to = stackalloc byte[KeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, from);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, to);
+        rangeRemovable.RemoveRange(from, to);
+    }
+
     [SkipLocalsInit]
     private void Remove(ulong blockNumber, Hash256 blockHash)
     {

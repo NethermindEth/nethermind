@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Db
     /// In-memory database with MVCC-based snapshot support.
     /// Uses Multi-Version Concurrency Control to enable O(1) snapshot creation.
     /// </summary>
-    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
+    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
         private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
         private readonly EntryComparer _entryComparer = new();
@@ -83,6 +84,22 @@ namespace Nethermind.Db
         }
 
         public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+
+        /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests. Goes through
+        /// <see cref="Set"/> so the versioning that snapshots rely on sees each removal.</summary>
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            byte[] first = firstKeyInclusive.ToArray();
+            byte[] last = lastKeyExclusive.ToArray();
+
+            foreach (byte[] key in Keys)
+            {
+                if (Bytes.BytesComparer.Compare(key, first) >= 0 && Bytes.BytesComparer.Compare(key, last) < 0)
+                {
+                    Set(key, null);
+                }
+            }
+        }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {

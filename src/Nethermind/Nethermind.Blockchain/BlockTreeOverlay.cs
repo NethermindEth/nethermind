@@ -300,4 +300,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
         => _baseTree.DeleteOldBlock(blockNumber, blockHash);
+
+    public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
+        => _baseTree.DeleteOldBlockRange(fromInclusive, toExclusive);
 }

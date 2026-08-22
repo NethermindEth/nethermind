@@ -196,6 +196,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
     public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);
+    public virtual void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => Inner?.DeleteOldBlockRange(fromInclusive, toExclusive);
     public virtual void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         Inner?.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
     public virtual int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) =>

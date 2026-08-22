@@ -346,6 +346,107 @@ public class HistoryPrunerTests
         Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(storedPointer));
     }
 
+    // The boundary is what a pruning node promises on the wire, so an off-by-one here means serving a range it
+    // cannot answer. Pins both sides of it against the reclaim.
+    [Test]
+    public async Task Reclaim_stops_exactly_at_the_published_boundary()
+    {
+        const int blocks = 100;
+        const ulong expectedBoundary = 36;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBoundary));
+            Assert.That(testBlockchain.BlockTree.FindBlock(expectedBoundary - 1, BlockTreeLookupOptions.None), Is.Null,
+                "the block below the boundary must be gone");
+            Assert.That(testBlockchain.BlockTree.FindBlock(expectedBoundary, BlockTreeLookupOptions.None), Is.Not.Null,
+                "the block AT the boundary is the oldest the node still announces and must survive the reclaim");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(expectedBoundary, blockHashes[(int)expectedBoundary]), Is.True,
+                "its receipts go with it");
+        }
+    }
+
+    [Test]
+    public async Task Reclaim_interrupted_resumes_without_leaving_a_gap()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        // Cancelled before the first chunk: the boundary publishes, the reclaim does not run.
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        historyPruner.TryPruneHistory(cancelled.Token);
+
+        ulong boundary = historyPruner.OldestBlockHeader?.Number ?? 0;
+        Assert.That(boundary, Is.EqualTo(36UL), "precondition: the boundary is published even when the reclaim cannot run");
+
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong number = 1; number < boundary; number++)
+            {
+                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null,
+                    $"block {number} is below the boundary published by the interrupted pass and the next pass must have reclaimed it - a cursor that did not survive would leave this behind forever");
+            }
+
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Reclaim_never_touches_genesis_or_the_sync_pivot()
+    {
+        const int blocks = 100;
+        const ulong syncPivot = 20;
+
+        // Retention low enough that the cutoff lands above the pivot, so only the pivot clamp holds it back.
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: syncPivot, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+            Assert.That(testBlockchain.BlockTree.FindBlock(syncPivot, BlockTreeLookupOptions.None), Is.Not.Null,
+                "the sync pivot is the floor of what re-execution can start from and must never be reclaimed");
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.LessThanOrEqualTo(syncPivot));
+        }
+    }
+
+    [Test]
+    public async Task Reclaim_leaves_the_transaction_index_for_the_read_path_to_resolve()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks, blockHashes: blockHashes);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        // Not deleting it is the whole reason a pass no longer reads a block body; a lookup landing below the
+        // boundary resolves to a block that is gone, which is already the right answer.
+        Assert.That(testBlockchain.ReceiptStorage.HasBlock(1UL, blockHashes[1]), Is.False,
+            "the receipts themselves are reclaimed");
+    }
+
     private static void CheckGenesisPreserved(BasicTestBlockchain testBlockchain, Hash256 genesisHash)
     {
         using (Assert.EnterMultipleScope())

@@ -871,6 +871,35 @@ namespace Nethermind.Blockchain.Receipts
             RemoveBlockTx(block);
         }
 
+        /// <summary>
+        /// Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately leaves the transaction index alone. Its entries are keyed by transaction hash, so they cannot
+        /// be addressed by block range, and enumerating them is what forces a full body read per block - the whole
+        /// cost this exists to avoid. They are an accelerator, not the record: an entry resolving to a block that is
+        /// gone already answers "not found", which is the correct answer once the block has been pruned.
+        /// </remarks>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        {
+            if (fromInclusive >= toExclusive) return;
+            if (_receiptsDb is not IRangeRemovableKeyValueStore rangeRemovable)
+            {
+                throw new NotSupportedException($"The receipts database ({_receiptsDb.GetType().Name}) cannot remove a key range.");
+            }
+
+            Span<byte> from = stackalloc byte[40];
+            Span<byte> to = stackalloc byte[40];
+            GetBlockNumPrefixedKey(fromInclusive, Keccak.Zero, from);
+            GetBlockNumPrefixedKey(toExclusive, Keccak.Zero, to);
+            rangeRemovable.RemoveRange(from, to);
+
+            // Both are keyed by hash and so cannot be narrowed to the range. The cache would otherwise serve receipts
+            // whose block is gone, and the pending overlay would write them back.
+            _receiptsCache.Clear();
+            _pendingCanonical.Clear();
+        }
+
         private void RemoveBlockTx(Block block)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();

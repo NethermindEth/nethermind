@@ -116,6 +116,36 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockDb.Remove(blockHash.Bytes);
     }
 
+    /// <summary>
+    /// Drops every block below <paramref name="toExclusive"/> and at or above <paramref name="fromInclusive"/> in one
+    /// operation, at a cost independent of how many blocks that is. Covers every hash at every covered height,
+    /// including ones no chain level lists.
+    /// </summary>
+    /// <remarks>
+    /// Leaves the legacy hash-only keys, which carry no block number and so cannot be addressed by range - they are a
+    /// lookup accelerator, and one pointing at a block that is gone already answers "not found".
+    /// The deferred-write overlay is not consulted: it only ever holds blocks near the head, and callers prune far
+    /// below it, so a pending write cannot fall inside the range.
+    /// </remarks>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        if (fromInclusive >= toExclusive) return;
+        if (_blockDb is not IRangeRemovableKeyValueStore rangeRemovable)
+        {
+            throw new NotSupportedException($"The blocks database ({_blockDb.GetType().Name}) cannot remove a key range.");
+        }
+
+        Span<byte> from = stackalloc byte[40];
+        Span<byte> to = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, from);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, to);
+        rangeRemovable.RemoveRange(from, to);
+
+        // Keyed by hash, so it cannot be narrowed to the range. Dropping it whole costs a few misses and is the only
+        // way to stop a block that is no longer on disk being served out of memory.
+        _blockCache.Clear();
+    }
+
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;

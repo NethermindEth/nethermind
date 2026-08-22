@@ -210,5 +210,7 @@ namespace Nethermind.Blockchain
         public void NewOldestBlock(ulong oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
 
         public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
+
+        public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlockRange)} calls");
     }
 }
