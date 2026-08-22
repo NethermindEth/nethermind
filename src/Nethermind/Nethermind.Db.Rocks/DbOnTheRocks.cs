@@ -35,7 +35,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -1171,6 +1171,99 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             HandleFatalDbError(e);
             throw;
         }
+    }
+
+    public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        RemoveRange(firstKeyInclusive, lastKeyExclusive, null);
+
+    internal void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        try
+        {
+            // The binding exposes DeleteRange only on a batch, which also puts the tombstone in the WAL.
+            using WriteBatch batch = new();
+            batch.DeleteRange(
+                firstKeyInclusive.ToArray(), (ulong)firstKeyInclusive.Length,
+                lastKeyExclusive.ToArray(), (ulong)lastKeyExclusive.Length,
+                cf);
+            _db.Write(batch, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        ReclaimRange(firstKeyInclusive, lastKeyExclusive, null);
+
+    /// <remarks>
+    /// A range tombstone frees nothing and does not count towards pending-compaction bytes, so the disk can stay
+    /// occupied for weeks. This unlinks the SST files lying entirely inside the range - nearly all of them, for
+    /// ascending block-number keys - and hints for the rest.
+    /// Callers must tombstone the range first. Unlinking a file can drop a tombstone that was covering keys in
+    /// partially-overlapping deeper files, and those keys would then be readable again; issuing the tombstone
+    /// immediately before puts it in the memtable, which no unlink can reach.
+    /// Failure is swallowed by design. The keys are already tombstoned durably, so the only thing lost is the timing
+    /// of the space coming back, and a caller that has already published a boundary must not be aborted - nor the
+    /// node shut down by <see cref="HandleFatalDbError"/> - over an optimisation.
+    /// </remarks>
+    internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
+    {
+        if (firstKeyInclusive.IsEmpty || lastKeyExclusive.IsEmpty) return;
+
+        UIntPtr fromLength = (UIntPtr)firstKeyInclusive.Length;
+        UIntPtr toLength = (UIntPtr)lastKeyExclusive.Length;
+
+        try
+        {
+            // Inside the try, unlike every other method here: a pass racing shutdown must not turn a best-effort
+            // reclaim into an error, and the disposal check is one of the ways this can fail.
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
+            nint db = _db.Handle;
+
+            // Both pointers are dereferenced only by the native calls inside the fixed scope, and their lengths come
+            // from the spans that pin them. Neither span is empty, guarded above.
+            fixed (byte* from = &MemoryMarshal.GetReference(firstKeyInclusive))
+            fixed (byte* to = &MemoryMarshal.GetReference(lastKeyExclusive))
+            {
+                // include_end is true in the C API, so this considers files contained in [from, to] rather than the
+                // half-open range used everywhere else here. Safe because no stored key can equal lastKeyExclusive:
+                // that would be a block whose hash is all zeroes.
+                IntPtr errPtr;
+                if (cf is null)
+                {
+                    Native.Instance.rocksdb_delete_file_in_range(db, from, fromLength, to, toLength, out errPtr);
+                }
+                else
+                {
+                    Native.Instance.rocksdb_delete_file_in_range_cf(db, cf.Handle, from, fromLength, to, toLength, out errPtr);
+                }
+
+                if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+
+                if (cf is null)
+                {
+                    Native.Instance.rocksdb_suggest_compact_range(db, from, fromLength, to, toLength, out errPtr);
+                }
+                else
+                {
+                    Native.Instance.rocksdb_suggest_compact_range_cf(db, cf.Handle, from, fromLength, to, toLength, out errPtr);
+                }
+
+                if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not reclaim storage for a removed key range in {Name}: {e.Message}. The keys stay removed; the space returns at the next compaction.");
+        }
+
+        [DoesNotReturn]
+        static void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);
     }
 
     internal const int FullEnumerationBatchSize = 10_000;
