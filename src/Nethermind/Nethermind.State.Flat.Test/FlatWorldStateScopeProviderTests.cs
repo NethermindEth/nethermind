@@ -1496,7 +1496,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void WarmupLeavesSparseArenasUntouched()
+    public void WarmupRevealsIntoAFreeStorageArena()
     {
         InlineTrieWarmer warmer = new();
         using TestContext ctx = new(trieWarmer: warmer);
@@ -1509,9 +1509,10 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
         storageTree.HintSet((UInt256)1, [1]);
 
-        // Warm-up fills the shared committed-node cache the reveal reads from; it must never
-        // materialize an arena, because warmer threads would then serialize on its single writer.
-        Assert.That(scope.SparseSession.RetainedTrieCount, Is.Zero);
+        // A free storage arena is revealed in place so the commit path finds the path already
+        // there; a busy one is skipped for the shared committed-node cache, so warm-up never waits
+        // on another warmer. State warm-up always takes the shared cache, hence one retained trie.
+        Assert.That(scope.SparseSession.RetainedTrieCount, Is.EqualTo(1));
 
         scope.Commit(2);
 

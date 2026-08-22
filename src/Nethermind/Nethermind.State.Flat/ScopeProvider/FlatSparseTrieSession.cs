@@ -1075,6 +1075,37 @@ internal sealed class FlatSparseTrieSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Reveals one slot path into the account's arena, but only if no other thread is using it.
+    /// </summary>
+    /// <returns><c>false</c> when the arena is busy, leaving the caller to warm the shared node
+    /// cache instead.</returns>
+    /// <remarks>Warm-up runs on every warmer worker at once and blocks that concentrate their slots
+    /// on one contract would otherwise convoy on a single account's trie, holding it across the
+    /// backing reads. Best-effort revealing keeps the uncontended majority off the commit path
+    /// without ever making a warmer wait.</remarks>
+    public bool TryPrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, in ValueHash256 key)
+    {
+        GuardPoisoned();
+
+        // A settling trie is mid-handover to the storage phase; leave it alone entirely.
+        if (_committedStorageStates.ContainsKey(addressHash)) return false;
+
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+        if (!Monitor.TryEnter(trie)) return false;
+
+        try
+        {
+            trie.Prefetch(key);
+        }
+        finally
+        {
+            Monitor.Exit(trie);
+        }
+
+        return true;
+    }
+
     /// <summary>Reveals one slot path directly into the retained arena for its storage trie.</summary>
     public void PrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, in ValueHash256 key)
     {

@@ -142,12 +142,18 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             try
             {
-                // Warms the committed nodes on this path into the shared cache. The root is not
-                // re-read after a write batch and a clear is not reflected, which is fine: the
-                // result is never consumed, only the cached nodes are.
+                // Reveal straight into the arena when it is free, so the commit path finds the path
+                // already there; otherwise warm the shared committed-node cache the reveal reads
+                // from. Either way the walk never waits on another warmer. The root is not re-read
+                // after a write batch and a clear is not reflected, which is fine for a warm-up:
+                // the result is never consumed, only the nodes it materializes.
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                if (!_scope.SparseSession.TryPrefetchStorage(_addressHash.ValueHash256, _sparseRoot.ValueHash256, in key))
+                {
+                    _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                }
+
                 return true;
             }
             finally
