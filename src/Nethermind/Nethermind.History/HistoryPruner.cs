@@ -391,13 +391,6 @@ public class HistoryPruner : IHistoryPruner
         {
             for (ulong from = start; from < limit;)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    if (_logger.IsInfo) _logger.Info(
-                        $"Historical block reclaim interrupted at #{from}; the boundary is already published at #{limit} and the next pass resumes from here. Reclaimed {reclaimed} blocks.");
-                    return;
-                }
-
                 ulong to = ulong.Min(from + ReclaimChunkBlocks, limit);
                 _blockTree.DeleteOldBlockRange(from, to);
                 _receiptStorage.RemoveReceiptsRange(from, to);
@@ -417,8 +410,18 @@ public class HistoryPruner : IHistoryPruner
                 Metrics.BlockHeightsReclaimed += (long)(to - from);
                 if (_logger.IsInfo) _logger.Info($"Reclaimed historical blocks #{from} to #{to - 1}, {limit.SaturatingSub(to)} remaining.");
                 from = to;
-            }
 
+                // Checked after a chunk, not before one. The scheduler stamps its deadline at enqueue, so a pass that
+                // waited behind others arrives with the budget already spent - and a token checked first would then
+                // reclaim nothing, on every pass, while the boundary kept advancing. One chunk is three range
+                // tombstones over ground already declared absent; the point is that progress cannot reach zero.
+                if (from < limit && cancellationToken.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info(
+                        $"Historical block reclaim interrupted at #{from}; the boundary is already published at #{limit} and the next pass resumes from here. Reclaimed {reclaimed} blocks.");
+                    return;
+                }
+            }
         }
         finally
         {
@@ -477,12 +480,6 @@ public class HistoryPruner : IHistoryPruner
         {
             for (ulong from = start; from < limit;)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Block access list reclaim interrupted at #{from}. Reclaimed {reclaimed} access lists.");
-                    return;
-                }
-
                 ulong to = ulong.Min(from + ReclaimChunkBlocks, limit);
                 _blockAccessListStore.DeleteRange(from, to);
 
@@ -493,6 +490,14 @@ public class HistoryPruner : IHistoryPruner
                 reclaimed += to - from;
                 Metrics.BlockAccessListHeightsReclaimed += (long)(to - from);
                 from = to;
+
+                // After a chunk, for the same reason as the block pass: a spent budget must cost the tail of a pass,
+                // never all of it.
+                if (from < limit && cancellationToken.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Block access list reclaim interrupted at #{from}. Reclaimed {reclaimed} access lists.");
+                    return;
+                }
             }
         }
         finally

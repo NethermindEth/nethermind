@@ -405,6 +405,31 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Reclaim_makes_progress_even_when_the_budget_is_already_spent()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        // What the scheduler hands a pass that waited behind others: the deadline is stamped at enqueue, so the token
+        // can already be cancelled on arrival. A pass that reclaims nothing in that state publishes a boundary it
+        // never honours - which is the shape this whole change exists to remove.
+        using CancellationTokenSource spent = new();
+        spent.Cancel();
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(spent.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(36UL), "the boundary still publishes");
+            Assert.That(testBlockchain.BlockTree.FindBlock(1UL, BlockTreeLookupOptions.None), Is.Null,
+                "and at least one chunk is reclaimed behind it, or the disk never comes back on a busy node");
+        }
+    }
+
+    [Test]
     public async Task Reclaim_backlog_survives_a_restart()
     {
         const int blocks = 100;
@@ -412,28 +437,44 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
-        HistoryPruner interrupted = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        using CancellationTokenSource cancelled = new();
-        cancelled.Cancel();
-        interrupted.TryPruneHistory(cancelled.Token);
+        const ulong boundary = 36;
 
-        ulong boundary = interrupted.OldestBlockHeader?.Number ?? 0;
-        Assert.That(boundary, Is.EqualTo(36UL), "precondition: the interrupted pass published the boundary and reclaimed nothing behind it");
+        // A boundary already published with the disk still standing at genesis - what a crash between the two
+        // metadata writes leaves behind. Seeded rather than produced by interrupting a pass, because a chunk spans
+        // more heights than a test chain has, so an interrupted pass always finishes and leaves nothing to resume.
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundary).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL).Bytes);
 
-        // A second instance over the same metadata db is what a restart is: the backlog is only found again if
-        // the cursor reached disk, not merely the field.
-        HistoryPruner afterRestart = NewPrunerOver(testBlockchain);
-        afterRestart.TryPruneHistory(CancellationToken.None);
+        NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             for (ulong number = 1; number < boundary; number++)
             {
-                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null, $"block {number}");
+                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null,
+                    $"block {number} sits below a published boundary with the cursor still behind it - a restart that does not read the cursor back leaves it on disk forever");
             }
 
             Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
         }
+    }
+
+    [Test]
+    public async Task Reclaim_cursor_is_persisted_so_a_restart_can_read_it()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        ((HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>()).TryPruneHistory(CancellationToken.None);
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        byte[] cursor = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
+
+        Assert.That(cursor, Is.Not.Null, "without this write the boundary is durable and the reclaim behind it is not");
+        Assert.That(new RlpReader(cursor).DecodeULong(), Is.EqualTo(36UL));
     }
 
     [Test]
