@@ -69,6 +69,8 @@ public static class SafeArrayPool<T>
             if (bucketIndex < 0)
             {
                 isFresh = true;
+                // Oversized arrays are not retained by this pool, but their capacity can satisfy
+                // subsequent growth by the renter before they are returned.
                 return new T[ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength)];
             }
 

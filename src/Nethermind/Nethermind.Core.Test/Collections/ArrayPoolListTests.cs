@@ -424,6 +424,21 @@ public class ArrayPoolListTests
         Assert.That(list.AsSpan().Length, Is.EqualTo(0));
     }
 
+    [TestCase(1, 1)]
+    [TestCase(3, 4)]
+    [TestCase((1 << 28) + 1, 1 << 29)]
+    [TestCase((1 << 30) + 1, (1 << 30) + 1)]
+    [TestCase(int.MaxValue, int.MaxValue)]
+    public void Array_pool_capacity_rounds_when_representable(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    public void Array_pool_capacity_requires_positive_length(int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+
 #if DEBUG
     [Test]
     [Explicit("Crashes the test runner")]

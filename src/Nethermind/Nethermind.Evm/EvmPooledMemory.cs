@@ -291,6 +291,13 @@ public struct EvmPooledMemory
         return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
+    /// <summary>Stores a 32-byte word after memory expansion gas has been charged.</summary>
+    /// <remarks>
+    /// <paramref name="word"/> must not alias this memory instance because preparing the destination
+    /// can replace and return the underlying buffer before the source bytes are read.
+    /// </remarks>
+    /// <param name="location">The start of the destination word.</param>
+    /// <param name="word">The 32 source bytes to store.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
