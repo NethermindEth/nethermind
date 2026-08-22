@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network;
 
@@ -30,12 +34,12 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ISpecProvider _specProvider;
+    private readonly IBlockTree _blockTree;
+    private readonly IBalHealing _balHealing;
     private readonly ILogger _logger;
 
-    // BAL healing isn't implemented yet - always false until it lands.
-    private readonly bool _canBalHeal = false;
-
     private volatile bool _stateDownloaded;
+    private volatile bool _canBalHeal;
 
     public event Action? Changed;
 
@@ -44,12 +48,16 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
         ISpecProvider specProvider,
+        IBlockTree blockTree,
+        IBalHealing balHealing,
         ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
         _syncProgressResolver = syncProgressResolver;
         _specProvider = specProvider;
+        _blockTree = blockTree;
+        _balHealing = balHealing;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
     }
@@ -76,15 +84,29 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         }
     }
 
+    private bool CanBalHeal()
+    {
+        if (!_syncConfig.SnapSync || !_balHealing.CanHeal) return false;
+
+        // Passing the number lets the header store skip its block-number lookup and read the header directly.
+        (ulong number, Hash256 hash) = _syncProgressResolver.SyncPivot;
+        BlockHeader? pivot = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+        return pivot is not null && _specProvider.GetSpec(pivot).BlockLevelAccessListsEnabled;
+    }
+
     private bool StateDownloaded() => _syncProgressResolver.FindBestFullState() >= _syncProgressResolver.SyncPivot.BlockNumber;
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
         bool stateWasDownloaded = _stateDownloaded;
+        bool couldBalHeal = _canBalHeal;
         _stateDownloaded = StateDownloaded();
-        if (stateWasDownloaded == _stateDownloaded) return;
+        _canBalHeal = CanBalHeal();
+        if (stateWasDownloaded == _stateDownloaded && couldBalHeal == _canBalHeal) return;
 
-        if (_logger.IsDebug) _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}; snap advertisement updated");
+        if (_logger.IsDebug)
+            _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}, " +
+                          $"BAL healing {(_canBalHeal ? "available" : "unavailable")}; snap advertisement updated");
         Changed?.Invoke();
     }
 
