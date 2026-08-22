@@ -79,21 +79,9 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
-                ulong executionReservation;
-                ulong stateReservation;
-                if (currentTx.SupportsFrames)
+                if (!TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
-                    if (!FrameTxValidation.TryCalculateBlockGasReservations(currentTx, spec, out executionReservation, out stateReservation))
-                    {
-                        return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
-                    }
-                }
-                else
-                {
-                    executionReservation = spec.IsEip8037Enabled
-                        ? Math.Min(Eip7825Constants.DefaultTxGasLimitCap, currentTx.GasLimit)
-                        : currentTx.GasLimit;
-                    stateReservation = spec.IsEip8037Enabled ? currentTx.GasLimit : 0;
+                    return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
                 }
 
                 if (executionReservation > gasRemaining)
@@ -137,6 +125,20 @@ namespace Nethermind.Consensus.Processing
 
                 OnAddingTransaction(args);
                 return args;
+            }
+
+            private static bool TryGetBlockGasReservations(Transaction currentTx, IReleaseSpec spec, out ulong executionReservation, out ulong stateReservation)
+            {
+                if (currentTx.SupportsFrames)
+                {
+                    return FrameTxValidation.TryCalculateBlockGasReservations(currentTx, spec, out executionReservation, out stateReservation);
+                }
+
+                executionReservation = spec.IsEip8037Enabled
+                    ? Math.Min(Eip7825Constants.DefaultTxGasLimitCap, currentTx.GasLimit)
+                    : currentTx.GasLimit;
+                stateReservation = spec.IsEip8037Enabled ? currentTx.GasLimit : 0;
+                return true;
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
