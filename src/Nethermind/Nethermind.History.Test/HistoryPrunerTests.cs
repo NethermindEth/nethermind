@@ -459,6 +459,28 @@ public class HistoryPrunerTests
         }
     }
 
+    [Test]
+    public async Task Sweep_cursor_completing_a_cycle_reads_back_like_a_missing_key()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, [1, 2, 3]);
+
+        ((HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>()).TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Reaching the end stores an empty value rather than removing the key, so the two forms have to mean the
+            // same thing on the way back in - a zero-length resume key would be a different instruction entirely.
+            Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor), Is.Not.Null.And.Empty);
+            Assert.That(() => NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None), Throws.Nothing);
+        }
+    }
+
     private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain) => new(
         testBlockchain.Container.Resolve<IBlockTree>(),
         testBlockchain.Container.Resolve<IReceiptStorage>(),
