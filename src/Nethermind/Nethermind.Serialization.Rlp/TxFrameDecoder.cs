@@ -50,7 +50,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.Encode(item.Data);
     }
 
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrame[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void EncodeArray<TWriter>(ref TWriter writer, TxFrame[]? items)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (items is null)
@@ -62,7 +62,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.StartSequence(GetArrayContentLength(items));
         for (int i = 0; i < items.Length; i++)
         {
-            Encode(ref writer, items[i], rlpBehaviors);
+            Encode(ref writer, items[i]);
         }
     }
 
