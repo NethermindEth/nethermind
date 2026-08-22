@@ -27,6 +27,31 @@ integrity_fail=0
 
 # 1) Graceful stop FIRST, then capture logs — so the shutdown window (dispose/flush
 #    exceptions, dotTrace finalize, shutdown marker) is scanned too.
+# 0) Finalize perf while the container is still up: symbolization reads the perf
+#    map and the mapped shared objects through /proc/<pid>/root, which disappears
+#    with the container.
+if [[ "${PERF:-false}" == "true" && -n "${PERF_PID:-}" && -n "${PERF_NODE_PID:-}" ]]; then
+  log "Stopping perf (pid $PERF_PID) and folding the profile..."
+  kill -INT "$PERF_PID" 2>/dev/null || true
+  for _ in $(seq 1 120); do kill -0 "$PERF_PID" 2>/dev/null || break; sleep 1; done
+  kill -9 "$PERF_PID" 2>/dev/null || true
+  perf_data="$DIAG_DIR/perf/perf$SUFFIX.data"
+  if [[ -s "$perf_data" ]]; then
+    # perf looks up <symfs>/tmp/perf-<recorded pid>.map, but the runtime named the
+    # file after its pid inside the container; materialize the expected name.
+    docker exec "$CONTAINER_NAME" sh -c \
+      "cat /tmp/perf-*.map > /tmp/perf-${PERF_NODE_PID}.map 2>/dev/null" || true
+    if perf script --symfs "/proc/$PERF_NODE_PID/root" --input "$perf_data" \
+         | awk -f "$HERE/../perf-fold.awk" > "$DIAG_DIR/perf/perf$SUFFIX.folded"; then
+      log "perf profile folded: $(wc -l < "$DIAG_DIR/perf/perf$SUFFIX.folded") stacks"
+    else
+      log "ERROR: perf script failed; profile left unfolded"
+    fi
+  else
+    log "ERROR: perf recorded no data"
+  fi
+fi
+
 log "Stopping container '$CONTAINER_NAME' (grace ${STOP_GRACE}s for snapshot finalize)..."
 docker stop -t "$STOP_GRACE" "$CONTAINER_NAME" >/dev/null 2>&1 || true
 

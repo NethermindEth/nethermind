@@ -40,6 +40,10 @@ DOTTRACE="${DOTTRACE:-false}"
 DOTTRACE_MODE="${DOTTRACE_MODE:-sampling}"
 DOTTRACE_HOST_PATH="${DOTTRACE_HOST_PATH:-/opt/dottrace}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
+PERF="${PERF:-false}"
+# perf samples on the host: it is absent from the client images and links against
+# libLLVM/libpython/libtraceevent, so the host binary cannot be mounted in.
+PERF_FREQUENCY="${PERF_FREQUENCY:-99}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 # No Personal/Admin (or geth admin) by default — the RPC port is only ever
 # served for the local load generator; administrative modules are not benchmarked.
@@ -57,6 +61,9 @@ NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
 if [[ "$DOTTRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dottrace profiling requires CLIENT=nethermind (dotTrace is .NET-specific)"
+fi
+if [[ "$PERF" == "true" && "$CLIENT" != "nethermind" ]]; then
+  die "perf profiling is wired for CLIENT=nethermind (it needs the runtime perf map)"
 fi
 case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
@@ -194,6 +201,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
+  echo "PERF=$PERF"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
 
@@ -265,6 +273,16 @@ docker_args=(
 # Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
+if [[ "$PERF" == "true" ]]; then
+  # Name JIT frames in the profile; W^X would relocate code away from the
+  # addresses the runtime writes to the map.
+  docker_args+=(
+    -e DOTNET_PerfMapEnabled=1
+    -e DOTNET_PerfMapShowOptimizationTiers=1
+    -e DOTNET_EnableWriteXorExecute=0
+  )
+  mkdir -p "$DIAG_DIR/perf"
+fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
@@ -308,3 +326,29 @@ docker run "${docker_args[@]}" "$NODE_IMAGE" ${entry_args[@]+"${entry_args[@]}"}
 # 5) Wait for the node to serve JSON-RPC.
 wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="
+
+# 6) Start perf once the node serves RPC, so the sampled window is the benchmark
+#    itself rather than startup and warm-up.
+if [[ "$PERF" == "true" ]]; then
+  # docker top reports HOST pids, which is what perf needs. Under dotTrace the
+  # client is a child of the profiler launcher, so pick the client explicitly.
+  node_pid="$(docker top "$CONTAINER_NAME" -eo pid,args 2>/dev/null \
+    | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace/ {print $1; exit}')"
+  if [[ -z "$node_pid" ]]; then
+    log "ERROR: could not find the client process; perf will not record"
+  else
+    perf record --freq "$PERF_FREQUENCY" --call-graph fp --pid "$node_pid" \
+      --output "$DIAG_DIR/perf/perf$SUFFIX.data" \
+      > "$DIAG_DIR/perf/perf-record$SUFFIX.log" 2>&1 &
+    perf_pid=$!
+    sleep 1
+    if ! kill -0 "$perf_pid" 2>/dev/null; then
+      log "ERROR: perf exited immediately; no profile will be recorded:"
+      sed 's/^/    /' "$DIAG_DIR/perf/perf-record$SUFFIX.log" || true
+    else
+      { echo "PERF_PID=$perf_pid"; echo "PERF_NODE_PID=$node_pid"; } \
+        >> "$STATE_DIR/node$SUFFIX.env"
+      log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
+    fi
+  fi
+fi
