@@ -96,6 +96,8 @@ on:
           Tool config as JSON — empty is fine for defaults. Common recipes:
           (1) cross-client sweep: {"clients":"nethermind reth","rps_list":"50 100","duration":"60s"} —
           clients take an optional @image (nethermind@nethermindeth/nethermind:master reth@ghcr.io/paradigmxyz/reth:v2.2.0), run one at a time;
+          an entry may append +flag,flag to pass node flags to that arm alone, which is how one dispatch A/Bs a flag
+          against the same image; {ARM_SCRATCH} in a flag expands to an empty per-arm directory (wiped, not inherited);
           (2) PRIVATE corpus sweep (latency + response parity on every eth-call-corpus*.jsonl.gz found on the runner; call contents never reach logs/artifacts — see README "Private eth_call corpus"):
           {"eth_call_corpus":true,"clients":"nethermind reth","rps_list":"10 100","duration":"120s"} — first client is the parity baseline;
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
@@ -886,8 +888,8 @@ jobs:
           corpus_dir="$(get '.corpus_dir')";               [[ -z "${corpus_dir}" ]] && corpus_dir="${RESOLVED_CORPUS_DIR}"
           [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
-          # Sweep mode resolves one Nethermind flat snapshot, so the geth/reth default it used to carry
-          # made a bare dispatch fail its own guard. Cross-client work belongs in single-node mode.
+          # A bare dispatch benchmarks Nethermind: the geth/reth default this used to carry made every
+          # one of them start two extra nodes nobody asked for. Name them explicitly to sweep them.
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind"
           # An ABSENT rps_list means "use the default"; an explicitly EMPTY one means "no k6 cells"
           # (corpus runs that only want parity/timings). `// empty` cannot tell those apart.
