@@ -20,6 +20,7 @@ public class SafeArrayPoolZkEvmTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(firstFresh, Is.True);
+                Assert.That(first, Has.Length.EqualTo(4));
                 Assert.That(secondFresh, Is.False);
             }
         }

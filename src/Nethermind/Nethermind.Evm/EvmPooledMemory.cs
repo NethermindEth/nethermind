@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -455,6 +454,15 @@ public struct EvmPooledMemory
         EnsureRented();
     }
 
+    /// <summary>Prepares a range that will be completely overwritten after gas has been charged.</summary>
+    /// <remarks>
+    /// The caller must write every byte in the range before passing the result to
+    /// <see cref="CommitOverwrite"/>. A zero result is a sentinel indicating that the range was
+    /// already initialized and no commit is required.
+    /// </remarks>
+    /// <param name="offset">The start of the overwrite range.</param>
+    /// <param name="length">The length of the overwrite range.</param>
+    /// <returns>The initialized prefix to commit, or zero when no commit is required.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ulong PrepareOverwriteAfterGas(ulong offset, ulong length)
     {
@@ -528,7 +536,7 @@ public struct EvmPooledMemory
             return RentLarge(minLength, out initializedSize);
         }
 
-        byte[] fresh = new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
         initializedSize = (ulong)fresh.Length;
         return fresh;
     }
@@ -574,7 +582,7 @@ public struct EvmPooledMemory
     {
         if (minLength > MaxLargePooledArrayLength)
         {
-            byte[] fresh = new byte[minLength];
+            byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
             initializedSize = (ulong)fresh.Length;
             return fresh;
         }

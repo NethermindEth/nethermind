@@ -69,7 +69,7 @@ public static class SafeArrayPool<T>
             if (bucketIndex < 0)
             {
                 isFresh = true;
-                return new T[minimumLength];
+                return new T[ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength)];
             }
 
             Stack<T[]>? bucket = _buckets[bucketIndex];

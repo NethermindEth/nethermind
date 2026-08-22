@@ -204,6 +204,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             {
                 Assert.That(outOfGas, Is.False);
                 Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
+                Assert.That(GetBackingMemory(ref memory), Has.Length.EqualTo(8 * 1024 * 1024));
                 Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
             }
         }

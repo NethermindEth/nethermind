@@ -11,14 +11,16 @@ public class EvmPooledMemoryMStoreBenchmarks
 {
     private const int FourKiB = 4 * 1024;
     private const int OneMiB = 1 << 20;
+    private const int FourMiB = 4 << 20;
 
     [Params(
         EvmPooledMemory.WordSize,
         FourKiB,
         FourKiB + EvmPooledMemory.WordSize,
         2 * FourKiB,
-        OneMiB)]
-    // Covers one word, one page, a page crossing, multiple pages, and a large expansion.
+        OneMiB,
+        FourMiB + EvmPooledMemory.WordSize)]
+    // Covers word/page boundaries, large expansion, and sequential growth beyond pooled capacity.
     public int MemorySize { get; set; }
 
     [Benchmark]
