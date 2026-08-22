@@ -59,6 +59,65 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
+    [Test]
+    public void GetAccount_AfterCommit_ServesTheCommittedValue()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        Account committed = Build.An.Account.WithNonce(7).TestObject;
+
+        ReadAccount(cache, Address);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetAccount(Address, committed);
+        inner.ReaderState = Basis1;
+
+        Account? read;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) read = reader.GetAccount(Address);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.AccountReads, Is.EqualTo(1), "the commit refreshed the entry, so the re-read must not reach the inner store");
+            Assert.That(read?.Nonce, Is.EqualTo(committed.Nonce));
+        }
+    }
+
+    [Test]
+    public void GetAccount_AfterCommittedDeletion_ServesAsAbsent()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+
+        ReadAccount(cache, Address);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetAccount(Address, null);
+        inner.ReaderState = Basis1;
+
+        Account? read;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) read = reader.GetAccount(Address);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read, Is.Null, "a committed null means the account is gone, and that must be cached as absent");
+            Assert.That(inner.AccountReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void GetAccount_WhenCommitWouldOverflowCapacity_DoesNotEvictResidentEntries()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+
+        ReadAccount(cache, TestItem.AddressA);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetAccount(TestItem.AddressB, Build.An.Account.WithNonce(1).TestObject);
+        inner.ReaderState = Basis1;
+
+        ReadAccount(cache, TestItem.AddressA);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(1), "a written account with no budget must not displace a resident entry");
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)

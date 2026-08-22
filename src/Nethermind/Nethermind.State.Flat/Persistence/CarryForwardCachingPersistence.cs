@@ -112,7 +112,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
+    private void OnCommitted(in StateId to, Dictionary<Address, Account?>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
         using (_lock.EnterScope())
         {
@@ -127,10 +127,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
             if (writtenAccounts is not null)
             {
-                foreach (Address address in writtenAccounts)
+                // Refresh rather than evict. Nearly every transaction writes its sender's nonce and
+                // balance, so evicting the write-set kept the account cache pinned near empty and
+                // discarded exactly the entries most likely to be read again. The committed value is
+                // the new state, so caching it is as correct as caching a read of it.
+                foreach (KeyValuePair<Address, Account?> written in writtenAccounts)
                 {
-                    if (_accounts.TryRemove(address, out _)) _accountCount--;
+                    if (_accounts.ContainsKey(written.Key)) _accounts[written.Key] = written.Value;
+                    else if (_accountCount < _maxEntriesPerKind && _accounts.TryAdd(written.Key, written.Value)) _accountCount++;
                 }
+                Metrics.CarryForwardAccountCount = _accountCount;
             }
 
             if (writtenSlots is not null)
@@ -212,7 +218,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
-        private HashSet<Address>? _writtenAccounts;
+        private Dictionary<Address, Account?>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
 
@@ -224,7 +230,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            (_writtenAccounts ??= [])[addr] = account;
             inner.SetAccount(addr, account);
         }
 
