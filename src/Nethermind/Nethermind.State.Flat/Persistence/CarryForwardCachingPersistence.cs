@@ -87,8 +87,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _accounts.Clear();
                 _accountCount = 0;
+                Metrics.CarryForwardWipes++;
             }
             if (_accounts.TryAdd(address, account)) _accountCount++;
+            Metrics.CarryForwardAccountCount = _accountCount;
         }
     }
 
@@ -103,12 +105,14 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
+                Metrics.CarryForwardWipes++;
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
+            Metrics.CarryForwardSlotCount = _slotCount;
         }
     }
 
-    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
+    private void OnCommitted(in StateId to, Dictionary<Address, Account?>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
         using (_lock.EnterScope())
         {
@@ -123,10 +127,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
             if (writtenAccounts is not null)
             {
-                foreach (Address address in writtenAccounts)
+                // Refresh rather than evict. Nearly every transaction writes its sender's nonce and
+                // balance, so evicting the write-set kept the account cache pinned near empty and
+                // discarded exactly the entries most likely to be read again. The committed value is
+                // the new state, so caching it is as correct as caching a read of it.
+                foreach (KeyValuePair<Address, Account?> written in writtenAccounts)
                 {
-                    if (_accounts.TryRemove(address, out _)) _accountCount--;
+                    if (_accounts.ContainsKey(written.Key)) _accounts[written.Key] = written.Value;
+                    else if (_accountCount < _maxEntriesPerKind && _accounts.TryAdd(written.Key, written.Value)) _accountCount++;
                 }
+                Metrics.CarryForwardAccountCount = _accountCount;
             }
 
             if (writtenSlots is not null)
@@ -145,6 +155,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _accountCount = 0;
         _slots.Clear();
         _slotCount = 0;
+        Metrics.CarryForwardAccountCount = 0;
+        Metrics.CarryForwardSlotCount = 0;
     }
 
     private readonly struct CachedSlot(bool found, SlotValue value)
@@ -156,11 +168,20 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
         : IPersistence.IPersistenceReader
     {
+        // A reader is shared by every thread reading its state, so the hit/miss counters go straight to the
+        // atomic globals. Captured once per reader to keep the increments off the hot path when disabled.
+        private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached)) return cached;
+            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            {
+                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountHits);
+                return cached;
+            }
 
+            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountMisses);
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
@@ -172,10 +193,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {
+                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotHits);
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;
             }
 
+            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotMisses);
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
@@ -195,7 +218,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
-        private HashSet<Address>? _writtenAccounts;
+        private Dictionary<Address, Account?>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
 
@@ -207,7 +230,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            (_writtenAccounts ??= [])[addr] = account;
             inner.SetAccount(addr, account);
         }
 
