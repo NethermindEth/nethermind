@@ -204,16 +204,11 @@ internal sealed class SnapshotHttpStream : Stream
     private void Drain()
     {
         byte[] scratch = ArrayPool<byte>.Shared.Rent(DrainBufferSize);
-        try
+        while (Read(scratch, 0, DrainBufferSize) > 0)
         {
-            while (Read(scratch, 0, DrainBufferSize) > 0)
-            {
-            }
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(scratch);
-        }
+
+        ArrayPool<byte>.Shared.Return(scratch);
     }
 
     private async Task FetchChunksAsync()

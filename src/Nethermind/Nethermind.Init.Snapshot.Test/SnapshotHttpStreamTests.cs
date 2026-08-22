@@ -30,8 +30,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 3);
 
-        Assert.That(delivered, Is.EqualTo(content), "a chunked download must deliver the exact source bytes in order");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "the incremental hash must cover every byte exactly once");
+        AssertDeliveredExactly(delivered, hash, content, "a chunked download must deliver the exact source bytes in order", "the incremental hash must cover every byte exactly once");
     }
 
     [Test]
@@ -43,8 +42,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 3);
 
-        Assert.That(delivered, Is.EqualTo(content), "every chunk must survive a dropped connection and be re-fetched");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "retried chunks must not be hashed twice");
+        AssertDeliveredExactly(delivered, hash, content, "every chunk must survive a dropped connection and be re-fetched", "retried chunks must not be hashed twice");
     }
 
     [Test]
@@ -56,8 +54,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 3);
 
-        Assert.That(delivered, Is.EqualTo(content), "the sequential fallback must deliver the exact source bytes");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "the sequential fallback must hash every byte exactly once");
+        AssertDeliveredExactly(delivered, hash, content, "the sequential fallback must deliver the exact source bytes", "the sequential fallback must hash every byte exactly once");
     }
 
     [Test]
@@ -70,8 +67,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 3);
 
-        Assert.That(delivered, Is.EqualTo(content), "a resumed connection on a rangeless server must skip already delivered bytes, not replay them");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "skipped bytes must not be hashed twice");
+        AssertDeliveredExactly(delivered, hash, content, "a resumed connection on a rangeless server must skip already delivered bytes, not replay them", "skipped bytes must not be hashed twice");
     }
 
     [Test]
@@ -120,8 +116,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2);
 
-        Assert.That(delivered, Is.EqualTo(content), "a single 200 answer to a range request must be retried instead of corrupting the stream");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "the retried chunk must be hashed exactly once");
+        AssertDeliveredExactly(delivered, hash, content, "a single 200 answer to a range request must be retried instead of corrupting the stream", "the retried chunk must be hashed exactly once");
     }
 
     [Test]
@@ -151,8 +146,7 @@ public class SnapshotHttpStreamTests
 
         (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2, stallTimeout: TimeSpan.FromMilliseconds(250));
 
-        Assert.That(delivered, Is.EqualTo(content), "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched");
-        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "bytes received before the stall must be hashed exactly once");
+        AssertDeliveredExactly(delivered, hash, content, "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched", "bytes received before the stall must be hashed exactly once");
     }
 
     private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections, TimeSpan? stallTimeout = null, CancellationToken cancellationToken = default)
@@ -165,6 +159,15 @@ public class SnapshotHttpStreamTests
         await Task.Run(() => stream.CopyTo(delivered));
         byte[] hash = (await stream.FinishAsync(cancellationToken))!;
         return (delivered.ToArray(), hash);
+    }
+
+    private static void AssertDeliveredExactly(byte[] delivered, byte[] hash, byte[] expected, string deliveryReason, string hashReason)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delivered, Is.EqualTo(expected), deliveryReason);
+            Assert.That(hash, Is.EqualTo(SHA256.HashData(expected)), hashReason);
+        }
     }
 
     private static byte[] BuildContent(int length)

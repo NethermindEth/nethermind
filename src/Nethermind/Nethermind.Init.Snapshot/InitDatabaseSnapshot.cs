@@ -247,31 +247,25 @@ public class InitDatabaseSnapshot(
         long fileSize = new FileInfo(filePath).Length;
         using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ChecksumBufferSize);
-        try
-        {
-            await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
-                FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            long bytesHashed = 0;
-            DateTime nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
+        await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
+            FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        long bytesHashed = 0;
+        DateTime nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
 
-            int bytesRead;
-            while ((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+        int bytesRead;
+        while ((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            hasher.AppendData(buffer, 0, bytesRead);
+            bytesHashed += bytesRead;
+
+            if (_logger.IsInfo && fileSize > 0 && DateTime.UtcNow >= nextLog)
             {
-                hasher.AppendData(buffer, 0, bytesRead);
-                bytesHashed += bytesRead;
-
-                if (_logger.IsInfo && fileSize > 0 && DateTime.UtcNow >= nextLog)
-                {
-                    _logger.Info($"Snapshot checksum progress: {bytesHashed * 100 / fileSize}%");
-                    nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
-                }
+                _logger.Info($"Snapshot checksum progress: {bytesHashed * 100 / fileSize}%");
+                nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
             }
+        }
 
-            return hasher.GetHashAndReset();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
+        return hasher.GetHashAndReset();
     }
 }

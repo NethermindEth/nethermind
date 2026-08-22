@@ -80,7 +80,15 @@ internal sealed class SnapshotHttpClient : IDisposable
                 case HttpStatusCode.RequestedRangeNotSatisfiable:
                     return response;
                 default:
-                    return response.EnsureSuccessStatusCode();
+                    {
+                        if (response.IsSuccessStatusCode)
+                            return response;
+
+                        HttpStatusCode status = response.StatusCode;
+                        string? reason = response.ReasonPhrase;
+                        response.Dispose();
+                        throw new HttpRequestException($"Snapshot request failed with status {(int)status} {reason}.", null, status);
+                    }
             }
         }
 
@@ -98,20 +106,19 @@ internal sealed class SnapshotHttpClient : IDisposable
     {
         using StallGuardedReader reader = new(stallTimeout, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(SkipBufferSize);
-        try
+        long remaining = bytesToSkip;
+        while (remaining > 0)
         {
-            long remaining = bytesToSkip;
-            while (remaining > 0)
+            int read = await reader.ReadAsync(content, buffer.AsMemory(0, (int)Math.Min(SkipBufferSize, remaining))).ConfigureAwait(false);
+            if (read == 0)
             {
-                int read = await reader.ReadAsync(content, buffer.AsMemory(0, (int)Math.Min(SkipBufferSize, remaining))).ConfigureAwait(false);
-                if (read == 0)
-                    throw new EndOfStreamException($"Connection ended while skipping {bytesToSkip} already received bytes.");
-                remaining -= read;
+                ArrayPool<byte>.Shared.Return(buffer);
+                throw new EndOfStreamException($"Connection ended while skipping {bytesToSkip} already received bytes.");
             }
+
+            remaining -= read;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 }

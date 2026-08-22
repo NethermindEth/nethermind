@@ -56,18 +56,24 @@ public class InitDatabaseSnapshotTests
         long snapshotSize = WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         long freeSpace = snapshotSize * 2;
-        Assert.That(freeSpace, Is.GreaterThanOrEqualTo(SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotSize)),
-            "precondition: free space must cover the extraction estimate");
-        Assert.That(freeSpace, Is.LessThan((long)(snapshotSize * 2.5)),
-            "precondition: free space must be below the legacy 2.5x requirement to prove the regression is fixed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(freeSpace, Is.GreaterThanOrEqualTo(SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotSize)),
+                "precondition: free space must cover the extraction estimate");
+            Assert.That(freeSpace, Is.LessThan((long)(snapshotSize * 2.5)),
+                "precondition: free space must be below the legacy 2.5x requirement to prove the regression is fixed");
+        }
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(freeSpace));
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
-            "the snapshot content should be extracted into the database directory");
-        Assert.That(File.Exists(_snapshotPath), Is.False,
-            "the snapshot archive should be deleted after a successful extraction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+                "the snapshot content should be extracted into the database directory");
+            Assert.That(File.Exists(_snapshotPath), Is.False,
+                "the snapshot archive should be deleted after a successful extraction");
+        }
     }
 
     [Test]
@@ -79,10 +85,13 @@ public class InitDatabaseSnapshotTests
 
         IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
 
-        Assert.That(exception.Message, Does.Contain("Insufficient disk space"),
-            "the extraction should be rejected when free space is below the extraction estimate");
-        Assert.That(Directory.Exists(_dbPath), Is.False,
-            "nothing should be extracted when free space is insufficient");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Insufficient disk space"),
+                "the extraction should be rejected when free space is below the extraction estimate");
+            Assert.That(Directory.Exists(_dbPath), Is.False,
+                "nothing should be extracted when free space is insufficient");
+        }
     }
 
     [Test]
@@ -94,10 +103,13 @@ public class InitDatabaseSnapshotTests
 
         IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
 
-        Assert.That(exception.Message, Does.Contain("Insufficient disk space"),
-            "the download should be rejected when free space cannot fit the snapshot and its extraction");
-        Assert.That(File.Exists(_snapshotPath), Is.False,
-            "no bytes should be downloaded when free space is insufficient");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Insufficient disk space"),
+                "the download should be rejected when free space cannot fit the snapshot and its extraction");
+            Assert.That(File.Exists(_snapshotPath), Is.False,
+                "no bytes should be downloaded when free space is insufficient");
+        }
     }
 
     [Test]
@@ -179,10 +191,13 @@ public class InitDatabaseSnapshotTests
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
-            "an already downloaded archive must be extracted through the two-phase path instead of being deleted and re-streamed");
-        Assert.That(File.Exists(_snapshotPath), Is.False,
-            "the archive must be deleted after a successful two-phase extraction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+                "an already downloaded archive must be extracted through the two-phase path instead of being deleted and re-streamed");
+            Assert.That(File.Exists(_snapshotPath), Is.False,
+                "the archive must be deleted after a successful two-phase extraction");
+        }
     }
 
     [Test]
@@ -229,10 +244,13 @@ public class InitDatabaseSnapshotTests
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
-            "a complete archive left by a crash between extraction and completion must be reused instead of re-downloaded");
-        Assert.That(File.Exists(_snapshotPath), Is.False,
-            "the archive must be deleted after the successful extraction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+                "a complete archive left by a crash between extraction and completion must be reused instead of re-downloaded");
+            Assert.That(File.Exists(_snapshotPath), Is.False,
+                "the archive must be deleted after the successful extraction");
+        }
     }
 
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]

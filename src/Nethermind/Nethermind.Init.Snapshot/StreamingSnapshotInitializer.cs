@@ -28,10 +28,7 @@ internal sealed class StreamingSnapshotInitializer(
         for (int attempt = 1; attempt <= MaxSourceChangedRestarts; attempt++)
         {
             SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
-            if (remoteInfo.Length is null && config.Checksum is null)
-                throw new InvalidOperationException(
-                    "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
-
+            EnsureIntegrityDetectable(remoteInfo);
             LogMode(remoteInfo);
             CheckDiskSpace(remoteInfo.Length);
 
@@ -128,6 +125,20 @@ internal sealed class StreamingSnapshotInitializer(
                 retryDelay = retryDelay * 2 > settings.MaxRetryDelay ? settings.MaxRetryDelay : retryDelay * 2;
             }
         }
+    }
+
+    private void EnsureIntegrityDetectable(SnapshotRemoteInfo remoteInfo)
+    {
+        if (config.Checksum is not null)
+            return;
+
+        if (remoteInfo.Length is null)
+            throw new InvalidOperationException(
+                "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
+
+        if (remoteInfo.ETag is null || remoteInfo.ETag.IsWeak)
+            throw new InvalidOperationException(
+                "The server does not provide a strong ETag and Snapshot.Checksum is not set, so a snapshot replaced mid-download by one of the same size could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
     }
 
     private static void EnsureStreamableArchive(string fileName)

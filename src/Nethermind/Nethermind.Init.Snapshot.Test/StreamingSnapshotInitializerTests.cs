@@ -59,8 +59,11 @@ public class StreamingSnapshotInitializerTests
         await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
 
         AssertExtracted(files);
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "a verified extraction must complete the checkpoint");
-        Assert.That(File.Exists(staleArchivePath), Is.False, "a stale archive file must be deleted since streaming never uses it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "a verified extraction must complete the checkpoint");
+            Assert.That(File.Exists(staleArchivePath), Is.False, "a stale archive file must be deleted since streaming never uses it");
+        }
     }
 
     [Test]
@@ -89,8 +92,11 @@ public class StreamingSnapshotInitializerTests
 
         await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
 
-        Assert.That(Directory.Exists(_dbPath), Is.False, "a database extracted from an unverified snapshot must be deleted");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(_dbPath), Is.False, "a database extracted from an unverified snapshot must be deleted");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the checksum fails");
+        }
     }
 
     [Test]
@@ -104,8 +110,11 @@ public class StreamingSnapshotInitializerTests
 
         await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
 
-        Assert.That(Directory.Exists(_dbPath), Is.False, "a corrupt archive must not leave a partially extracted database behind");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction fails");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(_dbPath), Is.False, "a corrupt archive must not leave a partially extracted database behind");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction fails");
+        }
     }
 
     [Test]
@@ -118,9 +127,46 @@ public class StreamingSnapshotInitializerTests
 
         await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
 
-        Assert.That(Directory.Exists(_dbPath), Is.False,
-            "an archive with link entries must be rejected and the partial extraction deleted, because links can escape the database directory");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction is rejected");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(_dbPath), Is.False,
+                "an archive with link entries must be rejected and the partial extraction deleted, because links can escape the database directory");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction is rejected");
+        }
+    }
+
+    [Test]
+    public void InitializeAsync_NoStrongETagWithoutChecksum_Throws()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _server.ETag = null;
+
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            "without an entity tag and without a checksum a snapshot replaced by one of the same size would be undetectable, so streaming must refuse to start");
+    }
+
+    [Test]
+    public async Task InitializeAsync_SourceRotatesToEqualLengthWithoutETag_DoesNotCompleteTheCheckpoint()
+    {
+        byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        byte[] rotated = (byte[])archive.Clone();
+        rotated[^1000] ^= 0xFF;
+        _server.Content = archive;
+        _server.ETag = null;
+        _server.SwitchSourceAfterRequests(2, rotated, null);
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
+                "a source rotated to equal-length content with no entity tag must be caught by the checksum instead of completing");
+            Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
+                "the database extracted from the mixed stream must be deleted");
+        }
     }
 
     [Test]
@@ -147,12 +193,15 @@ public class StreamingSnapshotInitializerTests
             () => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
             "an extraction that produced no files is a configuration error and must fail startup in both modes")!;
 
-        Assert.That(exception.Message, Does.Contain("StripComponents"),
-            "the failure must point the operator at the strip configuration");
-        Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
-            "the partially created database directory must be cleaned up before failing");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
-            "the checkpoint must not advance when nothing was extracted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("StripComponents"),
+                "the failure must point the operator at the strip configuration");
+            Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
+                "the partially created database directory must be cleaned up before failing");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
+                "the checkpoint must not advance when nothing was extracted");
+        }
     }
 
     [Test]
@@ -181,9 +230,12 @@ public class StreamingSnapshotInitializerTests
         await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
 
         AssertExtracted(newFiles);
-        Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.False,
-            "files extracted from the abandoned first attempt must not survive the restart");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "a source change must restart the download and complete with the new object");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.False,
+                "files extracted from the abandoned first attempt must not survive the restart");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed), "a source change must restart the download and complete with the new object");
+        }
     }
 
     [Test]
@@ -212,9 +264,12 @@ public class StreamingSnapshotInitializerTests
 
         await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
 
-        Assert.That(Directory.Exists(_dbPath), Is.False,
-            "after exhausting the restart budget the partial database must be deleted so the node can continue without a snapshot");
-        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the download never completes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(_dbPath), Is.False,
+                "after exhausting the restart budget the partial database must be deleted so the node can continue without a snapshot");
+            Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the download never completes");
+        }
     }
 
     [Test]
@@ -229,8 +284,11 @@ public class StreamingSnapshotInitializerTests
             () => CreateInitializer(drives: [drive]).InitializeAsync(CreateCheckpoint(), CancellationToken.None),
             "the disk space check must fail before any byte is extracted")!;
 
-        Assert.That(exception.Message, Does.Contain("Insufficient disk space"), "the failure must be the disk space guard, not a download error");
-        Assert.That(Directory.Exists(_dbPath), Is.False, "nothing must be extracted when free space is insufficient");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Insufficient disk space"), "the failure must be the disk space guard, not a download error");
+            Assert.That(Directory.Exists(_dbPath), Is.False, "nothing must be extracted when free space is insufficient");
+        }
     }
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
@@ -245,8 +303,11 @@ public class StreamingSnapshotInitializerTests
         foreach ((string name, byte[] data) in files)
         {
             string path = Path.Combine(_dbPath, name);
-            Assert.That(File.Exists(path), Is.True, $"extracted file '{name}' must exist because it is part of the archive");
-            Assert.That(File.ReadAllBytes(path), Is.EqualTo(data), $"extracted file '{name}' must match the archived content byte for byte");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(File.Exists(path), Is.True, $"extracted file '{name}' must exist because it is part of the archive");
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(data), $"extracted file '{name}' must match the archived content byte for byte");
+            }
         }
     }
 }

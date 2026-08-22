@@ -105,21 +105,16 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     {
         using StallGuardedReader reader = new(StallTimeout, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
+        ulong downloaded = progress.Logger.CurrentValue;
+        int bytesRead;
+        while ((bytesRead = await reader.ReadAsync(source, buffer.AsMemory(0, BufferSize)).ConfigureAwait(false)) > 0)
         {
-            ulong downloaded = progress.Logger.CurrentValue;
-            int bytesRead;
-            while ((bytesRead = await reader.ReadAsync(source, buffer.AsMemory(0, BufferSize)).ConfigureAwait(false)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-                downloaded += (ulong)bytesRead;
-                progress.Update(downloaded);
-            }
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+            downloaded += (ulong)bytesRead;
+            progress.Update(downloaded);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
 }

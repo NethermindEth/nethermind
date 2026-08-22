@@ -11,6 +11,9 @@ internal sealed class FlakySnapshotServer : IDisposable
     private readonly HttpListener _listener;
     private readonly ConcurrentDictionary<string, int> _attemptsPerRange = new();
     private readonly CancellationTokenSource _hangCts = new();
+    private readonly ConcurrentBag<Exception> _failures = [];
+    private readonly List<Task> _handlers = [];
+    private readonly Task _acceptLoop;
     private int _requestCount;
     private int _hangConsumed;
     private int _rangeIgnored;
@@ -23,7 +26,7 @@ internal sealed class FlakySnapshotServer : IDisposable
     {
         (_listener, int port) = TestHttpListener.Start();
         Url = $"http://127.0.0.1:{port}/snapshot.tar.zst";
-        Task.Run(AcceptLoopAsync);
+        _acceptLoop = Task.Run(AcceptLoopAsync);
     }
 
     public string Url { get; }
@@ -64,6 +67,16 @@ internal sealed class FlakySnapshotServer : IDisposable
         _hangCts.Cancel();
         _listener.Stop();
         _listener.Close();
+
+        Task[] handlers;
+        lock (_handlers)
+            handlers = [.. _handlers];
+
+        Task.WaitAll([_acceptLoop, .. handlers], TimeSpan.FromSeconds(10));
+        _hangCts.Dispose();
+
+        if (!_failures.IsEmpty)
+            throw new AggregateException("The test snapshot server failed while handling a request.", _failures);
     }
 
     private async Task AcceptLoopAsync()
@@ -75,12 +88,14 @@ internal sealed class FlakySnapshotServer : IDisposable
             {
                 context = await _listener.GetContextAsync();
             }
-            catch
+            catch (Exception e) when (e is HttpListenerException or ObjectDisposedException or InvalidOperationException)
             {
                 return;
             }
 
-            _ = Task.Run(() => HandleAsync(context));
+            Task handler = Task.Run(() => HandleAsync(context));
+            lock (_handlers)
+                _handlers.Add(handler);
         }
     }
 
@@ -161,13 +176,7 @@ internal sealed class FlakySnapshotServer : IDisposable
             {
                 await response.OutputStream.WriteAsync(content.AsMemory((int)from, hangAfter));
                 await response.OutputStream.FlushAsync();
-                try
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, _hangCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                }
+                await Task.Delay(Timeout.InfiniteTimeSpan, _hangCts.Token).ContinueWith(static _ => { }, TaskScheduler.Default);
                 response.Abort();
                 return;
             }
@@ -184,15 +193,14 @@ internal sealed class FlakySnapshotServer : IDisposable
             await response.OutputStream.WriteAsync(content.AsMemory((int)from, (int)length));
             response.Close();
         }
-        catch
+        catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or OperationCanceledException)
         {
-            try
-            {
-                response.Abort();
-            }
-            catch
-            {
-            }
+            response.Abort();
+        }
+        catch (Exception e)
+        {
+            _failures.Add(e);
+            response.Abort();
         }
     }
 
