@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core.Collections;
 
@@ -19,6 +20,7 @@ internal static class ArrayPoolUtilities
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="minimumLength"/> is not positive.
     /// </exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int GetPowerOfTwoCapacity(int minimumLength)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumLength);

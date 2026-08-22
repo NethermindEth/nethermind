@@ -315,6 +315,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
+        // The after-gas contract proves offset < Size; preparation guarantees Size <= _memory.Length.
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.Add(ref memory, offset) = value;
     }

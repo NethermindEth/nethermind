@@ -217,6 +217,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void Growth_into_fresh_non_pooled_large_allocation_preserves_prefix_and_zeroes_gap()
     {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         const int prefixOffset = 257;
         const int memorySize = (4 * 1024 * 1024) + 96;
         int destinationOffset = memorySize - EvmPooledMemory.WordSize;
@@ -231,6 +232,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         {
             UInt256 prefixDestination = (UInt256)prefixOffset;
             Assert.That(memory.TrySave(in prefixDestination, prefix), Is.True);
+            AssertDirtyTailWasReused(ref memory);
 
             UInt256 destination = (UInt256)destinationOffset;
             Assert.That(memory.TrySave(in destination, word), Is.True);
