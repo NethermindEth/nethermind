@@ -25,6 +25,9 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class FrameTxDecoderTests
 {
+    // ShardBlobNetworkWrapperRlp.BlobCountLimit, which is internal to the serialization assembly.
+    private const int BlobVersionedHashesDecodeCap = 128;
+
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [TestCaseSource(nameof(RoundtripCases))]
@@ -429,6 +432,41 @@ public class FrameTxDecoderTests
         keyed.NonceKeys = [.. Enumerable.Range(1, Eip8250Constants.MaxNonceKeys + 1).Select(static i => (UInt256)i)];
 
         Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
+    }
+
+    [TestCase(Eip8141Constants.MaxFrames, false)]
+    [TestCase(Eip8141Constants.MaxFrames + 1, true)]
+    public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx(frames: [.. Enumerable.Range(0, frameCount).Select(static _ => Frame())]);
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).Frames!.Length, Is.EqualTo(frameCount));
+        }
+    }
+
+    // Mirrors the blob tx cap, so the two decoders reject an oversized hash list at the same count.
+    [TestCase(BlobVersionedHashesDecodeCap, false)]
+    [TestCase(BlobVersionedHashesDecodeCap + 1, true)]
+    public void Decode_BoundsTheBlobVersionedHashCount(int hashCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 1;
+        tx.BlobVersionedHashes = [.. Enumerable.Range(0, hashCount).Select(static _ => FilledBytes(Hash256.Size, 0x01))];
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).BlobVersionedHashes!.Length, Is.EqualTo(hashCount));
+        }
     }
 
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
