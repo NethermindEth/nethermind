@@ -86,7 +86,7 @@ public class PrecompileCachedCodeInfoRepository(
             if (result is { IsError: true, Error: Errors.InvalidInputLength })
                 return result;
 
-            cache.TryAdd(key, result, effectiveInput.Length + (result.Data?.Length ?? 0));
+            cache.TryAdd(key, result);
             return result;
         }
     }

@@ -38,6 +38,7 @@ public sealed class PrecompileCaches
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
     private const int MaxSurvivingEntryBytes = 2048;
 
+    /// <summary> Initial capacity for every precompile cache partition. </summary>
     private const int PartitionInitialCapacity = 1024;
 
     /// <summary> For flows and tests that don't cache precompile results. </summary>
@@ -120,8 +121,9 @@ public sealed class PrecompileCaches
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, in whichever tiers accept it. </summary>
-        public void TryAdd(in Key key, Result<byte[]> result, int entryBytes)
+        public void TryAdd(in Key key, Result<byte[]> result)
         {
+            int entryBytes = key.DataLength + (result.Data?.Length ?? 0);
             bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
 
             long reservation = entryBytes + EntryOverheadBytes;
@@ -152,13 +154,14 @@ public sealed class PrecompileCaches
         // Reference-compared; results may differ across forks, so entries never cross a fork boundary.
         private IReleaseSpec Spec { get; } = spec;
 
+        internal int DataLength => Data.Length;
+
         /// <summary> Creates a copy that owns its data. </summary>
         public Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
 
         public bool Equals(Key other) => ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is Key other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode() ^ RuntimeHelpers.GetHashCode(Spec);
-
         public static bool operator ==(Key left, Key right) => left.Equals(right);
         public static bool operator !=(Key left, Key right) => !(left == right);
     }

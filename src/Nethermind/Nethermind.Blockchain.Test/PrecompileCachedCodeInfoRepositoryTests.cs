@@ -56,7 +56,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     private static IPrecompile Resolve(PrecompileCachedCodeInfoRepository repository, Address address, params Address[] otherPrecompiles) =>
         repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles([address, .. otherPrecompiles]), out _).Precompile!;
 
-    private static (PrecompileCaches Caches, IPrecompile Resolved) ResolveWithCache(
+    private static (IPrecompile Resolved, PrecompileCaches Caches) ResolveWithCache(
         IPrecompile precompile,
         Address? address = null,
         int survivingMaxEntries = 1024,
@@ -65,7 +65,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         address ??= PrecompileAddress;
         IPrecompileProvider provider = CreateProvider((address, precompile));
         PrecompileCaches caches = CreateCaches(provider, survivingMaxEntries, maxBytes);
-        return (caches, Resolve(BuildRepository(caches, provider), address));
+        return (Resolve(BuildRepository(caches, provider), address), caches);
     }
 
     [Test]
@@ -128,7 +128,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         int runCount = 0;
         byte[] fixedOutput = [10, 20, 30];
         TestPrecompile precompile = new(supportsCaching, onRun: () => runCount++, fixedOutput: fixedOutput);
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(precompile);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(precompile);
 
         byte[] input = [1, 2, 3];
         Result<byte[]> first = resolved.Run(input, Prague.Instance);
@@ -147,7 +147,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForDifferentInputs_CreatesSeparateEntries()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
         resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance);
@@ -164,7 +164,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     [Test]
     public void Run_WithRealSha256_ServesTheComputedDigestFromTheCache()
     {
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(Sha256Precompile.Instance, Sha256Precompile.Address);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(Sha256Precompile.Instance, Sha256Precompile.Address);
 
         byte[] input = [1, 2, 3, 4, 5];
         Result<byte[]> first = resolved.Run(input, Prague.Instance);
@@ -182,7 +182,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_WithNormalizedOversizedInputs_DeduplicatesToOneEntry()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TruncatingTestPrecompile(effectiveLength: 4, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TruncatingTestPrecompile(effectiveLength: 4, onRun: () => runCount++));
 
         Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3, 4, 0xAA, 0xBB }, Prague.Instance);
         Result<byte[]> second = resolved.Run(new byte[] { 1, 2, 3, 4, 0xCC, 0xDD, 0xEE }, Prague.Instance);
@@ -199,7 +199,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForInvalidLengthResults_DoesNotCache()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new FixedLengthTestPrecompile(validLength: 4, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new FixedLengthTestPrecompile(validLength: 4, onRun: () => runCount++));
 
         Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
         Result<byte[]> repeat = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
@@ -217,7 +217,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_ForDifferentSpecs_CreatesSeparateCacheEntries()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] input = [1, 2, 3];
         resolved.Run(input, Prague.Instance);
@@ -236,7 +236,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_AfterPerBlockClear_ServesFromSurvivingTierWithoutRepopulating()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] input = [1, 2, 3];
         resolved.Run(input, Prague.Instance);
@@ -256,7 +256,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_AtSurvivingTierCapacity_EvictsInsteadOfGrowing()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++), survivingMaxEntries: 2);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++), survivingMaxEntries: 2);
 
         resolved.Run(new byte[] { 1 }, Prague.Instance);
         resolved.Run(new byte[] { 2 }, Prague.Instance);
@@ -273,7 +273,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     public void Run_WithOversizedEntry_DoesNotSurviveTheBlock()
     {
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
 
         byte[] oversizedInput = new byte[4096];
         resolved.Run(oversizedInput, Prague.Instance);
@@ -299,7 +299,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         const int admittedEntries = 5;
 
         int runCount = 0;
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
             new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
             maxBytes: entryCost * admittedEntries);
 
@@ -351,7 +351,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         const int inputLength = 4;
         const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
 
-        (PrecompileCaches caches, IPrecompile resolved) = ResolveWithCache(new TestPrecompile(supportsCaching: true), maxBytes: entryCost);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true), maxBytes: entryCost);
 
         resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
         resolved.Run(new byte[] { 2, 1, 2, 3 }, Prague.Instance);
@@ -362,7 +362,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         resolved.Run(new byte[] { 3, 1, 2, 3 }, Prague.Instance);
 
-        Assert.That(caches.BlockCacheCount, Is.EqualTo(1));
+        Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
