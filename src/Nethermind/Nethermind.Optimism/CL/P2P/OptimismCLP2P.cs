@@ -7,6 +7,7 @@ using Nethermind.Libp2p.Protocols;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -281,7 +282,7 @@ public class OptimismCLP2P : IDisposable
         {
             payload = PayloadDecoder.Instance.DecodePayload(payloadData);
         }
-        catch (ArgumentException e)
+        catch (InvalidDataException e)
         {
             if (_logger.IsTrace) _logger.Trace($"Unable to decode payload from p2p. {e.Message}");
 

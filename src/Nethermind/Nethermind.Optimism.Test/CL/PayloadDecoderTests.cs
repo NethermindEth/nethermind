@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.P2P;
 using NUnit.Framework;
@@ -19,6 +22,120 @@ public class PayloadDecoderTests
         byte[] bytes = Convert.FromBase64String(testCase.Data);
         ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(bytes);
         ComparePayloads(testCase.Payload, decoded);
+    }
+
+    [Test]
+    public void DecodePayload_InvalidFirstTransactionOffset(
+        [ValueSource(nameof(RealPayloadsTestCases))] (string Data, ExecutionPayloadV3 Payload) testCase,
+        // Below the offset size, misaligned, past the transaction limit, and the whole 32-bit range
+        [Values(0u, 5u, 0x40000000u, 0xFFFFFFFCu)] UInt32 firstTxOffset)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+
+        // The transactions region ends at the payload end and starts with one 4-byte offset per transaction
+        Assert.That(testCase.Payload.Transactions, Is.Not.Empty);
+        int offsetTableSize = 4 * testCase.Payload.Transactions.Length;
+        int transactionsOffset = bytes.Length - offsetTableSize;
+        foreach (byte[] transaction in testCase.Payload.Transactions)
+        {
+            transactionsOffset -= transaction.Length;
+        }
+        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(transactionsOffset, 4)), Is.EqualTo(offsetTableSize));
+
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(transactionsOffset, 4), firstTxOffset);
+
+        Func<ExecutionPayloadV3> tryDecode = () => PayloadDecoder.Instance.DecodePayload(bytes);
+        Assert.That(tryDecode, Throws.TypeOf<InvalidDataException>());
+    }
+
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void EncodePayload_ReproducesTheEncodersBytes((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+        ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(bytes);
+
+        Assert.That(PayloadDecoder.Instance.EncodePayload(decoded), Is.EqualTo(bytes));
+    }
+
+    /// <remarks>
+    /// Real payloads carry an empty withdrawals list, so a round trip is the only way to cover one.
+    /// </remarks>
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void DecodePayload_Withdrawals((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        ExecutionPayloadV3 payload = PayloadDecoder.Instance.DecodePayload(Convert.FromBase64String(testCase.Data));
+        payload.Withdrawals = [new Withdrawal { Index = 1, ValidatorIndex = 2, Address = TestItem.AddressA, AmountInGwei = 3 }];
+
+        ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(PayloadDecoder.Instance.EncodePayload(payload));
+
+        Assert.That(decoded.Withdrawals, Is.EqualTo(payload.Withdrawals).UsingWithdrawalComparer());
+    }
+
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void DecodePayload_TrailingBytes((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+        Array.Resize(ref bytes, bytes.Length + 1);
+
+        Func<ExecutionPayloadV3> tryDecode = () => PayloadDecoder.Instance.DecodePayload(bytes);
+        Assert.That(tryDecode, Throws.TypeOf<InvalidDataException>());
+    }
+
+    /// <remarks>
+    /// <see cref="OptimismCLP2P"/> catches exactly <see cref="InvalidDataException"/> around the
+    /// decode; anything else escapes to the topic handler and is logged as an unhandled error.
+    /// </remarks>
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void DecodePayload_TruncatedPayload((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+
+        for (int length = 0; length < bytes.Length; length++)
+        {
+            try
+            {
+                PayloadDecoder.Instance.DecodePayload(bytes.AsSpan(0, length));
+                Assert.Fail($"Truncating to {length} bytes decoded successfully");
+            }
+            catch (InvalidDataException)
+            {
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Truncating to {length} bytes threw {e.GetType().Name}: {e.Message}");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Truncation is rejected by the container offset table before the transactions, extra data and
+    /// withdrawals regions are read, so corrupting each byte in turn is what reaches those.
+    /// </remarks>
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void DecodePayload_CorruptedByte((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+
+        for (int index = 0; index < bytes.Length; index++)
+        {
+            byte original = bytes[index];
+            bytes[index] = (byte)~original;
+            try
+            {
+                PayloadDecoder.Instance.DecodePayload(bytes);
+            }
+            catch (InvalidDataException)
+            {
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Corrupting byte {index} threw {e.GetType().Name}: {e.Message}");
+            }
+            finally
+            {
+                bytes[index] = original;
+            }
+        }
     }
 
     private void ComparePayloads(ExecutionPayloadV3 expected, ExecutionPayloadV3 actual)
