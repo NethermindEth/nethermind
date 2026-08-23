@@ -49,7 +49,7 @@ public class VmState<TGasPolicy> : IDisposable
 
     private bool _isDisposed = true;
 
-    private EvmPooledMemory _memory;
+    private readonly EvmPooledMemory _memory = new();
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
@@ -139,12 +139,6 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
-#if ZK_EVM
-        // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
-        // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
-        // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = default;
-#endif
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
@@ -194,7 +188,7 @@ public class VmState<TGasPolicy> : IDisposable
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ExecutionEnvironment Env => _env!;
-    public ref EvmPooledMemory Memory => ref _memory;
+    public EvmPooledMemory Memory => _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
     public void Dispose()
@@ -218,7 +212,6 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _memory = default;
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _env = null;

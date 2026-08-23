@@ -294,7 +294,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
-        in UInt256 length, ref EvmPooledMemory memory)
+        in UInt256 length, EvmPooledMemory memory)
     {
         ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0L)
@@ -305,7 +305,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
-        ulong length, ref EvmPooledMemory memory)
+        ulong length, EvmPooledMemory memory)
     {
         ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
         if (memoryCost == 0)

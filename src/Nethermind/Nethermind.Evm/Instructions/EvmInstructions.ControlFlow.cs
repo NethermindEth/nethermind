@@ -224,7 +224,7 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;

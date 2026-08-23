@@ -102,7 +102,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             ReadOnlySpan<byte> output = callResult.Output.Span[..Math.Min(callResult.Output.Length, (int)outputLength)];
             UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)output.Length, ref parent.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)output.Length, parent.Memory))
             {
                 push = EvmExceptionType.OutOfGas;
             }

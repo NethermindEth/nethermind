@@ -1239,7 +1239,7 @@ public partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState.Memory))
             {
                 goto OutOfGas;
             }

@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test;
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_memory")]
-    private static extern ref byte[]? GetBackingMemory(ref EvmPooledMemory memory);
+    private static extern ref byte[]? GetBackingMemory(EvmPooledMemory memory);
 
     private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
     {
@@ -201,7 +201,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] expected = new byte[memorySize];
         word.CopyTo(expected, destinationOffset);
 
-        EvmPooledMemory memory = default;
+        EvmPooledMemory memory = new();
         try
         {
             UInt256 destination = (UInt256)destinationOffset;
@@ -212,7 +212,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             {
                 Assert.That(outOfGas, Is.False);
                 Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
-                Assert.That(GetBackingMemory(ref memory), Has.Length.EqualTo(8 * 1024 * 1024));
+                Assert.That(GetBackingMemory(memory), Has.Length.EqualTo(8 * 1024 * 1024));
                 Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
             }
         }
@@ -235,12 +235,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         prefix.CopyTo(expected, prefixOffset);
         word.CopyTo(expected, destinationOffset);
 
-        EvmPooledMemory memory = default;
+        EvmPooledMemory memory = new();
         try
         {
             UInt256 prefixDestination = (UInt256)prefixOffset;
             Assert.That(memory.TrySave(in prefixDestination, prefix), Is.True);
-            AssertDirtyTailWasReused(ref memory);
+            AssertDirtyTailWasReused(memory);
 
             UInt256 destination = (UInt256)destinationOffset;
             Assert.That(memory.TrySave(in destination, word), Is.True);
@@ -477,6 +477,35 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Owned_load_survives_inline_memory_reuse()
+    {
+        EvmPooledMemory memory = new();
+        byte[] expected = CreatePattern(96, 0x31);
+        byte[] replacement = CreatePattern(96, 0x57);
+        UInt256 location = UInt256.Zero;
+        UInt256 length = (UInt256)expected.Length;
+
+        try
+        {
+            Assert.That(memory.TrySave(in location, expected), Is.True);
+            Assert.That(memory.TryLoadOwned(in location, in length, out ReadOnlyMemory<byte> owned), Is.True);
+
+            memory.Dispose();
+            Assert.That(memory.TrySave(in location, replacement), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owned.ToArray(), Is.EqualTo(expected));
+                Assert.That(memory.Inspect(in location, in length).ToArray(), Is.EqualTo(replacement));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
     public void Inspect_should_not_change_evm_memory()
     {
         EvmPooledMemory memory = new();
@@ -583,7 +612,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         try
         {
             Assert.That(memory.TryLoadSpan(in zero, (UInt256)memorySize, out _), Is.True);
-            byte[]? firstBackingMemory = GetBackingMemory(ref memory);
+            byte[]? firstBackingMemory = GetBackingMemory(memory);
             Assert.That(firstBackingMemory, Is.Not.Null);
             memory.Dispose();
 
@@ -591,19 +620,22 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             try
             {
                 Assert.That(dirty.TrySave(in zero, dirtyBytes), Is.True);
-                Assert.That(GetBackingMemory(ref dirty), Is.SameAs(firstBackingMemory));
+                Assert.That(GetBackingMemory(dirty), Is.SameAs(firstBackingMemory));
             }
             finally
             {
                 dirty.Dispose();
             }
 
-            memory.CopyAfterGas(in zero, in zero, EvmPooledMemory.WordSize);
+            UInt256 destination = memorySize;
+            memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.CopyAfterGas(in destination, in zero, EvmPooledMemory.WordSize);
 
-            byte[] actual = ReadVisibleMemory(ref memory);
+            byte[] actual = ReadVisibleMemory(memory);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(GetBackingMemory(ref memory), Is.SameAs(firstBackingMemory));
+                Assert.That(GetBackingMemory(memory), Is.SameAs(firstBackingMemory));
                 Assert.That(actual.AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
             }
         }
@@ -611,6 +643,35 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         {
             memory.Dispose();
         }
+    }
+
+    [Test]
+    public void Inline_storage_clears_only_the_required_gap_after_reuse()
+    {
+        EvmPooledMemory memory = new();
+        UInt256 start = UInt256.Zero;
+        memory.CalculateMemoryCost(in start, 256, out bool outOfGas);
+        Assert.That(outOfGas, Is.False);
+        Span<byte> inlineMemory = memory.LoadSpanAfterGas(in start, 256);
+        inlineMemory.Fill(0xa7);
+        memory.Dispose();
+
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        UInt256 destination = 64;
+        memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out outOfGas);
+        Assert.That(outOfGas, Is.False);
+        memory.StoreWordAfterGas(in destination, word);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Size, Is.EqualTo(96));
+            Assert.That(GetBackingMemory(memory), Is.Null);
+            Assert.That(inlineMemory[..64].IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+            Assert.That(inlineMemory.Slice(64, EvmPooledMemory.WordSize).ToArray(), Is.EqualTo(word));
+            Assert.That(inlineMemory[96], Is.EqualTo(0xa7));
+        }
+
+        memory.Dispose();
     }
 
     [TestCase(false)]
@@ -623,12 +684,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         try
         {
-            byte[]? originalBackingMemory = null;
             if (allocateDestinationFirst)
             {
                 Assert.That(memory.TrySaveWord(UInt256.Zero, word), Is.True);
-                originalBackingMemory = GetBackingMemory(ref memory);
-                Assert.That(originalBackingMemory, Has.Length.EqualTo(1024));
+                Assert.That(GetBackingMemory(memory), Is.Null);
             }
 
             UInt256 destination = UInt256.Zero;
@@ -640,13 +699,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
             using (Assert.EnterMultipleScope())
             {
-                byte[]? backingMemory = GetBackingMemory(ref memory);
-                Assert.That(backingMemory, Has.Length.EqualTo(1024));
-                if (originalBackingMemory is not null)
-                {
-                    Assert.That(backingMemory, Is.SameAs(originalBackingMemory));
-                }
-                Assert.That(ReadVisibleMemory(ref memory).AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                Assert.That(GetBackingMemory(memory), Is.Null);
+                Assert.That(ReadVisibleMemory(memory).AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
             }
         }
         finally
@@ -696,8 +750,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 memory.StoreWordAfterGas(in location, word);
             }
 
-            AssertDirtyTailWasReused(ref memory);
-            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+            if (GetBackingMemory(memory) is not null)
+            {
+                AssertDirtyTailWasReused(memory);
+            }
+            Assert.That(ReadVisibleMemory(memory), Is.EqualTo(expected));
         }
         finally
         {
@@ -733,19 +790,25 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
             memory.SaveAfterGas(in destination, source);
 
-            byte[]? backingMemory = GetBackingMemory(ref memory);
-            Assert.That(backingMemory, Is.Not.Null);
-            using (Assert.EnterMultipleScope())
+            byte[]? backingMemory = GetBackingMemory(memory);
+            if (backingMemory is null)
             {
-                Assert.That(backingMemory!.AsSpan(offset, length).ToArray(), Is.EqualTo(source));
-                if (prefixLength != 0)
+                Assert.That(offset, Is.Zero);
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(backingMemory.AsSpan(prefixLength, offset - prefixLength).IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                    Assert.That(backingMemory.AsSpan(offset, length).ToArray(), Is.EqualTo(source));
+                    if (prefixLength != 0)
+                    {
+                        Assert.That(backingMemory.AsSpan(prefixLength, offset - prefixLength).IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                    }
+                    Assert.That(backingMemory[offset + length], Is.EqualTo(0xa7), "logical zeroes after the overwrite should remain unmaterialized");
                 }
-                Assert.That(backingMemory[offset + length], Is.EqualTo(0xa7), "logical zeroes after the overwrite should remain unmaterialized");
             }
 
-            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+            Assert.That(ReadVisibleMemory(memory), Is.EqualTo(expected));
         }
         finally
         {
@@ -813,12 +876,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         try
         {
-            WriteInitialMemory(ref memory, initial);
-            if (initial.Length != 0)
-            {
-                AssertDirtyTailWasReused(ref memory);
-            }
-
+            WriteInitialMemory(memory, initial);
             UInt256 destination = (UInt256)destinationOffset;
             UInt256 uint256SourceOffset = (UInt256)sourceOffset;
             memory.CalculateMemoryCost(in destination, (ulong)length, out bool outOfGas);
@@ -826,7 +884,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
             memory.CopyFromZeroExtendedAfterGas(in destination, source, in uint256SourceOffset, length);
 
-            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+            AssertDirtyTailWasReused(memory);
+            Assert.That(ReadVisibleMemory(memory), Is.EqualTo(expected));
         }
         finally
         {
@@ -850,8 +909,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         try
         {
-            WriteInitialMemory(ref memory, initial);
-            AssertDirtyTailWasReused(ref memory);
+            WriteInitialMemory(memory, initial);
             UInt256 destination = destinationOffset;
             if (afterGas)
             {
@@ -864,7 +922,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 Assert.That(memory.TrySave(in destination, source), Is.True);
             }
 
-            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+            Assert.That(ReadVisibleMemory(memory), Is.EqualTo(expected));
         }
         finally
         {
@@ -892,10 +950,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         try
         {
-            WriteInitialMemory(ref memory, initial);
-            if (initialLength <= 16 * 1024)
+            WriteInitialMemory(memory, initial);
+            if (GetBackingMemory(memory) is not null && initialLength <= 16 * 1024)
             {
-                AssertDirtyTailWasReused(ref memory);
+                AssertDirtyTailWasReused(memory);
             }
             UInt256 destination = (UInt256)destinationOffset;
             UInt256 source = (UInt256)sourceOffset;
@@ -910,7 +968,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
             memory.CopyAfterGas(in destination, in source, (ulong)length);
 
-            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+            Assert.That(ReadVisibleMemory(memory), Is.EqualTo(expected));
         }
         finally
         {
@@ -941,9 +999,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    private static void AssertDirtyTailWasReused(ref EvmPooledMemory memory)
+    private static void AssertDirtyTailWasReused(EvmPooledMemory memory)
     {
-        byte[]? backingMemory = GetBackingMemory(ref memory);
+        byte[]? backingMemory = GetBackingMemory(memory);
         Assert.That(backingMemory, Is.Not.Null);
         Assert.That(backingMemory!.Length, Is.GreaterThan(16 * 1024), "negative control requires a sufficiently large pooled buffer");
         Assert.That(backingMemory![16 * 1024], Is.EqualTo(0xa7), "negative control requires a stale pooled tail");
@@ -958,10 +1016,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         {
             try
             {
-                UInt256 zero = UInt256.Zero;
+                UInt256 location = 256;
                 for (int i = 0; i < _rentals.Length; i++)
                 {
-                    Assert.That(_rentals[i].TrySaveByte(in zero, 0), Is.True);
+                    _rentals[i] = new EvmPooledMemory();
+                    Assert.That(_rentals[i].TrySaveByte(in location, 0), Is.True);
                 }
             }
             catch
@@ -980,7 +1039,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    private static void WriteInitialMemory(ref EvmPooledMemory memory, byte[] initial)
+    private static void WriteInitialMemory(EvmPooledMemory memory, byte[] initial)
     {
         for (int offset = 0; offset < initial.Length; offset += EvmPooledMemory.WordSize)
         {
@@ -989,7 +1048,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    private static byte[] ReadVisibleMemory(ref EvmPooledMemory memory)
+    private static byte[] ReadVisibleMemory(EvmPooledMemory memory)
         => memory.GetTrace().Slice(0, (int)memory.Size).ToArray();
 
     private static byte[] CreatePattern(int length, byte seed, int multiplier = 37)
