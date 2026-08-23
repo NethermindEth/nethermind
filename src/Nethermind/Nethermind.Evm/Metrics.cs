@@ -375,7 +375,7 @@ public partial class Metrics
     public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheProbes { get; } = new();
 
     [GaugeMetric]
-    [Description("Precompile result cache insertion outcomes, by precompile and outcome. Every insertion records one per-block tier outcome (block, rejected_full, rejected_duplicate) and one surviving tier outcome (surviving, too_large).")]
+    [Description("Precompile result cache insertion outcomes, by precompile and outcome. An insertion refused by a full per-block tier records rejected_full only, as it is offered to no tier. Any other insertion records one per-block tier outcome (block, rejected_duplicate) and one surviving tier outcome (surviving, too_large).")]
     [KeyIsLabel("precompile", "outcome")]
     public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheAdds { get; } = new();
 

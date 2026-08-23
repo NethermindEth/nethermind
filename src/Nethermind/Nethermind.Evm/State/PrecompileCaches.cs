@@ -21,13 +21,14 @@ namespace Nethermind.Evm.State;
 
 /// <summary>
 /// Precompile result caches with 2 tiers: <br/>
-/// - a per-block tier partitioned per precompile address <br/>
+/// - a per-block tier partitioned per precompile address; <br/>
 /// - one surviving tier shared by every precompile.
 /// </summary>
 /// <remarks>
-/// Each precompile gets its own partition with a separate byte budget.
+/// In the per-block tier each precompile gets its own partition with a separate byte budget.
 /// A precompile filling its own partition cannot deny cache to another,
 /// so cheap frequent calls cannot starve expensive-to-compute results.
+/// The surviving tier is shared, so it gives no such guarantee.
 /// </remarks>
 public sealed class PrecompileCaches
 {
@@ -159,47 +160,41 @@ public sealed class PrecompileCaches
             return false;
         }
 
-        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, in whichever tiers accept it. </summary>
+        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
         public void TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
-            bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
-            if (!wantSurviving)
-            {
-                Record(ref _tooLarge);
-            }
-
             long reservation = entryBytes + EntryOverheadBytes;
-            bool wantBlock = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
-            if (!wantBlock)
+
+            if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 Record(ref _rejectedFull);
+                return;
             }
-
-            if (!wantBlock && !wantSurviving) return;
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
-            if (wantBlock)
+            if (_entries.TryAdd(copiedKey, result))
             {
-                if (_entries.TryAdd(copiedKey, result))
-                {
-                    Record(ref _admitted);
-                }
-                else
-                {
-                    // another thread computed the same result concurrently - this copy is redundant
-                    Interlocked.Add(ref _bytes, -reservation);
-                    Record(ref _rejectedDuplicate);
-                }
+                Record(ref _admitted);
+            }
+            else
+            {
+                // another thread computed the same result concurrently - this copy is redundant
+                Interlocked.Add(ref _bytes, -reservation);
+                Record(ref _rejectedDuplicate);
             }
 
-            if (wantSurviving)
+            if (entryBytes <= MaxSurvivingEntryBytes)
             {
                 _survivingCache.Set(copiedKey, result);
                 Record(ref _survivingAdmitted);
+            }
+            else
+            {
+                Record(ref _tooLarge);
             }
         }
 

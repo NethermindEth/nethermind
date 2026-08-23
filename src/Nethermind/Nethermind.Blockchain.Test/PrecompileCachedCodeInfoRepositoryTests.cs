@@ -315,6 +315,28 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void Run_AtPartitionByteBudget_DoesNotAddToSurvivingTier()
+    {
+        const int inputLength = 4;
+        const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+        int runCount = 0;
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
+            maxBytes: entryCost);
+
+        byte[] refused = [2, 1, 2, 3];
+        resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
+        resolved.Run(refused, Prague.Instance);
+        Assert.That(caches.SurvivingCacheCount, Is.EqualTo(1), "precondition: the budget admits the first entry only");
+
+        caches.ClearBlockCache();
+        resolved.Run(refused, Prague.Instance);
+
+        Assert.That(runCount, Is.EqualTo(3), "an entry the full partition refused must not reach the surviving tier either");
+    }
+
+    [Test]
     public void Run_WhenOnePartitionIsFull_LeavesAnotherPrecompileItsOwnBudget()
     {
         const int inputLength = 4;
@@ -334,12 +356,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
             precompile1.Run(new byte[] { (byte)i, 1, 2, 3 }, Prague.Instance);
 
         precompile2.Run(new byte[] { 9, 1, 2, 3 }, Prague.Instance);
-        caches.TryGetPartition(OtherPrecompileAddress, out PrecompileCaches.Partition? parition2);
+        caches.TryGetPartition(OtherPrecompileAddress, out PrecompileCaches.Partition? partition2);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(caches.BlockCacheCount, Is.EqualTo(entriesPerPartition + 1), "a full partition must not consume another precompile's share");
-            Assert.That(parition2!.UsedBytes, Is.EqualTo(entryCost), "the second precompile must still cache after the first one is full");
+            Assert.That(partition2!.UsedBytes, Is.EqualTo(entryCost), "the second precompile must still cache after the first one is full");
         }
     }
 
@@ -373,7 +395,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // miss, admitted to both tiers
         resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // per-block hit
-        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, surviving tier still takes it
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, so no tier takes it
 
         caches.ClearBlockCache();
 
@@ -382,13 +404,13 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
             Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
             Assert.That(AddMetric("block"), Is.EqualTo(1));
-            Assert.That(AddMetric("surviving"), Is.EqualTo(2), "the surviving tier has its own budget");
+            Assert.That(AddMetric("surviving"), Is.EqualTo(1), "an entry the full partition refused reaches no tier");
             Assert.That(AddMetric("rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
             Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
             Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
         }
 
-        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // surviving tier outlives the block
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // surviving tier outlives the block
         caches.ClearBlockCache();
 
         using (Assert.EnterMultipleScope())
