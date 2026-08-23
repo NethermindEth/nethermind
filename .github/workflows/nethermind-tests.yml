@@ -74,6 +74,7 @@ jobs:
           - Nethermind.HealthChecks.Test
           - Nethermind.History.Test
           - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
