@@ -371,9 +371,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: MetricLabel), maxBytes: entryCost);
 
-        resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // miss, admitted to both tiers
-        resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // per-block hit
-        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // miss, budget full, surviving tier still takes it
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // miss, admitted to both tiers
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance); // per-block hit
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // miss, budget full, surviving tier still takes it
 
         caches.ClearBlockCache();
 
@@ -388,7 +388,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
         }
 
-        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // surviving tier outlives the block
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance); // surviving tier outlives the block
         caches.ClearBlockCache();
 
         using (Assert.EnterMultipleScope())
