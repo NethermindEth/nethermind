@@ -956,13 +956,16 @@ namespace Nethermind.Blockchain.Receipts
             // Not <= 0: the resume key is counted, so a budget of one returns where it started and stalls there.
             if (retainedFromBlock == 0 || maxEntries <= 1 || _transactionDb is not ISortedKeyValueStore sorted) return null;
 
+            // Both sentinels mean the per-block path never removes anything, so an operator on either has asked for
+            // the index to be left alone and master leaves it. Unset is the same promise.
+            if (_receiptConfig.TxLookupLimit is not ulong limit || limit == 0 || limit == ulong.MaxValue) return null;
+
             // Below the TxLookupLimit horizon the per-block path already does this, at no read cost. On shipping
             // defaults the retained window is the wider of the two, so without this the walk never finds anything.
-            if (_receiptConfig.TxLookupLimit is ulong limit && limit > 0 && limit != ulong.MaxValue)
-            {
-                ulong head = _blockTree.Head?.Number ?? 0;
-                if (head > limit && retainedFromBlock <= head - limit) return null;
-            }
+            // A head short of the limit deliberately falls through: the per-block path has not started, and when it
+            // does it begins at head - limit and only moves forward, so nothing else ever reclaims what is below.
+            ulong head = _blockTree.Head?.Number ?? 0;
+            if (head > limit && retainedFromBlock <= head - limit) return null;
 
             Span<byte> upperBound = stackalloc byte[Hash256.Size + 1];
             upperBound.Fill(0xFF);
