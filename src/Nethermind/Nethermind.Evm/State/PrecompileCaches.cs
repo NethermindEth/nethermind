@@ -32,7 +32,7 @@ namespace Nethermind.Evm.State;
 /// </remarks>
 public sealed class PrecompileCaches
 {
-    /// <summary> Container cost on every entry, on top of its key and output bytes. </summary>
+    /// <summary> Accounting weight charged per entry, on top of its key and output bytes, as a container cost estimate. </summary>
     public const int EntryOverheadBytes = 160;
 
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
@@ -123,7 +123,7 @@ public sealed class PrecompileCaches
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, in whichever tiers accept it. </summary>
         public void TryAdd(in Key key, Result<byte[]> result)
         {
-            int entryBytes = key.DataLength + (result.Data?.Length ?? 0);
+            long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
 
             long reservation = entryBytes + EntryOverheadBytes;

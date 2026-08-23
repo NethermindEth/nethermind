@@ -160,7 +160,7 @@ public sealed record PreBlockCachesConfig
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
 
     /// <summary>
-    /// Total bytes, including per-entry container overhead, that the per-block precompile tier may hold.
+    /// Weighted budget for the per-block precompile tier: payload bytes plus <see cref="PrecompileCaches.EntryOverheadBytes"/> charged per entry.
     /// </summary>
     /// <remarks>
     /// A caller buys at most ~2.8 bytes of cache per gas spent (the sha256 asymptote, matched by blake2f with
