@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark;
@@ -251,5 +253,117 @@ public class EvmPooledMemoryLazyOverwriteTailBenchmarks
         {
             memory.Dispose();
         }
+    }
+}
+
+[MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "ReadMaterialization")]
+public class EvmPooledMemoryReadMaterializationBenchmarks
+{
+    private const int SolidityPrologueOffset = 0x40;
+    private const int InitializedEnd = SolidityPrologueOffset + EvmPooledMemory.WordSize;
+    private const int CommonReservationSize = 512;
+    private const int SpilledReservationSize = 4 * 1024;
+
+    private readonly VmState<EthereumGasPolicy> _state = new();
+
+    [Benchmark(Baseline = true)]
+    public ulong InitializedWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, SolidityPrologueOffset);
+        ulong result = ReadWord(ref memory, SolidityPrologueOffset);
+        memory.Dispose();
+        return result;
+    }
+
+    [Benchmark]
+    public ulong Reserved512ThenInitializedWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, SolidityPrologueOffset);
+        Reserve(ref memory, CommonReservationSize);
+        ulong result = ReadWord(ref memory, SolidityPrologueOffset);
+        memory.Dispose();
+        return result;
+    }
+
+    [Benchmark]
+    public ulong Reserved4096ThenInitializedWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, SolidityPrologueOffset);
+        Reserve(ref memory, SpilledReservationSize);
+        ulong result = ReadWord(ref memory, SolidityPrologueOffset);
+        memory.Dispose();
+        return result;
+    }
+
+    [Benchmark]
+    public ulong Reserved512ThenInitializedCallInput()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, SolidityPrologueOffset);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, EvmPooledMemory.WordSize);
+        Reserve(ref memory, CommonReservationSize);
+
+        UInt256 inputStart = UInt256.Zero;
+        Span<byte> input = memory.LoadSpanAfterGas(in inputStart, InitializedEnd);
+        ulong result = memory.Size + input[0];
+        memory.Dispose();
+        return result;
+    }
+
+    [Benchmark]
+    public ulong Reserved512ThenCrossingWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, SolidityPrologueOffset);
+        Reserve(ref memory, CommonReservationSize);
+        ulong result = ReadWord(ref memory, InitializedEnd);
+        memory.Dispose();
+        return result;
+    }
+
+    [Benchmark]
+    public ulong SequentialZeroWords()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        Reserve(ref memory, EvmPooledMemory.InlineCapacity);
+
+        byte result = 0;
+        for (int offset = 0; offset < EvmPooledMemory.InlineCapacity; offset += EvmPooledMemory.WordSize)
+        {
+            UInt256 location = (UInt256)offset;
+            result ^= memory.Load32BytesAfterGas(in location);
+        }
+
+        ulong size = memory.Size + result;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong Reserved4096ThenInitializedArrayWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, EvmPooledMemory.InlineCapacity);
+        Reserve(ref memory, SpilledReservationSize);
+        ulong result = ReadWord(ref memory, SolidityPrologueOffset);
+        memory.Dispose();
+        return result;
+    }
+
+    private static void Reserve(ref EvmPooledMemory memory, int size)
+    {
+        UInt256 start = UInt256.Zero;
+        memory.CalculateMemoryCost(in start, (ulong)size, out _);
+    }
+
+    private static ulong ReadWord(ref EvmPooledMemory memory, int offset)
+    {
+        UInt256 location = (UInt256)offset;
+        return memory.Size + memory.Load32BytesAfterGas(in location);
     }
 }

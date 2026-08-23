@@ -404,7 +404,7 @@ public struct EvmPooledMemory
     private void StoreByteSlow(ulong overwriteEnd, int offset, byte value)
     {
         PrepareAccessAfterGas(overwriteEnd);
-        // The after-gas contract proves offset < Size; preparation guarantees Size <= _memory.Length.
+        // The after-gas contract proves offset < Size; preparation guarantees overwriteEnd <= _memory.Length.
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.Add(ref memory, offset) = value;
     }
@@ -611,7 +611,7 @@ public struct EvmPooledMemory
 
         if (rentIfNeeded)
         {
-            EnsureRented();
+            EnsureRented(length);
         }
     }
 
@@ -626,7 +626,7 @@ public struct EvmPooledMemory
     private void PrepareAccessAfterGas(ulong newLength)
     {
         Debug.Assert(newLength <= Size);
-        EnsureRented();
+        EnsureRented(newLength);
     }
 
     /// <summary>Prepares a range that will be completely overwritten after gas has been charged.</summary>
@@ -669,11 +669,11 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void EnsureRented()
+    private void EnsureRented(ulong requiredEnd)
     {
-        if (Size > GetBackingCapacity() || Size > _initializedSize)
+        if (requiredEnd > GetBackingCapacity() || requiredEnd > _initializedSize)
         {
-            RentSlow();
+            RentSlow(requiredEnd);
         }
     }
 
@@ -800,13 +800,12 @@ public struct EvmPooledMemory
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
+    private void RentSlow(ulong requiredEnd)
     {
         ulong initializedSize = _initializedSize;
-        ulong size = Size;
-        if (_memory is null && _inlineMemoryManager is not null && size <= InlineCapacity)
+        if (_memory is null && _inlineMemoryManager is not null && requiredEnd <= InlineCapacity)
         {
-            if (size > initializedSize)
+            if (requiredEnd > initializedSize)
             {
                 GetInlineSpan().Slice((int)initializedSize).Clear();
                 _initializedSize = InlineCapacity;
@@ -815,13 +814,13 @@ public struct EvmPooledMemory
             return;
         }
 
-        byte[] memory = EnsureCapacity(Size, initializedSize, ref initializedSize);
+        byte[] memory = EnsureCapacity(requiredEnd, initializedSize, ref initializedSize);
 
-        if (size > initializedSize)
+        if (requiredEnd > initializedSize)
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
             const ulong zeroChunk = 4 * 1024;
-            ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
+            ulong target = Math.Min((ulong)memory.Length, (requiredEnd + (zeroChunk - 1)) & ~(zeroChunk - 1));
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
         }

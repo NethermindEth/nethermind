@@ -513,6 +513,60 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [TestCase(false, 512)]
+    [TestCase(false, 4 * 1024)]
+    [TestCase(true, 512)]
+    [TestCase(true, 4 * 1024)]
+    public void Read_within_initialized_prefix_does_not_materialize_larger_logical_expansion(
+        bool afterGas,
+        int reservationSize)
+    {
+        VmState<EthereumGasPolicy> owner = new();
+        ref EvmPooledMemory memory = ref owner.Memory;
+        UInt256 start = UInt256.Zero;
+
+        try
+        {
+            memory.CalculateMemoryCost(in start, 256, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            Span<byte> inlineMemory = memory.LoadSpanAfterGas(in start, 256);
+            inlineMemory.Fill(0xa7);
+            memory.Dispose();
+
+            byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+            UInt256 destination = 64;
+            memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.StoreWordAfterGas(in destination, word);
+            memory.CalculateMemoryCost(in start, (ulong)reservationSize, out outOfGas);
+            Assert.That(outOfGas, Is.False);
+
+            byte[] actual;
+            if (afterGas)
+            {
+                actual = memory.LoadSpanAfterGas(in destination, EvmPooledMemory.WordSize).ToArray();
+            }
+            else
+            {
+                UInt256 length = EvmPooledMemory.WordSize;
+                Assert.That(memory.TryLoad(in destination, in length, out ReadOnlyMemory<byte> loaded), Is.True);
+                actual = loaded.ToArray();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.Size, Is.EqualTo((ulong)reservationSize));
+                Assert.That(GetBackingMemory(ref memory), Is.Null);
+                Assert.That(actual, Is.EqualTo(word));
+                Assert.That(inlineMemory[96], Is.EqualTo(0xa7));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [Test]
     public void VmState_inline_memory_view_tracks_spill_without_renting_early()
     {
