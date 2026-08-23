@@ -1203,10 +1203,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const int MaxReclaimBoundLength = 128;
 
     /// <summary>
-    /// Largest key strictly below <paramref name="exclusive"/>, or false when there is none to express - an
-    /// all-zero bound, or one longer than the buffer, in which case the caller reclaims nothing rather than
-    /// guessing. Trailing zeroes are dropped and the last remaining byte decremented, which undershoots: keys
-    /// between the result and <paramref name="exclusive"/> keep their files, and none above it can lose one.
+    /// Largest key strictly below <paramref name="exclusive"/> of the same length, or false when there is none to
+    /// express - an all-zero bound, or one longer than the buffer, in which case the caller reclaims nothing rather
+    /// than guessing. Decremented as one big-endian value, so for equal-length keys this is the exact predecessor;
+    /// a shorter key that is a prefix of <paramref name="exclusive"/> extended with zeroes sorts above the result and
+    /// keeps its files, which is the safe direction - nothing at or above the bound can lose one.
     /// </summary>
     private static bool TryLargestBoundBelow(ReadOnlySpan<byte> exclusive, Span<byte> destination, out int length)
     {

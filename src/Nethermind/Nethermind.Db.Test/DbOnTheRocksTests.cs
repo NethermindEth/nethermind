@@ -509,6 +509,32 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void ReclaimRange_WithAnExclusiveBoundEndingInZero_StillGivesTheDiskBack()
+        {
+            // The bound is lowered before the inclusive native call, and lowering it by truncating trailing zeroes
+            // rather than borrowing through them drops it below every key sharing the removed bytes. At a bound of
+            // 512 that is all 256 heights below it - a pass that publishes a boundary and returns nothing.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            for (ulong number = 256; number < 512; number++)
+            {
+                db.PutSpan(BlockKey(number, 0xAA), value, WriteFlags.None);
+                db.Flush();
+            }
+
+            long before = SstBytes(DbPath);
+            Assert.That(before, Is.GreaterThan(0));
+
+            db.RemoveRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
+            db.ReclaimRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
+
+            Assert.That(SstBytes(DbPath), Is.LessThan(before / 4),
+                "every height covered sits below a bound ending in a zero byte, so truncating instead of borrowing keeps all of them");
+        }
+
+        [Test]
         public void ReclaimRange_LeavesAKeySittingOnTheExclusiveBound()
         {
             // The native call's include_end would reach a file whose largest key is the exclusive bound itself, so
