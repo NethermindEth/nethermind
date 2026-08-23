@@ -26,6 +26,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
     private const long UnconstrainedMaxBytes = 32 * 1024 * 1024;
 
+    private const string MetricLabel = "TEST_METRIC_LABEL";
+
     private static IPrecompileProvider CreateProvider(params (Address Address, IPrecompile Precompile)[] precompiles)
     {
         FrozenDictionary<AddressAsKey, CodeInfo> map = precompiles
@@ -367,7 +369,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         const int inputLength = 3;
         const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
 
-        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new MetricLabelledTestPrecompile(), maxBytes: entryCost);
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new TestPrecompile(supportsCaching: true, name: MetricLabel), maxBytes: entryCost);
 
         resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // miss, admitted to both tiers
         resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // per-block hit
@@ -398,30 +400,21 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static long ProbeMetric(string result) =>
-        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabelledTestPrecompile.Label, result), out long count) ? count : 0;
+        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
 
     private static long AddMetric(string outcome) =>
-        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabelledTestPrecompile.Label, outcome), out long count) ? count : 0;
+        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabel, outcome), out long count) ? count : 0;
 
     private static long UsedBytesMetric() =>
-        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabelledTestPrecompile.Label, out long bytes) ? bytes : 0;
+        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
 
     private static long EntriesMetric() =>
-        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabelledTestPrecompile.Label, out long entries) ? entries : 0;
+        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
 
-    /// <summary> Echoing precompile with a declared name, so <see cref="PrecompileCaches"/> labels its metrics with it. </summary>
-    private class MetricLabelledTestPrecompile : IPrecompile
+    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null, string? name = null) : IPrecompile
     {
-        public const string Label = "TEST_METRIC_LABEL";
+        public string Name => name ?? nameof(TestPrecompile);
 
-        public string Name => Label;
-        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
-        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
-        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
-    }
-
-    private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
-    {
         public bool SupportsCaching => supportsCaching;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
