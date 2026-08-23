@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -17,10 +18,16 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class VmState<TGasPolicy> : IDisposable
+public class VmState<TGasPolicy> : MemoryManager<byte>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new();
+
+    [InlineArray(EvmPooledMemory.InlineCapacity)]
+    private struct InlineMemory
+    {
+        private byte _element0;
+    }
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -53,6 +60,9 @@ public class VmState<TGasPolicy> : IDisposable
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
+    private InlineMemory _inlineMemory;
+
+    public VmState() => _memory = new(this, isFresh: true);
 
     /// <summary>
     /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
@@ -143,7 +153,7 @@ public class VmState<TGasPolicy> : IDisposable
         // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
         // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
         // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = default;
+        _memory = new(this);
 #endif
         if (executionType.IsAnyCreate())
         {
@@ -194,7 +204,7 @@ public class VmState<TGasPolicy> : IDisposable
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ExecutionEnvironment Env => _env!;
-    public ref EvmPooledMemory Memory => ref _memory;
+    public new ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
     public void Dispose()
@@ -218,7 +228,6 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _memory = default;
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
@@ -244,6 +253,18 @@ public class VmState<TGasPolicy> : IDisposable
         }
     }
 #endif
+
+    protected override void Dispose(bool disposing) => Dispose();
+
+    public override Span<byte> GetSpan()
+    {
+        byte[]? backingArray = _memory.BackingArray;
+        return backingArray is null ? _inlineMemory : backingArray;
+    }
+
+    public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+
+    public override void Unpin() { }
 
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {

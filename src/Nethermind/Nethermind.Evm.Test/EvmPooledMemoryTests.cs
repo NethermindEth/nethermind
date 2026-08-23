@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -474,6 +475,111 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         bool outOfGas = !memory.TryLoad(0, in length, out ReadOnlyMemory<byte> result);
         Assert.That(outOfGas, Is.EqualTo(true));
         Assert.That(result.IsEmpty, Is.EqualTo(true));
+    }
+
+    [Test]
+    public void VmState_inline_storage_clears_only_the_required_gap_after_reuse()
+    {
+        VmState<EthereumGasPolicy> owner = new();
+        ref EvmPooledMemory memory = ref owner.Memory;
+        UInt256 start = UInt256.Zero;
+
+        try
+        {
+            memory.CalculateMemoryCost(in start, 256, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            Span<byte> inlineMemory = memory.LoadSpanAfterGas(in start, 256);
+            inlineMemory.Fill(0xa7);
+            memory.Dispose();
+
+            byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+            UInt256 destination = 64;
+            memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.StoreWordAfterGas(in destination, word);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.Size, Is.EqualTo(96));
+                Assert.That(GetBackingMemory(ref memory), Is.Null);
+                Assert.That(inlineMemory[..64].IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                Assert.That(inlineMemory.Slice(64, EvmPooledMemory.WordSize).ToArray(), Is.EqualTo(word));
+                Assert.That(inlineMemory[96], Is.EqualTo(0xa7));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
+    public void VmState_inline_memory_view_tracks_spill_without_renting_early()
+    {
+        VmState<EthereumGasPolicy> owner = new();
+        ref EvmPooledMemory memory = ref owner.Memory;
+        byte[] expected = CreatePattern(96, 0x31);
+        byte[] replacement = CreatePattern(96, 0x57);
+        UInt256 start = UInt256.Zero;
+        UInt256 length = (UInt256)expected.Length;
+
+        try
+        {
+            Assert.That(memory.TrySave(in start, expected), Is.True);
+            Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
+            Assert.That(GetBackingMemory(ref memory), Is.Null);
+
+            UInt256 spillDestination = EvmPooledMemory.InlineCapacity;
+            Assert.That(memory.TrySave(in spillDestination, expected), Is.True);
+            byte[]? backingMemory = GetBackingMemory(ref memory);
+            Assert.That(memory.Inspect(in start, in length).ToArray(), Is.EqualTo(expected));
+            Assert.That(memory.TrySave(in start, replacement), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(backingMemory, Is.Not.Null);
+                Assert.That(
+                    backingMemory!.Length,
+                    Is.GreaterThanOrEqualTo(EvmPooledMemory.InlineCapacity + expected.Length));
+                Assert.That(System.Numerics.BitOperations.IsPow2((uint)backingMemory.Length), Is.True);
+                Assert.That(view.ToArray(), Is.EqualTo(replacement));
+                Assert.That(memory.Inspect(in start, in length).ToArray(), Is.EqualTo(replacement));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
+    public void VmState_owned_load_survives_inline_memory_reuse()
+    {
+        VmState<EthereumGasPolicy> owner = new();
+        ref EvmPooledMemory memory = ref owner.Memory;
+        byte[] expected = CreatePattern(96, 0x31);
+        byte[] replacement = CreatePattern(96, 0x57);
+        UInt256 location = UInt256.Zero;
+        UInt256 length = (UInt256)expected.Length;
+
+        try
+        {
+            Assert.That(memory.TrySave(in location, expected), Is.True);
+            Assert.That(memory.TryLoadOwned(in location, in length, out ReadOnlyMemory<byte> owned), Is.True);
+
+            memory.Dispose();
+            Assert.That(memory.TrySave(in location, replacement), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owned.ToArray(), Is.EqualTo(expected));
+                Assert.That(memory.Inspect(in location, in length).ToArray(), Is.EqualTo(replacement));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [Test]

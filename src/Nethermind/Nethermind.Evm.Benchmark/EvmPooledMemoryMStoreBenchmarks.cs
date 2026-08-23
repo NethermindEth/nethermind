@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
+using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -97,6 +98,79 @@ public class EvmPooledMemoryFirstMStoreBenchmarks
         {
             memory.Dispose();
         }
+    }
+}
+
+[MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "MSTORE", "Solidity")]
+public class EvmPooledMemorySolidityLifecycleBenchmarks
+{
+    private readonly VmState<EthereumGasPolicy> _state = new();
+
+    [Benchmark]
+    public ulong PrologueOnly()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong PrologueThenScratch()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x00);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x20);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong PrologueThenReturnWord()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x80);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong PrologueThenLargerAllocation()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x100);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong PrologueThenWordAt0x120()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x120);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong PrologueThenFirstSpill()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x400);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
     }
 }
 
