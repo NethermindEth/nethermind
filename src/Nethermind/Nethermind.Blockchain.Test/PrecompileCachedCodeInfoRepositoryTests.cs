@@ -37,11 +37,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static PrecompileCaches CreateCaches(IPrecompileProvider provider, int survivingMaxEntries = 1024, long maxBytes = UnconstrainedMaxBytes) =>
-        new(provider, new PreBlockCachesConfig
-        {
-            SurvivingPrecompileCacheMaxEntries = survivingMaxEntries,
-            PrecompileCacheMaxBytes = maxBytes
-        });
+        new(provider, new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries }, maxBytes);
 
     private static IReleaseSpec CreateSpecWithPrecompiles(params Address[] precompileAddresses)
     {

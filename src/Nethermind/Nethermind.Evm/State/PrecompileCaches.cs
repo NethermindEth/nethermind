@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -42,21 +43,26 @@ public sealed class PrecompileCaches
     private const int PartitionInitialCapacity = 1024;
 
     /// <summary> For flows and tests that don't cache precompile results. </summary>
-    public static PrecompileCaches Empty { get; } = new([], new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = 0 });
+    public static PrecompileCaches Empty { get; } = new([], new PreBlockCachesConfig(), maxBytes: 0);
 
     private readonly FrozenDictionary<AddressAsKey, Partition> _partitions;
 
     /// <summary> Bounded by entry count and by <see cref="MaxSurvivingEntryBytes"/>, and is never cleared. </summary>
     private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
 
-    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config)
-        : this(CacheableAddresses(precompileProvider), config) { }
+    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig)
+        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L) { }
 
-    private PrecompileCaches(List<AddressAsKey> addresses, PreBlockCachesConfig config)
+    /// <summary> Byte-exact budget, bypassing <see cref="IBlocksConfig.PrecompileCacheMaxKilobytes"/>. </summary>
+    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes)
+        : this(maxBytes > 0 ? CacheableAddresses(precompileProvider) : [], config, maxBytes) { }
+
+    private PrecompileCaches(List<AddressAsKey> addresses, PreBlockCachesConfig config, long maxBytes)
     {
         // equal shares per precompile for now
-        long partitionSize = addresses.Count == 0 ? 0 : config.PrecompileCacheMaxBytes / addresses.Count;
-        _survivingCache = new ClockCache<Key, Result<byte[]>>(config.SurvivingPrecompileCacheMaxEntries, comparer: EqualityComparer<Key>.Default);
+        long partitionSize = addresses.Count == 0 ? 0 : maxBytes / addresses.Count;
+        int survivingMaxEntries = addresses.Count == 0 ? 0 : config.SurvivingPrecompileCacheMaxEntries;
+        _survivingCache = new ClockCache<Key, Result<byte[]>>(survivingMaxEntries, comparer: EqualityComparer<Key>.Default);
 
         Dictionary<AddressAsKey, Partition> partitions = new(addresses.Count);
         foreach (AddressAsKey address in addresses)

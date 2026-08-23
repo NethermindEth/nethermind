@@ -70,13 +70,11 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
-                    IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                     PrecompileCaches precompileCaches = ctx.Resolve<PrecompileCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                     IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
-                        blocksConfig.CachePrecompilesOnBlockProcessing ? precompileCaches : null);
+                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository, precompileCaches);
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();

@@ -158,18 +158,6 @@ public sealed record PreBlockCachesConfig
     public int StorageCacheSetsBits { get; init; } = 17;
 
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
-
-    /// <summary>
-    /// Weighted budget for the per-block precompile tier: payload bytes plus <see cref="PrecompileCaches.EntryOverheadBytes"/> charged per entry.
-    /// </summary>
-    /// <remarks>
-    /// A caller buys at most ~2.8 bytes of cache per gas spent (the sha256 asymptote, matched by blake2f with
-    /// zero rounds once EVM call overhead is counted), while honest traffic runs two orders of magnitude below that.
-    /// 32 MiB therefore leaves real blocks ample room at a 60M gas limit while refusing an adversarial filler well inside one block.
-    /// It does not track the live gas limit, so it needs revisiting if the limit grows by an order of magnitude.
-    /// </remarks>
-    // TODO: calculate based on gas limit and precompiles stats?
-    public long PrecompileCacheMaxBytes { get; init; } = 32 * 1024 * 1024;
 }
 
 [Flags]
