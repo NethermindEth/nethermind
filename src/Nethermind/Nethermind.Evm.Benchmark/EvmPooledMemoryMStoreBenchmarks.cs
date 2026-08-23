@@ -3,6 +3,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -98,6 +99,107 @@ public class EvmPooledMemoryFirstMStoreBenchmarks
         {
             memory.Dispose();
         }
+    }
+}
+
+[MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "MSTORE", "ReservedTail")]
+public class EvmPooledMemoryReservedMStoreBenchmarks
+{
+    private const int ReservationSize = 4 * 1024;
+    private const int GapOffset = 256;
+
+    private static readonly byte[] Word = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
+
+    [Params(1, 2, 16)]
+    public int WordCount { get; set; }
+
+    [Benchmark(Baseline = true)]
+    public ulong InitializedPrefix()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0);
+            WriteWords(ref memory, 0);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public ulong ReservedInitializedPrefix()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0);
+            Reserve(ref memory);
+            WriteWords(ref memory, 0);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public ulong ReservedContiguousGrowth()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            WriteLazyPrefix(ref memory);
+            Reserve(ref memory);
+            WriteWords(ref memory, EvmPooledMemory.WordSize);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public ulong ReservedGapGrowth()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            WriteLazyPrefix(ref memory);
+            Reserve(ref memory);
+            WriteWords(ref memory, GapOffset);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    private void WriteWords(ref EvmPooledMemory memory, int start)
+    {
+        for (int i = 0; i < WordCount; i++)
+        {
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, start + i * EvmPooledMemory.WordSize);
+        }
+    }
+
+    private static void WriteLazyPrefix(ref EvmPooledMemory memory)
+    {
+        UInt256 start = UInt256.Zero;
+        memory.CalculateMemoryCost(in start, EvmPooledMemory.WordSize, out _);
+        memory.SaveAfterGas(in start, Word);
+    }
+
+    private static void Reserve(ref EvmPooledMemory memory)
+    {
+        UInt256 start = UInt256.Zero;
+        memory.CalculateMemoryCost(in start, ReservationSize, out _);
     }
 }
 

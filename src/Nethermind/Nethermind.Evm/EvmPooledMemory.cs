@@ -336,12 +336,21 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + WordSize;
         byte[]? memory = _memory;
-        if (memory is not null && Size <= (ulong)memory.Length && Size <= _initializedSize)
+        if (memory is not null && overwriteEnd <= (ulong)memory.Length)
         {
-            EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-            ref byte memoryData = ref MemoryMarshal.GetArrayDataReference(memory);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref memoryData, offset), value);
-            return;
+            ulong initializedSize = _initializedSize;
+            if (overwriteEnd <= initializedSize)
+            {
+                WriteWord(memory, offset, word);
+                return;
+            }
+
+            if (location.u0 <= initializedSize)
+            {
+                WriteWord(memory, offset, word);
+                _initializedSize = overwriteEnd;
+                return;
+            }
         }
 
         if (memory is null && _inlineMemoryManager is not null && overwriteEnd <= InlineCapacity)
@@ -365,9 +374,15 @@ public struct EvmPooledMemory
     private void StoreWordSlow(ulong overwriteEnd, int offset, ReadOnlySpan<byte> word)
     {
         PrepareAccessAfterGas(overwriteEnd);
+        WriteWord(_memory!, offset, word);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteWord(byte[] memory, int offset, ReadOnlySpan<byte> word)
+    {
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
+        ref byte memoryData = ref MemoryMarshal.GetArrayDataReference(memory);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memoryData, offset), value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -513,6 +513,62 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(16)]
+    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail(int wordCount)
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        const int reservationSize = 4 * 1024;
+        byte[] prefix = CreatePattern(EvmPooledMemory.WordSize, 0x21);
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x61);
+        byte[] expected = new byte[(wordCount + 1) * EvmPooledMemory.WordSize];
+        prefix.CopyTo(expected, 0);
+        for (int i = 0; i < wordCount; i++)
+        {
+            word.CopyTo(expected, (i + 1) * EvmPooledMemory.WordSize);
+        }
+
+        EvmPooledMemory memory = new();
+        UInt256 start = UInt256.Zero;
+        try
+        {
+            memory.CalculateMemoryCost(in start, EvmPooledMemory.WordSize, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.SaveAfterGas(in start, prefix);
+            byte[]? backingMemory = GetBackingMemory(ref memory);
+            Assert.That(backingMemory, Is.Not.Null);
+            Assert.That(backingMemory![EvmPooledMemory.WordSize], Is.EqualTo(0xa7));
+
+            memory.CalculateMemoryCost(in start, reservationSize, out outOfGas);
+            Assert.That(outOfGas, Is.False);
+            for (int i = 0; i < wordCount; i++)
+            {
+                UInt256 destination = (UInt256)((i + 1) * EvmPooledMemory.WordSize);
+                memory.StoreWordAfterGas(in destination, word);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.Size, Is.EqualTo(reservationSize));
+                Assert.That(GetBackingMemory(ref memory), Is.SameAs(backingMemory));
+                Assert.That(backingMemory.AsSpan(0, expected.Length).ToArray(), Is.EqualTo(expected));
+                Assert.That(backingMemory[expected.Length], Is.EqualTo(0xa7));
+            }
+
+            byte[] visibleMemory = memory.GetTrace().Slice(0, reservationSize).ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(visibleMemory.AsSpan(0, expected.Length).ToArray(), Is.EqualTo(expected));
+                Assert.That(visibleMemory.AsSpan(expected.Length).IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [TestCase(false, 512)]
     [TestCase(false, 4 * 1024)]
     [TestCase(true, 512)]
