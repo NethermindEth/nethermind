@@ -577,24 +577,30 @@ public struct EvmPooledMemory
     private const int MaxThreadCachedBytes = 1 << 21;
     private const int CacheSlots = 16;
 
-    [ThreadStatic] private static byte[]?[]? _cachedArrays;
-    [ThreadStatic] private static int _cachedArrayCount;
-    [ThreadStatic] private static int _cachedArrayBytes;
+    private struct ThreadCache
+    {
+        public byte[]?[]? Arrays;
+        public int Count;
+        public int Bytes;
+    }
+
+    [ThreadStatic] private static ThreadCache _threadCache;
 
     // Explicit allocations are runtime-zeroed, while cached and pooled arrays are untrusted.
     // The initialized prefix lets the slow paths preserve that distinction through growth.
     private static byte[] Rent(int minLength, out ulong initializedSize)
     {
-        byte[]?[]? cache = _cachedArrays;
-        int cachedArrayCount = _cachedArrayCount - 1;
+        ref ThreadCache threadCache = ref _threadCache;
+        byte[]?[]? cache = threadCache.Arrays;
+        int cachedArrayCount = threadCache.Count - 1;
         for (int i = cachedArrayCount; i >= 0; i--)
         {
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
                 initializedSize = 0;
-                _cachedArrayCount = cachedArrayCount;
-                _cachedArrayBytes -= candidate.Length;
+                threadCache.Count = cachedArrayCount;
+                threadCache.Bytes -= candidate.Length;
                 cache[i] = cache[cachedArrayCount];
                 cache[cachedArrayCount] = null;
                 return candidate;
@@ -613,14 +619,17 @@ public struct EvmPooledMemory
 
     private static void Return(byte[] array)
     {
-        if (array.Length <= MaxThreadCachedArrayLength
-            && _cachedArrayCount < CacheSlots
-            && _cachedArrayBytes + array.Length <= MaxThreadCachedBytes)
+        if (array.Length <= MaxThreadCachedArrayLength)
         {
-            byte[]?[] cache = _cachedArrays ??= new byte[CacheSlots][];
-            cache[_cachedArrayCount++] = array;
-            _cachedArrayBytes += array.Length;
-            return;
+            ref ThreadCache threadCache = ref _threadCache;
+            if (threadCache.Count < CacheSlots
+                && threadCache.Bytes + array.Length <= MaxThreadCachedBytes)
+            {
+                byte[]?[] cache = threadCache.Arrays ??= new byte[CacheSlots][];
+                cache[threadCache.Count++] = array;
+                threadCache.Bytes += array.Length;
+                return;
+            }
         }
 
         // Provenance: arrays <= MaxNewAllocLength are plain allocations, larger ones came from
