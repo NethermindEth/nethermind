@@ -166,6 +166,76 @@ public class SlicedReceiptRetentionTests
         Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.TypeOf<ResourceNotFoundException>());
     }
 
+    // Slicing a busy contract retains most heights, where a range removal per gap is all cost and no reclaim. Both
+    // densities have to end with the same receipts present, since only the mechanism differs.
+    [TestCase(1, TestName = "Retains_the_right_receipts_when_almost_every_height_is_sliced")]
+    [TestCase(40, TestName = "Retains_the_right_receipts_when_few_heights_are_sliced")]
+    public async Task Retains_the_right_receipts_at_either_retention_density(int sliceEvery)
+    {
+        Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+
+        List<int> indexedHits = [];
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.MaxBlockNumber.Returns(int.MaxValue - 1);
+        logIndexStorage.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+        {
+            int rangeFrom = call.ArgAt<int>(1);
+            int rangeTo = call.ArgAt<int>(2);
+            return indexedHits.Where(h => h >= rangeFrom && h <= rangeTo).ToList().GetEnumerator();
+        });
+
+        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig, logIndexStorage);
+
+        byte[] logCode = Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.LOG0).Done;
+
+        Block slicedBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(0).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        Block otherBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(1).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+
+        ulong slicedBlockNumber = slicedBlock.Number;
+        Hash256 slicedBlockHash = slicedBlock.Hash!;
+        ulong otherBlockNumber = otherBlock.Number;
+        Hash256 otherBlockHash = otherBlock.Hash!;
+
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+
+        // The sliced block is always named; the filler heights around it set the density the pruner has to cope with.
+        indexedHits.Add((int)slicedBlockNumber);
+        for (ulong height = 1; height < testBlockchain.BlockTree.Head!.Number; height++)
+        {
+            if (height != otherBlockNumber && height % (ulong)sliceEvery == 0) indexedHits.Add((int)height);
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(slicedBlockNumber, slicedBlockHash), Is.True,
+                "the sliced block's receipts are retained whichever mechanism the density selects");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(otherBlockNumber, otherBlockHash), Is.False,
+                "and a height the index never named is still reclaimed");
+        }
+    }
+
     [Test]
     public void ShouldRetainReceipts_returns_false_when_no_addresses_are_configured()
     {

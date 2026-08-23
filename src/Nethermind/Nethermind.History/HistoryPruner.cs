@@ -378,6 +378,10 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong MinimumReclaimChunkBlocks = 100_000;
 
+    /// <summary>One retained height in this many is where reclaiming the gaps by range stops being worth the writes
+    /// it costs. Not a tuning knob: either side of it is correct, and only the cost differs.</summary>
+    private const int DenseRetentionDivisor = 8;
+
     /// <summary>
     /// Heights the next chunk covers, reduced when the token is already spent so progress cannot reach zero without
     /// a full chunk of tombstones and file unlinks landing in front of a block. Draining that way is slow, which is
@@ -494,6 +498,19 @@ public class HistoryPruner : IHistoryPruner
         foreach (ulong height in retained)
         {
             if (height >= answeredFrom && height < answeredTo) heights.Add(height);
+        }
+
+        // Dense retention makes a range removal per gap the wrong shape: the gaps are a block or two wide, no file
+        // ever lies entirely inside one, and every attempt still costs a write and an unlink that cannot find
+        // anything. Slicing a busy contract puts the span here, and the density is measured rather than assumed.
+        if (heights.Count * DenseRetentionDivisor >= (long)(answeredTo - answeredFrom))
+        {
+            for (ulong number = answeredFrom; number < answeredTo; number++)
+            {
+                AskBlockByBlock(number);
+            }
+
+            return;
         }
 
         heights.Sort();
