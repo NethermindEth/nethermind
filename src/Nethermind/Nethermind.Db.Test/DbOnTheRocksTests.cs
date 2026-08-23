@@ -525,7 +525,7 @@ namespace Nethermind.Db.Test
             }
 
             long before = SstBytes(DbPath);
-            Assert.That(before, Is.GreaterThan(0));
+            Assert.That(before, Is.GreaterThan(0), "the data has to be in SST files for there to be anything to give back");
 
             db.RemoveRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
             db.ReclaimRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
@@ -540,8 +540,9 @@ namespace Nethermind.Db.Test
             // The native call's include_end would reach a file whose largest key is the exclusive bound itself, so
             // this pins the half-open contract for an arbitrary key rather than for the block-numbered callers, whose
             // exclusive bound happens to be unreachable.
-            // Small target files and an explicit compaction, because the unlink skips L0 - left there, both keys
-            // would be ineligible and the test would pass whatever the bound did.
+            // Small target files and an explicit compaction so the two keys land in separate files. One flush puts
+            // both in the same SST, and a file straddling the bound is never entirely inside the range - the test
+            // would then pass without exercising the bound at all.
             IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "target_file_size_base=1024;" };
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
