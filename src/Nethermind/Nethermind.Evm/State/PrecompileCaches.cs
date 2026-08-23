@@ -27,9 +27,10 @@ namespace Nethermind.Evm.State;
 /// - one surviving tier shared by every precompile.
 /// </summary>
 /// <remarks>
-/// Each precompile gets its own partition with a separate byte budget.
+/// In the per-block tier each precompile gets its own partition with a separate byte budget.
 /// A precompile filling its own partition cannot deny cache to another,
 /// so cheap frequent calls cannot starve expensive-to-compute results.
+/// The surviving tier is shared, so it gives no such guarantee.
 /// </remarks>
 public sealed class PrecompileCaches
 {
