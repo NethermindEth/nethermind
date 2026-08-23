@@ -363,4 +363,32 @@ public partial class Metrics
     [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
+
+    [GaugeMetric]
+    [Description("Precompile result cache probes, by precompile and probe result (block_hit, surviving_hit, miss).")]
+    [KeyIsLabel("precompile", "result")]
+    public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheProbes { get; } = new();
+
+    [GaugeMetric]
+    [Description("Precompile result cache insertion outcomes, by precompile and outcome. Every insertion records one per-block tier outcome (block, rejected_full, rejected_duplicate) and one surviving tier outcome (surviving, too_large).")]
+    [KeyIsLabel("precompile", "outcome")]
+    public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheAdds { get; } = new();
+
+    [GaugeMetric]
+    [Description("Accounted weight held by the per-block precompile result cache, by precompile. Counts committed entries only, so it can trail the internal reservation counter while an insertion is in flight.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheUsedBytes { get; } = new();
+
+    [GaugeMetric]
+    [Description("Entries held by the per-block precompile result cache, by precompile.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheEntries { get; } = new();
+
+    [GaugeMetric]
+    [Description("Weighted budget of one per-block precompile cache partition; partitions are equal shares, and this stays 0 when precompile caching is disabled.")]
+    public static long PrecompileCachePartitionMaxBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Entries held by the surviving precompile result cache, which is shared by every precompile.")]
+    public static long PrecompileCacheSurvivingEntries { get; set; }
 }

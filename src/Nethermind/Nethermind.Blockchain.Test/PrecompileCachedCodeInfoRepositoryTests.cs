@@ -361,6 +361,61 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
+    [Test]
+    public void Run_ThroughEveryCacheOutcome_ReportsThemUnderThePrecompileName()
+    {
+        const int inputLength = 3;
+        const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(new MetricLabelledTestPrecompile(), maxBytes: entryCost);
+
+        resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // miss, admitted to both tiers
+        resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // per-block hit
+        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // miss, budget full, surviving tier still takes it
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must mirror the one admitted entry");
+            Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
+        }
+
+        caches.ClearBlockCache();
+        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // surviving tier outlives the block
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
+            Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
+            Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
+            Assert.That(AddMetric("block"), Is.EqualTo(1));
+            Assert.That(AddMetric("surviving"), Is.EqualTo(2), "the surviving tier has its own budget");
+            Assert.That(AddMetric("rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
+            Assert.That(UsedBytesMetric(), Is.Zero, "the clear must zero the gauge");
+            Assert.That(EntriesMetric(), Is.Zero, "the clear must zero the gauge");
+        }
+    }
+
+    private static long ProbeMetric(string result) =>
+        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabelledTestPrecompile.Name, result), out long count) ? count : 0;
+
+    private static long AddMetric(string outcome) =>
+        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabelledTestPrecompile.Name, outcome), out long count) ? count : 0;
+
+    private static long UsedBytesMetric() =>
+        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabelledTestPrecompile.Name, out long bytes) ? bytes : 0;
+
+    private static long EntriesMetric() =>
+        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabelledTestPrecompile.Name, out long entries) ? entries : 0;
+
+    /// <summary> Echoing precompile with a declared name, so <see cref="PrecompileCaches"/> labels its metrics with it. </summary>
+    private class MetricLabelledTestPrecompile : IPrecompile
+    {
+        public static string Name => "TEST_METRIC_LABEL";
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
+        public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;
