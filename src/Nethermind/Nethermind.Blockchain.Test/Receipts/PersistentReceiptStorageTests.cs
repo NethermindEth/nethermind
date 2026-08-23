@@ -143,8 +143,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     // Backwards, this either walks the whole index every pass finding nothing or lets it grow without bound.
-    [TestCase(2_000_000ul, 500_000ul, false)]
-    [TestCase(1_000_000ul, 2_500_000ul, true)]
+    [TestCase(1_000_000ul, 2_500_000ul, true, TestName = "Sweeps_once_pruning_has_passed_the_lookup_horizon")]
+    [TestCase(2_000_000ul, 500_000ul, false, TestName = "Leaves_the_index_alone_below_the_horizon")]
+    [TestCase(4_000_000ul, 2_500_000ul, true, TestName = "Sweeps_when_head_is_short_of_the_limit_and_nothing_else_ever_will")]
+    [TestCase(0ul, 2_500_000ul, false, TestName = "Leaves_the_index_alone_when_the_limit_is_the_index_forever_sentinel")]
+    [TestCase(ulong.MaxValue, 2_500_000ul, false, TestName = "Leaves_the_index_alone_when_the_limit_is_the_never_index_sentinel")]
     public void SweepTransactionIndex_RunsOnlyOncePastTheLookupHorizon(ulong txLookupLimit, ulong retainedFromBlock, bool expectSwept)
     {
         _receiptConfig.TxLookupLimit = txLookupLimit;
@@ -162,7 +165,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(txIndex.Get(TestItem.KeccakA), expectSwept ? Is.Null : Is.Not.Null,
                 expectSwept
                     ? "above the horizon the per-block path can no longer reach these, so the sweep is the only mechanism"
-                    : "below the horizon the per-block path still covers them, and walking the index finds nothing");
+                    : "everywhere else master retains the index, and destroying entries an operator asked to keep cannot be undone");
         }
     }
 
