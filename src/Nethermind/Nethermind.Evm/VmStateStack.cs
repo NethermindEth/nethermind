@@ -17,12 +17,20 @@ namespace Nethermind.Evm;
 /// every push lowers to an out-of-line covariance helper on the per-frame path. Storing through a byref
 /// keeps the GC write barrier and drops that check. Call depth is bounded, so capacity is fixed at
 /// construction and there is no growth path.
+/// <para>
+/// Public only because <see cref="VirtualMachine{TGasPolicy}"/> exposes its frame stack to derived
+/// classes; it is an implementation detail of the interpreter, not a general-purpose collection.
+/// </para>
 /// </remarks>
-internal sealed class VmStateStack<TGasPolicy>(int capacity)
+/// <param name="capacity">Frames the stack can hold. Pushing beyond it throws.</param>
+public sealed class VmStateStack<TGasPolicy>(int capacity)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly VmState<TGasPolicy>?[] _items = new VmState<TGasPolicy>?[capacity];
     private int _count;
+
+    /// <summary>The number of frames currently held.</summary>
+    public int Count => _count;
 
     public void Push(VmState<TGasPolicy> state)
     {

@@ -67,6 +67,20 @@ public class VmStateStackTests
     }
 
     [Test]
+    public void Count_tracks_pushes_and_pops()
+    {
+        VmStateStack<EthereumGasPolicy> stack = new(Capacity);
+        Assert.That(stack.Count, Is.Zero);
+
+        stack.Push(new VmState<EthereumGasPolicy>());
+        stack.Push(new VmState<EthereumGasPolicy>());
+        Assert.That(stack.Count, Is.EqualTo(2));
+
+        stack.Pop();
+        Assert.That(stack.Count, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Pop_when_empty_throws()
     {
         VmStateStack<EthereumGasPolicy> stack = new(Capacity);
