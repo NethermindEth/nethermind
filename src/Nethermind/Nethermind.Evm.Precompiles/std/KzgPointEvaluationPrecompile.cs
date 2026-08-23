@@ -11,8 +11,6 @@ public partial class KzgPointEvaluationPrecompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.KzgPointEvaluationPrecompile++;
-
         return RunInternal(inputData);
     }
 }

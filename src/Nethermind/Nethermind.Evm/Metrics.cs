@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
@@ -363,6 +364,18 @@ public partial class Metrics
     [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
+
+    [GaugeMetric]
+    [Description("Number of precompile calls, by precompile. Includes cached calls.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCalls { get; } = new();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementPrecompileCalls(string precompileName)
+    {
+        if (ExecutionMetricsFlag.IsActive)
+            PrecompileCalls.Increment(precompileName);
+    }
 
     [GaugeMetric]
     [Description("Precompile result cache probes, by precompile and probe result (block_hit, surviving_hit, miss).")]

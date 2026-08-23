@@ -12,8 +12,6 @@ public partial class Ripemd160Precompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Ripemd160Precompile++;
-
         return Ripemd.Compute(inputData.Span);
     }
 }

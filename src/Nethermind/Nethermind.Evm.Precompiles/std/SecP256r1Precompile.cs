@@ -12,8 +12,6 @@ public partial class SecP256r1Precompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.SecP256r1Precompile++;
-
         return SecP256r1.VerifySignature(inputData) ? _successResult : [];
     }
 }

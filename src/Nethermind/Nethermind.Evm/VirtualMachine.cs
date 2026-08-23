@@ -899,6 +899,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <returns><c>false</c> when the precompile threw a non-fatal exception; otherwise <c>true</c> with its result in <paramref name="output"/>.</returns>
     internal bool TryRunPrecompileDirectly(IPrecompile precompile, ReadOnlyMemory<byte> callData, IReleaseSpec spec, out Result<byte[]> output)
     {
+        Metrics.IncrementPrecompileCalls(precompile.Name);
         try
         {
             output = precompile.Run(callData, spec);
@@ -1084,6 +1085,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         state.Gas = gas;
+        Metrics.IncrementPrecompileCalls(precompile.Name);
 
         return ExecutePrecompileCall(state, precompile, callData, spec);
     }
