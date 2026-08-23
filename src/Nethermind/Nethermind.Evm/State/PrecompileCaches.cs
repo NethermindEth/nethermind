@@ -23,7 +23,7 @@ namespace Nethermind.Evm.State;
 
 /// <summary>
 /// Precompile result caches with 2 tiers: <br/>
-/// - a per-block tier partitioned per precompile address <br/>
+/// - a per-block tier partitioned per precompile address; <br/>
 /// - one surviving tier shared by every precompile.
 /// </summary>
 /// <remarks>
@@ -127,23 +127,23 @@ public sealed class PrecompileCaches
         public bool TryGet(in Key key, out Result<byte[]> result) =>
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
-        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, in whichever tiers accept it. </summary>
+        /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
         public void TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
-            bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
-
             long reservation = entryBytes + EntryOverheadBytes;
-            bool wantBlock = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
-            if (!wantBlock) Interlocked.Add(ref _bytes, -reservation);
 
-            if (!wantBlock && !wantSurviving) return;
+            if (Interlocked.Add(ref _bytes, reservation) > MaxBytes)
+            {
+                Interlocked.Add(ref _bytes, -reservation);
+                return;
+            }
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
-            if (wantBlock && !_entries.TryAdd(copiedKey, result)) Interlocked.Add(ref _bytes, -reservation);
-            if (wantSurviving) _survivingCache.Set(copiedKey, result);
+            if (!_entries.TryAdd(copiedKey, result)) Interlocked.Add(ref _bytes, -reservation);
+            if (entryBytes <= MaxSurvivingEntryBytes) _survivingCache.Set(copiedKey, result);
         }
 
         internal void Clear()

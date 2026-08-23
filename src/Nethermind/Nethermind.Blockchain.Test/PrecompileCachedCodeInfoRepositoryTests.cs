@@ -313,6 +313,28 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void Run_AtPartitionByteBudget_DoesNotAddToSurvivingTier()
+    {
+        const int inputLength = 4;
+        const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+
+        int runCount = 0;
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true, onRun: () => runCount++),
+            maxBytes: entryCost);
+
+        byte[] refused = [2, 1, 2, 3];
+        resolved.Run(new byte[] { 1, 1, 2, 3 }, Prague.Instance);
+        resolved.Run(refused, Prague.Instance);
+        Assert.That(caches.SurvivingCacheCount, Is.EqualTo(1), "precondition: the budget admits the first entry only");
+
+        caches.ClearBlockCache();
+        resolved.Run(refused, Prague.Instance);
+
+        Assert.That(runCount, Is.EqualTo(3), "an entry the full partition refused must not reach the surviving tier either");
+    }
+
+    [Test]
     public void Run_WhenOnePartitionIsFull_LeavesAnotherPrecompileItsOwnBudget()
     {
         const int inputLength = 4;
