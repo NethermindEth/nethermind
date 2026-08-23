@@ -261,7 +261,11 @@ public class HistoryPruner : IHistoryPruner
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
-                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
+                // From the reclaim cursor, not the boundary: the boundary is raised the moment a pass starts, so
+                // measuring against it reports the heights this pass added rather than the ones still owed, and the
+                // silence below then hides a backlog of millions on a node whose head only moves the boundary once
+                // an epoch. The access-list figure needs no such care - its pointer is its cursor.
+                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksReclaimCursor);
                 ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
                 // Silent when only the sweep has work, which is most passes once a cycle is running: announcing two
                 // estimates of zero reads as "nothing to do" on the pass that does have some.
@@ -382,6 +386,12 @@ public class HistoryPruner : IHistoryPruner
     /// it costs. Not a tuning knob: either side of it is correct, and only the cost differs.</summary>
     private const int DenseRetentionDivisor = 8;
 
+    /// <summary>How far the receipt walk goes before it will look at the deadline again. A chunk is sized for range
+    /// operations, which are a handful per chunk however wide it is; deciding retention can cost a header read per
+    /// height, so the same width would hold the pass for as long as that takes and answer to no deadline. Small
+    /// enough that a slice is bounded work, large enough that the check is not the work.</summary>
+    private const ulong ReceiptRetentionSlice = 10_000;
+
     /// <summary>
     /// Heights the next chunk covers, reduced when the token is already spent so progress cannot reach zero without
     /// a full chunk of tombstones and file unlinks landing in front of a block. Draining that way is slow, which is
@@ -423,8 +433,11 @@ public class HistoryPruner : IHistoryPruner
                 ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
 
                 // Receipts first: retaining a block's receipts re-encodes them from the block, which the delete
-                // below is about to remove.
-                RetainReceiptsAndReclaimTheRest(from, to);
+                // below is about to remove. Where the retention has to read headers this can stop short, and the
+                // rest of the chunk has to stop with it - deleting bodies past that point would strand receipts
+                // whose retention was never decided.
+                to = RetainReceiptsAndReclaimTheRest(from, to, cancellationToken);
+
                 _blockTree.DeleteOldBlockRange(from, to);
                 _blockAccessListStore.DeleteRange(from, to);
 
@@ -465,58 +478,73 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary>
-    /// Reclaims the receipts of <c>[from, to)</c> while keeping the ones something on this node still answers for.
+    /// Reclaims the receipts of <c>[from, to)</c> while keeping the ones something on this node still answers for,
+    /// and returns the height it actually reached - which is <paramref name="to"/> unless the budget ran out first.
     /// </summary>
     /// <remarks>
-    /// Only the heights the retention names are read as blocks; everything between them goes by range. Where the
-    /// retention cannot answer for the span - no log index, or a span outside the part it holds - this falls back to
-    /// asking block by block, which is what the pruner did for every block before ranges existed: slow, and correct.
+    /// Walked in slices so the caller's deadline can land between two of them. A slice inside the part the retention
+    /// answered for costs nothing to decide; outside it, one header is read per height. Either way only the heights
+    /// that come back as candidates are read as blocks, and everything between them goes back by range.
     /// </remarks>
-    private void RetainReceiptsAndReclaimTheRest(ulong from, ulong to)
+    private ulong RetainReceiptsAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken)
     {
-        IReadOnlySet<ulong> retained = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
+        IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
-        for (ulong number = from; number < answeredFrom; number++)
+        for (ulong cursor = from; cursor < to;)
         {
-            AskBlockByBlock(number);
+            ulong sliceEnd = ulong.Min(cursor + ReceiptRetentionSlice, to);
+
+            // A slice must not straddle the edge of what the retention answered: on one side the retained heights
+            // are already known, on the other they have to be read from headers, and one slice cannot be both.
+            if (cursor < answeredFrom) sliceEnd = ulong.Min(sliceEnd, answeredFrom);
+            else if (cursor < answeredTo) sliceEnd = ulong.Min(sliceEnd, answeredTo);
+
+            bool alreadyAnswered = cursor >= answeredFrom && cursor < answeredTo;
+            ReclaimReceiptSlice(cursor, sliceEnd, alreadyAnswered ? answered : null);
+            cursor = sliceEnd;
+
+            if (cursor < to && cancellationToken.IsCancellationRequested) return cursor;
         }
 
-        for (ulong number = answeredTo; number < to; number++)
-        {
-            AskBlockByBlock(number);
-        }
+        return to;
+    }
 
-        if (answeredFrom >= answeredTo) return;
+    /// <summary>Reclaims one slice. <paramref name="answered"/> is null where the retention could not answer for the
+    /// span, which is where the headers have to be read instead.</summary>
+    private void ReclaimReceiptSlice(ulong fromInclusive, ulong toExclusive, IReadOnlySet<ulong>? answered)
+    {
+        List<ulong> candidates = answered is null
+            ? CandidatesFromHeaders(fromInclusive, toExclusive)
+            : CandidatesFromAnswer(answered, fromInclusive, toExclusive);
 
-        if (retained.Count == 0)
+        if (candidates.Count == 0)
         {
-            _receiptStorage.RemoveReceiptsRange(answeredFrom, answeredTo);
+            _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
             return;
-        }
-
-        List<ulong> heights = new(retained.Count);
-        foreach (ulong height in retained)
-        {
-            if (height >= answeredFrom && height < answeredTo) heights.Add(height);
         }
 
         // Dense retention makes a range removal per gap the wrong shape: the gaps are a block or two wide, no file
         // ever lies entirely inside one, and every attempt still costs a write and an unlink that cannot find
-        // anything. Slicing a busy contract puts the span here, and the density is measured rather than assumed.
-        if (heights.Count * DenseRetentionDivisor >= (long)(answeredTo - answeredFrom))
+        // anything. Slicing a busy contract puts the slice here, and the density is measured rather than assumed.
+        if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
         {
-            for (ulong number = answeredFrom; number < answeredTo; number++)
+            HashSet<ulong> keep = [.. candidates];
+            for (ulong number = fromInclusive; number < toExclusive; number++)
             {
-                AskBlockByBlock(number);
+                if (keep.Contains(number) && TryRetainAt(number)) continue;
+
+                // A height whose level or body will not load still has to lose its receipts: the block range is
+                // deleted either way, and a row left behind has nothing to be read against and nothing naming it.
+                if (!TryRemoveReceiptsAt(number)) _receiptStorage.RemoveReceiptsRange(number, number + 1);
             }
 
             return;
         }
 
-        heights.Sort();
+        candidates.Sort();
 
-        ulong gapStart = answeredFrom;
-        foreach (ulong height in heights)
+        ulong gapStart = fromInclusive;
+        foreach (ulong height in candidates)
         {
             if (height > gapStart) _receiptStorage.RemoveReceiptsRange(gapStart, height);
 
@@ -526,28 +554,72 @@ public class HistoryPruner : IHistoryPruner
             gapStart = height + 1;
         }
 
-        if (gapStart < answeredTo) _receiptStorage.RemoveReceiptsRange(gapStart, answeredTo);
+        if (gapStart < toExclusive) _receiptStorage.RemoveReceiptsRange(gapStart, toExclusive);
     }
 
-    private void AskBlockByBlock(ulong number)
+    private static List<ulong> CandidatesFromAnswer(IReadOnlySet<ulong> answered, ulong fromInclusive, ulong toExclusive)
+    {
+        List<ulong> candidates = [];
+        foreach (ulong height in answered)
+        {
+            if (height >= fromInclusive && height < toExclusive) candidates.Add(height);
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
+    /// Heights whose bloom says their receipts might be worth keeping. The retention decides from the header, so this
+    /// costs a header read per height rather than a body read, and hands back a set sparse enough for the rest of the
+    /// slice to go by range. A bloom false positive only retains a height that did not need it.
+    /// </summary>
+    private List<ulong> CandidatesFromHeaders(ulong fromInclusive, ulong toExclusive)
+    {
+        List<ulong> candidates = [];
+        for (ulong number = fromInclusive; number < toExclusive; number++)
+        {
+            ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
+            if (level is null) continue;
+
+            foreach (BlockInfo info in level.BlockInfos)
+            {
+                BlockHeader? header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.None, number);
+                if (header is null) continue;
+
+                if (_receiptRetention.ShouldRetainReceipts(header))
+                {
+                    candidates.Add(number);
+                    break;
+                }
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>Removes by block, which is cheaper than a range of one height. False when the level or every body is
+    /// missing, so the caller can fall back to the range and never leave a row behind.</summary>
+    private bool TryRemoveReceiptsAt(ulong number)
     {
         ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
-        if (level is null) return;
+        if (level is null) return false;
 
+        // Every body at the height, not merely one: the range the caller falls back to covers the height whatever its
+        // hashes are, while removing by block can only reach the ones that loaded.
+        bool removedAll = level.BlockInfos.Length > 0;
         foreach (BlockInfo info in level.BlockInfos)
         {
             Block? block = _blockTree.FindBlock(info.BlockHash, BlockTreeLookupOptions.None, number);
-            if (block is null) continue;
+            if (block is null)
+            {
+                removedAll = false;
+                continue;
+            }
 
-            if (_receiptRetention.ShouldRetainReceipts(block) && _receiptStorage.TryRetainSelfDescribing(block))
-            {
-                Metrics.SlicedReceiptsRetained++;
-            }
-            else
-            {
-                _receiptStorage.RemoveReceipts(block);
-            }
+            _receiptStorage.RemoveReceipts(block);
         }
+
+        return removedAll;
     }
 
     private bool TryRetainAt(ulong number)

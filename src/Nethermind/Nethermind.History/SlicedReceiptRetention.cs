@@ -16,14 +16,14 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
 {
     private readonly FrozenSet<Address> _addresses = ParseAddresses(flatDbConfig.HistorySliceAddresses);
 
-    public bool ShouldRetainReceipts(Block block)
+    public bool ShouldRetainReceipts(BlockHeader header)
     {
         if (_addresses.Count == 0)
         {
             return false;
         }
 
-        Bloom? bloom = block.Header.Bloom;
+        Bloom? bloom = header.Bloom;
         if (bloom is null)
         {
             return false;
@@ -32,9 +32,9 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         // The index is int-keyed, so a block beyond int.MaxValue cannot be asked about; the bloom match alone
         // decides there rather than a wrapped negative range silently reporting no hit.
         bool indexCoversBlock = logIndexStorage.Enabled
-            && block.Number <= int.MaxValue
-            && logIndexStorage.MinBlockNumber is { } min && block.Number >= (ulong)min
-            && logIndexStorage.MaxBlockNumber is { } max && block.Number <= (ulong)max;
+            && header.Number <= int.MaxValue
+            && logIndexStorage.MinBlockNumber is { } min && header.Number >= (ulong)min
+            && logIndexStorage.MaxBlockNumber is { } max && header.Number <= (ulong)max;
 
         foreach (Address address in _addresses)
         {
@@ -48,7 +48,7 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
                 return true;
             }
 
-            int blockNumber = (int)block.Number;
+            int blockNumber = (int)header.Number;
             using IEnumerator<int> hits = logIndexStorage.GetEnumerator(address, blockNumber, blockNumber);
             if (hits.MoveNext())
             {

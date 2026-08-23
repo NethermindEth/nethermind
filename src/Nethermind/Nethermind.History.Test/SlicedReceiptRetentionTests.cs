@@ -236,12 +236,70 @@ public class SlicedReceiptRetentionTests
         }
     }
 
+    // The log index backfills from the tip downwards while the pruner climbs from genesis, so for hours it can answer
+    // for none of the span being pruned. Each header's bloom has to decide there, and the heights it clears still have
+    // to go back by range - a body read per height is what made this unusable on a real node.
+    [Test]
+    public async Task Retains_the_right_receipts_when_the_log_index_covers_none_of_the_span()
+    {
+        Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(1_000_000);
+        logIndexStorage.MaxBlockNumber.Returns(2_000_000);
+
+        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig, logIndexStorage);
+
+        byte[] logCode = Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.LOG0).Done;
+
+        Block slicedBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(0).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        Block otherBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(1).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+
+        ulong slicedNumber = slicedBlock.Number;
+        Hash256 slicedHash = slicedBlock.Hash!;
+        ulong otherNumber = otherBlock.Number;
+        Hash256 otherHash = otherBlock.Hash!;
+
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(slicedNumber, slicedHash), Is.True,
+                "with the index unable to answer, the header's bloom is the only thing that can keep this height");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(otherNumber, otherHash), Is.False,
+                "and a height whose bloom clears it goes back with the range around it");
+            Assert.That(logIndexStorage.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogIndexStorage.GetEnumerator)), Is.False,
+                "the index must not be asked per height about a span it already reported it cannot cover");
+        }
+    }
+
     [Test]
     public void ShouldRetainReceipts_returns_false_when_no_addresses_are_configured()
     {
         SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>());
 
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA)), Is.False);
+        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA).Header), Is.False);
     }
 
     [TestCase(false, false, 0, false, false, TestName = "bloom does not match")]
@@ -261,7 +319,7 @@ public class SlicedReceiptRetentionTests
         SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
 
         Block block = BlockWithBloom(bloomMatches ? TestItem.AddressA : TestItem.AddressB, 5);
-        Assert.That(retention.ShouldRetainReceipts(block), Is.EqualTo(expected));
+        Assert.That(retention.ShouldRetainReceipts(block.Header), Is.EqualTo(expected));
     }
 
     [Test]
@@ -278,7 +336,7 @@ public class SlicedReceiptRetentionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retention.ShouldRetainReceipts(block), Is.True,
+            Assert.That(retention.ShouldRetainReceipts(block.Header), Is.True,
                 "the index is int-keyed so it cannot be asked about this height; the bloom match must decide rather than a wrapped range reporting no hit");
             Assert.That(logIndexStorage.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogIndexStorage.GetEnumerator)), Is.False,
                 "the index must not be queried at all for a height it cannot represent");

@@ -17,7 +17,7 @@ public sealed class NullPrunedReceiptRetention : IPrunedReceiptRetention
     {
     }
 
-    public bool ShouldRetainReceipts(Block block) => false;
+    public bool ShouldRetainReceipts(BlockHeader header) => false;
 
     /// <summary>Answers for any span, because the answer is always nothing - which is what lets a node with no
     /// retention configured reclaim by range end to end.</summary>

@@ -13,17 +13,17 @@ namespace Nethermind.History;
 /// </summary>
 public interface IPrunedReceiptRetention
 {
-    bool ShouldRetainReceipts(Block block);
+    /// <summary>Decides from the header alone, so the caller can ask about a height without reading its body.</summary>
+    bool ShouldRetainReceipts(BlockHeader header);
 
     /// <summary>
-    /// Heights in <c>[fromInclusive, toExclusive)</c> whose receipts must survive, answered without reading a block.
+    /// Heights in <c>[fromInclusive, toExclusive)</c> whose receipts must survive, answered without reading a header.
     /// </summary>
     /// <remarks>
-    /// The pruner reclaims by range, so it needs the answer for a span rather than for one block at a time - reading
-    /// every header to ask would put back the per-block cost the range reclaim exists to remove. An implementation
-    /// that cannot answer for the whole span narrows <paramref name="answeredFrom"/> and <paramref name="answeredTo"/>
-    /// to the part it can; the caller falls back to <see cref="ShouldRetainReceipts"/> block by block outside that,
-    /// which is slow but is the behaviour that was there before.
+    /// The pruner reclaims by range, so it needs the answer for a span rather than for one height at a time. An
+    /// implementation that cannot answer for the whole span narrows <paramref name="answeredFrom"/> and
+    /// <paramref name="answeredTo"/> to the part it can; outside that the caller reads headers and asks
+    /// <see cref="ShouldRetainReceipts"/>, which costs a header per height but still reclaims the rest by range.
     /// </remarks>
     IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo);
 }
