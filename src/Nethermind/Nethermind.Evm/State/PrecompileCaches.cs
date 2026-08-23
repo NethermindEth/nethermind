@@ -75,13 +75,13 @@ public sealed class PrecompileCaches
         // equal shares per precompile for now
         long partitionSize = precompiles.Count == 0 ? 0 : maxBytes / precompiles.Count;
         int survivingMaxEntries = precompiles.Count == 0 ? 0 : config.SurvivingPrecompileCacheMaxEntries;
+
         _survivingCache = new ClockCache<Key, Result<byte[]>>(survivingMaxEntries, comparer: EqualityComparer<Key>.Default);
+        _partitions = precompiles.ToFrozenDictionary(
+            static precompile => precompile.Address,
+            precompile => new Partition(precompile.Name, partitionSize, _survivingCache)
+        );
 
-        Dictionary<AddressAsKey, Partition> partitions = new(precompiles.Count);
-        foreach ((AddressAsKey address, string name) in precompiles)
-            partitions[address] = new Partition(name, partitionSize, _survivingCache);
-
-        _partitions = partitions.ToFrozenDictionary();
         Metrics.PrecompileCachePartitionMaxBytes = precompiles.Count == 0 ? 0 : partitionSize;
     }
 
@@ -107,19 +107,12 @@ public sealed class PrecompileCaches
         }
     }
 
-    private static List<(AddressAsKey Address, string Name)> CacheablePrecompiles(IPrecompileProvider precompileProvider)
-    {
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = precompileProvider.GetPrecompiles();
-        List<(AddressAsKey, string)> cacheable = new(precompiles.Count);
-        foreach (KeyValuePair<AddressAsKey, CodeInfo> precompile in precompiles)
-        {
-            IPrecompile? implementation = precompile.Value.Precompile;
-            if (implementation?.SupportsCaching == true)
-                cacheable.Add((precompile.Key, GetName(implementation)));
-        }
-
-        return cacheable;
-    }
+    private static List<(AddressAsKey Address, string Name)> CacheablePrecompiles(IPrecompileProvider precompileProvider) =>
+    [
+        .. precompileProvider.GetPrecompiles()
+            .Where(static precompile => precompile.Value.Precompile?.SupportsCaching == true)
+            .Select(static precompile => (Address: precompile.Key, Name: GetName(precompile.Value.Precompile!)))
+    ];
 
     private static string GetName(IPrecompile precompile)
     {
