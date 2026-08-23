@@ -729,7 +729,7 @@ public struct EvmPooledMemory
                 initializedSize = 0;
                 threadCache.Count = cachedArrayCount;
                 threadCache.Bytes -= candidate.Length;
-                cache[i] = cache[cachedArrayCount];
+                Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(cache), i) = cache[cachedArrayCount]; // cache[i] = array, but avoiding stelemref
                 cache[cachedArrayCount] = null;
                 return candidate;
             }
@@ -754,7 +754,7 @@ public struct EvmPooledMemory
                 && threadCache.Bytes + array.Length <= MaxThreadCachedBytes)
             {
                 byte[]?[] cache = threadCache.Arrays ??= new byte[CacheSlots][];
-                cache[threadCache.Count++] = array;
+                Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(cache), threadCache.Count++) = array; // cache[i] = array, but avoiding stelemref
                 threadCache.Bytes += array.Length;
                 return;
             }
