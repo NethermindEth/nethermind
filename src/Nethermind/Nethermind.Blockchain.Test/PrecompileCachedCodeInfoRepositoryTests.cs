@@ -354,12 +354,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
             precompile1.Run(new byte[] { (byte)i, 1, 2, 3 }, Prague.Instance);
 
         precompile2.Run(new byte[] { 9, 1, 2, 3 }, Prague.Instance);
-        caches.TryGetPartition(OtherPrecompileAddress, out PrecompileCaches.Partition? parition2);
+        caches.TryGetPartition(OtherPrecompileAddress, out PrecompileCaches.Partition? partition2);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(caches.BlockCacheCount, Is.EqualTo(entriesPerPartition + 1), "a full partition must not consume another precompile's share");
-            Assert.That(parition2!.UsedBytes, Is.EqualTo(entryCost), "the second precompile must still cache after the first one is full");
+            Assert.That(partition2!.UsedBytes, Is.EqualTo(entryCost), "the second precompile must still cache after the first one is full");
         }
     }
 
