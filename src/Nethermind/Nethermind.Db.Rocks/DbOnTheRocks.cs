@@ -1204,12 +1204,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// A range tombstone frees nothing and does not count towards pending-compaction bytes, so the disk can stay
     /// occupied for weeks. This unlinks the SST files lying entirely inside the range - nearly all of them, for
     /// ascending block-number keys - and hints for the rest.
-    /// Callers must tombstone the range first. Unlinking a file can drop a tombstone that was covering keys in
-    /// partially-overlapping deeper files, and those keys would then be readable again; issuing the tombstone
-    /// immediately before puts it in the memtable, which no unlink can reach.
-    /// Failure is swallowed by design. The keys are already tombstoned durably, so the only thing lost is the timing
-    /// of the space coming back, and a caller that has already published a boundary must not be aborted - nor the
-    /// node shut down by <see cref="HandleFatalDbError"/> - over an optimisation.
+    /// Callers must tombstone first: an unlink can drop a tombstone covering keys in partially-overlapping deeper
+    /// files, and one written immediately before is still in the memtable. Failure is swallowed - the keys are
+    /// already gone durably, so only the timing of the space returning is lost.
     /// </remarks>
     internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
     {
@@ -1225,14 +1222,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             ObjectDisposedException.ThrowIf(_isDisposing, this);
             nint db = _db.Handle;
 
-            // Both pointers are dereferenced only by the native calls inside the fixed scope, and their lengths come
-            // from the spans that pin them. Neither span is empty, guarded above.
+            // Dereferenced only by the native calls inside the fixed scope, lengths from the spans that pin them.
             fixed (byte* from = &MemoryMarshal.GetReference(firstKeyInclusive))
             fixed (byte* to = &MemoryMarshal.GetReference(lastKeyExclusive))
             {
-                // include_end is true in the C API, so this considers files contained in [from, to] rather than the
-                // half-open range used everywhere else here. Safe because no stored key can equal lastKeyExclusive:
-                // that would be a block whose hash is all zeroes.
+                // include_end is true in the C API, so this covers [from, to] rather than the half-open range used
+                // everywhere else. Safe: no stored key equals lastKeyExclusive, which needs an all-zero block hash.
                 IntPtr errPtr;
                 if (cf is null)
                 {

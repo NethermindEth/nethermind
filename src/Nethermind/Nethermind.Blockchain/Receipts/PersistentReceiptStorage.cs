@@ -43,8 +43,7 @@ namespace Nethermind.Blockchain.Receipts
 
         private const int SweepDeleteSliceSize = 4096;
 
-        /// <summary>Entries a pass examines before it will honour cancellation, so that a budget already spent on
-        /// arrival costs the tail of a walk rather than all of it.</summary>
+        /// <summary>Entries examined before cancellation is honoured, so a spent budget costs a walk its tail.</summary>
         private const int SweepMinimumEntriesPerPass = 4096;
 
         private const int CacheSize = 64;
@@ -848,7 +847,6 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
-            // Under deferral this runs under the overlay lock so a queued write cannot resurrect the data.
             if (_pendingReceipts is not null)
             {
                 _pendingReceipts.Remove(block.Hash!, () => RemoveReceiptsCore(block));
@@ -904,8 +902,7 @@ namespace Nethermind.Blockchain.Receipts
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
-            // Not <= 0: the resume key is re-examined and counted, so a budget of one would return the key it
-            // started from and stall there for good rather than erroring.
+            // Not <= 0: the resume key is counted, so a budget of one returns where it started and stalls there.
             if (retainedFromBlock == 0 || maxEntries <= 1 || _transactionDb is not ISortedKeyValueStore sorted) return null;
 
             // Below the TxLookupLimit horizon the per-block path already does this, at no read cost. On shipping
@@ -941,11 +938,9 @@ namespace Nethermind.Blockchain.Receipts
                         }
                     }
 
-                    // Re-reads the last key examined once, cheaper than carrying a successor. The walk's only
-                    // allocation - everything above it reads the iterator's own buffer.
-                    // Cancellation is honoured only after a minimum slice, for the same reason the reclaim chunks
-                    // are: this walk runs last in a pass, so a token that is already spent on arrival would
-                    // otherwise stop it before it examined anything, on every pass.
+                    // Re-reads the last key once, cheaper than carrying a successor, and the walk's only allocation.
+                    // Only after a minimum slice: running last, a token spent on arrival would otherwise stop this
+                    // before it examined anything.
                     if (++examined >= maxEntries
                         || (examined >= SweepMinimumEntriesPerPass && cancellationToken.IsCancellationRequested))
                     {
@@ -966,8 +961,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <summary>Commits what the walk has accumulated and starts a fresh batch. Sliced because one
-        /// multi-thousand-key write stalls every other writer here, and taken under the canonical writer's lock.
-        /// </summary>
+        /// multi-thousand-key write stalls every other writer here; taken under the canonical writer's lock.</summary>
         private void CommitSweepSlice(ref IWriteBatch batch)
         {
             lock (_writeLock)

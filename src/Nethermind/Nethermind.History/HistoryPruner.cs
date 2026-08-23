@@ -267,9 +267,8 @@ public class HistoryPruner : IHistoryPruner
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
-                // Last, and the order matters: this is the only pass whose cost is not bounded by its range, so
-                // ahead of the others it would take the whole timeout on every pass and starve them. The access
-                // list pass is range deletes with nothing to read, so it costs this one almost nothing.
+                // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
+                // whole timeout every pass and starve them.
                 SweepTransactionIndex(cancellationToken);
             }
             else if (_logger.IsDebug)
@@ -366,26 +365,21 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
-    /// <summary>Step taken when the budget was already spent on arrival. Draining a backlog this way is slow, which
-    /// is the right answer: a node in that state has no room to prune, and the guarantee wanted is that progress
-    /// cannot reach zero, not that it is fast.</summary>
     private const ulong MinimumReclaimChunkBlocks = 100_000;
 
     /// <summary>
-    /// Heights the next chunk covers. The only way a pass sees an already-spent token is the scheduler running an
-    /// expired activity, which it does while block processing is active - and a chunk writes range tombstones and
-    /// unlinks the SST files under them. So such a pass takes a fraction of the usual step: enough that progress
-    /// cannot reach zero, not enough to sit in front of a block. Shared by both reclaim loops, which run back to
-    /// back on the same token, so a full step in either of them would undo the other's restraint.
+    /// Heights the next chunk covers, reduced when the token is already spent so progress cannot reach zero without
+    /// a full chunk of tombstones and file unlinks landing in front of a block. Draining that way is slow, which is
+    /// right: a node in that state has no room to prune. The access-list loop mostly reaches the reduced step
+    /// because the block loop spent the budget legitimately, which is accepted - during a drain only the sliver
+    /// ahead of the block cursor is left for it, and afterwards it gets full steps again.
     /// </summary>
     private static ulong ChunkStep(ulong reclaimed, CancellationToken cancellationToken) =>
         reclaimed == 0 && cancellationToken.IsCancellationRequested ? MinimumReclaimChunkBlocks : ReclaimChunkBlocks;
 
-    /// <summary>
-    /// Ceiling on entries examined per pass, not the thing that governs the rate: with a non-zero
-    /// <c>PruningTimeoutSeconds</c> the token almost always ends the walk first. The index therefore settles at some
-    /// stale fraction of the live set rather than at zero, and this bounds one pass rather than closing that gap.
-    /// </summary>
+    /// <summary>Ceiling on entries examined per pass, not what governs the rate: with a non-zero
+    /// <c>PruningTimeoutSeconds</c> the token ends the walk first, so the index settles at some stale fraction of
+    /// the live set rather than at zero.</summary>
     private const int TxIndexSweepEntriesPerPass = 500_000;
 
     /// <summary>Publishes the boundary first, then gives the disk back behind it: everything the reclaim touches is
@@ -431,9 +425,8 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo) _logger.Info($"Reclaimed historical blocks #{from} to #{to - 1}, {limit.SaturatingSub(to)} remaining.");
                 from = to;
 
-                // Checked after a chunk, not before one. The scheduler stamps its deadline at enqueue, so a pass that
-                // waited behind others arrives with the budget already spent - and a token checked first would then
-                // reclaim nothing, on every pass, while the boundary kept advancing.
+                // After a chunk, not before one: the deadline is stamped at enqueue, so a pass that waited behind
+                // others arrives spent, and checking first would reclaim nothing while the boundary kept advancing.
                 if (from < limit && cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info(
@@ -454,8 +447,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
-    /// Discovering it after the boundary is published would leave the node announcing a floor it can never reclaim
-    /// behind, on every pass, forever.</summary>
+    /// Found out after the boundary is published, it would mean announcing a floor nothing can reclaim behind.</summary>
     private void VerifyReclaimSupported()
     {
         _blockTree.DeleteOldBlockRange(0, 0);
@@ -465,9 +457,8 @@ public class HistoryPruner : IHistoryPruner
 
     private void SweepTransactionIndex(CancellationToken cancellationToken)
     {
-        // No token check: this pass runs last, so it is the one most likely to arrive with the budget already gone,
-        // and refusing to start there is how it would end up never running at all. The walk honours the token itself,
-        // after a minimum slice, on the same rule as the reclaim chunks.
+        // No token check: running last, this is the pass most likely to arrive with the budget gone, and refusing to
+        // start there is how it ends up never running. The walk honours the token after a minimum slice instead.
         if (_blocksDeletePointer <= _minDeletableBlockNumber) return;
 
         LoadTxIndexSweepCursor();
@@ -481,9 +472,8 @@ public class HistoryPruner : IHistoryPruner
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // Isolated from the passes around it: this one walks a column and decodes what it finds, so it has
-            // failure modes they do not, and none of them should cost a reclaim that has nothing to do with it.
-            // Cancellation is not one of those - it means the caller wants to stop, so it is left to propagate.
+            // Isolated: this pass walks and decodes, so it has failure modes the reclaims do not, and none of them
+            // should cost a reclaim. Cancellation is not one of them and propagates.
             if (_logger.IsWarn) _logger.Warn($"Transaction index sweep failed and will resume next pass: {e.Message}");
             return;
         }
@@ -528,8 +518,7 @@ public class HistoryPruner : IHistoryPruner
                 Metrics.BlockAccessListHeightsReclaimed += (long)(to - from);
                 from = to;
 
-                // After a chunk, for the same reason as the block pass: a spent budget must cost the tail of a pass,
-                // never all of it.
+                // After a chunk, for the same reason as the block pass.
                 if (from < limit && cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Block access list reclaim interrupted at #{from}. Reclaimed {reclaimed} access lists.");

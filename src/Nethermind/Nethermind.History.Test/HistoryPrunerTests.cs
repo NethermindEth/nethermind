@@ -382,8 +382,7 @@ public class HistoryPrunerTests
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, [1, 2, 3]);
 
-        // The sweep runs last, so it is the pass most likely to find the budget gone. Refusing to start there is how
-        // it would end up never running in the one configuration where it is the only thing bounding the index.
+        // The sweep runs last, so it is the pass most likely to find the budget already gone.
         using CancellationTokenSource spent = new();
         spent.Cancel();
 
@@ -401,9 +400,7 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
 
-        // What the scheduler hands a pass that waited behind others: the deadline is stamped at enqueue, so the token
-        // can already be cancelled on arrival. A pass that reclaims nothing in that state publishes a boundary it
-        // never honours - which is the shape this whole change exists to remove.
+        // What the scheduler hands a pass that waited behind others, the deadline being stamped at enqueue.
         using CancellationTokenSource spent = new();
         spent.Cancel();
 
@@ -428,9 +425,8 @@ public class HistoryPrunerTests
 
         const ulong boundary = 36;
 
-        // A boundary already published with the disk still standing at genesis - what a crash between the two
-        // metadata writes leaves behind. Seeded rather than produced by interrupting a pass, because a chunk spans
-        // more heights than a test chain has, so an interrupted pass always finishes and leaves nothing to resume.
+        // What a crash between the two metadata writes leaves. Seeded rather than produced by interrupting a pass,
+        // because a chunk spans more heights than a test chain has, so an interrupted pass leaves nothing to resume.
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundary).Bytes);
         metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL).Bytes);
@@ -504,8 +500,7 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Reaching the end stores an empty value rather than removing the key, so the two forms have to mean the
-            // same thing on the way back in - a zero-length resume key would be a different instruction entirely.
+            // Reaching the end stores an empty value rather than removing the key; both have to mean "start over".
             Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor), Is.Not.Null.And.Empty);
             Assert.That(() => NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None), Throws.Nothing);
         }

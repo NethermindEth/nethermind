@@ -105,9 +105,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    // Which side of the TxLookupLimit horizon the boundary sits on decides whether the sweep runs at all. Backwards,
-    // it either walks the whole index every pass finding nothing or lets the index grow without bound - and neither
-    // shows up as a failure, only as disk.
+    // Backwards, this either walks the whole index every pass finding nothing or lets it grow without bound.
     [TestCase(2_000_000ul, 500_000ul, false)]
     [TestCase(1_000_000ul, 2_500_000ul, true)]
     public void SweepTransactionIndex_RunsOnlyOncePastTheLookupHorizon(ulong txLookupLimit, ulong retainedFromBlock, bool expectSwept)
@@ -147,8 +145,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         using (Assert.EnterMultipleScope())
         {
-            // Fewer entries than the minimum slice, so a spent budget must not stop the walk before it has done
-            // anything - this pass runs last and would otherwise never examine a single entry on a busy node.
+            // Fewer entries than the minimum slice, so a spent budget must not stop the walk before it does anything.
             Assert.That(removed, Is.EqualTo(4));
             Assert.That(cursor, Is.Null, "the column ended before the slice did");
         }

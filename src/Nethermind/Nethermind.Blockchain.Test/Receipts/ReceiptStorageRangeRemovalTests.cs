@@ -12,7 +12,6 @@ namespace Nethermind.Blockchain.Test.Receipts;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptStorageRangeRemovalTests
 {
-    // Receipt.StoreReceipts=false binds NullReceiptStorage, and the throwing default would abort every pass.
     private static IReceiptStorage[] NonPersistentImplementations() =>
     [
         NullReceiptStorage.Instance,
