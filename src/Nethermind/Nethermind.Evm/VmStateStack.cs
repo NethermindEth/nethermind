@@ -22,6 +22,7 @@ namespace Nethermind.Evm;
 /// classes; it is an implementation detail of the interpreter, not a general-purpose collection.
 /// </para>
 /// </remarks>
+/// <typeparam name="TGasPolicy">The gas policy the owning interpreter is instantiated over.</typeparam>
 /// <param name="capacity">Frames the stack can hold. Pushing beyond it throws.</param>
 public sealed class VmStateStack<TGasPolicy>(int capacity)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -32,6 +33,12 @@ public sealed class VmStateStack<TGasPolicy>(int capacity)
     /// <summary>The number of frames currently held.</summary>
     public int Count => _count;
 
+    /// <summary>Pushes a frame that a later <see cref="Pop"/> will restore.</summary>
+    /// <param name="state">The frame to suspend. Ownership stays with the caller.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The stack is full. Capacity covers every depth the interpreter's call guards permit, so this
+    /// signals a broken depth guard rather than a legal deep call.
+    /// </exception>
     public void Push(VmState<TGasPolicy> state)
     {
         VmState<TGasPolicy>?[] items = _items;
@@ -45,6 +52,13 @@ public sealed class VmStateStack<TGasPolicy>(int capacity)
         _count = count + 1;
     }
 
+    /// <summary>Removes and returns the most recently pushed frame.</summary>
+    /// <remarks>
+    /// The vacated slot is cleared, so the stack stops keeping the returned frame alive; disposing it
+    /// remains the caller's responsibility.
+    /// </remarks>
+    /// <returns>The frame from the top of the stack.</returns>
+    /// <exception cref="InvalidOperationException">The stack is empty.</exception>
     public VmState<TGasPolicy> Pop()
     {
         VmState<TGasPolicy>?[] items = _items;
@@ -57,7 +71,6 @@ public sealed class VmStateStack<TGasPolicy>(int capacity)
 
         ref VmState<TGasPolicy>? slot = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(items), (uint)count);
         VmState<TGasPolicy> state = slot!;
-        // Don't keep a popped frame reachable through the stack.
         slot = null;
         _count = count;
         return state;
