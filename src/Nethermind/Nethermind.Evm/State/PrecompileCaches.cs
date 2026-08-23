@@ -7,7 +7,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Config;
@@ -16,7 +15,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -111,34 +109,20 @@ public sealed class PrecompileCaches
     [
         .. precompileProvider.GetPrecompiles()
             .Where(static precompile => precompile.Value.Precompile?.SupportsCaching == true)
-            .Select(static precompile => (Address: precompile.Key, Name: GetName(precompile.Value.Precompile!)))
+            .Select(static precompile => (Address: precompile.Key, Name: precompile.Value.Precompile!.GetStaticName()))
     ];
 
-    private static string GetName(IPrecompile precompile)
-    {
-        Type implementation = precompile.GetType();
-        object? declaredName = implementation.GetProperty(nameof(IPrecompile.Name), BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-        return declaredName is string { Length: > 0 } name ? name : implementation.Name;
-    }
-
-    /// <summary>One precompile's share of the per-block tier, bounded in bytes.</summary>
-    /// <remarks>
-    /// Admission stops at the limit instead of evicting: the worst case is that caching stops helping for the
-    /// rest of the block, which is the behaviour of not caching at all.
-    /// </remarks>
+    /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
     public sealed class Partition
     {
-        private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries =
-            new(CollectionExtensions.LockPartitions, PartitionInitialCapacity);
-
+        private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries = new(CollectionExtensions.LockPartitions, PartitionInitialCapacity);
         private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
-
         private readonly string _name;
 
         private long _bytes;
 
-        // Counted in fields rather than straight into the labelled metrics: a dictionary write costs two string
-        // hashes and a CAS loop, which is a large fraction of the cache-hit path itself. Published on block clear.
+        // Metrics, counted in fields and published on block clear
+        // to prevent additional dictionary lookup on read path
         private long _blockHits;
         private long _survivingHits;
         private long _misses;
