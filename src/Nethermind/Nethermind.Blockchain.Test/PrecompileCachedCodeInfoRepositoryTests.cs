@@ -398,21 +398,23 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static long ProbeMetric(string result) =>
-        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabelledTestPrecompile.Name, result), out long count) ? count : 0;
+        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabelledTestPrecompile.Label, result), out long count) ? count : 0;
 
     private static long AddMetric(string outcome) =>
-        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabelledTestPrecompile.Name, outcome), out long count) ? count : 0;
+        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabelledTestPrecompile.Label, outcome), out long count) ? count : 0;
 
     private static long UsedBytesMetric() =>
-        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabelledTestPrecompile.Name, out long bytes) ? bytes : 0;
+        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabelledTestPrecompile.Label, out long bytes) ? bytes : 0;
 
     private static long EntriesMetric() =>
-        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabelledTestPrecompile.Name, out long entries) ? entries : 0;
+        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabelledTestPrecompile.Label, out long entries) ? entries : 0;
 
     /// <summary> Echoing precompile with a declared name, so <see cref="PrecompileCaches"/> labels its metrics with it. </summary>
     private class MetricLabelledTestPrecompile : IPrecompile
     {
-        public static string Name => "TEST_METRIC_LABEL";
+        public const string Label = "TEST_METRIC_LABEL";
+
+        public string Name => Label;
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
         public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();

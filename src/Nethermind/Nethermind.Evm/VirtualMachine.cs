@@ -1136,7 +1136,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected static string GetErrorString(IPrecompile precompile, string? error)
-        => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
+        => $"Precompile {precompile.Name} failed with error: {error}";
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,

@@ -15,8 +15,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
-
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
 namespace Nethermind.Evm.State;
@@ -109,7 +107,7 @@ public sealed class PrecompileCaches
     [
         .. precompileProvider.GetPrecompiles()
             .Where(static precompile => precompile.Value.Precompile?.SupportsCaching == true)
-            .Select(static precompile => (Address: precompile.Key, Name: precompile.Value.Precompile!.GetStaticName()))
+            .Select(static precompile => (Address: precompile.Key, Name: precompile.Value.Precompile!.Name))
     ];
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>

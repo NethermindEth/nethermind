@@ -65,6 +65,8 @@ public class PrecompileCachedCodeInfoRepository(
         IPrecompile precompile,
         PrecompileCaches.Partition cache) : IPrecompile
     {
+        public string Name => precompile.Name;
+
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
