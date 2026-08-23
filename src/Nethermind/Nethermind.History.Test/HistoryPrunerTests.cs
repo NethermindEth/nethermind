@@ -446,6 +446,27 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task Sweep_resumes_after_restart_with_nothing_else_left_to_prune()
+    {
+        const int blocks = 100;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        // Blocks and access lists caught up, a sweep left half-finished. The sweep is then the only work owed, so a
+        // pass has to be scheduled on the strength of its cursor alone rather than on some other pass being due.
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(36UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(36UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, [1, 2, 3]);
+
+        NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
+
+        Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor), Is.Not.EqualTo(new byte[] { 1, 2, 3 }),
+            "the pass never ran, so the half-finished sweep is stranded for the life of the process");
+    }
+
+    [Test]
     public async Task Reclaim_cursor_is_persisted_so_a_restart_can_read_it()
     {
         const int blocks = 100;

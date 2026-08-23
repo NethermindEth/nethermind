@@ -357,7 +357,10 @@ public class HistoryPruner : IHistoryPruner
         return (blockCutoff is { } bc && _blocksDeletePointer < bc)
             // Reclaim owed behind a boundary already published, which the cutoff comparison above cannot see.
             || _blocksReclaimCursor < _blocksDeletePointer
-            || (balCutoff is { } balC && _balsDeletePointer < balC);
+            || (balCutoff is { } balC && _balsDeletePointer < balC)
+            // A sweep left part-way through the column is owed too. Without this the sweep only ever resumes while
+            // some other pass happens to be due, which is not a property either of them promises the other.
+            || _txIndexSweepCursor is not null;
     }
 
     private bool PruningIntervalHasElapsed()
@@ -574,6 +577,10 @@ public class HistoryPruner : IHistoryPruner
         // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+
+        // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
+        // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
+        LoadTxIndexSweepCursor();
 
         _hasLoadedDeletePointers = true;
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_blocksDeletePointer}, oldest BAL stored #{_balsDeletePointer}.");

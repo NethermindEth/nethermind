@@ -1208,12 +1208,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// files, and one written immediately before is still in the memtable. Failure is swallowed - the keys are
     /// already gone durably, so only the timing of the space returning is lost.
     /// </remarks>
+    private const int MaxReclaimBoundLength = 128;
+
+    /// <summary>
+    /// Largest key strictly below <paramref name="exclusive"/>, or false when there is none to express - an
+    /// all-zero bound, or one longer than the buffer, in which case the caller reclaims nothing rather than
+    /// guessing. Trailing zeroes are dropped and the last remaining byte decremented, which undershoots: keys
+    /// between the result and <paramref name="exclusive"/> keep their files, and none above it can lose one.
+    /// </summary>
+    private static bool TryLargestBoundBelow(ReadOnlySpan<byte> exclusive, Span<byte> destination, out int length)
+    {
+        length = exclusive.Length;
+        if (length > destination.Length) return false;
+
+        while (length > 0 && exclusive[length - 1] == 0) length--;
+        if (length == 0) return false;
+
+        exclusive[..length].CopyTo(destination);
+        destination[length - 1]--;
+        return true;
+    }
+
     internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
     {
         if (firstKeyInclusive.IsEmpty || lastKeyExclusive.IsEmpty) return;
 
+        // The C API's include_end is true, so it would consider a file whose largest key IS lastKeyExclusive - a key
+        // this range does not cover. Lowering the bound to the largest value strictly below it keeps the half-open
+        // contract. Conservative by design: it can leave a file behind, never take one it should not have.
+        Span<byte> inclusiveBound = stackalloc byte[MaxReclaimBoundLength];
+        if (!TryLargestBoundBelow(lastKeyExclusive, inclusiveBound, out int boundLength)) return;
+        inclusiveBound = inclusiveBound[..boundLength];
+
         UIntPtr fromLength = (UIntPtr)firstKeyInclusive.Length;
-        UIntPtr toLength = (UIntPtr)lastKeyExclusive.Length;
+        UIntPtr toLength = (UIntPtr)boundLength;
 
         try
         {
@@ -1224,10 +1252,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             // Dereferenced only by the native calls inside the fixed scope, lengths from the spans that pin them.
             fixed (byte* from = &MemoryMarshal.GetReference(firstKeyInclusive))
-            fixed (byte* to = &MemoryMarshal.GetReference(lastKeyExclusive))
+            fixed (byte* to = &MemoryMarshal.GetReference(inclusiveBound))
             {
-                // include_end is true in the C API, so this covers [from, to] rather than the half-open range used
-                // everywhere else. Safe: no stored key equals lastKeyExclusive, which needs an all-zero block hash.
                 IntPtr errPtr;
                 if (cf is null)
                 {

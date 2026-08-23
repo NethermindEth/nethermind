@@ -508,6 +508,31 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void ReclaimRange_LeavesAKeySittingOnTheExclusiveBound()
+        {
+            // The native call's include_end would reach a file whose largest key is the exclusive bound itself, so
+            // this pins the half-open contract for an arbitrary key rather than for the block-numbered callers, whose
+            // exclusive bound happens to be unreachable.
+            // Small target files and an explicit compaction, because the unlink skips L0 - left there, both keys
+            // would be ineligible and the test would pass whatever the bound did.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "target_file_size_base=1024;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            byte[] bound = [0x02];
+            db.PutSpan([0x01], value, WriteFlags.None);
+            db.PutSpan(bound, value, WriteFlags.None);
+            db.Flush();
+            db.Compact();
+
+            db.RemoveRange([0x01], bound);
+            db.ReclaimRange([0x01], bound);
+
+            Assert.That(GetValue(db, bound), Is.Not.Null,
+                "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
+        }
+
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
