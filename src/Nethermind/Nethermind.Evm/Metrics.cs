@@ -375,12 +375,12 @@ public partial class Metrics
     public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheAdds { get; } = new();
 
     [GaugeMetric]
-    [Description("Accounted weight held by the per-block precompile result cache, by precompile. Counts committed entries only, so it can trail the internal reservation counter while an insertion is in flight.")]
+    [Description("Accounted weight held by the per-block precompile result cache, by precompile, as it stood at the end of the last block.")]
     [KeyIsLabel("precompile")]
     public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheUsedBytes { get; } = new();
 
     [GaugeMetric]
-    [Description("Entries held by the per-block precompile result cache, by precompile.")]
+    [Description("Entries held by the per-block precompile result cache, by precompile, as they stood at the end of the last block.")]
     [KeyIsLabel("precompile")]
     public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheEntries { get; } = new();
 

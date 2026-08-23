@@ -362,7 +362,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
-    public void Run_ThroughEveryCacheOutcome_ReportsThemUnderThePrecompileName()
+    public void Run_ThroughEveryCacheOutcome_ReportsMetrics()
     {
         const int inputLength = 3;
         const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
@@ -373,25 +373,27 @@ public class PrecompileCachedCodeInfoRepositoryTests
         resolved.Run(new byte[] {1, 2, 3}, Prague.Instance); // per-block hit
         resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // miss, budget full, surviving tier still takes it
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must mirror the one admitted entry");
-            Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
-        }
-
         caches.ClearBlockCache();
-        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // surviving tier outlives the block
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
             Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
-            Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
             Assert.That(AddMetric("block"), Is.EqualTo(1));
             Assert.That(AddMetric("surviving"), Is.EqualTo(2), "the surviving tier has its own budget");
             Assert.That(AddMetric("rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
-            Assert.That(UsedBytesMetric(), Is.Zero, "the clear must zero the gauge");
-            Assert.That(EntriesMetric(), Is.Zero, "the clear must zero the gauge");
+            Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
+            Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
+        }
+
+        resolved.Run(new byte[] {4, 5, 6}, Prague.Instance); // surviving tier outlives the block
+        caches.ClearBlockCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProbeMetric("surviving_hit"), Is.EqualTo(1));
+            Assert.That(UsedBytesMetric(), Is.Zero, "a block that only hit the surviving tier holds no budget");
+            Assert.That(EntriesMetric(), Is.Zero, "a block that only hit the surviving tier holds no entries");
         }
     }
 

@@ -95,11 +95,16 @@ public sealed class PrecompileCaches
     /// <summary> Total per-block entries across every partition. </summary>
     public int BlockCacheCount => _partitions.Sum(static partition => partition.Value.Count);
 
-    /// <summary>Empties the per-block tier. Callers must join any concurrent warming first.</summary>
+    /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
     public void ClearBlockCache()
     {
+        // publishes the metrics to make occupancy gauges report each block's high point
+        Metrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
+        {
+            partition.Value.PublishMetrics();
             partition.Value.Clear();
+        }
     }
 
     private static List<(AddressAsKey Address, string Name)> CacheablePrecompiles(IPrecompileProvider precompileProvider)
@@ -139,6 +144,17 @@ public sealed class PrecompileCaches
 
         private long _bytes;
 
+        // Counted in fields rather than straight into the labelled metrics: a dictionary write costs two string
+        // hashes and a CAS loop, which is a large fraction of the cache-hit path itself. Published on block clear.
+        private long _blockHits;
+        private long _survivingHits;
+        private long _misses;
+        private long _admitted;
+        private long _survivingAdmitted;
+        private long _rejectedFull;
+        private long _rejectedDuplicate;
+        private long _tooLarge;
+
         public long MaxBytes { get; }
         public long UsedBytes => Volatile.Read(ref _bytes);
         internal int Count => _entries.Count;
@@ -154,17 +170,17 @@ public sealed class PrecompileCaches
         {
             if (_entries.TryGetValue(key, out result))
             {
-                RecordProbe(ProbeBlockHit);
+                Record(ref _blockHits);
                 return true;
             }
 
             if (_survivingCache.TryGet(key, out result))
             {
-                RecordProbe(ProbeSurvivingHit);
+                Record(ref _survivingHits);
                 return true;
             }
 
-            RecordProbe(ProbeMiss);
+            Record(ref _misses);
             return false;
         }
 
@@ -175,7 +191,7 @@ public sealed class PrecompileCaches
             bool wantSurviving = entryBytes <= MaxSurvivingEntryBytes;
             if (!wantSurviving)
             {
-                RecordAdd(RejectedTooLarge);
+                Record(ref _tooLarge);
             }
 
             long reservation = entryBytes + EntryOverheadBytes;
@@ -183,7 +199,7 @@ public sealed class PrecompileCaches
             if (!wantBlock)
             {
                 Interlocked.Add(ref _bytes, -reservation);
-                RecordAdd(RejectedFull);
+                Record(ref _rejectedFull);
             }
 
             if (!wantBlock && !wantSurviving) return;
@@ -195,23 +211,20 @@ public sealed class PrecompileCaches
             {
                 if (_entries.TryAdd(copiedKey, result))
                 {
-                    Metrics.PrecompileCacheUsedBytes.AddBy(_name, reservation);
-                    Metrics.PrecompileCacheEntries.Increment(_name);
-                    RecordAdd(AddedToBlock);
+                    Record(ref _admitted);
                 }
                 else
                 {
                     // another thread computed the same result concurrently - this copy is redundant
                     Interlocked.Add(ref _bytes, -reservation);
-                    RecordAdd(RejectedDuplicate);
+                    Record(ref _rejectedDuplicate);
                 }
             }
 
             if (wantSurviving)
             {
                 _survivingCache.Set(copiedKey, result);
-                RecordAdd(AddedToSurviving);
-                Metrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
+                Record(ref _survivingAdmitted);
             }
         }
 
@@ -219,12 +232,31 @@ public sealed class PrecompileCaches
         {
             _entries.NoLockClear();
             Volatile.Write(ref _bytes, 0);
-            Metrics.PrecompileCacheUsedBytes[_name] = 0;
-            Metrics.PrecompileCacheEntries[_name] = 0;
         }
 
-        private void RecordProbe(string result) => Metrics.PrecompileCacheProbes.Increment((_name, result));
-        private void RecordAdd(string outcome) => Metrics.PrecompileCacheAdds.Increment((_name, outcome));
+        /// <summary> Copies this partition's counters into the exported metrics. </summary>
+        internal void PublishMetrics()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+
+            Metrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
+            Metrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
+            Metrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
+            Metrics.PrecompileCacheAdds[(_name, AddedToBlock)] = Volatile.Read(ref _admitted);
+            Metrics.PrecompileCacheAdds[(_name, AddedToSurviving)] = Volatile.Read(ref _survivingAdmitted);
+            Metrics.PrecompileCacheAdds[(_name, RejectedFull)] = Volatile.Read(ref _rejectedFull);
+            Metrics.PrecompileCacheAdds[(_name, RejectedDuplicate)] = Volatile.Read(ref _rejectedDuplicate);
+            Metrics.PrecompileCacheAdds[(_name, RejectedTooLarge)] = Volatile.Read(ref _tooLarge);
+            Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
+            Metrics.PrecompileCacheEntries[_name] = Count;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Record(ref long counter)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Interlocked.Increment(ref counter);
+        }
     }
 
     public readonly struct Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<Key>
