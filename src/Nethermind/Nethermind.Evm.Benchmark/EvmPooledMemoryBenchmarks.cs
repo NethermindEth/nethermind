@@ -136,6 +136,39 @@ public class EvmPooledMemoryBenchmarks
 }
 
 [MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "OverwriteSlow")]
+public class EvmPooledMemoryOverwriteSlowPathBenchmarks
+{
+    private static readonly byte[] Word = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
+    private readonly VmState<EthereumGasPolicy> _state = new();
+
+    [Benchmark]
+    public ulong InlineGapOverwrite()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        UInt256 destination = 0x40;
+        memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out _);
+        memory.SaveAfterGas(in destination, Word);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+
+    [Benchmark]
+    public ulong InlinePrefixThenFirstSpill()
+    {
+        ref EvmPooledMemory memory = ref _state.Memory;
+        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
+        UInt256 destination = 0x400;
+        memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out _);
+        memory.SaveAfterGas(in destination, Word);
+        ulong size = memory.Size;
+        memory.Dispose();
+        return size;
+    }
+}
+
+[MemoryDiagnoser]
 [BenchmarkCategory("EVM", "Memory", "MCOPY")]
 public class EvmPooledMemoryMCopyBenchmarks
 {

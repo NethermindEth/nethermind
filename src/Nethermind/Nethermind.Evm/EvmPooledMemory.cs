@@ -373,7 +373,7 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StoreWordSlow(ulong overwriteEnd, int offset, ReadOnlySpan<byte> word)
     {
-        PrepareAccessAfterGas(overwriteEnd);
+        MaterializeArray(overwriteEnd);
         WriteWord(_memory!, offset, word);
     }
 
@@ -817,9 +817,9 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow(ulong requiredEnd)
     {
-        ulong initializedSize = _initializedSize;
         if (_memory is null && _inlineMemoryManager is not null && requiredEnd <= InlineCapacity)
         {
+            ulong initializedSize = _initializedSize;
             if (requiredEnd > initializedSize)
             {
                 GetInlineSpan().Slice((int)initializedSize).Clear();
@@ -829,6 +829,13 @@ public struct EvmPooledMemory
             return;
         }
 
+        MaterializeArray(requiredEnd);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void MaterializeArray(ulong requiredEnd)
+    {
+        ulong initializedSize = _initializedSize;
         byte[] memory = EnsureCapacity(requiredEnd, initializedSize, ref initializedSize);
 
         if (requiredEnd > initializedSize)
@@ -886,16 +893,28 @@ public struct EvmPooledMemory
             _memory = memory;
             initializedSize = Math.Max(preservedSize, rentedInitializedSize);
         }
+
         else if (minimumSize > (ulong)memory.Length)
         {
-            byte[] grown = Rent(TruncateToInt32(minimumSize), out ulong rentedInitializedSize);
-            Array.Copy(memory, 0, grown, 0, (int)preservedSize);
-            Return(memory);
-            _memory = memory = grown;
-            initializedSize = Math.Max(preservedSize, rentedInitializedSize);
+            memory = GrowCapacitySlow(memory, minimumSize, preservedSize, ref initializedSize);
         }
 
         return memory;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private byte[] GrowCapacitySlow(
+        byte[] memory,
+        ulong minimumSize,
+        ulong preservedSize,
+        ref ulong initializedSize)
+    {
+        byte[] grown = Rent(TruncateToInt32(minimumSize), out ulong rentedInitializedSize);
+        Array.Copy(memory, 0, grown, 0, (int)preservedSize);
+        Return(memory);
+        _memory = grown;
+        initializedSize = Math.Max(preservedSize, rentedInitializedSize);
+        return grown;
     }
 
     internal byte[]? BackingArray => _memory;
