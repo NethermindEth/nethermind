@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,8 +30,11 @@ namespace Nethermind.History.Test;
 
 public class SlicedReceiptRetentionTests
 {
-    [Test]
-    public async Task Retains_receipts_for_a_sliced_address_and_serves_its_logs_through_LogFinder()
+    // Both retention paths, because the pruner reclaims by range: with the index it answers for a whole span at
+    // once, and without it falls back to asking block by block. A real sliced node runs the first.
+    [TestCase(false, TestName = "Retains_receipts_for_a_sliced_address_asking_block_by_block")]
+    [TestCase(true, TestName = "Retains_receipts_for_a_sliced_address_asking_the_log_index_for_the_span")]
+    public async Task Retains_receipts_for_a_sliced_address_and_serves_its_logs_through_LogFinder(bool logIndexEnabled)
     {
         Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
 
@@ -42,7 +46,24 @@ public class SlicedReceiptRetentionTests
         };
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
 
-        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig);
+        // Filled in after the chain is built, since the sliced height is not known before then.
+        List<int> indexedHits = [];
+        ILogIndexStorage logIndexStorage = null;
+        if (logIndexEnabled)
+        {
+            logIndexStorage = Substitute.For<ILogIndexStorage>();
+            logIndexStorage.Enabled.Returns(true);
+            logIndexStorage.MinBlockNumber.Returns(0);
+            logIndexStorage.MaxBlockNumber.Returns(int.MaxValue - 1);
+            logIndexStorage.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+            {
+                int from = call.ArgAt<int>(1);
+                int to = call.ArgAt<int>(2);
+                return indexedHits.Where(h => h >= from && h <= to).ToList().GetEnumerator();
+            });
+        }
+
+        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig, logIndexStorage);
 
         byte[] logCode = Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.LOG0).Done;
 
@@ -57,6 +78,8 @@ public class SlicedReceiptRetentionTests
         Hash256 slicedBlockHash = slicedBlock.Hash!;
         ulong otherBlockNumber = otherBlock.Number;
         Hash256 otherBlockHash = otherBlock.Hash!;
+
+        indexedHits.Add((int)slicedBlockNumber);
 
         for (int i = 0; i < 100; i++)
         {
@@ -192,6 +215,81 @@ public class SlicedReceiptRetentionTests
         }
     }
 
+    [Test]
+    public void RetainedHeights_asks_the_index_once_for_the_span_and_reports_what_it_covers()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.MaxBlockNumber.Returns(1000);
+        logIndexStorage.GetEnumerator(TestItem.AddressA, 100, 199).Returns(_ => new[] { 120, 150 }.AsEnumerable().GetEnumerator());
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+
+        IReadOnlySet<ulong> retained = retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Is.EquivalentTo(new ulong[] { 120, 150 }));
+            Assert.That(answeredFrom, Is.EqualTo(100UL));
+            Assert.That(answeredTo, Is.EqualTo(200UL), "the whole span is inside the index, so none of it is left for the block-by-block fallback");
+            Assert.That(logIndexStorage.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ILogIndexStorage.GetEnumerator)), Is.EqualTo(1),
+                "one query for the span, not one per height - the per-height cost is what the range reclaim exists to remove");
+        }
+    }
+
+    [Test]
+    public void RetainedHeights_narrows_to_the_part_the_index_holds()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(150);
+        logIndexStorage.MaxBlockNumber.Returns(179);
+        logIndexStorage.GetEnumerator(TestItem.AddressA, 150, 179).Returns(_ => Enumerable.Empty<int>().GetEnumerator());
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+
+        retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(answeredFrom, Is.EqualTo(150UL));
+            Assert.That(answeredTo, Is.EqualTo(180UL), "outside what the index holds a bloom match is the deciding test, and that needs the header");
+        }
+    }
+
+    [TestCase(false, TestName = "index disabled")]
+    [TestCase(true, TestName = "index enabled but holding nothing")]
+    public void RetainedHeights_answers_for_nothing_when_the_index_cannot_help(bool enabled)
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(enabled);
+        logIndexStorage.MinBlockNumber.Returns((int?)null);
+        logIndexStorage.MaxBlockNumber.Returns((int?)null);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+
+        retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
+
+        Assert.That(answeredFrom, Is.EqualTo(answeredTo),
+            "an empty answered span is what sends the caller back to asking block by block, rather than reclaiming a slice it cannot see");
+    }
+
+    [Test]
+    public void RetainedHeights_with_no_addresses_answers_for_the_whole_span()
+    {
+        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>());
+
+        IReadOnlySet<ulong> retained = retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Is.Empty);
+            Assert.That(answeredFrom, Is.EqualTo(100UL));
+            Assert.That(answeredTo, Is.EqualTo(200UL), "nothing is retained at any height, so the span is answered rather than left to a fallback");
+        }
+    }
+
     private static Block BlockWithBloom(Address address, ulong number = 5)
     {
         Bloom bloom = new();
@@ -200,7 +298,8 @@ public class SlicedReceiptRetentionTests
         return Build.A.Block.WithHeader(header).TestObject;
     }
 
-    private static async Task<BasicTestBlockchain> BuildBlockchain(IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig)
+    private static async Task<BasicTestBlockchain> BuildBlockchain(
+        IHistoryConfig historyConfig, IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage = null)
     {
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 0 });
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -213,6 +312,11 @@ public class SlicedReceiptRetentionTests
                 .AddSingleton(historyConfig)
                 .AddSingleton(flatDbConfig)
                 .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>();
+
+            if (logIndexStorage is not null)
+            {
+                containerBuilder.AddSingleton(logIndexStorage);
+            }
         });
     }
 }

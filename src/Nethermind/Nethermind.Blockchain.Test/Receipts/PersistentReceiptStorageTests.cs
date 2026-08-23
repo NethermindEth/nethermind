@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -56,6 +58,188 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
+
+    private static IReceiptStorage[] NonPersistentImplementations() =>
+    [
+        NullReceiptStorage.Instance,
+        new InMemoryReceiptStorage()
+    ];
+
+    [TestCaseSource(nameof(NonPersistentImplementations))]
+    public void RemoveReceiptsRange_IsImplemented(IReceiptStorage storage) =>
+        Assert.That(() => storage.RemoveReceiptsRange(1, 1000), Throws.Nothing,
+            $"{storage.GetType().Name} inherits the throwing default, so a pruning node configured with it would fail every pass");
+
+    [Test]
+    public void InMemoryReceiptStorage_RemoveReceiptsRange_HoldsTheBounds()
+    {
+        InMemoryReceiptStorage storage = new();
+        Dictionary<ulong, Block> blocks = [];
+
+        for (ulong number = 1; number <= 5; number++)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            storage.Insert(block, [Build.A.Receipt.WithBlockHash(block.Hash).TestObject]);
+            blocks[number] = block;
+        }
+
+        storage.RemoveReceiptsRange(2, 4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.HasBlock(1, blocks[1].Hash!), Is.True);
+            Assert.That(storage.HasBlock(2, blocks[2].Hash!), Is.False);
+            Assert.That(storage.HasBlock(3, blocks[3].Hash!), Is.False);
+            Assert.That(storage.HasBlock(4, blocks[4].Hash!), Is.True, "the upper bound is exclusive");
+            Assert.That(storage.HasBlock(5, blocks[5].Hash!), Is.True);
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_DropsOnlyEntriesNamingReclaimedBlocks()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Hash256 stale = TestItem.KeccakA;
+        Hash256 retained = TestItem.KeccakB;
+        Hash256 legacy = TestItem.KeccakC;
+
+        txIndex.Set(stale, Rlp.Encode(5UL).Bytes);
+        txIndex.Set(retained, Rlp.Encode(50UL).Bytes);
+        txIndex.Set(legacy, TestItem.KeccakD.BytesToArray());
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txIndex.Get(stale), Is.Null);
+            Assert.That(txIndex.Get(retained), Is.Not.Null);
+            Assert.That(txIndex.Get(legacy), Is.Not.Null, "a hash whose header does not resolve is left alone rather than guessed at");
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(cursor, Is.Null, "reaching the end reports no resume point");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_DropsEntriesStoredAsBlockHash()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Block stale = Build.A.Block.WithNumber(5).TestObject;
+        Block retained = Build.A.Block.WithNumber(50).TestObject;
+        _blockTree.FindHeader(stale.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(stale.Header);
+        _blockTree.FindHeader(retained.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(retained.Header);
+
+        txIndex.Set(TestItem.KeccakA, stale.Hash!.BytesToArray());
+        txIndex.Set(TestItem.KeccakB, retained.Hash!.BytesToArray());
+
+        _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txIndex.Get(TestItem.KeccakA), Is.Null,
+                "CompactTxIndex=false stores the block hash, and this one names a block below the boundary - the only mechanism that reclaims it");
+            Assert.That(txIndex.Get(TestItem.KeccakB), Is.Not.Null);
+            Assert.That(removed, Is.EqualTo(1));
+        }
+    }
+
+    // Backwards, this either walks the whole index every pass finding nothing or lets it grow without bound.
+    [TestCase(2_000_000ul, 500_000ul, false)]
+    [TestCase(1_000_000ul, 2_500_000ul, true)]
+    public void SweepTransactionIndex_RunsOnlyOncePastTheLookupHorizon(ulong txLookupLimit, ulong retainedFromBlock, bool expectSwept)
+    {
+        _receiptConfig.TxLookupLimit = txLookupLimit;
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(3_000_000).TestObject);
+        CreateStorage();
+
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        txIndex.Set(TestItem.KeccakA, Rlp.Encode(100UL).Bytes);
+
+        _storage.SweepTransactionIndex(retainedFromBlock, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(expectSwept ? 1 : 0));
+            Assert.That(txIndex.Get(TestItem.KeccakA), expectSwept ? Is.Null : Is.Not.Null,
+                expectSwept
+                    ? "above the horizon the per-block path can no longer reach these, so the sweep is the only mechanism"
+                    : "below the horizon the per-block path still covers them, and walking the index finds nothing");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_CancelledWalk_StillCoversItsMinimumSlice()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        foreach (Hash256 key in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD })
+        {
+            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+        }
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, cts.Token, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Fewer entries than the minimum slice, so a spent budget must not stop the walk before it does anything.
+            Assert.That(removed, Is.EqualTo(4));
+            Assert.That(cursor, Is.Null, "the column ended before the slice did");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_CancelledPastItsMinimumSlice_ReportsWhereToResume()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        const int entries = 5000;
+        for (int i = 0; i < entries; i++)
+        {
+            txIndex.Set(Keccak.Compute(i.ToBigEndianByteArray()), Rlp.Encode(5UL).Bytes);
+        }
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: entries * 2, cts.Token, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cursor, Is.Not.Null, "past the minimum slice the token has to be honoured, or the budget means nothing");
+            Assert.That(removed, Is.LessThan(entries), "and it has to stop short of the column");
+            Assert.That(removed, Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_HonoursItsBudgetAndResumes()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Hash256[] keys = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+        foreach (Hash256 key in keys)
+        {
+            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+        }
+
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, CancellationToken.None, out int firstRemoved);
+        Assert.That(cursor, Is.Not.Null, "stopping on budget has to report where to pick up, or the tail is never reached");
+
+        int total = firstRemoved;
+        while (cursor is not null)
+        {
+            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, CancellationToken.None, out int removed);
+            total += removed;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(total, Is.EqualTo(keys.Length), "resuming from the reported key must eventually cover every entry");
+            foreach (Hash256 key in keys)
+            {
+                Assert.That(txIndex.Get(key), Is.Null);
+            }
+        }
+    }
 
     private void CreateStorage(bool captureHealthy = true)
     {

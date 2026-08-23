@@ -59,6 +59,54 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return false;
     }
 
+    /// <summary>
+    /// Asks the log index once per address for the whole span, instead of once per block. Only the part of the span
+    /// the index actually covers is answered: outside it a bloom match is the deciding test, and testing that needs
+    /// the header, which is the per-block read the caller is trying to avoid.
+    /// </summary>
+    public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+    {
+        if (_addresses.Count == 0)
+        {
+            // Nothing is retained at any height, so the whole span is answered - and answered with nothing.
+            answeredFrom = fromInclusive;
+            answeredTo = toExclusive;
+            return FrozenSet<ulong>.Empty;
+        }
+
+        answeredFrom = fromInclusive;
+        answeredTo = fromInclusive;
+
+        if (!logIndexStorage.Enabled
+            || logIndexStorage.MinBlockNumber is not { } min
+            || logIndexStorage.MaxBlockNumber is not { } max)
+        {
+            return FrozenSet<ulong>.Empty;
+        }
+
+        // The index is int-keyed, so a span beyond int.MaxValue cannot be asked about rather than wrapping negative.
+        ulong coveredFrom = ulong.Max(fromInclusive, (ulong)min);
+        ulong coveredTo = ulong.Min(toExclusive, ulong.Min((ulong)max + 1, int.MaxValue));
+        if (coveredFrom >= coveredTo)
+        {
+            return FrozenSet<ulong>.Empty;
+        }
+
+        HashSet<ulong> retained = [];
+        foreach (Address address in _addresses)
+        {
+            using IEnumerator<int> hits = logIndexStorage.GetEnumerator(address, (int)coveredFrom, (int)(coveredTo - 1));
+            while (hits.MoveNext())
+            {
+                retained.Add((ulong)hits.Current);
+            }
+        }
+
+        answeredFrom = coveredFrom;
+        answeredTo = coveredTo;
+        return retained;
+    }
+
     private static FrozenSet<Address> ParseAddresses(string? raw)
     {
         HashSet<Address> addresses = [];
