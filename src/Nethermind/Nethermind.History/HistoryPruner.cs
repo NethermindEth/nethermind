@@ -257,10 +257,12 @@ public class HistoryPruner : IHistoryPruner
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
-                if (_logger.IsInfo)
+                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
+                ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
+                // Silent when only the sweep has work, which is most passes once a cycle is running: announcing two
+                // estimates of zero reads as "nothing to do" on the pass that does have some.
+                if (_logger.IsInfo && (blocksRemaining > 0 || balsRemaining > 0))
                 {
-                    ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
-                    ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
                     _logger.Info($"Pruning historical blocks up to #{blockUpper} ({blocksRemaining} estimated) and block access lists up to #{balUpper} ({balsRemaining} estimated).");
                 }
 
@@ -358,8 +360,10 @@ public class HistoryPruner : IHistoryPruner
             // Reclaim owed behind a boundary already published, which the cutoff comparison above cannot see.
             || _blocksReclaimCursor < _blocksDeletePointer
             || (balCutoff is { } balC && _balsDeletePointer < balC)
-            // A sweep left part-way through the column is owed too. Without this the sweep only ever resumes while
-            // some other pass happens to be due, which is not a property either of them promises the other.
+            // A sweep left part-way through the column is owed too. Without this it only ever resumes while some
+            // other pass happens to be due, which is not a property either of them promises the other. Note this
+            // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
+            // still started incidentally by the access-list clause above, which is rolling in every mode.
             || _txIndexSweepCursor is not null;
     }
 

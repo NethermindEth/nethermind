@@ -1200,14 +1200,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
         ReclaimRange(firstKeyInclusive, lastKeyExclusive, null);
 
-    /// <remarks>
-    /// A range tombstone frees nothing and does not count towards pending-compaction bytes, so the disk can stay
-    /// occupied for weeks. This unlinks the SST files lying entirely inside the range - nearly all of them, for
-    /// ascending block-number keys - and hints for the rest.
-    /// Callers must tombstone first: an unlink can drop a tombstone covering keys in partially-overlapping deeper
-    /// files, and one written immediately before is still in the memtable. Failure is swallowed - the keys are
-    /// already gone durably, so only the timing of the space returning is lost.
-    /// </remarks>
     private const int MaxReclaimBoundLength = 128;
 
     /// <summary>
@@ -1221,14 +1213,31 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         length = exclusive.Length;
         if (length > destination.Length) return false;
 
-        while (length > 0 && exclusive[length - 1] == 0) length--;
-        if (length == 0) return false;
+        exclusive.CopyTo(destination);
 
-        exclusive[..length].CopyTo(destination);
-        destination[length - 1]--;
+        // Decremented as one big-endian value, borrowing through zeroes rather than truncating them. Truncating drops
+        // the bound below every key that shares the removed bytes, which for a number-prefixed key whose height ends
+        // in a zero byte means the top of the chunk keeps its files - and a chunk is often that short.
+        int i = length - 1;
+        while (i >= 0 && destination[i] == 0)
+        {
+            destination[i--] = 0xFF;
+        }
+
+        if (i < 0) return false;
+
+        destination[i]--;
         return true;
     }
 
+    /// <remarks>
+    /// A range tombstone frees nothing and does not count towards pending-compaction bytes, so the disk can stay
+    /// occupied for weeks. This unlinks the SST files lying entirely inside the range - nearly all of them, for
+    /// ascending block-number keys - and hints for the rest.
+    /// Callers must tombstone first: an unlink can drop a tombstone covering keys in partially-overlapping deeper
+    /// files, and one written immediately before is still in the memtable. Failure is swallowed - the keys are
+    /// already gone durably, so only the timing of the space returning is lost.
+    /// </remarks>
     internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
     {
         if (firstKeyInclusive.IsEmpty || lastKeyExclusive.IsEmpty) return;
