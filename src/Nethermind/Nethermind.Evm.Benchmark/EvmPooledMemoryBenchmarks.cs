@@ -17,113 +17,118 @@ public class EvmPooledMemoryBenchmarks
     private static readonly byte[] FourKiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(FourKiB);
     private static readonly byte[] OneMiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(OneMiB);
     private static readonly byte[] SmallPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(SmallPayloadSize);
-    private readonly EvmPooledMemory _memory = new();
 
     [Benchmark]
     public ulong SmallUnalignedExternalOverwrite()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 destination = UInt256.Zero;
-            _memory.TrySave(in destination, SmallPayload);
-            return _memory.Size;
+            memory.TrySave(in destination, SmallPayload);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong FullOneMiBExternalOverwrite()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 destination = UInt256.Zero;
-            _memory.TrySave(in destination, OneMiBPayload);
-            return _memory.Size;
+            memory.TrySave(in destination, OneMiBPayload);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong GappedOneMiBExternalOverwrite()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 first = UInt256.Zero;
-            _memory.TrySaveByte(in first, 0x5a);
+            memory.TrySaveByte(in first, 0x5a);
             UInt256 destination = 2 * FourKiB;
-            _memory.TrySave(in destination, OneMiBPayload);
-            return _memory.Size;
+            memory.TrySave(in destination, OneMiBPayload);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong AlreadyExpandedFourKiBOverwrite()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 end = 2 * FourKiB - 1;
-            _memory.TrySaveByte(in end, 0xad);
+            memory.TrySaveByte(in end, 0xad);
             UInt256 destination = FourKiB;
-            _memory.TrySave(in destination, FourKiBPayload);
-            return _memory.Size;
+            memory.TrySave(in destination, FourKiBPayload);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong ZeroExtendedCopyIntoExpansion()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 first = UInt256.Zero;
-            _memory.TrySaveByte(in first, 0x5a);
+            memory.TrySaveByte(in first, 0x5a);
 
             UInt256 destination = 2 * FourKiB;
             const int length = OneMiB + FourKiB;
-            _memory.CalculateMemoryCost(in destination, length, out _);
+            memory.CalculateMemoryCost(in destination, length, out _);
             UInt256 sourceOffset = UInt256.Zero;
-            _memory.CopyFromZeroExtendedAfterGas(
+            memory.CopyFromZeroExtendedAfterGas(
                 in destination,
                 OneMiBPayload,
                 in sourceOffset,
                 length);
-            return _memory.Size;
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong MCopyIntoExpansion()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 source = UInt256.Zero;
-            _memory.TrySave(in source, OneMiBPayload);
+            memory.TrySave(in source, OneMiBPayload);
 
             UInt256 destination = OneMiB;
-            _memory.CalculateMemoryCost(in destination, OneMiB, out _);
-            _memory.CopyAfterGas(in destination, in source, OneMiB);
-            return _memory.Size;
+            memory.CalculateMemoryCost(in destination, OneMiB, out _);
+            memory.CopyAfterGas(in destination, in source, OneMiB);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }
@@ -132,7 +137,7 @@ public class EvmPooledMemoryBenchmarks
 [BenchmarkCategory("EVM", "Memory", "MCOPY")]
 public class EvmPooledMemoryMCopyBenchmarks
 {
-    private readonly EvmPooledMemory _memory = new();
+    private EvmPooledMemory _memory;
     private UInt256 _source;
     private UInt256 _destination;
     private UInt256 _overlappingDestination;
@@ -189,7 +194,6 @@ public class EvmPooledMemoryOverwriteGrowthBenchmarks
 
     private static readonly byte[] InitialPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(OneMiB);
     private static readonly byte[] OverwritePayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(2 * OneMiB);
-    private readonly EvmPooledMemory _memory = new();
 
     [Params(0, FourKiB, OneMiB)]
     public int DestinationOffset { get; set; }
@@ -197,18 +201,19 @@ public class EvmPooledMemoryOverwriteGrowthBenchmarks
     [Benchmark]
     public ulong GrowForOverwrite()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 start = UInt256.Zero;
-            _memory.TrySave(in start, InitialPayload);
+            memory.TrySave(in start, InitialPayload);
 
             UInt256 destination = (UInt256)DestinationOffset;
-            _memory.TrySave(in destination, OverwritePayload);
-            return _memory.Size;
+            memory.TrySave(in destination, OverwritePayload);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }
@@ -221,7 +226,6 @@ public class EvmPooledMemoryLazyOverwriteTailBenchmarks
 
     private static readonly byte[] Payload = EvmPooledMemoryBenchmarkHelper.CreatePayload(PayloadLength);
     private static readonly byte[] Word = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
-    private readonly EvmPooledMemory _memory = new();
 
     [Params(0, 1, 128)]
     public int FollowingWordCount { get; set; }
@@ -229,22 +233,23 @@ public class EvmPooledMemoryLazyOverwriteTailBenchmarks
     [Benchmark]
     public ulong OverwriteThenMStore()
     {
+        EvmPooledMemory memory = default;
         try
         {
             UInt256 start = UInt256.Zero;
-            _memory.TrySave(in start, Payload);
+            memory.TrySave(in start, Payload);
 
             for (int i = 0; i < FollowingWordCount; i++)
             {
                 UInt256 destination = (UInt256)(PayloadLength + i * EvmPooledMemory.WordSize);
-                _memory.TrySaveWord(in destination, Word);
+                memory.TrySaveWord(in destination, Word);
             }
 
-            return _memory.Size;
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }

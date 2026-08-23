@@ -192,13 +192,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
 
-    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, EvmPooledMemory memory);
+    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, EvmPooledMemory memory)
+    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, ref EvmPooledMemory memory)
     {
         UInt256 uint256Length = new(length);
-        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, memory);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory);
     }
 
     static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);

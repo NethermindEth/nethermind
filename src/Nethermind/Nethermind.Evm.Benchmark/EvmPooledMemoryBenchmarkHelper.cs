@@ -9,14 +9,14 @@ internal static class EvmPooledMemoryBenchmarkHelper
 {
     private static readonly byte[] Word = CreatePayload(EvmPooledMemory.WordSize);
 
-    public static void MStore(EvmPooledMemory memory, int offset)
+    public static void MStore(ref EvmPooledMemory memory, int offset)
     {
         UInt256 destination = (UInt256)offset;
         memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out _);
         memory.StoreWordAfterGas(in destination, Word);
     }
 
-    public static void MStore8(EvmPooledMemory memory, int offset)
+    public static void MStore8(ref EvmPooledMemory memory, int offset)
     {
         UInt256 destination = (UInt256)offset;
         memory.CalculateMemoryCost(in destination, 1, out _);

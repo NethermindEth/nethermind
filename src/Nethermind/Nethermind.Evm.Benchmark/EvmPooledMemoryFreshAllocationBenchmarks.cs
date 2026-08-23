@@ -17,14 +17,7 @@ public class EvmPooledMemoryPrivateCacheBurstBenchmarks
     public int FrameCount { get; set; }
 
     [GlobalSetup]
-    public void Setup()
-    {
-        _frames = new EvmPooledMemory[FrameCount];
-        for (int i = 0; i < _frames.Length; i++)
-        {
-            _frames[i] = new EvmPooledMemory();
-        }
-    }
+    public void Setup() => _frames = new EvmPooledMemory[FrameCount];
 
     [Benchmark]
     public ulong HighWaterMStoreBurst()
@@ -34,7 +27,7 @@ public class EvmPooledMemoryPrivateCacheBurstBenchmarks
         {
             for (int i = 0; i < _frames.Length; i++)
             {
-                EvmPooledMemoryBenchmarkHelper.MStore(_frames[i], MemorySize - EvmPooledMemory.WordSize);
+                EvmPooledMemoryBenchmarkHelper.MStore(ref _frames[i], MemorySize - EvmPooledMemory.WordSize);
                 totalSize += _frames[i].Size;
             }
 
@@ -55,22 +48,21 @@ public class EvmPooledMemoryPrivateCacheBurstBenchmarks
 public class EvmPooledMemoryNonPooledAllocationBenchmarks
 {
     private const int FourMiB = 4 << 20;
-    private readonly EvmPooledMemory _memory = new();
-
     [Params(FourMiB + EvmPooledMemory.WordSize, 8 << 20)]
     public int MemorySize { get; set; }
 
     [Benchmark]
     public ulong HighWaterMStore()
     {
+        EvmPooledMemory memory = default;
         try
         {
-            EvmPooledMemoryBenchmarkHelper.MStore(_memory, MemorySize - EvmPooledMemory.WordSize);
-            return _memory.Size;
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, MemorySize - EvmPooledMemory.WordSize);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }

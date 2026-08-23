@@ -39,7 +39,7 @@ public static partial class EvmInstructions
 
         if (!result.IsZero)
         {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, source, in b, (int)result);
@@ -112,7 +112,7 @@ public static partial class EvmInstructions
 
         if (!size.IsZero)
         {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, vm.VmState.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             ReadOnlySpan<byte> source = returnDataBuffer.Span.Slice((int)sourceOffset, (int)size);
@@ -182,7 +182,7 @@ public static partial class EvmInstructions
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             vm.WorldState.AddAccountRead(address);

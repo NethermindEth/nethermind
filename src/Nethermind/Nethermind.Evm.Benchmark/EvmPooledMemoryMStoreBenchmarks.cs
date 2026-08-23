@@ -12,7 +12,6 @@ public class EvmPooledMemoryMStoreBenchmarks
     private const int FourKiB = 4 * 1024;
     private const int OneMiB = 1 << 20;
     private const int FourMiB = 4 << 20;
-    private readonly EvmPooledMemory _memory = new();
 
     [Params(
         EvmPooledMemory.WordSize,
@@ -27,32 +26,34 @@ public class EvmPooledMemoryMStoreBenchmarks
     [Benchmark]
     public ulong HighWaterJump()
     {
+        EvmPooledMemory memory = default;
         try
         {
-            EvmPooledMemoryBenchmarkHelper.MStore(_memory, MemorySize - EvmPooledMemory.WordSize);
-            return _memory.Size;
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, MemorySize - EvmPooledMemory.WordSize);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong SequentialGrowth()
     {
+        EvmPooledMemory memory = default;
         try
         {
             for (int offset = 0; offset < MemorySize; offset += EvmPooledMemory.WordSize)
             {
-                EvmPooledMemoryBenchmarkHelper.MStore(_memory, offset);
+                EvmPooledMemoryBenchmarkHelper.MStore(ref memory, offset);
             }
 
-            return _memory.Size;
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }
@@ -63,7 +64,6 @@ public class EvmPooledMemoryFirstMStoreBenchmarks
 {
     private const int FourKiB = 4 * 1024;
     private const int SixtyFourKiB = 64 * 1024;
-    private readonly EvmPooledMemory _memory = new();
 
     [Params(0, 64, FourKiB, SixtyFourKiB)]
     public int Offset { get; set; }
@@ -71,77 +71,32 @@ public class EvmPooledMemoryFirstMStoreBenchmarks
     [Benchmark]
     public ulong FirstMStore()
     {
+        EvmPooledMemory memory = default;
         try
         {
-            EvmPooledMemoryBenchmarkHelper.MStore(_memory, Offset);
-            return _memory.Size;
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong JumpThenContiguousMStore()
     {
+        EvmPooledMemory memory = default;
         try
         {
-            EvmPooledMemoryBenchmarkHelper.MStore(_memory, Offset);
-            EvmPooledMemoryBenchmarkHelper.MStore(_memory, Offset + EvmPooledMemory.WordSize);
-            return _memory.Size;
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset);
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset + EvmPooledMemory.WordSize);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
-    }
-}
-
-[MemoryDiagnoser]
-[BenchmarkCategory("EVM", "Memory", "MSTORE", "Solidity")]
-public class EvmPooledMemorySolidityLifecycleBenchmarks
-{
-    private readonly EvmPooledMemory _memory = new();
-
-    [Benchmark]
-    public ulong PrologueOnly()
-    {
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x40);
-        ulong size = _memory.Size;
-        _memory.Dispose();
-        return size;
-    }
-
-    [Benchmark]
-    public ulong PrologueThenScratch()
-    {
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x40);
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x00);
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x20);
-        ulong size = _memory.Size;
-        _memory.Dispose();
-        return size;
-    }
-
-    [Benchmark]
-    public ulong PrologueThenReturnWord()
-    {
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x40);
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x80);
-        ulong size = _memory.Size;
-        _memory.Dispose();
-        return size;
-    }
-
-    [Benchmark]
-    public ulong PrologueThenLargerAllocation()
-    {
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x40);
-        EvmPooledMemoryBenchmarkHelper.MStore(_memory, 0x100);
-        ulong size = _memory.Size;
-        _memory.Dispose();
-        return size;
     }
 }
 
@@ -151,7 +106,6 @@ public class EvmPooledMemoryMStore8Benchmarks
 {
     private const int FourKiB = 4 * 1024;
     private const int OneMiB = 1 << 20;
-    private readonly EvmPooledMemory _memory = new();
 
     [Params(1, 256, FourKiB, FourKiB + 1, OneMiB)]
     public int MemorySize { get; set; }
@@ -159,32 +113,34 @@ public class EvmPooledMemoryMStore8Benchmarks
     [Benchmark]
     public ulong HighWaterJump()
     {
+        EvmPooledMemory memory = default;
         try
         {
-            EvmPooledMemoryBenchmarkHelper.MStore8(_memory, MemorySize - 1);
-            return _memory.Size;
+            EvmPooledMemoryBenchmarkHelper.MStore8(ref memory, MemorySize - 1);
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 
     [Benchmark]
     public ulong SequentialGrowth()
     {
+        EvmPooledMemory memory = default;
         try
         {
             for (int offset = 0; offset < MemorySize; offset++)
             {
-                EvmPooledMemoryBenchmarkHelper.MStore8(_memory, offset);
+                EvmPooledMemoryBenchmarkHelper.MStore8(ref memory, offset);
             }
 
-            return _memory.Size;
+            return memory.Size;
         }
         finally
         {
-            _memory.Dispose();
+            memory.Dispose();
         }
     }
 }
