@@ -704,12 +704,15 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 dirty.Dispose();
             }
 
+            memory.CalculateMemoryCost(in zero, EvmPooledMemory.WordSize, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
             memory.CopyAfterGas(in zero, in zero, EvmPooledMemory.WordSize);
 
             byte[] actual = ReadVisibleMemory(ref memory);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetBackingMemory(ref memory), Is.SameAs(firstBackingMemory));
+                Assert.That(actual, Has.Length.EqualTo(EvmPooledMemory.WordSize));
                 Assert.That(actual.AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
             }
         }
