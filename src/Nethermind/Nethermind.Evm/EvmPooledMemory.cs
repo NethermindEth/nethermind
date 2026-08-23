@@ -881,17 +881,7 @@ public struct EvmPooledMemory
         byte[]? memory = _memory;
         if (memory is null)
         {
-            ReadOnlySpan<byte> preservedInline = _inlineMemoryManager is not null && preservedSize != 0
-                ? GetInlineSpan().Slice(0, (int)preservedSize)
-                : default;
-            memory = Rent((int)Math.Max((uint)minimumSize, MinRentSize), out ulong rentedInitializedSize);
-            if (_inlineMemoryManager is not null && preservedSize != 0)
-            {
-                preservedInline.CopyTo(memory);
-            }
-
-            _memory = memory;
-            initializedSize = Math.Max(preservedSize, rentedInitializedSize);
+            InitializeCapacity(minimumSize, preservedSize, out initializedSize, out memory);
         }
 
         else if (minimumSize > (ulong)memory.Length)
@@ -900,6 +890,22 @@ public struct EvmPooledMemory
         }
 
         return memory;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void InitializeCapacity(ulong minimumSize, ulong preservedSize, out ulong initializedSize, out byte[] memory)
+    {
+        ReadOnlySpan<byte> preservedInline = _inlineMemoryManager is not null && preservedSize != 0
+            ? GetInlineSpan().Slice(0, (int)preservedSize)
+            : default;
+        memory = Rent((int)Math.Max((uint)minimumSize, MinRentSize), out ulong rentedInitializedSize);
+        if (_inlineMemoryManager is not null && preservedSize != 0)
+        {
+            preservedInline.CopyTo(memory);
+        }
+
+        _memory = memory;
+        initializedSize = Math.Max(preservedSize, rentedInitializedSize);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
