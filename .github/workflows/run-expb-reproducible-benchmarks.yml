@@ -443,6 +443,7 @@ jobs:
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: trigger-publish-docker
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: publish-docker.yml
@@ -465,9 +466,21 @@ jobs:
           TIMEOUT: "120"
           ORG_NAME: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+          # Wait on the run we actually dispatched. Without this the script falls back to discovering a
+          # run by workflow name + branch, which silently latches onto any other concurrent build of the
+          # same branch and reports success for an image that was never produced.
+          RUN_ID: ${{ steps.trigger-publish-docker.outputs.runId }}
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          # An empty runId would silently fall back to run discovery - the exact false green this
+          # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
+          # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
+          # output, so make the bypass impossible rather than unlikely.
+          if [ -z "${RUN_ID}" ]; then
+            echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
+            exit 1
+          fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 

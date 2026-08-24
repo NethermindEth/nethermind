@@ -101,8 +101,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override void SetNonce(Address address, in ulong nonce)
     {
+        ulong oldNonce = GetNonceInternal(address);
         base.SetNonce(address, nonce);
-        _generatingBlockAccessList.AddNonceChange(address, nonce);
+        if (nonce != oldNonce)
+        {
+            _generatingBlockAccessList.AddNonceChange(address, nonce);
+        }
     }
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)

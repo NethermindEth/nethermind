@@ -8,13 +8,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-/// <summary>JSON-RPC view of an EIP-8141 frame: <c>[mode, flags, target, gas_limit, value, data]</c>.</summary>
+/// <summary>JSON-RPC view of an EIP-8141 frame: <c>[mode, flags, target, limits, value, data]</c>,
+/// where <c>limits = [execution, state]</c>.</summary>
 public class FrameForRpc
 {
     public byte Mode { get; set; }
     public byte Flags { get; set; }
     public Address? Target { get; set; }
-    public ulong GasLimit { get; set; }
+    public ulong ExecutionGasLimit { get; set; }
+    public ulong StateGasLimit { get; set; }
     public UInt256 Value { get; set; }
     public byte[] Data { get; set; } = [];
 
@@ -26,12 +28,13 @@ public class FrameForRpc
         Mode = frame.Mode;
         Flags = frame.Flags;
         Target = frame.Target;
-        GasLimit = frame.GasLimit;
+        ExecutionGasLimit = frame.ExecutionGasLimit;
+        StateGasLimit = frame.StateGasLimit;
         Value = frame.Value;
         Data = frame.Data.ToArray();
     }
 
-    public TxFrame ToFrame() => new(Mode, Flags, Target, GasLimit, Value, Data);
+    public TxFrame ToFrame() => new(Mode, Flags, Target, ExecutionGasLimit, StateGasLimit, Value, Data);
 
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames) =>
         frames?.Select(static f => new FrameForRpc(f)).ToArray();

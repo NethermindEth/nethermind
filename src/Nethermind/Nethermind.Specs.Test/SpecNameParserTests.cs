@@ -15,7 +15,12 @@ public class SpecNameParserTests
     {
         IReleaseSpec spec = SpecNameParser.Parse("Bogota");
 
-        Assert.That(spec, Is.SameAs(Bogota.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(Bogota.Instance));
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+        }
     }
 
     [TestCase("NotAFork", "NotAFork")]
