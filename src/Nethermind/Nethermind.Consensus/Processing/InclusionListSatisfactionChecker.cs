@@ -13,9 +13,8 @@ namespace Nethermind.Consensus.Processing;
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator)
     : IInclusionListSatisfactionChecker
 {
-    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
+    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
     {
-        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator);
