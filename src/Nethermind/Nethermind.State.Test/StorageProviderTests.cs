@@ -616,6 +616,49 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Restoring_storage_clear_preserves_committed_storage()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell previouslyRead = new(TestItem.AddressA, 1);
+        StorageCell readAfterClear = new(TestItem.AddressA, 2);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 100);
+            provider.Set(previouslyRead, _values[7]);
+            provider.Set(readAfterClear, _values[8]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+            Snapshot snapshot = provider.TakeSnapshot();
+
+            provider.ClearStorage(TestItem.AddressA);
+            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+
+            provider.Restore(snapshot);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+                Assert.That(provider.GetOriginal(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+                Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
+                Assert.That(provider.GetOriginal(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
+            }
+
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
+            Assert.That(provider.StateRoot, Is.EqualTo(baseBlock.StateRoot));
+        }
+    }
+
+    [Test]
     public void Destroy_only_round_does_not_leak_into_next_transaction()
     {
         // tx1 destroys a contract without touching any storage cell; tx2 (same block)

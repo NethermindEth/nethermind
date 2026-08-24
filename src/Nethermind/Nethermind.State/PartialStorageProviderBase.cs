@@ -83,6 +83,12 @@ namespace Nethermind.State
             {
                 int position = currentPosition - i;
                 ref readonly Change change = ref changes[position];
+                if (change.ChangeType == ChangeType.StorageClear)
+                {
+                    RestoreStorageClear(change.StorageCell.Address);
+                    continue;
+                }
+
                 ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
                 if (Unsafe.IsNullRef(ref head))
                 {
@@ -214,6 +220,15 @@ namespace Nethermind.State
             head = new HeadChange(value, _changes.Count, originalIdx);
             _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx, originalIdx));
         }
+
+        protected void PushStorageClear(Address address)
+        {
+            StorageCell marker = new(address, default);
+            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, ChangeType.StorageClear, -1, -1));
+        }
+
+        protected virtual void RestoreStorageClear(Address address) =>
+            throw new InvalidOperationException($"{GetType().Name} cannot restore a storage clear for {address}");
 
         /// <summary>
         /// Clear all storage at specified address

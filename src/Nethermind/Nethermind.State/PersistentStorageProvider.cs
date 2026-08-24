@@ -41,6 +41,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
+    private readonly List<StorageClearChange> _storageClearJournal = [];
 
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
@@ -60,6 +61,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
+        _storageClearJournal.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -151,6 +153,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
+            if (change.ChangeType == ChangeType.StorageClear)
+            {
+                continue;
+            }
+
             if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
@@ -240,6 +247,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
+        _storageClearJournal.Clear();
 
         if (isTracing)
         {
@@ -402,23 +410,82 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void ClearStorage(Address address)
     {
+        List<KeyValuePair<StorageCell, byte[]>>? originalValues = null;
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
         {
             if (readCell.Key.Address == address)
             {
+                (originalValues ??= []).Add(readCell);
                 Set(readCell.Key, StorageTree.ZeroBytes);
             }
         }
 
         base.ClearStorage(address);
 
-        ResetContractState(address);
+        bool hadRootUpdate = _toUpdateRoots.TryGetValue(address, out bool rootUpdate);
+        DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
+        _toUpdateRoots.TryAdd(address, true);
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, hadRootUpdate, rootUpdate));
+        PushStorageClear(address);
     }
+
+    protected override void RestoreStorageClear(Address address)
+    {
+        int lastIndex = _storageClearJournal.Count - 1;
+        if (lastIndex < 0 || _storageClearJournal[lastIndex].Address != address)
+        {
+            throw new InvalidOperationException($"Missing storage clear journal entry for {address}");
+        }
+
+        StorageClearChange change = _storageClearJournal[lastIndex];
+        _storageClearJournal.RemoveAt(lastIndex);
+        GetOrCreateStorage(address).RestoreClear(change.BlockChange);
+
+        using (ArrayPoolListRef<StorageCell> currentOriginals = new(0))
+        {
+            foreach (StorageCell cell in _originalValues.Keys)
+            {
+                if (cell.Address == address)
+                {
+                    currentOriginals.Add(cell);
+                }
+            }
+
+            foreach (ref readonly StorageCell cell in currentOriginals.AsSpan())
+            {
+                _originalValues.Remove(cell);
+            }
+        }
+
+        if (change.OriginalValues is not null)
+        {
+            foreach (KeyValuePair<StorageCell, byte[]> originalValue in change.OriginalValues)
+            {
+                _originalValues.Add(originalValue.Key, originalValue.Value);
+            }
+        }
+
+        if (change.HadRootUpdate)
+        {
+            _toUpdateRoots[address] = change.RootUpdate;
+        }
+        else
+        {
+            _toUpdateRoots.Remove(address);
+        }
+    }
+
+    private readonly record struct StorageClearChange(
+        Address Address,
+        DefaultableDictionary.ClearSnapshot BlockChange,
+        List<KeyValuePair<StorageCell, byte[]>>? OriginalValues,
+        bool HadRootUpdate,
+        bool RootUpdate);
 
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
@@ -431,6 +498,34 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _missingAreDefault = true;
             _dictionary.Clear();
+        }
+
+        public ClearSnapshot ClearRevertibly()
+        {
+            Dictionary<UInt256, StorageChangeTrace>? previousEntries = null;
+            if (_dictionary.Count != 0)
+            {
+                previousEntries = _dictionary;
+                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(Comparer.Instance);
+            }
+
+            ClearSnapshot snapshot = new(previousEntries, _missingAreDefault);
+            _missingAreDefault = true;
+            return snapshot;
+        }
+
+        public void Restore(ClearSnapshot snapshot)
+        {
+            if (snapshot.PreviousEntries is not null)
+            {
+                _dictionary = snapshot.PreviousEntries;
+            }
+            else
+            {
+                _dictionary.Clear();
+            }
+
+            _missingAreDefault = snapshot.MissingAreDefault;
         }
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
@@ -471,6 +566,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public void UnmarkClear() => _missingAreDefault = false;
+
+        public readonly record struct ClearSnapshot(
+            Dictionary<UInt256, StorageChangeTrace>? PreviousEntries,
+            bool MissingAreDefault);
     }
 
     private sealed class PerContractState : IReturnable
@@ -526,6 +625,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             EnsureStorageTree();
             BlockChange.ClearAndSetMissingAsDefault();
         }
+
+        public DefaultableDictionary.ClearSnapshot ClearRevertibly()
+        {
+            EnsureStorageTree();
+            return BlockChange.ClearRevertibly();
+        }
+
+        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot) => BlockChange.Restore(snapshot);
 
         public void Return()
         {
