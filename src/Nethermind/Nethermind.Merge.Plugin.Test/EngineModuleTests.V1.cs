@@ -2076,7 +2076,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
@@ -2146,6 +2146,12 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5)
         ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Amsterdam");
+        yield return new TestCaseData(Bogota.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Bogota");
     }
 
     [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesCases))]
@@ -2166,6 +2172,8 @@ public partial class EngineModuleTests
             .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V4");
         yield return new TestCaseData(Amsterdam.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5))
             .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V5");
+        yield return new TestCaseData(Bogota.Instance, nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6))
+            .SetName(nameof(WitnessJsonRpcCapabilityDoesNotWarnWhenMissing) + "_for_V6");
     }
 
     [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesWithoutWarningsCases))]
