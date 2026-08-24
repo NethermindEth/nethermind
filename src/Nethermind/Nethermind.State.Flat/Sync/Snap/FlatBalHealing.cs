@@ -189,10 +189,9 @@ public class FlatBalHealing(
                 account = account.WithChangedCodeHash(codeHash.ToCommitment());
             }
 
-            // EIP-158: a touched account with zero nonce and balance and no code is removed, whatever its
-            // storage. Wipe it before writing any slot: SelfDestruct deletes by scanning the pre-batch
-            // snapshot, so slots written into this batch would survive it and later be served for a
-            // re-created account at the same address.
+            // EIP-158: a touched empty account is removed, whatever its storage. Wipe it before writing any
+            // slot - SelfDestruct only scans the pre-batch snapshot, so slots written into this batch would
+            // outlive it. A revive later in the chunk skips the wipe, which EIP-6780 makes safe.
             if (account.IsEmpty)
             {
                 batch.SelfDestruct(address);
