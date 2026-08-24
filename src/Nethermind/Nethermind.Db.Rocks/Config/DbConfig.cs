@@ -312,7 +312,7 @@ public class DbConfig : IDbConfig
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
-        "compression=kLZ4Compression;" +
+        "compression=kZSTD;" +
 
         // Reduce num of files. Tend to be a good thing.
         "target_file_size_multiplier=2;" +
