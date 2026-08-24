@@ -261,13 +261,6 @@ public class PayloadAttributes
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
-        // V5's only new field is optional, so a null-IL attributes object is shape-identical to V4. Accept
-        // it as V5 for FCUv5 alone, leaving earlier FCU versions to report UnsupportedFork.
-        if (timestampVersion == PayloadAttributesVersions.V5
-            && actualVersion == PayloadAttributesVersions.V4
-            && fcuVersion == EngineApiVersions.Fcu.V5)
-            actualVersion = PayloadAttributesVersions.V5;
-
         // When attrs are below the timestamp-implied version and the FCU doesn't accept this
         // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
         // specific missing field rather than a generic version-mismatch.
@@ -311,7 +304,9 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
-            // Optional: the initial FCUv5 build starts with it null.
+            // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
+            // an absent one is not.
+            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
             _ => null
         };
     }

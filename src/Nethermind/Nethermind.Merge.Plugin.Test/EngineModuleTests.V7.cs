@@ -334,20 +334,29 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
+    // bogota.md: PayloadAttributesV5 appends inclusionListTransactions unconditionally, so an empty list is
+    // how a proposer says it has none — omitting the field leaves the attributes V4-shaped.
     [Test]
-    public async Task ForkchoiceUpdatedV5_accepts_null_inclusion_list_for_initial_build()
+    public async Task ForkchoiceUpdatedV5_rejects_attributes_without_an_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        // The proposer's initial FCUv5 carries no inclusion list yet — it must still start building.
-        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+        ResultWrapper<ForkchoiceUpdatedV2Result> missing = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: null!));
+        ResultWrapper<ForkchoiceUpdatedV2Result> empty = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
 
-        Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(fcu.Data.PayloadId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(missing.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(empty.Result.ResultType, Is.EqualTo(ResultType.Success), empty.Result.Error);
+            Assert.That(empty.Data.PayloadId, Is.Not.Null);
+        }
     }
 
     [Test]

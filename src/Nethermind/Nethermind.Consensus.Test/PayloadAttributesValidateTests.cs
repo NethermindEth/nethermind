@@ -71,30 +71,14 @@ public class PayloadAttributesValidateTests
         }
     }
 
-    [Test]
-    public void Validate_accepts_null_inclusion_list_at_V5()
+    // bogota.md PayloadAttributesV5 appends inclusionListTransactions unconditionally: an empty list is
+    // valid, an absent one leaves the attributes V4-shaped and earns -38003 from FCUv5.
+    [TestCase(PayloadAttributesVersions.V5, false, PayloadAttributesValidationResult.InvalidPayloadAttributes)]
+    [TestCase(PayloadAttributesVersions.V5, true, PayloadAttributesValidationResult.Success)]
+    [TestCase(PayloadAttributesVersions.V4, false, PayloadAttributesValidationResult.UnsupportedFork)]
+    public void Validate_requires_an_inclusion_list_at_Bogota(
+        int fcuVersion, bool withInclusionList, PayloadAttributesValidationResult expected)
     {
-        // The proposer's initial FCUv5 has no inclusion list yet, so V4-shaped attributes must validate.
-        ISpecProvider sp = Substitute.For<ISpecProvider>();
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip7805Enabled.Returns(true);
-        spec.IsEip7843Enabled.Returns(true);
-        spec.IsEip4844Enabled.Returns(true);
-        spec.WithdrawalsEnabled.Returns(true);
-        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-
-        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true); // no InclusionListTransactions set
-
-        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V5, out string error);
-
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
-        Assert.That(error, Is.Null);
-    }
-
-    [Test]
-    public void Validate_rejects_V4_fcu_at_Bogota_as_unsupported_fork()
-    {
-        // The null-IL V4-as-V5 leniency applies to FCUv5 alone; V4 must still report UnsupportedFork.
         ISpecProvider sp = Substitute.For<ISpecProvider>();
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip7805Enabled.Returns(true);
@@ -104,10 +88,16 @@ public class PayloadAttributesValidateTests
         sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+        attrs.InclusionListTransactions = withInclusionList ? [] : null;
 
-        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V4, out _);
+        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion, out string error);
 
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.UnsupportedFork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            if (expected == PayloadAttributesValidationResult.InvalidPayloadAttributes)
+                Assert.That(error, Does.Contain(nameof(PayloadAttributes.InclusionListTransactions)));
+        }
     }
 
     [TestCase(false, PayloadAttributesVersions.V1)]
