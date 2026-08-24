@@ -86,4 +86,34 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
         }
         Assert.That(stateReader.HasStateForBlock(xdcFinalPivot), Is.True, "final pivot state must be synced");
     }
+
+    [Test]
+    public void GetPivotHeader_WhenHeadersAreNotDownloadedYet_RetriesUntilGapBlocksResolve()
+    {
+        XdcBlockHeader pivot = new XdcBlockHeaderBuilder().WithNumber(100).TestObject;
+        XdcBlockHeader gapBlock = new XdcBlockHeaderBuilder().WithNumber(50).TestObject;
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.PivotNumber.Returns(pivot.Number);
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IXdcStateSyncSnapshotManager snapshotManager = Substitute.For<IXdcStateSyncSnapshotManager>();
+
+        XdcStateSyncPivot statePivot = new(blockTree, syncConfig, stateReader, snapshotManager);
+
+        // The header sync downloads the pivot itself, so it is not in the block tree when state sync starts
+        Assert.That(statePivot.GetPivotHeader(), Is.Null);
+
+        // Pivot inserted, but the gap blocks below it have not arrived
+        blockTree.FindHeader(pivot.Number).Returns(pivot);
+        snapshotManager.GetGapBlocks(pivot).Returns((XdcBlockHeader[]?)null);
+        Assert.That(statePivot.GetPivotHeader(), Is.Null);
+
+        snapshotManager.GetGapBlocks(pivot).Returns([gapBlock]);
+        Assert.That(statePivot.GetPivotHeader(), Is.EqualTo(gapBlock));
+
+        // The gap block is enqueued exactly once, so completing it advances to the pivot
+        stateReader.HasStateForBlock(gapBlock).Returns(true);
+        Assert.That(statePivot.GetPivotHeader(), Is.EqualTo(pivot));
+    }
 }

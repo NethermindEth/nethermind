@@ -56,18 +56,26 @@ public class XdcStateSyncPivot(
         return _pivotHeader is not null && pivot.Hash == _pivotHeader.Hash;
     }
 
+    /// <remarks>
+    /// The pivot header and its gap blocks are downloaded by the header sync, which walks down from the pivot, so
+    /// neither is available the moment state sync starts. Initialization stays pending until every required header is
+    /// in the block tree; latching a partial target queue would leave the node unable to recover without a restart.
+    /// </remarks>
     private void EnsureInitialized()
     {
         if (_initialized) return;
-        _initialized = true;
 
         ulong pivotNumber = _syncConfig.PivotNumber;
-        if (pivotNumber == 0) return;
+        if (pivotNumber == 0)
+        {
+            _initialized = true;
+            return;
+        }
 
-        XdcBlockHeader pivotHeader = _blockTree.FindHeader(pivotNumber) as XdcBlockHeader
-            ?? throw new InvalidOperationException($"Pivot block {pivotNumber} not found in block tree.");
+        if (_blockTree.FindHeader(pivotNumber) is not XdcBlockHeader pivotHeader) return;
 
-        XdcBlockHeader[] gapBlockHeaders = _syncSnapshotManager.GetGapBlocks(pivotHeader);
+        XdcBlockHeader[]? gapBlockHeaders = _syncSnapshotManager.GetGapBlocks(pivotHeader);
+        if (gapBlockHeaders is null) return;
 
         foreach (XdcBlockHeader gapBlockHeader in gapBlockHeaders)
         {
@@ -75,5 +83,6 @@ public class XdcStateSyncPivot(
         }
 
         _pivotHeader = pivotHeader;
+        _initialized = true;
     }
 }

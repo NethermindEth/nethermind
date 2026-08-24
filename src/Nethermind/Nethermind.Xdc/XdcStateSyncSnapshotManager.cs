@@ -31,7 +31,7 @@ public class XdcStateSyncSnapshotManager(
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
-    public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
+    public XdcBlockHeader[]? GetGapBlocks(XdcBlockHeader pivotHeader)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader);
 
@@ -39,7 +39,10 @@ public class XdcStateSyncSnapshotManager(
 
         while (!_epochSwitchManager.IsEpochSwitchAtBlock(epochSwitchHeader))
         {
-            epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
+            if (_blockTree.FindHeader(epochSwitchHeader.ParentHash) is not XdcBlockHeader parentHeader)
+                return null;
+
+            epochSwitchHeader = parentHeader;
         }
 
         ulong epochBase = Math.Max(
@@ -50,15 +53,15 @@ public class XdcStateSyncSnapshotManager(
         // The penalty comeback check at an epoch switch reaches LimitPenaltyEpoch epochs back
         // (see PenaltyHandler.HandlePenalties), and resolving an epoch needs its gap block snapshot.
         // Nothing below the pivot is ever processed, so those snapshots only exist if built from synced state here.
-        ulong lookbackFloor = Math.Min(epochBase, Math.Max(spec.SwitchBlock, spec.EpochLength));
+        ulong switchBlockEpochBase = spec.SwitchBlock - spec.SwitchBlock % spec.EpochLength;
+        ulong lookbackFloor = Math.Min(epochBase, Math.Max(switchBlockEpochBase, spec.EpochLength));
         ulong gapBlockNum = Math.Max(epochBase.SaturatingSub(XdcConstants.LimitPenaltyEpoch * spec.EpochLength), lookbackFloor) - spec.Gap;
 
         if (gapBlockNum + spec.Gap == spec.SwitchBlock)
         {
-            XdcBlockHeader checkpointHeader = (XdcBlockHeader)_blockTree.FindHeader(spec.SwitchBlock);
-            XdcBlockHeader gapBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
-            if (checkpointHeader is null || gapBlockHeader is null)
-                throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
+            if (_blockTree.FindHeader(spec.SwitchBlock) is not XdcBlockHeader checkpointHeader
+                || _blockTree.FindHeader(gapBlockNum) is not XdcBlockHeader gapBlockHeader)
+                return null;
 
             Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
             _snapshotManager.StoreSnapshot(snapshot);
@@ -76,7 +79,10 @@ public class XdcStateSyncSnapshotManager(
 
         for (int i = 0; i < count; i++)
         {
-            gapBlockHeaders[i] = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            if (_blockTree.FindHeader(gapBlockNum) is not XdcBlockHeader gapBlockHeader)
+                return null;
+
+            gapBlockHeaders[i] = gapBlockHeader;
             gapBlockNum += spec.EpochLength;
         }
 

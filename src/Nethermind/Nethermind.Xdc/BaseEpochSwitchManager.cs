@@ -19,6 +19,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     protected IBlockTree Tree { get; } = tree;
     protected ISnapshotManager SnapshotManager { get; } = snapshotManager;
     protected LruCache<ValueHash256, EpochSwitchInfo> EpochSwitches { get; } = new(XdcConstants.InMemoryEpochs, nameof(EpochSwitches));
+    private LruCache<ValueHash256, Hash256> EpochSwitchHeaders { get; } = new(XdcConstants.InMemoryEpochs, nameof(EpochSwitchHeaders));
 
     public abstract bool IsEpochSwitchAtBlock(XdcBlockHeader header);
 
@@ -28,30 +29,41 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     public abstract EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 
     /// <summary>
-    /// Walks back from <paramref name="header"/> to the epoch switch block that opens its epoch.
+    /// Walks back from <paramref name="header"/> to the epoch switch header that opens its epoch.
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="GetEpochSwitchInfo(XdcBlockHeader)"/> this needs no snapshot, so it still resolves epochs
     /// whose gap block snapshot is unavailable — the case for epochs below a fast sync pivot, where no block is ever
     /// processed. Use it wherever only the epoch switch block itself is needed, not the master node set.
     /// </remarks>
-    /// <returns>The epoch switch block, or <c>null</c> when an ancestor is missing from the block tree.</returns>
-    protected BlockRoundInfo? FindEpochSwitchBlock(XdcBlockHeader header)
+    /// <returns>
+    /// The epoch switch header, or <c>null</c> when an ancestor is missing from the block tree or the epoch predates
+    /// V2 consensus and so carries no round to report.
+    /// </returns>
+    protected XdcBlockHeader? FindEpochSwitchHeader(XdcBlockHeader header)
     {
-        while (true)
+        Hash256 headerHash = header.Hash!;
+        if (EpochSwitchHeaders.TryGet(headerHash, out Hash256 cachedHash))
+            return Tree.FindHeader(cachedHash) as XdcBlockHeader;
+
+        while (!IsEpochSwitchAtBlock(header))
         {
-            if (EpochSwitches.TryGet(header.Hash!, out EpochSwitchInfo cached))
-                return cached.EpochSwitchBlockInfo;
-
-            if (IsEpochSwitchAtBlock(header))
-                return new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? 0, header.Number);
-
             if (Tree.FindHeader(header.ParentHash!) is not XdcBlockHeader parent)
                 return null;
 
             header = parent;
         }
+
+        // Matches GetEpochSwitchInfo: below the switch block there is no consensus data, so no round to report.
+        if (header.ExtraConsensusData is null && header.Number != XdcSpecProvider.GetXdcSpec(header).SwitchBlock)
+            return null;
+
+        EpochSwitchHeaders.Set(headerHash, header.Hash!);
+        return header;
     }
+
+    protected static BlockRoundInfo ToBlockRoundInfo(XdcBlockHeader epochSwitchHeader) =>
+        new(epochSwitchHeader.Hash!, epochSwitchHeader.ExtraConsensusData?.BlockRound ?? 0, epochSwitchHeader.Number);
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {

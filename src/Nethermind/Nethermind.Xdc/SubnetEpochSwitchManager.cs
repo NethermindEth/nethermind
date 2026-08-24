@@ -54,7 +54,7 @@ internal class SubnetEpochSwitchManager(
         XdcBlockHeader? targetHeader = (XdcBlockHeader?)Tree.FindHeader(targetNumber);
         if (targetHeader is null) return null;
 
-        return FindEpochSwitchBlock(targetHeader);
+        return FindEpochSwitchHeader(targetHeader) is { } epochSwitchHeader ? ToBlockRoundInfo(epochSwitchHeader) : null;
     }
 
     /// <inheritdoc/>
