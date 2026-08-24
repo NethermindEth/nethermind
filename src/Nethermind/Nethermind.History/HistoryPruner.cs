@@ -475,9 +475,10 @@ public class HistoryPruner : IHistoryPruner
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
-        // Nothing retained means one range removal and no per-height work, so slicing would only narrow the
-        // ranges that unlink files. Tested on the empty set: a covered span still costs a body read per candidate.
-        if (answered.Count == 0 && answeredFrom <= from && answeredTo >= to)
+        // Per-height work in an answered span is one body read per retained height, not one per height, so the
+        // span needs slicing only when there are enough of them to outrun a deadline. Below that a single wide
+        // range beats a hundred narrow ones, which unlink fewer whole files between them.
+        if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
         {
             ReclaimReceiptSlice(from, to, answered);
             return to;

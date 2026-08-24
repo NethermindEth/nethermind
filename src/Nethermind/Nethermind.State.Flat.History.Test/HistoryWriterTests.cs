@@ -146,6 +146,82 @@ public class HistoryWriterTests
         public void Dispose() { }
     }
 
+    [Test]
+    public void A_throw_while_resolving_the_pending_rows_publishes_nothing()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ThrowingHistoryColumns throwing = new(_historyColumns, throwOnAccountWrite: 3);
+        HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
+
+        Assert.Throws<InvalidOperationException>(() => writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None));
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(throwing.AccountWrites, Is.EqualTo(3),
+                "the walk has to have written its two rows before the throw, or this exercises the walk rather than the resolve");
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(0, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(2, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL));
+        }
+    }
+
+    private sealed class ThrowingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner, int throwOnAccountWrite) : IColumnsDb<FlatHistoryColumns>
+    {
+        public int AccountWrites { get; private set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+        public void Dispose() { }
+
+        private void CountAccountWrite()
+        {
+            if (++AccountWrites == throwOnAccountWrite) throw new InvalidOperationException("account history write failed");
+        }
+
+        private sealed class Batch(ThrowingHistoryColumns owner, IColumnsWriteBatch<FlatHistoryColumns> inner) : IColumnsWriteBatch<FlatHistoryColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatHistoryColumns key) => key == FlatHistoryColumns.AccountHistory
+                ? new CountingBatch(owner, inner.GetColumnBatch(key))
+                : inner.GetColumnBatch(key);
+
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingBatch(ThrowingHistoryColumns owner, IWriteBatch inner) : IWriteBatch
+        {
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                owner.CountAccountWrite();
+                inner.Set(key, value, flags);
+            }
+
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                owner.CountAccountWrite();
+                inner.PutSpan(key, value, flags);
+            }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => inner.Merge(key, value, flags);
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
     [TestCase(0ul, null)]
     [TestCase(1ul, "0a")]
     [TestCase(2ul, "0bbb")]
