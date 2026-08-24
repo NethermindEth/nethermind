@@ -1476,7 +1476,7 @@ public class Eth72ProtocolHandler(
 
     private long NextCellStateRevision() => ++_cellStateRevision;
 
-    private static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
+    internal static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
     {
         ulong maxBlobsPerTx = specProvider.GetFinalSpec()?.MaxBlobsPerTx ?? Eip4844Constants.DefaultMaxBlobCount;
         if (maxBlobsPerTx == 0)
@@ -1484,7 +1484,8 @@ public class Eth72ProtocolHandler(
             maxBlobsPerTx = Eip4844Constants.DefaultMaxBlobCount;
         }
 
-        return (int)Math.Min((ulong)int.MaxValue, maxBlobsPerTx * (ulong)BlobCellMask.CellCount);
+        maxBlobsPerTx = Math.Min(maxBlobsPerTx, (ulong)int.MaxValue / BlobCellMask.CellCount);
+        return checked((int)maxBlobsPerTx * BlobCellMask.CellCount);
     }
 
     private int GetExpectedCellsResponseBound(long requestId, BlobCellMask requestMask)

@@ -6,9 +6,11 @@ using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V72;
@@ -173,6 +175,22 @@ public class Eth72MessageSerializerTests
         }
 
         AssertCellsMessageRejected([Hash256.Zero], [cells], BlobCellMask.FromIndices([1]).ToBytes());
+    }
+
+    [Test]
+    public void CellsMessageSerializer_should_use_final_spec_blob_limit()
+    {
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.MaxBlobsPerTx.Returns(1UL);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetFinalSpec().Returns(releaseSpec);
+        CellsMessageSerializer72 serializer = new(specProvider);
+        byte[][] cells = [CreateCell(1), CreateCell(2)];
+        using CellsMessage72 message = new([Hash256.Zero], [cells], BlobCellMask.FromIndices([1]).ToBytes());
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
     }
 
     [Test]

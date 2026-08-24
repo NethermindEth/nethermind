@@ -1,21 +1,39 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage72>
 {
-    private const int MaxCellsPerTransaction = BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx;
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(CellsMessage72.Hashes));
-    private static readonly RlpLimit CellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(MaxCellsPerTransaction, nameof(CellsMessage72.Cells));
+    private readonly int _maxBlobsPerTransaction;
+    private readonly RlpLimit _cellsPerTransactionRlpLimit;
+
+    public CellsMessageSerializer72()
+        : this(BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx)
+    {
+    }
+
+    public CellsMessageSerializer72(ISpecProvider specProvider)
+        : this(GetMaxCellsPerTransaction(specProvider))
+    {
+    }
+
+    private CellsMessageSerializer72(int maxCellsPerTransaction)
+    {
+        _maxBlobsPerTransaction = maxCellsPerTransaction / BlobCellMask.CellCount;
+        _cellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(maxCellsPerTransaction, nameof(CellsMessage72.Cells));
+    }
 
     public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
     {
@@ -50,7 +68,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     public CellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
-    private static CellsMessage72 Deserialize(ref RlpReader ctx)
+    private CellsMessage72 Deserialize(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int checkPosition = ctx.Position + sequenceLength;
@@ -73,7 +91,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
                 throw new RlpException($"Too many cell groups in {nameof(CellsMessage72)}. Expected {hashes.Count}.");
             }
 
-            cellsByTx.Add(ctx.DecodeByteArrays(CellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell));
+            cellsByTx.Add(ctx.DecodeByteArrays(_cellsPerTransactionRlpLimit, innerSize: Ckzg.BytesPerCell));
         }
 
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
@@ -146,7 +164,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
     }
 
-    private static byte[][] ToBlobMajor(byte[][] indexMajorCells, int cellIndexCount)
+    private byte[][] ToBlobMajor(byte[][] indexMajorCells, int cellIndexCount)
     {
         if (cellIndexCount == 0 || indexMajorCells.Length == 0 || indexMajorCells.Length % cellIndexCount != 0)
         {
@@ -154,7 +172,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
 
         int blobCount = indexMajorCells.Length / cellIndexCount;
-        if (blobCount > Eip7594Constants.MaxBlobsPerTx)
+        if (blobCount > _maxBlobsPerTransaction)
         {
             throw new RlpLimitException($"Too many blobs in {nameof(CellsMessage72)} cell group: {blobCount}.");
         }
@@ -174,5 +192,11 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
 
         return blobMajorCells;
+    }
+
+    private static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
+    {
+        ArgumentNullException.ThrowIfNull(specProvider);
+        return Eth72ProtocolHandler.GetMaxCellsPerTransaction(specProvider);
     }
 }
