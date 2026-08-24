@@ -8,8 +8,7 @@ namespace Nethermind.Consensus.Transactions;
 /// <summary>Feeds the inclusion list supplied by <c>engine_forkchoiceUpdatedV5</c> into block production (EIP-7805).</summary>
 public interface IInclusionListTxSource : ITxSource
 {
-    /// <summary>Decodes and retains the inclusion list for the build identified by <paramref name="inclusionListTransactions"/>.</summary>
-    /// <param name="inclusionListTransactions">The RLP-encoded inclusion-list entries, as received in the payload attributes.</param>
-    /// <param name="spec">The spec at the build's timestamp.</param>
+    /// <summary>Retains the list for the build identified by the <paramref name="inclusionListTransactions"/>
+    /// array instance, which is the key <c>GetTransactions</c> looks it up by.</summary>
     void Set(byte[][] inclusionListTransactions, IReleaseSpec spec);
 }

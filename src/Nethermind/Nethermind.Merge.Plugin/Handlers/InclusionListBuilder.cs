@@ -26,14 +26,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
-    /// <remarks>
-    /// Candidates are restricted to what the next block could actually append: senders whose lowest pending
-    /// nonce is the account's next one and can pay the base fee, then that sender's gapless nonce run. An
-    /// entry outside that set can never be appendable, so it would spend list bytes without adding
-    /// censorship resistance. Senders are drawn uniformly rather than by fee, because the list exists for
-    /// the transactions a builder passes over, which are exactly the ones a fee-ordered draw drops first,
-    /// and their runs are interleaved so no single account can spend the list on itself.
-    /// </remarks>
+    /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
+    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs()
     {
         const int capacity = SenderSampleCapacity;

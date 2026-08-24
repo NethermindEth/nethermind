@@ -7,13 +7,9 @@ using Nethermind.Evm.State;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>Reports whether a processed block honoured the inclusion list it was suggested with (EIP-7805).</summary>
-/// <remarks>Deliberately not block validation: an unsatisfied inclusion list leaves the block valid and
-/// committed. It runs inside block processing because it reads post-execution world state. Whether a
-/// block is worth evaluating at all is the caller's decision.</remarks>
+/// <remarks>Not block validation: an unsatisfied inclusion list leaves the block valid and committed. Runs
+/// inside block processing because appendability is judged against post-execution state.</remarks>
 public interface IInclusionListSatisfactionChecker
 {
-    /// <param name="processedBlock">The block as produced by execution.</param>
-    /// <param name="suggestedBlock">The block as suggested, carrying the inclusion list to satisfy.</param>
-    /// <param name="worldState">Post-execution state, used to test whether a missing entry was appendable.</param>
     bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState);
 }

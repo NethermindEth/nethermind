@@ -5,16 +5,12 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>Result of <c>engine_newPayloadV6</c> (EIP-7805), extending <see cref="PayloadStatusV1"/>
-/// with inclusion-list compliance reported alongside a still-<c>VALID</c> status.</summary>
-/// <remarks>Per <see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>,
-/// a payload that omitted an appendable inclusion-list transaction is still <c>VALID</c>.</remarks>
+/// <summary>Result of <c>engine_newPayloadV6</c> (EIP-7805).</summary>
+/// <remarks>A payload that omitted an appendable inclusion-list transaction is still <c>VALID</c>
+/// (<see href="https://github.com/ethereum/execution-apis/pull/609">execution-apis#609</see>).</remarks>
 public class PayloadStatusV2 : PayloadStatusV1
 {
-    /// <summary>
-    /// Whether the payload satisfied the inclusion-list constraints when <see cref="PayloadStatusV1.Status"/>
-    /// is <c>VALID</c>; <c>null</c> for any other status.
-    /// </summary>
+    /// <summary>Inclusion-list compliance when <see cref="PayloadStatusV1.Status"/> is <c>VALID</c>; <c>null</c> otherwise.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public bool? InclusionListSatisfied { get; set; }
 }

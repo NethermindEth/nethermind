@@ -64,16 +64,7 @@ namespace Nethermind.Consensus.Processing
             return true;
         }
 
-        /// <summary>
-        /// Recovers senders (and EIP-7702 authorities) for transactions that are not yet part of a
-        /// constructed <see cref="Block"/>.
-        /// </summary>
-        /// <remarks>
-        /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
-        /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
-        /// </remarks>
-        /// <param name="txs">The transactions to recover senders and authorities for.</param>
-        /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
+        /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
         {

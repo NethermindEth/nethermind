@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>Builds an inclusion list from pending mempool transactions, bounded by
-/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/> (EIP-7805).</summary>
-/// <remarks>Only chains that never schedule EIP-7805 are refused: the list is for the next block, whose
-/// timestamp a missed slot moves, so a narrower gate risks refusing the activation slot itself.</remarks>
+/// <summary>Builds an inclusion list from pending mempool transactions (EIP-7805).</summary>
+/// <remarks>Gated on the final spec, not the head's: a missed slot moves the next block's timestamp, so a
+/// narrower gate could refuse the activation slot itself.</remarks>
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,

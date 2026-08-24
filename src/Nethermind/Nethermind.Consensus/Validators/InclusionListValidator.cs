@@ -104,14 +104,9 @@ public static class InclusionListValidator
         return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
     }
 
-    /// <summary>
-    /// Balance the sender would have had when an appended transaction executed.
-    /// </summary>
-    /// <remarks>
-    /// Satisfaction is judged against post-block state, but withdrawals are credited after the block's
-    /// transactions and post-merge are the only such credit, so removing them reconstructs the balance
-    /// an appended transaction would have seen.
-    /// </remarks>
+    /// <summary>Balance the sender would have had when an appended transaction executed.</summary>
+    /// <remarks>Withdrawals are the only post-merge credit applied after the block's transactions, so counting
+    /// them into the post-block balance would make an honest proposer look like a censor.</remarks>
     private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
     {
         UInt256 balance = account.Balance;

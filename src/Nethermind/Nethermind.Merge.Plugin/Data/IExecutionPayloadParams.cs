@@ -29,10 +29,7 @@ public class ExecutionPayloadParams(
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
-    /// <summary>
-    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
-    /// </summary>
+    /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
@@ -77,8 +74,7 @@ public class ExecutionPayloadParams(
                 return ValidationResult.Fail;
             }
 
-            // Bound entry count and byte total separately so a faulty consensus client cannot force
-            // decode work beyond any valid input; empty entries cost no bytes but still allocate a slot.
+            // Count is bounded separately from bytes: an empty entry costs no bytes but still allocates a slot.
             if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
             {
                 error = "Inclusion list exceeds the maximum number of transactions";
@@ -265,8 +261,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     }
 }
 
-/// <summary>An EIP-7805 newPayload request, distinguished from its predecessor so that handlers shared
-/// by both forks can tell which version they serve: <see cref="ExecutionPayloadV4"/> spans the two.</summary>
+/// <summary>An EIP-7805 newPayload request, distinguished by type because <see cref="ExecutionPayloadV4"/>
+/// spans two forks and shared handlers have nothing else to tell them apart by.</summary>
 public sealed class InclusionListExecutionPayloadParams(
     ExecutionPayloadV4 executionPayload,
     Hash256?[]? blobVersionedHashes,

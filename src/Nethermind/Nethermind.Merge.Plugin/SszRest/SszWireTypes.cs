@@ -12,13 +12,12 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>Extensions over the raw wire byte-strings carried by the SSZ containers in this file.</summary>
-/// <remarks>Lives here rather than in <c>WireConversionExtensions</c> because the wire types are also
-/// compiled into assemblies that do not link that file.</remarks>
+/// <remarks>Not in <c>WireConversionExtensions</c>: the wire types compile into assemblies that do not link it.</remarks>
 internal static class SszWireBytesExtensions
 {
-    /// <summary>The wire bytes as an array, unwrapped without a copy when the memory exclusively owns one.</summary>
-    /// <remarks>The result outlives the wire struct, so decoding must materialise each field into its own
-    /// exact-fit array: a pooled buffer can span a whole array too, and must be copied rather than aliased.</remarks>
+    /// <summary>The wire bytes as an array, copied unless the memory exclusively owns one.</summary>
+    /// <remarks>The result outlives the wire struct, so memory that only spans part of a buffer must be
+    /// copied rather than aliased.</remarks>
     public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
         MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
         && segment.Offset == 0 && segment.Count == segment.Array!.Length
@@ -127,8 +126,7 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
 }
 
-// The SszList limits only affect hash-tree-root, which the REST wire never computes, so they act
-// purely as transport decode bounds.
+// SszList limits act purely as decode bounds here: the REST wire never computes hash-tree-root.
 [SszContainer]
 public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
 {
