@@ -33,9 +33,12 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 fcuState = new(startingHead, Keccak.Zero, startingHead);
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
-        Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), fcuResult.Result.Error);
-        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), fcuResult.Result.Error);
+            Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
+        }
 
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
@@ -48,20 +51,26 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: []);
-        Assert.That(newPayload.Result.ResultType, Is.EqualTo(ResultType.Success), newPayload.Result.Error);
-        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(newPayload.Data.InclusionListSatisfied, Is.True);
-        Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayload.Result.ResultType, Is.EqualTo(ResultType.Success), newPayload.Result.Error);
+            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(newPayload.Data.InclusionListSatisfied, Is.True);
+            Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
+        }
 
         ResultWrapper<ForkchoiceUpdatedV2Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
-        Assert.That(finalFcu.Result.ResultType, Is.EqualTo(ResultType.Success), finalFcu.Result.Error);
-        Assert.That(finalFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(finalFcu.Data.PayloadStatus.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
-        Assert.That(finalFcu.Data.PayloadId, Is.Null);
-        // execution-apis#609: FCU V5 reports the head's inclusion-list compliance retained from newPayloadV6.
-        Assert.That(finalFcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalFcu.Result.ResultType, Is.EqualTo(ResultType.Success), finalFcu.Result.Error);
+            Assert.That(finalFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(finalFcu.Data.PayloadStatus.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
+            Assert.That(finalFcu.Data.PayloadId, Is.Null);
+            // execution-apis#609: FCU V5 reports the head's inclusion-list compliance retained from newPayloadV6.
+            Assert.That(finalFcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
+        }
     }
 
     [Test]
@@ -89,8 +98,11 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead),
             payloadAttributes: null);
-        Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+        }
     }
 
     [Test]
@@ -126,10 +138,13 @@ public partial class EngineModuleTests
             inclusionListTransactions: inclusionList);
 
         // execution-apis#609: a censoring payload stays VALID and reports inclusionListSatisfied=false.
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(result.Data.InclusionListSatisfied, Is.False);
-        Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.InclusionListSatisfied, Is.False);
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
+        }
     }
 
     [Test]
@@ -151,8 +166,11 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: []);
-        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(first.Data.InclusionListSatisfied, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(first.Data.InclusionListSatisfied, Is.True);
+        }
 
         // Same block hash, different IL: the cached VALID must not short-circuit the IL check.
         Transaction censoredTx = Build.A.Transaction
@@ -169,8 +187,11 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: [Rlp.Encode(censoredTx).Bytes]);
-        Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(second.Data.InclusionListSatisfied, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(second.Data.InclusionListSatisfied, Is.False);
+        }
     }
 
     [Test]
@@ -244,16 +265,22 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV2> overLimit = await rpc.engine_newPayloadV6(
             emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests,
             [new byte[Eip7805Constants.MaxAggregateInclusionListBytes + 1]]);
-        Assert.That(overLimit.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum aggregate size"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overLimit.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum aggregate size"));
+        }
 
         // Entry count is bounded independently of bytes — empty entries cost no bytes but still allocate.
         byte[][] tooManyEmpty = new byte[Eip7805Constants.MaxAggregateInclusionListTransactions + 1][];
         for (int i = 0; i < tooManyEmpty.Length; i++) tooManyEmpty[i] = [];
         ResultWrapper<PayloadStatusV2> tooManyEntries = await rpc.engine_newPayloadV6(
             emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, tooManyEmpty);
-        Assert.That(tooManyEntries.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(tooManyEntries.Result.Error, Does.Contain("maximum number of transactions"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tooManyEntries.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(tooManyEntries.Result.Error, Does.Contain("maximum number of transactions"));
+        }
     }
 
     [Test]
@@ -271,8 +298,11 @@ public partial class EngineModuleTests
         // execution-apis#609: at/after Bogota, engine_newPayloadV5 must be rejected with -38005.
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(
             payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
     }
 
     // The witness wrapper delegates to a newPayload version, so rejecting V5 would leave it without an
@@ -330,8 +360,11 @@ public partial class EngineModuleTests
         // execution-apis#609: before Bogota, engine_newPayloadV6 must be rejected with -38005.
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
     }
 
     // bogota.md: PayloadAttributesV5 appends inclusionListTransactions unconditionally, so an empty list is
@@ -379,15 +412,21 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: [txBytes]));
 
-        Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(fcu.Data.PayloadId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadId, Is.Not.Null);
+        }
 
         // Even the producer's EmptyBlock fast path carries the IL, so the first getPayload is populated.
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
-        Assert.That(payload.Transactions, Has.Length.EqualTo(1));
-        Assert.That(payload.Transactions[0], Is.EqualTo(txBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.Transactions, Has.Length.EqualTo(1));
+            Assert.That(payload.Transactions[0], Is.EqualTo(txBytes));
+        }
 
         // The block-as-built must round-trip through newPayloadV6 with the same IL.
         ResultWrapper<PayloadStatusV2> verify = await rpc.engine_newPayloadV6(
@@ -396,9 +435,12 @@ public partial class EngineModuleTests
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: [],
             inclusionListTransactions: [txBytes]);
-        Assert.That(verify.Result.ResultType, Is.EqualTo(ResultType.Success), verify.Result.Error);
-        Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(verify.Data.InclusionListSatisfied, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verify.Result.ResultType, Is.EqualTo(ResultType.Success), verify.Result.Error);
+            Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(verify.Data.InclusionListSatisfied, Is.True);
+        }
     }
 
     [Test]
@@ -421,8 +463,11 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
             payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
-        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(first.Data.InclusionListSatisfied, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(first.Data.InclusionListSatisfied, Is.True);
+        }
 
         // Promote to canonical head, then re-submit the same (block, IL).
         await rpc.engine_forkchoiceUpdatedV5(
@@ -431,8 +476,11 @@ public partial class EngineModuleTests
         // The re-submission must reuse the cached result (VALID + satisfied), not regress to SYNCING or re-execute.
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
-        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(resend.Data.InclusionListSatisfied, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.True);
+        }
     }
 
     [Test]
@@ -460,8 +508,11 @@ public partial class EngineModuleTests
 
         // Both IL txs must be produced, in ascending-nonce order.
         Assert.That(payload.Transactions, Has.Length.EqualTo(2));
-        Assert.That(payload.Transactions[0], Is.EqualTo(Rlp.Encode(tx0).Bytes));
-        Assert.That(payload.Transactions[1], Is.EqualTo(Rlp.Encode(tx1).Bytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.Transactions[0], Is.EqualTo(Rlp.Encode(tx0).Bytes));
+            Assert.That(payload.Transactions[1], Is.EqualTo(Rlp.Encode(tx1).Bytes));
+        }
     }
 
     [Test]
@@ -512,8 +563,11 @@ public partial class EngineModuleTests
 
         ResultWrapper<InclusionListBytes> result = await rpc.engine_getInclusionListV1();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
     }
 
     // The fallback payload has to satisfy the inclusion list, but must not pay for a mempool selection:
