@@ -166,9 +166,10 @@ public enum Instruction : byte
     FRAMEDATACOPY = 0xb2,
     FRAMEPARAM = 0xb3,
     SIGPARAM = 0xb4,
+    SIGDATACOPY = 0xb5,
 
     // EIP-8272 recent roots
-    RECENTROOTREFLOAD = 0xb5,
+    RECENTROOTREFLOAD = 0xb6,
 
     DUPN = 0xe6,
     SWAPN = 0xe7,

@@ -107,13 +107,13 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
 
         int position = decoderContext.Position;
-        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.DefaultLimit);
         if (nonceBytes[0] == 0)
         {
             RlpHelpers.ThrowNonCanonicalInteger(position);
         }
 
-        return ulong.MaxValue;
+        return RlpHelpers.ThrowNonceTooWide(position);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

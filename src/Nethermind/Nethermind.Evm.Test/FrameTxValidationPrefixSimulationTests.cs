@@ -543,8 +543,9 @@ public class FrameTxValidationPrefixSimulationTests
             gasLimit: 50_000, UInt256.Zero, data);
     }
 
+    // A deploy frame is the one prefix frame that writes state, so it needs a limits.state budget.
     private static TxFrame DeployFrame() =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, Factory, gasLimit: 200_000, UInt256.Zero, default);
+        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default);
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
