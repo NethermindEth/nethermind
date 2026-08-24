@@ -171,6 +171,7 @@ the workflow's defensive-cleanup step).
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
+| `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
@@ -488,6 +489,29 @@ scripts/dottrace-report.sh top   reports/<name>-report.xml 30
 scripts/dottrace-report.sh compare reports/before.xml reports/after.xml 30
 ```
 
+## Linux perf flow
+
+Set `perf: true` to capture a host `cycles:u` CPU profile for a single-node
+Nethermind run. It is rejected for `benchmark_tool=jsonbench-sweep`, whose
+many cells require per-cell profile isolation.
+
+The self-hosted runner process must execute as `root`: host `perf` is launched
+directly — not through `sudo` — so the recorder PID can be retained for
+identity-safe teardown. Host `perf` must be able to sample `cycles:u`. Sampling
+starts once the node serves RPC: startup is excluded, while the benchmark
+warm-up is included.
+
+Shutdown folds the recording into `perf.folded`; collection fails when it has
+no managed-symbol leaf/self samples, including all-native or all-unknown
+profiles. The `perf-rpcbench` artifact contains `perf.folded` and recorder logs
+but excludes raw `perf.data`. Analyze the folded profile with
+[`scripts/perf-report.sh`](../perf-report.sh):
+
+```bash
+scripts/perf-report.sh top perf.folded 30
+scripts/perf-report.sh compare before.folded after.folded 30
+```
+
 ## Runner prerequisites
 
 The `reproducible-benchmarks-arm` self-hosted runner must provide:
@@ -503,6 +527,8 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
   `/opt/dottrace` is not already installed by previous expb dotTrace runs).
+- **Host `perf` and a root runner process** when using `perf: true`; `perf` must
+  be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
 
 ## Files
 

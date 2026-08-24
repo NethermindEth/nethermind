@@ -233,6 +233,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 
 - Workflow file: [`.github/workflows/run-rpc-benchmarks.yml`](./.github/workflows/run-rpc-benchmarks.yml)
 - Scripts and full reference: [`scripts/rpc-bench/README.md`](./scripts/rpc-bench/README.md)
+- [Linux perf flow](./scripts/rpc-bench/README.md#linux-perf-flow) documents the root-only RPC capture contract; [`scripts/perf-report.sh`](./scripts/perf-report.sh) reads folded profiles from both EXPB and rpc-bench.
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
