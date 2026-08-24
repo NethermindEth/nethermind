@@ -496,7 +496,12 @@ public class HistoryPruner : IHistoryPruner
             ReclaimReceiptSlice(cursor, sliceEnd, alreadyAnswered ? answered : null);
             cursor = sliceEnd;
 
-            if (cursor < to && cancellationToken.IsCancellationRequested) return cursor;
+            // Slices decide where a pass may stop, not how early. ChunkStep already narrowed the chunk to the
+            // drain floor for a pass that arrived spent, so stopping at the first slice boundary would cut that
+            // floor by another order of magnitude and leave a backlog draining ten times slower than promised.
+            if (cursor < to
+                && cursor - from >= MinimumReclaimChunkBlocks
+                && cancellationToken.IsCancellationRequested) return cursor;
         }
 
         return to;
