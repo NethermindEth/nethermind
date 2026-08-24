@@ -43,7 +43,8 @@ fi
 #    (DB-safety); under 'direct' it's read-write so changes are expected — warn only.
 if [[ "${DB_ISOLATION:-}" == "direct" ]]; then
   log "direct mode: snapshot was mounted read-write — verifying scope of changes (not a failure)..."
-  if ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
+  # Subshell: db_fingerprint die()s on failure, which would abort teardown without one.
+  if ! (db_fingerprint "$DB_SOURCE" "$FINAL_FILE"); then
     log "::warning::direct mode: failed to compute the final fingerprint — cannot summarize what changed."
   elif diff -q "$BASELINE_FILE" "$FINAL_FILE" >/dev/null 2>&1; then
     log "  snapshot unchanged despite read-write mount (node made no on-disk changes)."
@@ -52,7 +53,7 @@ if [[ "${DB_ISOLATION:-}" == "direct" ]]; then
     log "::warning::direct mode: snapshot changed as expected (${changed} differing fingerprint lines). First 40:"
     diff "$BASELINE_FILE" "$FINAL_FILE" 2>/dev/null | grep -E '^[<>]' | head -n 40 || true
   fi
-elif ! db_fingerprint "$DB_SOURCE" "$FINAL_FILE"; then
+elif ! (db_fingerprint "$DB_SOURCE" "$FINAL_FILE"); then
   # A fingerprint failure must never look like a clean snapshot: flag it and fall
   # through to teardown + final die (set -e would else skip umount/scratch cleanup).
   log "::error::Failed to compute the final DB fingerprint — snapshot integrity could not be verified."
@@ -73,7 +74,7 @@ else
 fi
 
 # 4) Tear down the isolated view. Never touches DB_SOURCE.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 case "${DB_ISOLATION:-}" in
   overlay)
     as_root umount "$RUN_SCRATCH/merged" 2>/dev/null \
