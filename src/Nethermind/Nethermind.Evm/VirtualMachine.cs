@@ -163,6 +163,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
+        using FrameCleanupScope _ = new(this);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ReadOnlySpan<byte> previousCallOutput = ReadOnlySpan<byte>.Empty;
@@ -340,6 +341,27 @@ public partial class VirtualMachine<TGasPolicy>(
 
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+
+    private void DisposeActiveFrames()
+    {
+        _currentState?.Dispose();
+        _currentState = null;
+        while (_stateStack.Count != 0)
+        {
+            _stateStack.Pop().Dispose();
+        }
+    }
+
+    private readonly struct FrameCleanupScope(VirtualMachine<TGasPolicy> vm) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (vm._currentState is not null || vm._stateStack.Count != 0)
+            {
+                vm.DisposeActiveFrames();
+            }
+        }
+    }
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ReadOnlySpan<byte> previousCallOutput)
     {

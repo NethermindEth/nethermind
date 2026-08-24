@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -26,11 +25,11 @@ public struct EvmPooledMemory
     // materializes the logical zero tail.
     private ulong _initializedSize;
 
-    private MemoryManager<byte>? _inlineMemoryManager;
+    private EvmFrameMemory? _inlineMemoryManager;
     private byte[]? _memory;
     public ulong Size { get; private set; }
 
-    internal EvmPooledMemory(MemoryManager<byte> inlineMemoryManager, bool isFresh = false)
+    internal EvmPooledMemory(EvmFrameMemory inlineMemoryManager, bool isFresh = false)
     {
         _initializedSize = isFresh ? (ulong)InlineCapacity : 0;
         _inlineMemoryManager = inlineMemoryManager;
@@ -142,7 +141,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         Debug.Assert(location.u0 + (ulong)length <= Size);
         int intLocation = TruncateToInt32(location.u0);
-        ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length);
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length, location.u0);
         value.CopyTo(GetBackingSpan(intLocation, length));
         CommitOverwrite(preparedInitializedSize);
     }
@@ -165,7 +164,7 @@ public struct EvmPooledMemory
 
         Debug.Assert(destination.IsUint64);
         Debug.Assert(destination.u0 + (ulong)length <= Size);
-        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, (ulong)length);
+        ulong preparedInitializedSize = PrepareOverwriteAfterGas(destination.u0, (ulong)length, destination.u0);
         Span<byte> target = GetBackingSpan(TruncateToInt32(destination.u0), length);
         int copiedLength = 0;
         if (sourceOffset < source.Length)
@@ -610,6 +609,8 @@ public struct EvmPooledMemory
             Return(memory);
         }
 
+        _inlineMemoryManager?.SetBackingArray(null);
+
         _initializedSize = 0;
         Size = 0;
     }
@@ -654,10 +655,6 @@ public struct EvmPooledMemory
     /// <param name="offset">The start of the overwrite range.</param>
     /// <param name="length">The length of the overwrite range.</param>
     /// <returns>The initialized prefix to commit, or zero when no commit is required.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ulong PrepareOverwriteAfterGas(ulong offset, ulong length)
-        => PrepareOverwriteAfterGas(offset, length, offset);
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ulong PrepareOverwriteAfterGas(ulong offset, ulong length, ulong preservedEnd)
     {
@@ -877,23 +874,6 @@ public struct EvmPooledMemory
         return Math.Max(initializedSize, overwriteEnd);
     }
 
-    /// <summary>Returns array storage for standard <see cref="MemoryManager{T}"/> consumers.</summary>
-    /// <remarks>
-    /// Inline storage is copied in full so existing views remain valid after the spill. The initialized
-    /// prefix is deliberately unchanged, so copied bytes beyond it remain unavailable until materialized.
-    /// </remarks>
-    internal byte[] GetArrayForMemoryManager()
-    {
-        byte[]? memory = _memory;
-        if (memory is not null)
-        {
-            return memory;
-        }
-
-        ulong ignoredInitializedSize = _initializedSize;
-        return EnsureCapacity(InlineCapacity, InlineCapacity, ref ignoredInitializedSize);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[] EnsureCapacity(ulong minimumSize, ulong preservedSize, ref ulong initializedSize)
     {
@@ -924,6 +904,7 @@ public struct EvmPooledMemory
         }
 
         _memory = memory;
+        _inlineMemoryManager?.SetBackingArray(memory);
         initializedSize = Math.Max(preservedSize, rentedInitializedSize);
     }
 
@@ -938,11 +919,12 @@ public struct EvmPooledMemory
         Array.Copy(memory, 0, grown, 0, (int)preservedSize);
         Return(memory);
         _memory = grown;
+        _inlineMemoryManager?.SetBackingArray(grown);
         initializedSize = Math.Max(preservedSize, rentedInitializedSize);
         return grown;
     }
 
-    internal byte[]? BackingArray => _memory;
+    internal byte[]? BackingArray => _memory ?? _inlineMemoryManager?.BackingArray;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ulong GetBackingCapacity()

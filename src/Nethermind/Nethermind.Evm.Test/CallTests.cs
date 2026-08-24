@@ -3,10 +3,13 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
@@ -18,6 +21,9 @@ namespace Nethermind.Evm.Test
 {
     public class CallTests : VirtualMachineTestsBase
     {
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_isDisposed")]
+        private static extern ref bool GetIsDisposed(VmState<EthereumGasPolicy> state);
+
         protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
@@ -126,6 +132,66 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.Error, Is.Null);
                 Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { 1, 2, 3, 0xff, 0xff, 0xff, 0xff, 0xff }));
+            }
+        }
+
+        [Test]
+        public void Cancellation_in_nested_frame_disposes_active_frames()
+        {
+            Address target = TestItem.AddressC;
+            TestState.CreateAccount(target, UInt256.Zero);
+            byte[] childCode = [(byte)Instruction.STOP];
+            TestState.InsertCode(target, childCode, SpecProvider.GenesisSpec);
+            byte[] code = Prepare.EvmCode
+                .CALL(50_000, target, 0, 0, 0, 0, 0)
+                .Op(Instruction.STOP)
+                .Done;
+            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
+            CancelOnNestedFrameTracer tracer = new(Machine);
+
+            Assert.Throws<OperationCanceledException>(() =>
+                _processor.Execute(
+                    transaction,
+                    new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                    tracer));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetStateStack().Count, Is.Zero);
+                Assert.That(tracer.ParentState, Is.Not.Null);
+                Assert.That(tracer.CancelledState, Is.Not.Null);
+                Assert.That(GetIsDisposed(tracer.ParentState!), Is.True);
+                Assert.That(GetIsDisposed(tracer.CancelledState!), Is.True);
+            }
+        }
+
+        private VmStateStack<EthereumGasPolicy> GetStateStack() =>
+            (VmStateStack<EthereumGasPolicy>)typeof(VirtualMachine<EthereumGasPolicy>)
+                .GetField("_stateStack", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(Machine)!;
+
+        private sealed class CancelOnNestedFrameTracer(EthereumVirtualMachine machine) : TestAllTracerWithOutput, ITxTracer
+        {
+            private int _pollCount;
+
+            public VmState<EthereumGasPolicy>? ParentState { get; private set; }
+            public VmState<EthereumGasPolicy>? CancelledState { get; private set; }
+
+            bool ITxTracer.IsCancelable => true;
+
+            bool ITxTracer.IsCancelled
+            {
+                get
+                {
+                    if (++_pollCount == 1)
+                    {
+                        ParentState = machine.VmState;
+                        return false;
+                    }
+
+                    CancelledState = machine.VmState;
+                    return true;
+                }
             }
         }
 

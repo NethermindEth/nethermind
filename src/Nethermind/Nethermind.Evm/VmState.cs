@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -17,21 +16,12 @@ namespace Nethermind.Evm;
 /// <summary>
 /// State for EVM Calls
 /// </summary>
-/// <remarks>
-/// The memory-manager identity keeps views over the inline EVM memory tier valid when storage spills
-/// to an array, without allocating a separate owner for every frame.
-/// </remarks>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class VmState<TGasPolicy> : MemoryManager<byte>
+public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new();
-
-    [InlineArray(EvmPooledMemory.InlineCapacity)]
-    private struct InlineMemory
-    {
-        private byte _element0;
-    }
+    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
+        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -61,12 +51,11 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
+    private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
-    private InlineMemory _inlineMemory;
-
-    public VmState() => _memory = new(this, isFresh: true);
+    public VmState() => _memory = new(_inlineMemory, isFresh: true);
 
     /// <summary>
     /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
@@ -157,7 +146,7 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
         // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
         // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
         // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = new(this);
+        _memory = new(_inlineMemory);
 #endif
         if (executionType.IsAnyCreate())
         {
@@ -208,7 +197,7 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
 
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ExecutionEnvironment Env => _env!;
-    public new ref EvmPooledMemory Memory => ref _memory;
+    public ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
     public void Dispose()
@@ -259,37 +248,6 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
     }
 #pragma warning restore CA2015
 #endif
-
-    protected override void Dispose(bool disposing) => Dispose();
-
-    /// <inheritdoc/>
-    public override Span<byte> GetSpan()
-    {
-        byte[]? backingArray = _memory.BackingArray;
-        return backingArray is null ? _inlineMemory : backingArray;
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Pinning an inline-backed view spills the frame to a rented array. Memory views must not be
-    /// retained beyond the lifetime of the frame.
-    /// </remarks>
-    public override MemoryHandle Pin(int elementIndex = 0)
-        => _memory.GetArrayForMemoryManager().AsMemory(elementIndex).Pin();
-
-    /// <inheritdoc/>
-    public override void Unpin() { }
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Exposing an inline-backed view as an array spills the frame to a rented array. Memory views
-    /// must not be retained beyond the lifetime of the frame.
-    /// </remarks>
-    protected override bool TryGetArray(out ArraySegment<byte> segment)
-    {
-        segment = _memory.GetArrayForMemoryManager();
-        return true;
-    }
 
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {

@@ -28,8 +28,10 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_memory")]
-    private static extern ref byte[]? GetBackingMemory(ref EvmPooledMemory memory);
+    private static byte[]? GetBackingMemory(ref EvmPooledMemory memory) => memory.BackingArray;
+
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_initializedSize")]
+    private static extern ref ulong GetInitializedSize(ref EvmPooledMemory memory);
 
     private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
     {
@@ -185,13 +187,18 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Span<byte> pattern = new byte[size];
         pattern.Fill(0xff);
         Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        byte[]? dirtyBuffer = GetBackingMemory(ref dirty);
         dirty.Dispose();
 
         EvmPooledMemory clean = new();
         UInt256 length = (UInt256)size;
         Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
-        Assert.That(data.Length, Is.EqualTo(size));
-        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetBackingMemory(ref clean), Is.SameAs(dirtyBuffer), "negative control requires the dirtied buffer");
+            Assert.That(data.Length, Is.EqualTo(size));
+            Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        }
         clean.Dispose();
     }
 
@@ -216,6 +223,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 Assert.That(outOfGas, Is.False);
                 Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
                 Assert.That(GetBackingMemory(ref memory), Has.Length.EqualTo(8 * 1024 * 1024));
+                Assert.That(GetInitializedSize(ref memory), Is.EqualTo(8UL * 1024 * 1024));
                 Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
             }
         }
@@ -663,7 +671,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false, TestName = "VmState_inline_memory_view_exposes_array_by_spilling")]
+    [TestCase(false, TestName = "VmState_inline_memory_view_does_not_expose_inline_array")]
     [TestCase(true, TestName = "VmState_inline_memory_view_pins_by_spilling")]
     public void VmState_inline_memory_view_supports_standard_memory_consumers(bool pin)
     {
@@ -697,23 +705,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             }
             else
             {
-                Assert.That(MemoryMarshal.TryGetArray(view, out ArraySegment<byte> segment), Is.True);
-                actual = segment.AsSpan().ToArray();
+                Assert.That(MemoryMarshal.TryGetArray(view, out _), Is.False);
+                actual = view.ToArray();
             }
 
             byte[]? backingMemory = GetBackingMemory(ref memory);
-            byte unmaterializedTail = backingMemory![17 + expected.Length];
-            UInt256 tail = (UInt256)(17 + expected.Length);
-            UInt256 one = UInt256.One;
-            Assert.That(memory.TryLoad(in tail, in one, out ReadOnlyMemory<byte> clearedTail), Is.True);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(backingMemory, Is.Not.Null);
-                Assert.That(System.Numerics.BitOperations.IsPow2((uint)backingMemory!.Length), Is.True);
+                Assert.That(backingMemory is not null, Is.EqualTo(pin));
                 Assert.That(actual, Is.EqualTo(expected));
                 Assert.That(view.ToArray(), Is.EqualTo(expected));
-                Assert.That(unmaterializedTail, Is.EqualTo(0xa7));
-                Assert.That(clearedTail.Span[0], Is.EqualTo(0));
             }
         }
         finally
