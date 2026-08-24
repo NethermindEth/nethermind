@@ -12,20 +12,16 @@ using Nethermind.Db;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// The <c>AvailableBlocks</c> column: per-block markers (<c>[block BE] -> 32-byte captured state root</c>) plus two
-/// reserved keys — a contiguous-from-genesis watermark and a format version. An as-of read at block H is served only
-/// when <c>H &lt;= watermark</c> (every block in <c>[0, H]</c> was captured, so a floor-seek cannot silently shadow a
-/// gap) <em>and</em> the queried state root matches the captured root (so a non-canonical EIP-1898 hash below the
-/// barrier is rejected rather than served the canonical value).
+/// The <c>AvailableBlocks</c> column: per-block markers (<c>[block BE] -> captured state root</c>) plus a
+/// contiguous-from-genesis watermark and a format version. A read at H needs <c>H &lt;= watermark</c> and a matching
+/// state root, so a gap cannot be shadowed and a non-canonical EIP-1898 hash is rejected.
 /// </summary>
 public sealed class HistoryAvailability
 {
-    // No ChangeSets columns, descending block suffix, and a whole-trie-path account key — data stamped 3 or below
-    // keys accounts by a truncated path and is unreadable under these seeks.
+    // Data stamped 3 or below keys accounts by a truncated path and is unreadable under these seeks.
     internal const byte FormatVersion = 4;
 
-    // Stamped the first time a retention floor is ever published on this DB. Older, floor-unaware binaries must
-    // refuse a windowed DB outright (VerifyFormat rejects it) rather than silently read pruned rows as absent.
+    // Stamped when a retention floor is first published, so floor-unaware binaries refuse the DB outright.
     internal const byte WindowedFormatVersion = 5;
 
     private const int BlockBytes = sizeof(ulong);
@@ -37,9 +33,7 @@ public sealed class HistoryAvailability
 
     private static ReadOnlySpan<byte> GlobalFloorKey => "history:floor:global"u8;
 
-    // Point scopes only: one record per configured address, keyed by its own account-key bytes. A future range
-    // scope (multiple addresses sharing one record) is a new record kind under a different prefix, not a retrofit
-    // of this one - see SliceScopeConfig's remarks.
+    // Point scopes only: one record per address. A range scope would be a new kind under a different prefix.
     private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
     private const int ScopeRecordPrefixLength = 20; // == ScopeRecordPrefix.Length, asserted in the static ctor
     private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + HistoryKeyLayout.ScopeKeyLength;
@@ -52,15 +46,10 @@ public sealed class HistoryAvailability
     // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
     private long _observedWatermark = -1;
 
-    // The mirror-image fast path: refusing early is safe because the floor only ever moves up (a cached value
-    // then never overstates how much is retained). An accept always re-reads the DB regardless, so a read can
-    // never slip in below a floor that advanced since the cache was last observed.
+    // Refusing early is safe because the floor only moves up; an accept always re-reads the DB.
     private long _observedFloor = -1;
 
-    // Generation-guarded cache: a scan started before a concurrent Publish/Remove could otherwise publish a torn
-    // view. Writers bump the generation under _floorLock; a scan only publishes if the generation it started with
-    // is still current when it finishes, so a racing write always wins and the next reader rescans instead of
-    // trusting a result that may have missed that write.
+    // Generation-guarded: a scan only publishes if its generation is still current, so a racing write wins.
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
@@ -76,11 +65,8 @@ public sealed class HistoryAvailability
         _sortedAvailableBlocks = sortedAvailableBlocks;
     }
 
-    /// <summary>
-    /// Refuses a history index written by an incompatible format. A fresh/empty index passes; every capture batch
-    /// stamps the version atomically via <see cref="MarkBlock"/>, so a marker without a format key can only mean a
-    /// pre-versioning layout.
-    /// </summary>
+    /// <summary>Refuses an index written by an incompatible format. A marker without a format key can only mean a
+    /// pre-versioning layout, since every capture batch stamps the version.</summary>
     /// <exception cref="InvalidConfigurationException">The on-disk index uses a different format version.</exception>
     public void VerifyFormat()
     {
@@ -107,8 +93,7 @@ public sealed class HistoryAvailability
         }
     }
 
-    /// <summary>Resolves the row format upgrade-only: once stamped <see cref="WindowedFormatVersion"/>, a DB stays
-    /// that way regardless of later config - v2 and v3 rows are incompatible shapes in the same column.</summary>
+    /// <summary>Upgrade-only: once stamped windowed, a DB stays that way regardless of later config.</summary>
     /// <exception cref="InvalidConfigurationException">Windowing configured against existing v2 data - there is no
     /// in-place migration.</exception>
     public byte ResolveFormatVersion(bool windowingConfigured)
@@ -152,9 +137,7 @@ public sealed class HistoryAvailability
     /// <summary>Whether <paramref name="block"/> is covered and its captured state root equals <paramref name="stateRoot"/>.</summary>
     public bool Matches(ulong block, in ValueHash256 stateRoot) => !IsBelowGlobalFloor(block) && IsCoveredAndRootMatches(block, stateRoot);
 
-    /// <summary>Whether <paramref name="block"/> is covered and its captured state root equals <paramref name="stateRoot"/> —
-    /// deliberately independent of the global floor, so a restricted (per-slice) caller can re-verify canonicity for
-    /// a block it already knows sits below that floor.</summary>
+    /// <summary>Covered and root-matching, independent of the global floor, for a per-slice caller.</summary>
     public bool IsCoveredAndRootMatches(ulong block, in ValueHash256 stateRoot)
         => IsCovered(block) && RootMatches(block, stateRoot);
 
@@ -171,8 +154,7 @@ public sealed class HistoryAvailability
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
     internal byte? StampedFormatVersion => _availableBlocks.Get(FormatVersionKey) is { Length: 1 } value ? value[0] : null;
 
-    /// <summary>The retention floor for the all-keys (global) scope: reads below it have been pruned. Unset — the
-    /// default, unwindowed case — means no floor has ever been published, so nothing is refused on that basis.</summary>
+    /// <summary>Reads below it have been pruned. Unset means no floor was ever published.</summary>
     public bool TryGetGlobalFloor(out ulong floor)
     {
         byte[]? value = _availableBlocks.Get(GlobalFloorKey);
@@ -195,13 +177,9 @@ public sealed class HistoryAvailability
         return TryGetGlobalFloor(out ulong floor) && block < floor;
     }
 
-    /// <summary>
-    /// Publishes the retention floor for the all-keys scope and stamps the windowed format version. Callers must
-    /// publish before deleting anything below it: a crash between the two leaves the floor honestly behind (never
-    /// ahead of) what is still on disk, mirroring <see cref="PublishWatermark"/>'s fail-closed ordering.
-    /// Unconditional — for the initial seed (there is no prior floor to race against). A pruner raising the floor
-    /// must go through <see cref="TryRaiseGlobalFloor"/> instead.
-    /// </summary>
+    /// <summary>Publish before deleting anything below the floor, so a crash between the two leaves the floor
+    /// behind rather than ahead of what is on disk. Unconditional - a pruner uses
+    /// <see cref="TryRaiseGlobalFloor"/>.</summary>
     public void PublishGlobalFloor(ulong floor)
     {
         lock (_floorLock)
@@ -212,10 +190,7 @@ public sealed class HistoryAvailability
         Metrics.FlatHistoryFloor = (long)floor;
     }
 
-    /// <summary>
-    /// Raises the retention floor if and only if <paramref name="newFloor"/> is strictly above the current value.
-    /// Returns whether the floor actually moved.
-    /// </summary>
+    /// <summary>Raises the floor only if <paramref name="newFloor"/> is strictly above it.</summary>
     public bool TryRaiseGlobalFloor(ulong newFloor)
     {
         bool raised;
@@ -240,9 +215,8 @@ public sealed class HistoryAvailability
         _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
     }
 
-    /// <summary>Creates or overwrites the point scope for <paramref name="accountKey"/>. Refuses (never silently
-    /// stamps) when the resolved on-disk format is the unwindowed v2 - a slice is meaningless there (everything is
-    /// already retained) and stamping the windowed format onto live v2 data would brick it for the v2 read path.</summary>
+    /// <summary>Refuses on unwindowed v2 data, where a slice is meaningless and stamping would brick the v2 read
+    /// path.</summary>
     /// <exception cref="InvalidConfigurationException">The DB is stamped as the unwindowed (v2) format.</exception>
     public void PublishScope(ReadOnlySpan<byte> accountKey, ulong floor)
     {
@@ -267,10 +241,8 @@ public sealed class HistoryAvailability
         return true;
     }
 
-    /// <summary>Raises one scope's own floor if and only if <paramref name="newFloor"/> is strictly above its
-    /// current value - the pruner's per-slice counterpart to <see cref="TryRaiseGlobalFloor"/>, for a slice
-    /// configured with a bounded (not unbounded) retention. Returns <c>false</c> (never creates) when the scope
-    /// does not already exist.</summary>
+    /// <summary>Per-slice counterpart to <see cref="TryRaiseGlobalFloor"/>. False when the scope does not
+    /// exist - never creates one.</summary>
     public bool TryRaiseScopeFloor(ReadOnlySpan<byte> accountKey, ulong newFloor)
     {
         bool raised;
@@ -286,8 +258,7 @@ public sealed class HistoryAvailability
         return raised;
     }
 
-    /// <summary>Deletes a scope record - an address removed from the operator's allow-list reverts to the all-keys
-    /// scope, so its rows below the general floor become prunable again on the pruner's next pass.</summary>
+    /// <summary>A removed address reverts to the all-keys scope, so its rows become prunable again.</summary>
     public void RemoveScope(ReadOnlySpan<byte> accountKey)
     {
         lock (_floorLock)
@@ -331,9 +302,7 @@ public sealed class HistoryAvailability
         accountKey.CopyTo(buffer[ScopeRecordPrefixLength..]);
     }
 
-    /// <summary>Scopes are keyed by <see cref="HistoryKeyLayout.ScopeKeyLength"/> bytes (a storage row carries only
-    /// that much of its address); silently truncating a wider key would let a publish "succeed" while lookups miss
-    /// it and the slice's rows get pruned.</summary>
+    /// <summary>Truncating a wider key would let a publish succeed while lookups miss it.</summary>
     private static void RequireScopeKey(ReadOnlySpan<byte> key)
     {
         if (key.Length != HistoryKeyLayout.ScopeKeyLength)

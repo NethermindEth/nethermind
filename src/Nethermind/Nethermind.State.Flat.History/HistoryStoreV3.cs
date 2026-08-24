@@ -13,12 +13,9 @@ namespace Nethermind.State.Flat.History;
 /// suffix (the opposite of <see cref="HistoryStore"/>'s descending suffix), so an as-of read is a forward seek for
 /// the smallest recorded block strictly greater than the query block.
 /// </summary>
-/// <remarks>
-/// A read finding no captured change above its query block falls back to the live flat value - sound only against
-/// the PERSISTED flat column, never a tip/snapshot-stacked view: capture runs strictly before the flat persist it
-/// captured from commits, so the persisted columns always hold exactly the state as of the watermark, and a key
-/// with no captured change in <c>(B, watermark]</c> provably still holds its block-B value there.
-/// </remarks>
+/// <remarks>A read finding no captured change above its query block falls back to the live flat value. Sound only
+/// against the PERSISTED column, never a tip-stacked view: capture runs before the persist it captured from, so a
+/// key with no change in <c>(B, watermark]</c> still holds its block-B value there.</remarks>
 internal sealed class HistoryStoreV3
 {
     private const int BlockBytes = sizeof(ulong);
@@ -34,8 +31,7 @@ internal sealed class HistoryStoreV3
         _history = sortedHistory;
     }
 
-    /// <summary>Records the value the key held immediately BEFORE the change at <paramref name="block"/>; an
-    /// empty value means the key did not exist before this block (this is its first-ever change).</summary>
+    /// <summary>The value held before the change at <paramref name="block"/>; empty means it did not exist.</summary>
     [SkipLocalsInit]
     public void RecordPreValue(ulong block, scoped ReadOnlySpan<byte> flatKey, scoped ReadOnlySpan<byte> valueBeforeChange, IWriteBatch batch)
     {
@@ -47,20 +43,14 @@ internal sealed class HistoryStoreV3
             batch.PutSpan(historyKey, valueBeforeChange);
     }
 
-    /// <summary>
-    /// Looks up the recorded change nearest above <paramref name="block"/> (the smallest recorded block strictly
-    /// greater than it). Returns -1 when no such change is recorded — the caller decides what "no later captured
-    /// change" means for its read (see the safety remark on this type); this store makes no claim about the
-    /// live/current value. Returns 0 for an empty pre-value (the key did not exist before that change), otherwise
-    /// the number of bytes written to <paramref name="outBuffer"/>.
-    /// </summary>
+    /// <summary>The recorded change nearest above <paramref name="block"/>. -1 when none is recorded - this store
+    /// makes no claim about the live value. 0 for an empty pre-value, otherwise the bytes written.</summary>
     [SkipLocalsInit]
     public int TryGetValueBeforeNextChange(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock)
     {
         nextChangeBlock = 0;
 
-        // Ascending suffix: the smallest recorded block strictly greater than `block` is the first entry at or
-        // after [key | block + 1]. block == ulong.MaxValue can have no "next change" by construction.
+        // Ascending suffix, so the answer is the first entry at or after [key | block + 1].
         if (block == ulong.MaxValue) return -1;
 
         Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];

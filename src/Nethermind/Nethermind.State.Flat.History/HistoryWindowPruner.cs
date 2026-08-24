@@ -12,11 +12,9 @@ using Nethermind.Logging;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Reclaims disk for a bounded rolling window: as the watermark advances, keeps only the row(s) each key's
-/// row format requires for reads in <c>[floor, watermark]</c> to keep resolving, and deletes the rest. A single
-/// pass is a bounded, resumable scan-and-delete over each history column — never a whole-column compaction — so
-/// it never blocks capture (which only ever writes above the watermark; the pruner only ever deletes below the
-/// floor, a disjoint range by construction).
+/// Reclaims disk for a bounded rolling window, keeping only the rows reads in <c>[floor, watermark]</c> still need.
+/// A pass is a bounded, resumable scan-and-delete per column, never a compaction, and cannot block capture: capture
+/// writes above the watermark, the pruner deletes below the floor.
 /// </summary>
 public sealed class HistoryWindowPruner(
     HistoryWriter writer,
@@ -49,23 +47,20 @@ public sealed class HistoryWindowPruner(
     private bool _disposed;
     private bool _started;
 
-    /// <summary>Subscribes to watermark advances and launches the prune loop. Called by the startup step (after
-    /// the block tree is initialized), never from the constructor, so resolving the singleton has no side effects.
-    /// No-op when retention is unbounded.</summary>
+    /// <summary>Called by the startup step, never the constructor, so resolving the singleton has no side
+    /// effects. No-op when retention is unbounded.</summary>
     public void Start()
     {
         if (config.HistoryRetentionBlocks == 0 || _started) return;
         _started = true;
         writer.WatermarkAdvanced += OnWatermarkAdvanced;
 
-        // A pass is synchronous throughout and runs for up to HistoryPrunePassBudgetSeconds, and the scope drain
-        // blocks outright, so the loop owns a thread rather than parking a pool thread for seconds at a time.
+        // A pass is synchronous for seconds and the drain blocks, so the loop owns a thread.
         _loop = new Thread(RunLoop) { IsBackground = true, Name = "Flat history window pruner" };
         _loop.Start();
     }
 
-    /// <summary>One-time (startup) reconciliation of the allow-list against the scope records on disk: removes
-    /// scopes no longer configured, seeds new ones, never touches an existing scope's floor.</summary>
+    /// <summary>Removes scopes no longer configured, seeds new ones, never touches an existing floor.</summary>
     /// <exception cref="InvalidConfigurationException">Slices configured on an unwindowed database, or a slice
     /// retention shallower than the general window.</exception>
     public void ReconcileSliceScopes()
@@ -98,8 +93,7 @@ public sealed class HistoryWindowPruner(
             configuredByKey[AccountKeyOf(entry.Address)] = entry;
         }
 
-        // Runs even for an empty configured list, so removing the last remaining slice from the allow-list still
-        // deletes its scope record instead of leaving it orphaned on disk.
+        // Runs for an empty list too, so removing the last slice still deletes its record.
         foreach (ScopeFloor existing in availability.GetScopes())
         {
             if (!configuredByKey.ContainsKey(existing.Key))
@@ -128,10 +122,7 @@ public sealed class HistoryWindowPruner(
         }
     }
 
-    /// <summary>Per-pass maintenance for a slice configured with a bounded (not unbounded) retention: advances its
-    /// own floor toward <c>watermark - retention</c> as the watermark grows, the same way the general floor
-    /// advances - never past its own current value (<see cref="HistoryAvailability.TryRaiseScopeFloor"/> is a
-    /// raise-only CAS), and never below <see cref="ReconcileSliceScopes"/>'s seed.</summary>
+    /// <summary>Advances a bounded slice's own floor toward <c>watermark - retention</c>, raise-only.</summary>
     private void MaintainBoundedSliceFloors(ulong watermark)
     {
         _configuredSlices ??= SliceScopeConfig.Parse(config.HistorySliceAddresses);
@@ -147,9 +138,7 @@ public sealed class HistoryWindowPruner(
 
     private void OnWatermarkAdvanced(ulong watermark)
     {
-        // Written from RunOnePass on the prune loop's own task, read here from whatever thread the
-        // writer's capture path runs on: Volatile is the correctness requirement, not the plain field a
-        // single-writer/single-reader assumption would permit.
+        // Written on the prune loop, read on the capture path, so Volatile is required.
         if (Volatile.Read(ref _disposed)) return;
         if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + config.HistoryPruneIntervalBlocks) return;
         try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
@@ -165,10 +154,8 @@ public sealed class HistoryWindowPruner(
         {
             try
             {
-                // A yielded pass owes work right now, so it does not wait for the next watermark advance - but it
-                // does pause for as long as it just ran, capping the pruner at half a wall clock. Without that,
-                // a backlog larger than one budget turns this into an uninterrupted scan-and-delete competing
-                // with block processing for the same store. A watermark advance during the pause cuts it short.
+                // A yielded pass owes work now, but pauses for as long as it just ran so the pruner never takes
+                // more than half the wall clock from block processing. A watermark advance cuts the pause short.
                 if (yielded) _wakeSignal.Wait(pauseAfterYield, token);
                 else _wakeSignal.Wait(token);
             }
@@ -193,13 +180,10 @@ public sealed class HistoryWindowPruner(
         }
     }
 
-    // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
-    // (HasAnyPendingCursor then stays true, so the floor can never advance again either).
+    // Never zero: a zero budget would exhaust before scanning a row, and the floor could never advance again.
     private TimeSpan PassBudget() => TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
 
-    /// <summary>Runs one prune cycle synchronously and reports whether it finished the window - internal so tests
-    /// can drive it deterministically instead of racing the wake-signal loop; <paramref name="budgetFactory"/> is
-    /// called once per column.</summary>
+    /// <summary>Internal so tests can drive a cycle instead of racing the wake-signal loop.</summary>
     internal bool RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
         TimeSpan passBudget = PassBudget();
@@ -211,9 +195,8 @@ public sealed class HistoryWindowPruner(
         return false;
     }
 
-    /// <summary>The read-path window: bounds what an as-of-block read can still resolve, so a floor advance must
-    /// publish before draining scopes admitted under the old floor and before any delete. Returns whether this
-    /// pass finished the whole window (all four columns), not just started it.</summary>
+    /// <summary>A floor advance must publish before draining old scopes and before any delete. Returns whether
+    /// this pass finished all four columns.</summary>
     private bool RunReadPathWindowPass(TimeSpan passBudget, Func<IPruneBudget> newBudget, CancellationToken token)
     {
         ulong retention = config.HistoryRetentionBlocks;
@@ -222,15 +205,11 @@ public sealed class HistoryWindowPruner(
         ulong floor;
         if (HasAnyPendingCursor() || Volatile.Read(ref _deletesOwed))
         {
-            // A previous pass yielded mid-column for the already-published floor, or published one and then timed
-            // out draining the scopes admitted under the old floor: either way deletes are still owed. Computing
-            // and comparing a fresh floor here would see "no advance" (the floor was already published) and skip
-            // the pass entirely, silently abandoning the deletes it still owes for the current window.
+            // Deletes are still owed for an already-published floor. A fresh comparison would see no advance
+            // and skip the pass, abandoning them.
             if (!availability.TryGetGlobalFloor(out floor)) return true;
 
-            // The owed path is the one whose drain TIMED OUT, so those scopes are still reading rows this pass is
-            // about to delete. Wait for them on the generation the failed drain used - a fresh bump would also
-            // demote the readers admitted since the publish, which are safe and must not hold the pruner up.
+            // Wait on the generation the failed drain used: a fresh bump would also demote readers already safe.
             if (Volatile.Read(ref _deletesOwed)
                 && !scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token))
             {
@@ -251,9 +230,7 @@ public sealed class HistoryWindowPruner(
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
             floor = newFloor;
 
-            // Floor publishes before the drain (and before any delete): a scope opened after this point already
-            // sees the new floor at its own admission check, so it is safe by construction regardless of which
-            // epoch it lands in — only scopes admitted under the old, lower floor need draining before deleting.
+            // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
             long drainGeneration = scopeGate.BeginFloorAdvance();
             if (!scopeGate.TryDrain(drainGeneration, passBudget, token))
             {
@@ -265,13 +242,10 @@ public sealed class HistoryWindowPruner(
             }
         }
 
-        // Each column gets its own budget instance so a slow account column can never starve storage/clears/markers
-        // of all progress: without this, a resumed pass would always restart from "has account finished yet?" and
-        // the other three columns could go passes on end without a single row examined.
+        // Its own budget per column, so a slow account column cannot starve the other three of all progress.
         bool hasScopes = availability.GetScopesArray().Length > 0;
 
-        // Clears and block markers are retained down to the DEEPEST configured scope floor, so a sliced address's
-        // clear-probe and canonicity check stay answerable - coarser than per-key, but never a wrong answer.
+        // Retained down to the deepest scope floor, so a sliced address stays answerable. Coarse, never wrong.
         ulong markersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
 
         bool completedAccount = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
@@ -296,10 +270,8 @@ public sealed class HistoryWindowPruner(
         return minFloor;
     }
 
-    /// <summary>v2 must keep each key's newest row at or below the floor (it is the answer every read in
-    /// <c>[floor, next-change)</c> resolves to); under v3 every row at or below the floor is unconditionally dead
-    /// (a forward-seek only ever returns rows strictly above the query).
-    /// <see cref="HistoryRowFormat.RetainsNewestRowAtOrBelowFloor"/> selects between the two.</summary>
+    /// <summary>v2 keeps each key's newest row at or below the floor; under v3 every such row is dead, since a
+    /// forward-seek only returns rows strictly above the query.</summary>
     private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
         int flatKeyLength = keyLayout.FlatKeyLength;
@@ -324,8 +296,7 @@ public sealed class HistoryWindowPruner(
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
-                    // Deletes must land before the cursor does: a crash between the two would otherwise strand
-                    // the skipped-over rows below the floor forever.
+                    // Deletes before the cursor: a crash between them would strand the skipped rows forever.
                     batch.Dispose();
                     batch = column.StartWriteBatch();
                     WriteCursor(cursorKeyName, view.CurrentKey);
@@ -342,9 +313,7 @@ public sealed class HistoryWindowPruner(
                     hasGroup = true;
                     currentGroupHasFloorRow = false;
 
-                    // Byte-for-byte today's cost when no slices are configured: currentGroupFloor never leaves
-                    // the pass-level floor, and neither ExtractAddressKey nor ResolveScope (a DB-free lookup, but
-                    // still O(scopes) work) is ever called.
+                    // With no slices configured neither ExtractAddressKey nor ResolveScope is ever called.
                     if (hasScopes)
                     {
                         keyLayout.ExtractAddressKey(keyPrefix, addressKey);
@@ -377,12 +346,8 @@ public sealed class HistoryWindowPruner(
         return true;
     }
 
-    /// <summary>
-    /// Ascending-suffix column (<c>StorageClears</c>, <c>[accountKey | block]</c>): per account, keeps every clear
-    /// at or above the floor plus the single newest clear below it (the one a floor read still needs to
-    /// distinguish a dead slot from a live one); an even newer below-floor clear for the same account supersedes
-    /// and deletes whichever below-floor clear was previously held for it.
-    /// </summary>
+    /// <summary>Per account, keeps every clear at or above the floor plus the newest one below it, which a floor
+    /// read still needs to tell a dead slot from a live one.</summary>
     private bool PruneClearsColumn(ulong floor, IPruneBudget budget, CancellationToken token)
     {
         const int accountKeyLength = HistoryKeyLayout.AccountKeyLength;
@@ -435,8 +400,7 @@ public sealed class HistoryWindowPruner(
         return true;
     }
 
-    /// <summary>Per-block availability markers need no per-key retention logic: any marker strictly below the
-    /// floor is unconditionally dead (a legal capture connect point never needs to verify below the floor).</summary>
+    /// <summary>Any marker strictly below the floor is dead: a capture connect point never verifies below it.</summary>
     private bool PruneBlockMarkers(ulong floor, IPruneBudget budget, CancellationToken token)
     {
         ISortedKeyValueStore sorted = (ISortedKeyValueStore)_availableBlocks;

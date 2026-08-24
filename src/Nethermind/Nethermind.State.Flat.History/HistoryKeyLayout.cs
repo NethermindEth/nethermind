@@ -6,9 +6,8 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
-/// <summary>Per-column key shape: <see cref="Account"/>'s key is the whole 32-byte trie path (leading
-/// <see cref="ScopeKeyLength"/> bytes are the scope key); <see cref="Storage"/>'s carries the same leading portion
-/// split as <c>[4B prefix | 32B slot | 16B suffix]</c>, so scope extraction reassembles 4 + 16 bytes.</summary>
+/// <summary>Per-column key shape. <see cref="Account"/> is the whole 32-byte trie path; <see cref="Storage"/>
+/// splits the same leading portion as <c>[4B prefix | 32B slot | 16B suffix]</c>.</summary>
 public sealed class HistoryKeyLayout
 {
     public const int AccountKeyLength = Hash256.Size;
@@ -28,9 +27,8 @@ public sealed class HistoryKeyLayout
 
     public int FlatKeyLength { get; }
 
-    /// <summary>Narrows a history account key to the live flat State column's own truncated key, for the v3 read
-    /// paths that fall through to it. Exact in this direction only: the flat key is a prefix of the same account
-    /// path, so widening back is a preimage search, not an encoding.</summary>
+    /// <summary>Narrows to the live State column's truncated key. This direction only - widening back would be a
+    /// preimage search.</summary>
     public static ReadOnlySpan<byte> ToFlatStateKey(ReadOnlySpan<byte> accountKey) =>
         accountKey[..BaseFlatPersistence.AccountKeyLength];
 

@@ -7,8 +7,7 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History;
 
-/// <summary>The single owner of "which row format is this process using" - resolved once and shared, so no
-/// collaborator re-derives its own flag or suffix direction.</summary>
+/// <summary>The single owner of the process's row format, resolved once and shared.</summary>
 public sealed class HistoryRowFormat
 {
     /// <exception cref="InvalidConfigurationException">The resolved format is v3 on a layout other than
@@ -37,20 +36,15 @@ public sealed class HistoryRowFormat
         IsV3 = formatVersion == HistoryAvailability.WindowedFormatVersion;
     }
 
-    /// <summary>The resolved on-disk format byte — <see cref="HistoryAvailability.FormatVersion"/> or
-    /// <see cref="HistoryAvailability.WindowedFormatVersion"/>.</summary>
     public byte FormatVersion { get; }
 
-    /// <summary>Whether this process speaks v3 (pre-value, ascending suffix) rather than v2 (post-value,
-    /// descending suffix) for the <c>AccountHistory</c>/<c>StorageHistory</c> columns.</summary>
+    /// <summary>v3 is pre-value with an ascending suffix; v2 is post-value with a descending one.</summary>
     public bool IsV3 { get; }
 
-    /// <summary>Whether the pruner must keep each key's newest row at or below the floor (v2: it answers every
-    /// read in <c>[floor, next-change)</c>) or may delete everything at or below it (v3).</summary>
+    /// <summary>v2 must keep each key's newest row at or below the floor; v3 may delete all of them.</summary>
     public bool RetainsNewestRowAtOrBelowFloor => !IsV3;
 
-    /// <summary>Decodes a history row's block suffix per this format's direction - complement for v2, raw for v3.
-    /// Only the two versioned columns need this; clears and markers are always plain ascending.</summary>
+    /// <summary>Complement for v2, raw for v3. Clears and markers are always plain ascending.</summary>
     public ulong DecodeSuffixBlock(ReadOnlySpan<byte> suffix)
     {
         ulong raw = BinaryPrimitives.ReadUInt64BigEndian(suffix);

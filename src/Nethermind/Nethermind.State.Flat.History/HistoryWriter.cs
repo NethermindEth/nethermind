@@ -26,9 +26,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // A capture failing forever would stall persistence and grow the in-memory tier until OOM; degrade instead.
     private const int MaxConsecutiveCaptureFailures = 16;
 
-    // Hard cap on per-slot destruct enumeration (v3 only): above this, materializing pre-value rows for every
-    // wiped slot is unbounded work on a single block. A poisoned marker is cheap and fails closed instead.
-    // Internal so tests can exercise the exact boundary without duplicating the number.
+    // Above this, materializing a pre-value row per wiped slot is unbounded work on one block; poison instead.
     internal const int DestructSlotEnumerationCap = 10_000;
 
     private const int PendingPreValueBufferSize = 512;
@@ -38,13 +36,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly HistoryStore? _storageHistory;
     private readonly HistoryStoreV3? _accountHistoryV3;
     private readonly HistoryStoreV3? _storageHistoryV3;
-    // The persisted (never tip/snapshot-stacked) live flat columns. Safe to read during capture because capture
-    // always runs strictly before this round's flat persist commits — see the format-version field comment and
-    // HistoryStoreV3's remarks for the invariant chain this relies on.
+    // Safe to read during capture: capture always runs before this round's flat persist commits.
     private readonly IDb _persistedAccounts;
     private readonly IDb _persistedStorage;
-    // v3 only: enumerates a destructed account's persisted (pre-destruct) slots so they can be materialized as
-    // per-slot pre-value rows. Default/unused when !_isV3.
     private readonly BaseFlatPersistence.Reader _persistedFlatReader;
     private readonly StorageClearStore _storageClears;
     private readonly HistoryAvailability _availability;
@@ -60,8 +54,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Config cannot prove the hook is wired (a patricia backend constructs this writer but never invokes it).
     private volatile bool _captureProven;
 
-    // Resolved once at construction (via the shared HistoryRowFormat — see its remarks for why an upgrade-only,
-    // never-recomputed-fresh resolution matters), then fixed for the process lifetime.
     private readonly byte _formatVersion;
     private readonly PendingV3Writes? _pendingV3;
     private bool _formatStamped;
@@ -123,9 +115,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// Captures the changeset of every not-yet-captured block on <paramref name="persistedHead"/>'s chain, up to and
     /// including it, advances the contiguous watermark, and makes both crash-durable before returning.
     /// </summary>
-    /// <remarks>Walks backwards through the snapshot links until it connects to the existing watermark (or
-    /// genesis); a partial capture fails closed, and the history WAL is synced before the flat persist commits.
-    /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
         if (!_enabled || _permanentGapDetected) return;
@@ -155,33 +144,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && target <= watermark) return;
 
-        // v3 only: per-key "oldest touch in this walk still waiting to learn its pre-value" — resolved either by
-        // an even older touch of the same key later in the same walk (see RecordAccountV3/RecordStorageV3), or,
-        // for whatever remains once the walk connects, by ResolvePendingV3 below. Not needed for v2, which
-        // records a self-contained post-value per touch and has no such deferred state.
+        // v3 only: oldest touch per key still waiting to learn its pre-value.
         PendingV3Writes? pending = _pendingV3;
         pending?.Clear();
 
         StateId current = persistedHead;
         bool connected = false;
 
-        // One batch for the whole walk, because the rows are produced in descending block order: visiting a block
-        // writes the row for the *higher* block seen before it, and the lowest row of each key is only resolved once
-        // the walk connects. Committing per block therefore publishes a key's upper row while its lower row does not
-        // exist yet, and a read below the watermark seeks upward, finds the upper row, and answers with a value from
-        // after the block it asked about. Nothing partial can be published if nothing is published until the end.
-        // Not a cross-database transaction: one RocksDB write batch over the column families of one database, which
-        // is the unit the per-block code already relied on - only its extent changes. That extent is the contract
-        // to know about: resident batch memory is now the walk's whole changeset in native buffers rather than one
-        // block's, on top of the snapshots being read, and a first capture over a deep in-memory tier is where that
-        // bites. It cannot be flushed part-way without reintroducing the very interleaving above, so the size is
-        // inherent rather than tunable. It also rests on every history write staying WriteFlags.None: a write
-        // carrying DisableWAL would let FlushOnTooManyWrites split this batch every 256 writes and publish half of
-        // it.
-        // Separate from `connected` on purpose: connecting is what the walk achieved, complete is whether the batch
-        // is a whole row set. ResolvePendingV3 runs after the walk connects and writes the lowest row of every
-        // pending key into this same batch, so a throw in there would leave `connected` true over a batch holding
-        // upper rows whose lower siblings were never written - the row set this arrangement exists to prevent.
+        // Rows are written in descending block order, so a key's upper row must not become visible before the
+        // lower one ResolvePendingV3 writes. Holds only while every history write stays WriteFlags.None.
+        // Not `connected`: ResolvePendingV3 writes into the same batch after the walk connects.
         bool complete = false;
         IColumnsWriteBatch<FlatHistoryColumns> walkBatch = _history.StartWriteBatch();
         try
@@ -194,9 +166,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         finally
         {
-            // Disposing writes, so anything short of a complete row set has to be discarded first - the shutdown
-            // throw as much as the two refusals. The shutdown case would be rewritten by the retry, but a refusal
-            // disables capture for the process, so nothing would ever come back to correct what it left behind.
+            // Disposing writes, and a refusal disables capture, so nothing would rewrite a half-published walk.
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
         }
@@ -225,8 +195,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Descends from the persisted head until it meets the watermark or runs out of sources, capturing each
-    /// block into the caller's batch. Returns whether it connected.</summary>
+    /// <summary>Returns whether it connected.</summary>
     private bool WalkAndCapture(
         ref StateId current,
         bool hasWatermark,
@@ -282,8 +251,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         return current == StateId.PreGenesis;
     }
 
-    /// <summary>With capture ordered before every persist/prune, an unconnectable walk only happens when history was
-    /// enabled mid-life - permanent, so stop capturing instead of stalling or rewriting dead rows.</summary>
+    /// <summary>Only reachable when history was enabled mid-life, so it is permanent.</summary>
     private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark) =>
         DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
             $"the blocks below were pruned before history was enabled. The watermark stays at " +
@@ -493,9 +461,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _storageHistory!.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory);
     }
 
-    /// <summary>v3 write: the walk visits newest-to-oldest, so this call's post-value finalizes the newer pending
-    /// touch of the same key, and its own touch becomes the new pending entry (resolved by an even older touch or
-    /// by <see cref="ResolvePendingV3"/> once the walk connects).</summary>
+    /// <summary>The walk visits newest-to-oldest, so this post-value finalizes the newer pending touch.</summary>
     private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch)
     {
         if (account is null)
@@ -516,8 +482,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         int written = value is SlotValue slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
-        // valueBuffer[..written] is passed straight through as a span: it is only ever written synchronously into
-        // the batch within this same call.
         pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);
     }
 
@@ -548,9 +512,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Finalizes the walk's still-unresolved oldest touches from the persisted flat column - capture runs
-    /// strictly before this round's flat persist commits, so the column still holds exactly the pre-walk value for
-    /// every pending key.</summary>
+    /// <summary>Resolves the oldest touches from the persisted flat column, which still holds pre-walk values.</summary>
     private void ResolvePendingV3(PendingV3Writes pending, in HistoryColumnBatches columns)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
@@ -596,9 +558,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         return entries;
     }
 
-    /// <summary>Per-walk deferred-resolution state for v3 capture — see <see cref="RecordAccountV3"/>. Keyed on
-    /// value structs so tracking a touch allocates nothing; the flat key bytes are re-encoded into a caller
-    /// buffer only when a pending row is actually written.</summary>
+    /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.</summary>
     private sealed class PendingV3Writes
     {
         public readonly record struct SlotKey(ValueHash256 AddrPath, ValueHash256 SlotHash);
@@ -614,10 +574,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Destructs.Clear();
         }
 
-        /// <summary>Records a storage-wiping destruct so that slots first written lower in this same walk - which
-        /// the destruct's persisted-column enumeration cannot see - can still splice it into their chain. The walk
-        /// descends, so each record overwrites with the lowest destruct seen so far, which is exactly the nearest
-        /// destruct above every block visited from here on.</summary>
+        /// <summary>Keeps the lowest destruct seen, for slots first written lower in this same walk.</summary>
         public void TrackDestruct(in ValueHash256 addrPath, ulong block) => Destructs[addrPath] = block;
 
         public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> postValue, IWriteBatch batch, HistoryStoreV3 store)
