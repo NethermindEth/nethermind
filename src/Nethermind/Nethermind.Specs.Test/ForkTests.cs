@@ -72,4 +72,19 @@ public class ForkTests
             Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
         }
     }
+
+    // Bogota is the single scheduling point for the combined frame-transaction / inclusion-list devnet.
+    // Both EIPs stay off Amsterdam so its genesis and its consensus test vectors are unchanged by either.
+    [Test]
+    public void Bogota_carries_both_frame_transactions_and_inclusion_lists_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
+        }
+    }
 }
