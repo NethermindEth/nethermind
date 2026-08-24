@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// https://eips.ethereum.org/EIPS/eip-7906
 /// </summary>
 /// <remarks>Operands the spec marks "must be 0" are reserved: a non-zero value exceptional-halts.</remarks>
-public static unsafe partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>TXTRACE (0xb7): enumerate the transaction's state diff and events by index.</summary>
     [SkipLocalsInit]
@@ -156,7 +156,15 @@ public static unsafe partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in cell);
-        return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
+        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
+
+        // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.
+        if (vm.TxTracer.IsTracingOpLevelStorage)
+        {
+            vm.TxTracer.LoadOperationStorage(address, key, value);
+        }
+
+        return pushResult;
     }
 
     // 0x02/0x03 balance, 0x04/0x05 code hash; live reads are EIP-7928 recorded as above.
@@ -217,39 +225,11 @@ public static unsafe partial class EvmInstructions
 
         // Spec stack order (top to bottom): eventIndex, memOffset, dataOffset, length.
         if (!stack.PopUInt256(out UInt256 eventIndex, out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
-            goto StackUnderflow;
+            return EvmExceptionType.StackUnderflow;
         if (eventIndex >= (UInt256)(ulong)view.Logs.Length) return EvmExceptionType.BadInstruction;
-        byte[] data = view.Logs[(int)eventIndex.u0].Data;
 
-        ulong words = EvmCalculations.Div32Ceiling(in length, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
-        if (outOfGas) goto OutOfGas;
-
-        if (UInt256.AddOverflow(length, dataOffset, out UInt256 end) || end > (UInt256)(ulong)data.Length)
-            goto AccessViolation;
-
-        if (!length.IsZero)
-        {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in memOffset, length, ref vm.VmState.Memory))
-                goto OutOfGas;
-
-            ReadOnlySpan<byte> source = data.AsSpan((int)dataOffset, (int)length);
-            vm.VmState.Memory.SaveAfterGas(in memOffset, source);
-
-            if (TTracingInst.IsActive)
-            {
-                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in memOffset, (ulong)length);
-                vm.TxTracer.ReportMemoryChange(memOffset, in memoryChange);
-            }
-        }
-
-        return EvmExceptionType.None;
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    AccessViolation:
-        return EvmExceptionType.AccessViolation;
+        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(
+            vm, ref gas, in memOffset, in dataOffset, in length, view.Logs[(int)eventIndex.u0].Data);
     }
 
     /// <summary>Diff view for the current frame tx, built once and shared. False outside a POST_TX

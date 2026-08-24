@@ -211,6 +211,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 finally
                 {
                     diffRecorder?.SetGeneratingBlockAccessList(null);
+                    // The VM holds its last TxExecutionContext, and RPC processors are pooled, so the
+                    // view's diff and log payload would stay rooted while the processor sits idle.
+                    if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
+                    {
+                        frameContext.PostTxDiffView = null;
+                    }
                 }
             }
             RecoverSenderBeforeIntrinsicGas(tx, spec);

@@ -144,6 +144,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // Enforced here, not only in static validation, so unvalidated entry points (e.g. eth_call)
         // cannot mint ETH: EIP-8141 forbids approval scope on a frame belonging to an atomic batch.
         bool prevIsAtomicBatch = false;
+        bool sawPostTx = false;
         foreach (TxFrame frame in frames)
         {
             if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
@@ -163,6 +164,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
             }
 
+            // The assertion opcodes share one diff view per transaction, which is only the finished
+            // transaction's while nothing after the first POST_TX frame can still change state.
+            if (sawPostTx && frame.Mode != TxFrame.ModePostTx)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotTrailing);
+            }
+
+            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.ValueOutsideSenderMode);
+            }
+
+            sawPostTx |= frame.Mode == TxFrame.ModePostTx;
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 

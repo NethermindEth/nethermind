@@ -69,12 +69,12 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { Balance = 123 } }
             });
 
-        Assert.That(scope.Component.WorldState is IBlockAccessListSource, Is.EqualTo(schedulesEip7906));
-        Assert.That(((TestTransactionProcessor)scope.Component.TransactionProcessor).WorldState,
-            Is.SameAs(scope.Component.WorldState));
-        if (schedulesEip7906)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(((IBlockAccessListSource)scope.Component.WorldState).GeneratedBlockAccessList, Is.Null);
+            Assert.That(scope.Component.WorldState is IBlockAccessListSource, Is.EqualTo(schedulesEip7906));
+            Assert.That(scope.Component.WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: not null });
+            Assert.That(((TestTransactionProcessor)scope.Component.TransactionProcessor).WorldState,
+                Is.SameAs(scope.Component.WorldState));
         }
     }
 

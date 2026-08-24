@@ -2606,6 +2606,53 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    // Emits one LOG1 carrying a 32-byte data word, so the event params below have something to read.
+    private void DeploySingleLogEmitter()
+        => DeployContract(Observer, Prepare.EvmCode
+            .PushData((UInt256)123456789).PushData(0).Op(Instruction.MSTORE)
+            .PushData((UInt256)777).PushData(32).PushData(0).Op(Instruction.LOG1)
+            .Op(Instruction.STOP).Done);
+
+    private (TransactionResult result, CallOutputTracer tracer) ProcessSingleLogPostTx()
+        => ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+    // Out-of-range halts rather than zero-padding, and the bound is checked even for a zero-length
+    // read — the case where implementations diverge, and what reference tests will be diffed against.
+    [TestCase(0u, 32u, ExpectedResult = StatusCode.Success, TestName = "Execute_EventDataCopy_WholeRange_Copies")]
+    [TestCase(32u, 0u, ExpectedResult = StatusCode.Success, TestName = "Execute_EventDataCopy_ZeroLengthAtTheEnd_Copies")]
+    [TestCase(1u, 32u, ExpectedResult = StatusCode.Failure, TestName = "Execute_EventDataCopy_RangeOverrunsTheEnd_HaltsExceptionally")]
+    [TestCase(0u, 33u, ExpectedResult = StatusCode.Failure, TestName = "Execute_EventDataCopy_LengthPastTheEnd_HaltsExceptionally")]
+    [TestCase(33u, 0u, ExpectedResult = StatusCode.Failure, TestName = "Execute_EventDataCopy_ZeroLengthPastTheEnd_HaltsExceptionally")]
+    public byte Execute_EventDataCopy_BoundsAreCheckedAgainstTheEventData(uint dataOffset, uint length)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySingleLogEmitter();
+        DeployContract(Recipient, Prepare.EvmCode
+            .PushData((UInt256)length).PushData((UInt256)dataOffset).PushData(0).PushData(0)
+            .Op(Instruction.EVENTDATACOPY).Op(Instruction.STOP).Done);
+
+        (_, CallOutputTracer tracer) = ProcessSingleLogPostTx();
+
+        return tracer.StatusCode;
+    }
+
+    // 0x0F..0x12 are topic0..topic3; the log carries one topic, so the rest halt.
+    [TestCase((byte)0x0F, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceTopic_PresentTopic_Reads")]
+    [TestCase((byte)0x10, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic1_HaltsExceptionally")]
+    [TestCase((byte)0x11, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic2_HaltsExceptionally")]
+    [TestCase((byte)0x12, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic3_HaltsExceptionally")]
+    public byte Execute_TxTraceEventTopic_MissingTopicHalts(byte param)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySingleLogEmitter();
+        DeployContract(Recipient, [.. Txtrace(param, 0), (byte)Instruction.STOP]);
+
+        (_, CallOutputTracer tracer) = ProcessSingleLogPostTx();
+
+        return tracer.StatusCode;
+    }
+
     // A count param marks in2 "must be 0"; a halt inside a POST_TX frame surfaces as a failed transaction.
     [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceCountParam_ZeroIndex_Succeeds")]
     [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCountParam_NonZeroIndex_HaltsExceptionally")]
@@ -2637,6 +2684,33 @@ public class FrameTxProcessorTests
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
+    }
+
+    // A failed assertion is diagnosed from the trace, so TXDIFF's live read has to appear there
+    // like an SLOAD rather than as gas charged against no visible access.
+    [Test]
+    public void Execute_TxDiffLiveRead_IsReportedToTheStorageTracer()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, [.. Txdiff(0x01, Observer, 5), (byte)Instruction.POP, (byte)Instruction.STOP]);
+
+        StorageReadTracer tracer = new();
+        TransactionResult result = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)), tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(tracer.Reads, Does.Contain((Observer, (UInt256)5, (UInt256)99)));
+    }
+
+    private sealed class StorageReadTracer : TxTracer
+    {
+        public StorageReadTracer() => IsTracingOpLevelStorage = true;
+
+        public List<(Address Address, UInt256 Key, UInt256 Value)> Reads { get; } = [];
+
+        public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+            => Reads.Add((address, storageIndex, new UInt256(value, isBigEndian: true)));
     }
 
     // Same reserved-operand rule on TXDIFF: 0x0A (account_change_flags) marks in3 "must be 0".
@@ -2701,6 +2775,15 @@ public class FrameTxProcessorTests
 
     private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice, bool parallel = false)
     {
+        CallOutputTracer tracer = new();
+        return (ProcessTraced(tx, tracer, out slice, parallel), tracer);
+    }
+
+    private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, bool parallel = false)
+        => ProcessTraced(tx, tracer, out _, parallel);
+
+    private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, out BlockAccessListAtIndex slice, bool parallel)
+    {
         // parallel: true serves storage reads from the recorded change, as a validating node does.
         TracedAccessWorldState tracedState = new(_stateProvider, parallel);
         slice = new BlockAccessListAtIndex();
@@ -2714,9 +2797,7 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
-        CallOutputTracer tracer = new();
-        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
-        return (result, tracer);
+        return tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
     }
 
     /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: an idle recorder and no block-level
@@ -2725,10 +2806,13 @@ public class FrameTxProcessorTests
         => CallSimulated(tx, out _);
 
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder)
+        => CallSimulated(tx, out idleRecorder, out _);
+
+    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder, out EthereumVirtualMachine virtualMachine)
     {
         idleRecorder = new(_stateProvider, parallel: false);
         EthereumCodeInfoRepository codeInfoRepository = new(idleRecorder);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, idleRecorder, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1)
@@ -2754,6 +2838,39 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription ?? result.Error.ToString());
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // The shared diff view is built once per transaction, which only holds while the POST_TX frames
+    // trail and move no value. eth_call reaches the processor with no validator, so it re-checks both.
+    private static TestCaseData[] UnvalidatedPostTxShapes() =>
+    [
+        new TestCaseData((object)new[]
+        {
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModePostTx, target: Recipient),
+            Frame(TxFrame.ModeDefault, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient),
+        })
+        { ExpectedResult = FrameTxValidation.PostTxNotTrailing, TestName = "CallAndRestore_PostTxFrameFollowedByABodyFrame_IsMalformed" },
+        new TestCaseData((object)new[]
+        {
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModePostTx, target: Recipient, value: 1),
+        })
+        { ExpectedResult = FrameTxValidation.ValueOutsideSenderMode, TestName = "CallAndRestore_PostTxFrameCarryingValue_IsMalformed" },
+    ];
+
+    [TestCaseSource(nameof(UnvalidatedPostTxShapes))]
+    public string? CallAndRestore_StructurallyInvalidPostTxFrames_AreRejected(TxFrame[] frames)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll((Txtrace(0x01, 0), To32(1))));
+
+        (TransactionResult result, _) = CallSimulated(FrameTx(nonce: 0, frames));
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        return result.ErrorDescription;
     }
 
     // Displacing the block's own slice would silently drop the transaction from the block access list.
@@ -2783,6 +2900,25 @@ public class FrameTxProcessorTests
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(((IBlockAccessListSource)idleRecorder).GeneratedBlockAccessList, Is.Null);
+    }
+
+    // The VM holds its last TxExecutionContext, and RPC processors are pooled, so a retained view
+    // would keep a caller-sized diff and log payload alive while the pooled processor sits idle.
+    [Test]
+    public void CallAndRestore_PostTxAssertion_ReleasesTheDiffView()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, PostTxAssertAll((Txtrace(0x01, 0), To32(0))));
+
+        (_, CallOutputTracer tracer) = CallSimulated(
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out _, out EthereumVirtualMachine vm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(vm.TxExecutionContext.FrameTxContext, Is.Not.Null, "the view is only released, so the context still proves the assertion ran");
+            Assert.That(vm.TxExecutionContext.FrameTxContext!.PostTxDiffView, Is.Null);
+        }
     }
 
     private RecentRootReference CommitReference(ulong slot)
