@@ -53,9 +53,12 @@ jobs:
           - ubuntu-24.04-arm
         project:
           - Nethermind.Abi.Test
+          - Nethermind.Analyzers.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
+          - Nethermind.BalRecorder.Test
           - Nethermind.Blockchain.Test
+          - Nethermind.CensorshipDetector.Plugin.Test
           - Nethermind.Clique.Test
           - Nethermind.Config.Test
           - Nethermind.Consensus.Test
@@ -71,6 +74,7 @@ jobs:
           - Nethermind.HealthChecks.Test
           - Nethermind.History.Test
           - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
@@ -83,15 +87,20 @@ jobs:
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
+          - Nethermind.OpcodeTracing.Plugin.Test
           - Nethermind.Optimism.Test
+          - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Serialization.SszGenerator.Test
           - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
+          - Nethermind.State.Flat.History.Test
           - Nethermind.State.Flat.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
+          - Nethermind.StateDiffsWriter.Test
           - Nethermind.Synchronization.Test
           - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
@@ -210,6 +219,7 @@ jobs:
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
+          - Ethereum.Ssz.Test
           - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
         chunk: ['']
@@ -360,12 +370,42 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
       setup_group: sequential
+
+  matrix-guard:
+    name: Check test project matrix is exhaustive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check every test project has a matrix entry
+        run: |
+          # Intentional exclusions:
+          # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
+          # - Nethermind.Core.ZkEvm.Test: runs with EnableZkEvm=true in stateless-tests.yml
+          # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
+          #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
+          #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
+          #   run exceeds the job timeout. Wiring those tests needs a project move.
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
+          missing=0
+          for dir in src/Nethermind/*.Test; do
+            project=$(basename "$dir")
+            [[ -f "$dir/$project.csproj" ]] || continue
+            [[ " $allowlist " == *" $project "* ]] && continue
+            esc=$(printf '%s' "$project" | sed 's/\./\\./g')
+            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]" .github/workflows/nethermind-tests.yml; then
+              echo "::error::$project runs in no CI matrix - add it to a matrix in nethermind-tests.yml or to the allowlist in this step"
+              missing=1
+            fi
+          done
+          exit $missing
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest]
+    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -375,7 +415,8 @@ jobs:
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
-            "${{ needs.nethtest.result }}" == "success" \
+            "${{ needs.nethtest.result }}" == "success" && \
+            "${{ needs.matrix-guard.result }}" == "success" \
           ]]
 
   codecov-upload:

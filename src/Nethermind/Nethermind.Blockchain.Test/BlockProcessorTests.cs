@@ -124,12 +124,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -195,12 +193,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -259,7 +255,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -282,6 +278,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -562,6 +559,56 @@ public class BlockProcessorTests
         processor.TransactionsExecuted -= handler;
     }
 
+    // Regression: a top-frame EIP-8037 state-gas OOG tx halts before EVM dispatch but is a valid,
+    // executed transaction — a block must include it between successful txs with a failed receipt.
+    [Test]
+    public async Task Block_with_top_frame_state_gas_oog_tx_processes_with_failed_receipt()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider));
+
+        IReleaseSpec spec = Amsterdam.Instance;
+        Address freshRecipient = Address.FromNumber(0x8037);
+
+        // Senders B and C only: A has code at genesis and Amsterdam enforces EIP-3607.
+        Transaction okTx1 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+        Transaction oogTx = Build.A.Transaction
+            .WithTo(freshRecipient)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyB, spec.IsEip155Enabled)
+            .TestObject;
+        oogTx.GasLimit = IntrinsicGasCalculator.Calculate(oogTx, spec).Standard + (ulong)GasCostOf.NewAccountState - 1;
+        Transaction okTx2 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+
+        Block block = await chain.AddBlock(okTx1, oogTx, okTx2);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        int failedIndex = Array.FindIndex(receipts, r => r.TxHash == oogTx.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(3), "all txs, including the halted one, must be included");
+            Assert.That(receipts, Has.Length.EqualTo(3));
+            Assert.That(failedIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(receipts[failedIndex].StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipts[failedIndex].GasUsed, Is.EqualTo(oogTx.GasLimit), "the halted tx burns its full gas limit");
+            Assert.That(Array.FindAll(receipts, r => r.TxHash != oogTx.Hash && r.StatusCode == StatusCode.Success), Has.Length.EqualTo(2));
+        }
+    }
+
     [Test]
     public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
     {
@@ -686,12 +733,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -731,12 +776,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -1278,12 +1321,10 @@ public class BlockProcessorTests
     private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
         new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)

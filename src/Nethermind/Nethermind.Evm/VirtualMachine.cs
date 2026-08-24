@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -62,9 +62,12 @@ public static class VirtualMachineStatics
 
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
+
+    [DoesNotReturn]
+    internal static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
 }
 
-public unsafe partial class VirtualMachine<TGasPolicy>(
+public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
@@ -75,7 +78,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
-    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
+    protected readonly VmStateStack<TGasPolicy> _stateStack = new(MaxCallDepth + 1);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
@@ -96,10 +99,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
-    public object ReturnData { get; set; }
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
-    protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
+    protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
     // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
     private bool _isTracingActionsCached;
@@ -161,6 +163,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
+        using FrameCleanupScope _ = new(this, vmState);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ReadOnlySpan<byte> previousCallOutput = ReadOnlySpan<byte>.Empty;
@@ -338,6 +341,38 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+
+    private void DisposeActiveFrames(VmState<TGasPolicy> topLevel)
+    {
+        if (!ReferenceEquals(_currentState, topLevel))
+        {
+            _currentState?.Dispose();
+        }
+
+        _currentState = null;
+        while (_stateStack.Count != 0)
+        {
+            VmState<TGasPolicy> parent = _stateStack.Pop();
+            if (!ReferenceEquals(parent, topLevel))
+            {
+                parent.Dispose();
+            }
+        }
+    }
+
+    private readonly struct FrameCleanupScope(
+        VirtualMachine<TGasPolicy> vm,
+        VmState<TGasPolicy> topLevel) : IDisposable
+    {
+        public void Dispose()
+        {
+            // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
+            if (vm._currentState is not null || vm._stateStack.Count != 0)
+            {
+                vm.DisposeActiveFrames(topLevel);
+            }
+        }
+    }
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ReadOnlySpan<byte> previousCallOutput)
     {
