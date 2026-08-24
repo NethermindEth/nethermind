@@ -88,7 +88,8 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
             Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("gasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
@@ -326,7 +327,7 @@ public class FrameTransactionForRpcTests
             BlockHash = Keccak.Zero,
             FrameReceipts =
             [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: []),
+                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, executionGasUsed: 21_000, stateGasUsed: 97_920, logs: []),
             ],
         };
 
@@ -336,6 +337,8 @@ public class FrameTransactionForRpcTests
         {
             Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(1));
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receiptForRpc.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000));
+            Assert.That(receiptForRpc.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920));
         }
     }
 }

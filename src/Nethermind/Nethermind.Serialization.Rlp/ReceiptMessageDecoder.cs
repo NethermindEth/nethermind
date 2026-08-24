@@ -124,7 +124,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = ctx.ReadSequenceLength() + ctx.Position;
                 byte status = ctx.DecodeByte();
-                ulong gasUsed = ctx.DecodeULong();
+                int gasUsedEnd = ctx.ReadSequenceLength() + ctx.Position;
+                ulong executionGasUsed = ctx.DecodeULong();
+                ulong stateGasUsed = ctx.DecodeULong();
+                ctx.Check(gasUsedEnd);
 
                 int logsEnd = ctx.ReadSequenceLength() + ctx.Position;
                 int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, LogsRlpLimit.Limit + 1);
@@ -135,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
                     logs[j] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
                 }
 
-                frameReceipts[i] = new TxFrameReceipt(status, gasUsed, logs);
+                frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, logs);
                 totalLogs += logCount;
                 ctx.Check(frameEnd);
             }
@@ -185,8 +188,11 @@ namespace Nethermind.Serialization.Rlp
 
         private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
             Rlp.LengthOf((ulong)frameReceipt.Status)
-            + Rlp.LengthOf(frameReceipt.GasUsed)
+            + Rlp.LengthOfSequence(GetFrameGasUsedLength(frameReceipt))
             + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
+
+        private static int GetFrameGasUsedLength(TxFrameReceipt frameReceipt) =>
+            Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
 
         private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)
         {
@@ -213,9 +219,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 TxFrameReceipt frameReceipt = frameReceipts[i];
                 int logsLength = GetFrameLogsLength(frameReceipt);
-                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOf(frameReceipt.GasUsed) + Rlp.LengthOfSequence(logsLength));
+                int gasUsedLength = GetFrameGasUsedLength(frameReceipt);
+                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
                 writer.Encode((ulong)frameReceipt.Status);
-                writer.Encode(frameReceipt.GasUsed);
+                writer.StartSequence(gasUsedLength);
+                writer.Encode(frameReceipt.ExecutionGasUsed);
+                writer.Encode(frameReceipt.StateGasUsed);
                 writer.StartSequence(logsLength);
                 for (int j = 0; j < frameReceipt.Logs.Length; j++)
                 {
