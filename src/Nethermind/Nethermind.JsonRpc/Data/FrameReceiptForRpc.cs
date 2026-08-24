@@ -15,15 +15,17 @@ public class FrameReceiptForRpc
     public FrameReceiptForRpc(TxFrameReceipt frameReceipt)
     {
         Status = frameReceipt.Status;
-        GasUsed = frameReceipt.GasUsed;
+        ExecutionGasUsed = frameReceipt.ExecutionGasUsed;
+        StateGasUsed = frameReceipt.StateGasUsed;
         Logs = frameReceipt.Logs;
     }
 
     public byte Status { get; set; }
-    public ulong GasUsed { get; set; }
+    public ulong ExecutionGasUsed { get; set; }
+    public ulong StateGasUsed { get; set; }
 
     /// <summary>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</summary>
     public LogEntry[]? Logs { get; set; } = [];
 
-    public TxFrameReceipt ToFrameReceipt() => new(Status, GasUsed, Logs ?? []);
+    public TxFrameReceipt ToFrameReceipt() => new(Status, ExecutionGasUsed, StateGasUsed, Logs ?? []);
 }

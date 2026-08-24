@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 // Empty-backed isolated factory: a proof node that cannot be resolved from the proof itself fails
                 // verification instead of being completed from (or racing) the live client state DB.
-                ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), logManager);
+                ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), NullDb.Instance, logManager);
                 result = SnapProviderHelper.VerifyAccountRange(factory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
             }
             catch (Exception)

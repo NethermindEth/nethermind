@@ -88,7 +88,8 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
             Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("gasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
@@ -310,8 +311,8 @@ public class FrameTransactionForRpcTests
         Logs = [FrameLog],
         FrameReceipts =
         [
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: [FrameLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, gasUsed: 5_000, logs: []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, executionGasUsed: 21_000, stateGasUsed: 97_920, logs: [FrameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, executionGasUsed: 5_000, stateGasUsed: 0, logs: []),
         ],
     };
 
@@ -328,6 +329,8 @@ public class FrameTransactionForRpcTests
             Assert.That(receiptForRpc.Payer, Is.EqualTo(TestItem.AddressA));
             Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receiptForRpc.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000));
+            Assert.That(receiptForRpc.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920));
         }
     }
 
@@ -349,13 +352,15 @@ public class FrameTransactionForRpcTests
             Assert.That(roundTripped.Payer, Is.EqualTo(TestItem.AddressA));
             Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(roundTripped.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-            Assert.That(roundTripped.FrameReceipts[0].GasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
             Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
             Assert.That(roundTripped.FrameReceipts[0].Logs[0].Address, Is.EqualTo(TestItem.AddressC));
             Assert.That(roundTripped.FrameReceipts[0].Logs[0].Data, Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(roundTripped.FrameReceipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
             Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
-            Assert.That(roundTripped.FrameReceipts[1].GasUsed, Is.EqualTo(5_000UL));
+            Assert.That(roundTripped.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(5_000UL));
+            Assert.That(roundTripped.FrameReceipts[1].StateGasUsed, Is.EqualTo(0UL));
         }
     }
 
