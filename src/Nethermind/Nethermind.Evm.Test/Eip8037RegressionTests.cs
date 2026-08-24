@@ -110,8 +110,18 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [Test]
     public void Eip8037_nested_exceptional_halts_burn_spilled_state_gas()
     {
-        // Alternating SSTOREs share slot 11 across DELEGATECALL frames; the trailing CALL
-        // forces an exceptional halt when its memory length is UInt256.MaxValue.
+        // Byte-exact reproduction of the recursive contract from nethermind#12964. Every frame:
+        //   PUSH0 PUSH0                    ; zeros reserved for the trailing CALL
+        //   PUSH1 0x0b SLOAD NOT           ; value = ~storage[11]
+        //   PUSH1 0x0b DUP2 DUP2 SSTORE    ; storage[11] = value, alternating 0 <-> 2^256-1
+        //                                  ; across nesting depths: fresh non-zero sets spill
+        //                                  ; their state charge when the reservoir is empty,
+        //                                  ; restorations to the original zero credit it back
+        //   CALLDATASIZE DUP2 DUP2         ; small constants reused as call operands
+        //   ADDRESS ADDRESS DELEGATECALL   ; nest one frame deeper
+        //   DUP4 CALLER CALLER CALL        ; trailing CALL reuses the all-ones value as a
+        //                                  ; memory-size operand, so its expansion overflows
+        //                                  ; and the frame halts exceptionally on unwind
         byte[] code = Convert.FromHexString("5f5f600b5419600b8181553681813030f4833333f1");
         const ulong gasLimit = 200_000;
 
