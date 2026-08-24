@@ -102,6 +102,32 @@ public class BlockProcessorTests
             });
     }
 
+    // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
+    // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
+    [Test]
+    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    {
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, code))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
+                }
+            });
+    }
+
     [Test]
     public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
     {
