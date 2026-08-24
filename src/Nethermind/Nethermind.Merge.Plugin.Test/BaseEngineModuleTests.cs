@@ -43,6 +43,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Nethermind.History;
 using Nethermind.Init.Modules;
 
@@ -204,6 +205,8 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
+
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
 
@@ -263,13 +266,15 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
                 blocksConfig,
                 LogManager,
-                targetAdjustedGasLimitCalculator);
+                targetAdjustedGasLimitCalculator,
+                InclusionListTxSource);
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
