@@ -13,8 +13,6 @@ public sealed class NoopBalHealing : IBalHealing
     public static readonly NoopBalHealing Instance = new();
     private NoopBalHealing() { }
 
-    public bool CanHeal => false;
-
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token) => null;
 
     public Hash256? ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token) => null;

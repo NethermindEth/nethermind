@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization.FastSync;
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     IBalHealing balHealing,
+    StateHealingStrategy healingStrategy,
     BalFetcher balFetcher,
     IStateSyncPivot stateSyncPivot,
     TreeSync treeSync,
@@ -53,18 +54,18 @@ public class StateSyncRunner(
             {
                 if (syncConfig.SnapSync)
                 {
-                    BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
+                    BlockHeader firstPivot = await WaitForPivot(token);
+                    healingStrategy.SetPivot(firstPivot);
+
                     if (_logger.IsInfo) _logger.Info("Starting snap sync.");
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
 
-                    if (balHealing.CanHeal && firstPivot?.BlockAccessListHash is not null)
+                    if (healingStrategy.CanBalHeal)
                     {
                         await RunBalHealing(firstPivot, token);
                         return;
                     }
-
-                    if (_logger.IsDebug) _logger.Debug($"BAL healing skipped - supported: {balHealing.CanHeal}, pivot: {firstPivot?.Number}, BAL hash: {firstPivot?.BlockAccessListHash}.");
                 }
 
                 await RunStateSyncRounds(token);
@@ -84,6 +85,18 @@ public class StateSyncRunner(
         }
     }
 
+    private async Task<BlockHeader> WaitForPivot(CancellationToken token)
+    {
+        BlockHeader? pivot = stateSyncPivot.GetPivotHeader();
+        while (pivot is null)
+        {
+            await Task.Delay(1000, token);
+            pivot = stateSyncPivot.GetPivotHeader();
+        }
+
+        return pivot;
+    }
+
     public async Task RunBalHealing(BlockHeader firstPivot, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Starting BAL healing from block {firstPivot.Number}.");
@@ -96,6 +109,8 @@ public class StateSyncRunner(
 
         while (!token.IsCancellationRequested)
         {
+            await StateSyncPrecursorWait(token);
+
             stateSyncPivot.UpdateHeaderForcefully();
             BlockHeader roundPivot = stateSyncPivot.GetPivotHeader() ?? throw new InvalidOperationException("BAL healing failed - no new pivot available.");
 
@@ -114,7 +129,7 @@ public class StateSyncRunner(
 
             if (!await balFetcher.EnsureRange(currentPivot, roundPivot, token))
             {
-                if (_logger.IsWarn) _logger.Warn($"BAL healing stalled - no BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number} yet, retrying.");
+                if (_logger.IsDebug) _logger.Debug($"BAL healing stalled - no BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number} yet, retrying.");
                 await Task.Delay(1000, token);
                 continue;
             }

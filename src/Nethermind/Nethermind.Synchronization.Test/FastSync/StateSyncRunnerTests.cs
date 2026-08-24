@@ -93,7 +93,6 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
-        _healing.CanHeal.Returns(true);
 
         _pivot = Substitute.For<IStateSyncPivot>();
         _pivot.UpdatedStorages.Returns([]);

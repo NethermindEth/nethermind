@@ -3,16 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network;
 
@@ -34,12 +31,10 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ISpecProvider _specProvider;
-    private readonly IBlockTree _blockTree;
-    private readonly IBalHealing _balHealing;
+    private readonly StateHealingStrategy _healingStrategy;
     private readonly ILogger _logger;
 
     private volatile bool _stateDownloaded;
-    private volatile bool _canBalHeal;
 
     public event Action? Changed;
 
@@ -48,18 +43,17 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
         ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IBalHealing balHealing,
+        StateHealingStrategy healingStrategy,
         ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
         _syncProgressResolver = syncProgressResolver;
         _specProvider = specProvider;
-        _blockTree = blockTree;
-        _balHealing = balHealing;
+        _healingStrategy = healingStrategy;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
+        _healingStrategy.Changed += OnHealingStrategyChanged;
     }
 
     public void Resolve(ISet<Capability> capabilities)
@@ -75,7 +69,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189). Only advertise it once we no longer need
         // trie nodes ourselves - state sync finished, or snap-syncing with a BAL-heal.
         bool canAdvertiseSnap2 = requiresSnapForSync
-            ? _canBalHeal
+            ? _healingStrategy.CanBalHeal
             : stateDownloaded && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (canAdvertiseSnap2)
@@ -84,31 +78,24 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         }
     }
 
-    private bool CanBalHeal()
-    {
-        if (!_syncConfig.SnapSync || !_balHealing.CanHeal) return false;
-
-        // Passing the number lets the header store skip its block-number lookup and read the header directly.
-        (ulong number, Hash256 hash) = _syncProgressResolver.SyncPivot;
-        BlockHeader? pivot = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
-        return pivot is not null && _specProvider.GetSpec(pivot).BlockLevelAccessListsEnabled;
-    }
-
     private bool StateDownloaded() => _syncProgressResolver.FindBestFullState() >= _syncProgressResolver.SyncPivot.BlockNumber;
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
         bool stateWasDownloaded = _stateDownloaded;
-        bool couldBalHeal = _canBalHeal;
         _stateDownloaded = StateDownloaded();
-        _canBalHeal = CanBalHeal();
-        if (stateWasDownloaded == _stateDownloaded && couldBalHeal == _canBalHeal) return;
+        if (stateWasDownloaded == _stateDownloaded) return;
 
         if (_logger.IsDebug)
-            _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}, " +
-                          $"BAL healing {(_canBalHeal ? "available" : "unavailable")}; snap advertisement updated");
+            _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}; snap advertisement updated");
         Changed?.Invoke();
     }
 
-    public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
+    private void OnHealingStrategyChanged() => Changed?.Invoke();
+
+    public void Dispose()
+    {
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        _healingStrategy.Changed -= OnHealingStrategyChanged;
+    }
 }

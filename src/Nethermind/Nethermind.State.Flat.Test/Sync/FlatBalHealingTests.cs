@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -35,7 +34,6 @@ public class FlatBalHealingTests
     private BlockAccessListStore _balStore = null!;
     private IBlockTree _blockTree = null!;
     private ITreeSyncStore _syncStore = null!;
-    private readonly SyncConfig _syncConfig = new();
     private FlatBalHealing _healing = null!;
 
     [SetUp]
@@ -49,7 +47,7 @@ public class FlatBalHealingTests
         _balStore = new BlockAccessListStore(_balDb);
         _blockTree = Substitute.For<IBlockTree>();
         _syncStore = Substitute.For<ITreeSyncStore>();
-        _healing = new(_blockTree, _balStore, _reassembler, _persistence, _syncConfig, _syncStore, _codeDb, LimboLogs.Instance);
+        _healing = new(_blockTree, _balStore, _reassembler, _persistence, _syncStore, _codeDb, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -351,7 +349,7 @@ public class FlatBalHealingTests
         IBlockAccessListStore throwingStore = Substitute.For<IBlockAccessListStore>();
         throwingStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
         throwingStore.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new InvalidOperationException("boom"));
-        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, _persistence, _syncConfig, _syncStore, _codeDb, LimboLogs.Instance);
+        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, _persistence, _syncStore, _codeDb, LimboLogs.Instance);
 
         SeedInitialState(Acc(TestItem.AddressA, 100));
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);

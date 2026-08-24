@@ -10,8 +10,6 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface IBalHealing
 {
-    bool CanHeal { get; }
-
     Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token);
 
     Hash256? ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token);

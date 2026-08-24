@@ -27,7 +27,12 @@ internal class WorldStateDbDeciderModule : Module
             .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, ISyncConfig, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
                 (policy, syncConfig, flatFactory, patriciaFactory) =>
                 {
-                    if (!policy.ShouldTurnOnFlatDb()) return patriciaFactory().WorldStateManager;
+                    if (!policy.ShouldTurnOnFlatDb())
+                    {
+                        // Only the flat backend implements BAL healing; the trie one heals with trie nodes.
+                        syncConfig.BalHealing = false;
+                        return patriciaFactory().WorldStateManager;
+                    }
                     // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
                     syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();
