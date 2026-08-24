@@ -201,6 +201,10 @@ jobs:
           python-version: "3.X"
 
       - name: Install Sedge environment
+        env:
+          # proxy.golang.org serves large module zips as a redirect to storage.googleapis.com,
+          # unreachable from the sync runners; `|` falls back to direct on any error, not just 404/410
+          GOPROXY: https://proxy.golang.org|direct
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
