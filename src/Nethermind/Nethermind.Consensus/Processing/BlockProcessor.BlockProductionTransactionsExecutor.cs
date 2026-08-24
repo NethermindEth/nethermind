@@ -99,7 +99,13 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock)
             {
-                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
+                AddingTxEventArgs args = txPicker.CanAddTransaction(
+                    block,
+                    currentTx,
+                    transactionsInBlock,
+                    stateProvider,
+                    receiptsTracer.CumulativeExecutionGasUsed,
+                    receiptsTracer.BlockStateGasUsed);
 
                 if (args.Action != TxAction.Add)
                 {

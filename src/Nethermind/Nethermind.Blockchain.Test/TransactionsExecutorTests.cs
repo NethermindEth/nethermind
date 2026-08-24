@@ -449,10 +449,8 @@ namespace Nethermind.Blockchain.Test
             if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
         }
 
-        // EIP-8141: GasLimit is only the sum of the frame gas limits, so the picker must gate on max_gas or the
-        // block exceeds its own limit. The single frame's mandatory cost is 15,475 plus 40/non-zero data byte.
         [TestCase(100_000UL, 0, false)]
-        [TestCase(115_000UL, 0, true)]
+        [TestCase(118_000UL, 0, true)]
         [TestCase(10_000UL, 4000, true)]
         public void Frame_transaction_is_gated_on_its_max_gas(ulong frameGasLimit, int frameDataLength, bool expectedSkipped)
         {
@@ -483,7 +481,7 @@ namespace Nethermind.Blockchain.Test
             if (expectedSkipped)
             {
                 Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-                Assert.That(args.Reason, Does.StartWith("Not enough gas in block"));
+                Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
             }
             else
             {

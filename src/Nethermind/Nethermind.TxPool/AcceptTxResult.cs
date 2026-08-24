@@ -125,6 +125,9 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose validation prefix costs more than <c>MAX_VERIFY_GAS</c> to check. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
+        /// <summary>An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>. A propagation bound separate from <see cref="FrameTxVerifyGasTooHigh"/>, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(29, TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
+
         /// <summary>An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c>: an exact match, so neither old nor future.</summary>
         public static readonly AcceptTxResult KeyedNonceUnmet = new(24, TxPoolErrorMessages.KeyedNonceUnmet);
 
