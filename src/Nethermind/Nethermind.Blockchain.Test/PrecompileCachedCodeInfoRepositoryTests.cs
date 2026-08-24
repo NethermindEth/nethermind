@@ -387,7 +387,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         caches.TryGetPartition(PrecompileAddress, out PrecompileCaches.Partition? partition);
 
         Parallel.For(0, admittedEntries * 8, i =>
-            resolved.Run(new byte[] {(byte)i, (byte)(i >> 8), 2, 3}, Prague.Instance)
+            resolved.Run(new byte[] { (byte)i, (byte)(i >> 8), 2, 3 }, Prague.Instance)
         );
 
         using (Assert.EnterMultipleScope())
