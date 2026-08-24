@@ -18,10 +18,11 @@
 # Uses awk — parses multi-hundred-MB profiles in seconds.
 
 set -uo pipefail
+export LC_ALL=C
 
 # The runtime perf map writes managed frames as "<ret> [Assembly] Type::Method(args)".
 # Everything else - bare C/C++ symbols, kernel symbols, unresolved DSO placeholders - is not.
-NATIVE_FILTER='$1 !~ /\[[A-Za-z0-9_.]+\] [^ ]*::/'
+NATIVE_FILTER='$1 !~ /\[[A-Za-z0-9_.-]+\][[:space:]].*::/'
 
 self_time() {
     awk '{
@@ -64,17 +65,20 @@ require_file() {
 }
 
 print_table() {
-    local title="$1" n="$2"
-    sort -t$'\t' -k2 -rn \
-        | awk -F'\t' -v title="$title" -v limit="$n" '
+    local title="$1" n="$2" percentage_label="${3:-Self %}"
+    LC_ALL=C sort -t$'\t' -k2 -rn \
+        | awk -F'\t' -v title="$title" -v limit="$n" -v percentage_label="$percentage_label" '
+            function display_frame(frame, width) {
+                return length(frame) > width ? "..." substr(frame, length(frame) - width + 4) : frame
+            }
             BEGIN {
                 printf "\n  %s\n\n", title
-                printf "  %-4s %-72s %10s %8s\n", "#", "Frame", "Samples", "Self %"
+                printf "  %-4s %-72s %10s %8s\n", "#", "Frame", "Samples", percentage_label
                 printf "  %-4s %-72s %10s %8s\n", "---", \
                     "------------------------------------------------------------", \
                     "--------", "------"
             }
-            NR <= limit { printf "  %-4d %-72s %10d %7.2f%%\n", NR, substr($1, 1, 72), $2, $3 }
+            NR <= limit { printf "  %-4d %-72s %10d %7.2f%%\n", NR, display_frame($1, 72), $2, $3 }
             END { printf "\n" }'
 }
 
@@ -85,7 +89,7 @@ cmd_top() {
 
 cmd_total() {
     require_file "$1"
-    total_time "$1" | print_table "Top ${2:-30} by total time — $(basename "$1")" "${2:-30}"
+    total_time "$1" | print_table "Top ${2:-30} by total time — $(basename "$1")" "${2:-30}" "Total %"
 }
 
 cmd_native() {
@@ -99,13 +103,20 @@ cmd_compare() {
     require_file "$1"
     require_file "$2"
     local n="${3:-30}"
-    join -t$'\t' -a1 -a2 -e 0 -o '0,1.3,2.3' \
-        <(self_time "$1" | sort -t$'\t' -k1,1) \
-        <(self_time "$2" | sort -t$'\t' -k1,1) \
+    LC_ALL=C join -t$'\t' -a1 -a2 -e 0 -o '0,1.3,2.3' \
+        <(self_time "$1" | LC_ALL=C sort -t$'\t' -k1,1) \
+        <(self_time "$2" | LC_ALL=C sort -t$'\t' -k1,1) \
         | awk -F'\t' -v a="$(basename "$1")" -v b="$(basename "$2")" -v n="$n" '
             { delta = $3 - $2; printf "%s\t%.4f\t%.4f\t%.4f\n", $1, $2, $3, delta }' \
-        | sort -t$'\t' -k4 -g \
+        | LC_ALL=C sort -t$'\t' -k4 -g \
         | awk -F'\t' -v n="$n" '
+            function display_frame(frame, width) {
+                return length(frame) > width ? "..." substr(frame, length(frame) - width + 4) : frame
+            }
+            function print_row(row, fields) {
+                split(row, fields, "\t")
+                printf "  %-64s %8.2f%% %8.2f%% %+8.2f\n", display_frame(fields[1], 64), fields[2], fields[3], fields[4]
+            }
             BEGIN {
                 printf "\n  Largest self-time shifts (percentage points of profile)\n\n"
                 printf "  %-64s %9s %9s %9s\n", "Frame", "A %", "B %", "Delta"
@@ -115,16 +126,12 @@ cmd_compare() {
             }
             { rows[NR] = $0 }
             END {
-                half = int(n / 2)
-                for (i = 1; i <= half && i <= NR; i++) {
-                    split(rows[i], f, "\t")
-                    printf "  %-64s %8.2f%% %8.2f%% %+8.2f\n", substr(f[1], 1, 64), f[2], f[3], f[4]
-                }
-                if (NR > n) printf "  %-64s %9s %9s %9s\n", "...", "", "", ""
-                for (i = (NR - half > half ? NR - half + 1 : half + 1); i <= NR; i++) {
-                    split(rows[i], f, "\t")
-                    printf "  %-64s %8.2f%% %8.2f%% %+8.2f\n", substr(f[1], 1, 64), f[2], f[3], f[4]
-                }
+                half = int((n + 1) / 2)
+                if (half < 1) half = 1
+                for (i = 1; i <= half && i <= NR; i++) print_row(rows[i])
+                start = (NR - half > half ? NR - half + 1 : half + 1)
+                if (start > half + 1) printf "  %-64s %9s %9s %9s\n", "...", "", "", ""
+                for (i = start; i <= NR; i++) print_row(rows[i])
                 printf "\n"
             }'
 }

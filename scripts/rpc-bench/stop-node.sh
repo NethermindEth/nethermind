@@ -24,31 +24,84 @@ FINAL_FILE="$STATE_DIR/db-final$SUFFIX.txt"
 STOP_GRACE="${STOP_GRACE:-180}"     # seconds; SIGINT (stop-signal) lets dotTrace finalize the .dtp
 LOG_OUT="${LOG_OUT:-$STATE_DIR/node$SUFFIX.log}"
 integrity_fail=0
+perf_fail=0
 
 # 1) Graceful stop FIRST, then capture logs — so the shutdown window (dispose/flush
 #    exceptions, dotTrace finalize, shutdown marker) is scanned too.
 # 0) Finalize perf while the container is still up: symbolization reads the perf
 #    map and the mapped shared objects through /proc/<pid>/root, which disappears
 #    with the container.
-if [[ "${PERF:-false}" == "true" && -n "${PERF_PID:-}" && -n "${PERF_NODE_PID:-}" ]]; then
-  log "Stopping perf (pid $PERF_PID) and folding the profile..."
-  kill -INT "$PERF_PID" 2>/dev/null || true
-  for _ in $(seq 1 120); do kill -0 "$PERF_PID" 2>/dev/null || break; sleep 1; done
-  kill -9 "$PERF_PID" 2>/dev/null || true
-  perf_data="$DIAG_DIR/perf/perf$SUFFIX.data"
-  if [[ -s "$perf_data" ]]; then
-    # perf looks up <symfs>/tmp/perf-<recorded pid>.map, but the runtime named the
-    # file after its pid inside the container; materialize the expected name.
-    docker exec "$CONTAINER_NAME" sh -c \
-      "cat /tmp/perf-*.map > /tmp/perf-${PERF_NODE_PID}.map 2>/dev/null" || true
-    if perf script --symfs "/proc/$PERF_NODE_PID/root" --input "$perf_data" \
-         | awk -f "$HERE/../perf-fold.awk" > "$DIAG_DIR/perf/perf$SUFFIX.folded"; then
-      log "perf profile folded: $(wc -l < "$DIAG_DIR/perf/perf$SUFFIX.folded") stacks"
-    else
-      log "ERROR: perf script failed; profile left unfolded"
-    fi
+if [[ "${PERF:-false}" == "true" ]]; then
+  if [[ -z "${PERF_PID:-}" || -z "${PERF_NODE_PID:-}" || -z "${PERF_CONTAINER_PID:-}" \
+      || -z "${PERF_RECORDER_START_TIME:-}" || -z "${PERF_RECORDER_COMM:-}" \
+      || -z "${PERF_RECORDER_EXE:-}" ]]; then
+    log "ERROR: perf was requested but its recorder or client PID was not persisted"
+    perf_fail=1
   else
-    log "ERROR: perf recorded no data"
+    log "Stopping perf (pid $PERF_PID) and folding the profile..."
+    if ! signal_perf_recorder_if_matches INT "$PERF_PID" "$PERF_RECORDER_START_TIME" \
+        "$PERF_RECORDER_COMM" "$PERF_RECORDER_EXE"; then
+      log "ERROR: perf recorder changed identity or exited; refusing to signal pid $PERF_PID"
+      perf_fail=1
+    else
+      for _ in $(seq 1 120); do
+        kill -0 "$PERF_PID" 2>/dev/null || break
+        if ! perf_recorder_matches "$PERF_PID" "$PERF_RECORDER_START_TIME" \
+            "$PERF_RECORDER_COMM" "$PERF_RECORDER_EXE"; then
+          log "ERROR: perf recorder changed identity while stopping; refusing further signals"
+          perf_fail=1
+          break
+        fi
+        sleep 1
+      done
+      if [[ "$perf_fail" == "0" ]] && kill -0 "$PERF_PID" 2>/dev/null; then
+        if ! signal_perf_recorder_if_matches KILL "$PERF_PID" "$PERF_RECORDER_START_TIME" \
+            "$PERF_RECORDER_COMM" "$PERF_RECORDER_EXE"; then
+          log "ERROR: perf recorder changed identity before SIGKILL; refusing to signal pid $PERF_PID"
+        else
+          log "ERROR: perf did not stop cleanly"
+        fi
+        perf_fail=1
+      fi
+    fi
+    wait "$PERF_PID" 2>/dev/null || true
+
+    perf_data="$DIAG_DIR/perf/perf$SUFFIX.data"
+    folded_profile="$DIAG_DIR/perf/perf$SUFFIX.folded"
+    if [[ ! -s "$perf_data" ]]; then
+      log "ERROR: perf recorded no data"
+      perf_fail=1
+    else
+      source_map="/tmp/perf-${PERF_CONTAINER_PID}.map"
+      target_map="/tmp/perf-${PERF_NODE_PID}.map"
+      if [[ "$PERF_CONTAINER_PID" == "$PERF_NODE_PID" ]]; then
+        map_command='test -s "$1"'
+        map_arguments=(sh "$source_map")
+      else
+        map_command='test -s "$1" && cp "$1" "$2"'
+        map_arguments=(sh "$source_map" "$target_map")
+      fi
+      # The runtime's map is keyed by its container PID. Copy only that map to the
+      # host PID name perf expects; concatenating every map would mix dotTrace's PID space.
+      if ! docker exec "$CONTAINER_NAME" sh -c "$map_command" "${map_arguments[@]}"; then
+        log "ERROR: could not prepare the Nethermind perf map from $source_map"
+        perf_fail=1
+      fi
+
+      folded_tmp="${folded_profile}.tmp"
+      rm -f "$folded_tmp"
+      if [[ "$perf_fail" == "0" ]] \
+          && perf script --symfs "/proc/$PERF_NODE_PID/root" --input "$perf_data" \
+             | awk -f "$HERE/../perf-fold.awk" > "$folded_tmp" \
+          && bash "$HERE/../validate-folded-profile.sh" "$folded_tmp"; then
+        mv "$folded_tmp" "$folded_profile"
+        log "perf profile folded: $(wc -l < "$folded_profile") stacks"
+      else
+        rm -f "$folded_tmp"
+        log "ERROR: perf folding failed or produced an empty perf.folded"
+        perf_fail=1
+      fi
+    fi
   fi
 fi
 
@@ -118,5 +171,8 @@ log "  scratch removed."
 
 if [[ "$integrity_fail" == "1" ]]; then
   die "DB integrity check FAILED — snapshot verification did not pass (see errors above)."
+fi
+if [[ "$perf_fail" == "1" ]]; then
+  die "perf profiling FAILED — no non-empty perf.folded was produced (see errors above)."
 fi
 log "=== Node stopped; snapshot verified pristine ==="

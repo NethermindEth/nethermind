@@ -38,6 +38,47 @@ as_root() {
   fi
 }
 
+# Echo the stable identity fields for a process: start time, comm, and executable.
+# RPC_BENCH_PROC_ROOT lets the unit test exercise PID-reuse handling without a live process.
+perf_recorder_identity() {
+  local pid="$1" proc_root="${RPC_BENCH_PROC_ROOT:-/proc}" stat rest start_time comm executable
+  local -a stat_fields
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+  [[ -r "$proc_root/$pid/stat" && -r "$proc_root/$pid/comm" ]] || return 1
+
+  stat="$(<"$proc_root/$pid/stat")" || return 1
+  rest="${stat##*) }"
+  read -r -a stat_fields <<< "$rest"
+  start_time="${stat_fields[19]:-}"
+  [[ "$start_time" =~ ^[0-9]+$ ]] || return 1
+  IFS= read -r comm < "$proc_root/$pid/comm" || return 1
+  comm="${comm%$'\r'}"
+  executable="$(readlink -f -- "$proc_root/$pid/exe")" || return 1
+  [[ -n "$comm" && -n "$executable" ]] || return 1
+  printf '%s\t%s\t%s\n' "$start_time" "$comm" "$executable"
+}
+
+perf_recorder_matches() {
+  local pid="$1" expected_start_time="$2" expected_comm="$3" expected_executable="$4"
+  local actual_start_time actual_comm actual_executable
+  IFS=$'\t' read -r actual_start_time actual_comm actual_executable < <(perf_recorder_identity "$pid") || return 1
+  [[ "$actual_start_time" == "$expected_start_time" \
+      && "$actual_comm" == "$expected_comm" \
+      && "$actual_executable" == "$expected_executable" ]]
+}
+
+# Signal only the recorder process originally started for this benchmark. Returns
+# non-zero without sending a signal if PID reuse changed the process identity.
+signal_perf_recorder_if_matches() {
+  local signal="$1" pid="$2" start_time="$3" comm="$4" executable="$5"
+  case "$signal" in
+    INT|KILL) ;;
+    *) return 2 ;;
+  esac
+  perf_recorder_matches "$pid" "$start_time" "$comm" "$executable" || return 1
+  kill "-$signal" "$pid"
+}
+
 # Reject paths unsafe for recursive deletion (absolute, no '..', not '/', >=2 deep).
 #   $1 = path, $2 = label for error messages.
 assert_sane_dir() {

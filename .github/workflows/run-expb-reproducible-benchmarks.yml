@@ -129,7 +129,7 @@ on:
           resolves both managed frames (via the runtime's perf map) and native frames (via the
           container's shared objects), so time inside RocksDB, the allocator and the GC is attributed
           instead of collapsing into dotTrace's single '[Native or optimized code]' node. Produces
-          perf.data plus a folded-stack profile.folded readable with scripts/perf-report.sh.
+          a folded-stack perf.folded readable with scripts/perf-report.sh.
           Independent of the dottrace input; enabling both samples the process twice, which perturbs
           timings - use perf runs for attribution, not for A/B numbers.
         required: false
@@ -861,6 +861,7 @@ jobs:
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
@@ -869,7 +870,11 @@ jobs:
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
-          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
+          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
+            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -879,6 +884,17 @@ jobs:
 
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
+          expb_bin="$(uv tool dir --bin)/expb"
+          if [[ "${PERF}" == "true" ]]; then
+            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              exit 1
+            }
+            if [[ "${expb_help}" != *"--perf"* ]]; then
+              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+              exit 1
+            fi
+          fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run expb scenarios
@@ -937,20 +953,28 @@ jobs:
 
           trap on_terminate TERM INT
 
-          dottrace_flag=""
+          profiling_flags=()
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+            profiling_flags+=(--dottrace --dottrace-mode "${DOTTRACE_MODE:-sampling}" --dotnet-trace)
           fi
           if [[ "${PERF}" == "true" ]]; then
             # perf samples on the host; the client only needs the perf-map env, which
             # expb sets on the container. Nothing extra is required in the image.
-            dottrace_flag="${dottrace_flag} --perf"
+            profiling_flags+=(--perf)
           fi
 
-          # Marker for dottrace artifact collection — only files newer than this
+          if [[ "${#profiling_flags[@]}" -eq 0 ]]; then
+            echo "expb profiling flags: none"
+          else
+            printf 'expb profiling flags:'
+            printf ' %q' "${profiling_flags[@]}"
+            printf '\n'
+          fi
+
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -963,7 +987,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            ${dottrace_flag} \
+            ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
@@ -1205,40 +1229,81 @@ jobs:
           fi
 
       - name: Collect and upload profiling artifacts
+        id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          ARTIFACT_SUFFIX: ${{ matrix.payload_set }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
-            echo "No dottrace output directories found for this run."
+          if [[ "${PERF}" == "true" ]]; then
+            artifact_prefix="profiling"
+          else
+            artifact_prefix="dottrace"
+          fi
+          artifact_name="${artifact_prefix}-${ARTIFACT_SUFFIX}"
+          archive="${RUNNER_TEMP}/${artifact_name}.zip"
+          {
+            echo "artifact_name=${artifact_name}"
+            echo "archive=${archive}"
+          } >> "${GITHUB_OUTPUT}"
+
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but no profiling output directories were produced."
+              exit 1
+            fi
+            echo "::warning::Profiling was requested (dottrace=${DOTTRACE}, perf=${PERF}) but no profiling output directories were produced."
             exit 0
           fi
 
-          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
-          printf '  %s\n' "${dottrace_dirs[@]}"
+          echo "Collecting from ${#profiling_dirs[@]} profiling director(ies):"
+          printf '  %s\n' "${profiling_dirs[@]}"
 
           file_count=0
-          for d in "${dottrace_dirs[@]}"; do
+          for d in "${profiling_dirs[@]}"; do
             file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
           done
           if [[ "${file_count}" -eq 0 ]]; then
-            echo "Dottrace directories are empty, skipping zip."
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but profiling output directories are empty."
+              exit 1
+            fi
+            echo "::warning::Profiling output directories are empty, skipping zip."
             exit 0
           fi
 
-          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+          if [[ "${PERF}" == "true" ]]; then
+            mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
+            valid_folded_profiles=()
+            for folded_profile in "${folded_profiles[@]}"; do
+              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                valid_folded_profiles+=("${folded_profile}")
+              else
+                echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
+              fi
+            done
+            if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
+              echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
+              exit 1
+            fi
+            echo "Validated positive-sample perf.folded profile(s):"
+            printf '  %s\n' "${valid_folded_profiles[@]}"
+          fi
+
+          zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
-          name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          name: ${{ steps.collect-profiling.outputs.artifact_name }}
+          path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
 
@@ -2014,13 +2079,18 @@ jobs:
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
             curl -LsSf https://astral.sh/uv/install.sh | sh
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
-          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
+          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
+            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -2029,6 +2099,17 @@ jobs:
           fi
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
+          expb_bin="$(uv tool dir --bin)/expb"
+          if [[ "${PERF}" == "true" ]]; then
+            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              exit 1
+            }
+            if [[ "${expb_help}" != *"--perf"* ]]; then
+              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+              exit 1
+            fi
+          fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run expb scenarios
@@ -2085,20 +2166,28 @@ jobs:
 
           trap on_terminate TERM INT
 
-          dottrace_flag=""
+          profiling_flags=()
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+            profiling_flags+=(--dottrace --dottrace-mode "${DOTTRACE_MODE:-sampling}" --dotnet-trace)
           fi
           if [[ "${PERF}" == "true" ]]; then
             # perf samples on the host; the client only needs the perf-map env, which
             # expb sets on the container. Nothing extra is required in the image.
-            dottrace_flag="${dottrace_flag} --perf"
+            profiling_flags+=(--perf)
           fi
 
-          # Marker for dottrace artifact collection — only files newer than this
+          if [[ "${#profiling_flags[@]}" -eq 0 ]]; then
+            echo "expb profiling flags: none"
+          else
+            printf 'expb profiling flags:'
+            printf ' %q' "${profiling_flags[@]}"
+            printf '\n'
+          fi
+
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -2111,7 +2200,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            ${dottrace_flag} \
+            ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
@@ -2336,40 +2425,81 @@ jobs:
           fi
 
       - name: Collect and upload profiling artifacts
+        id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          ARTIFACT_SUFFIX: ${{ matrix.tag }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
-            echo "No dottrace output directories found for this run."
+          if [[ "${PERF}" == "true" ]]; then
+            artifact_prefix="profiling"
+          else
+            artifact_prefix="dottrace"
+          fi
+          artifact_name="${artifact_prefix}-${ARTIFACT_SUFFIX}"
+          archive="${RUNNER_TEMP}/${artifact_name}.zip"
+          {
+            echo "artifact_name=${artifact_name}"
+            echo "archive=${archive}"
+          } >> "${GITHUB_OUTPUT}"
+
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but no profiling output directories were produced."
+              exit 1
+            fi
+            echo "::warning::Profiling was requested (dottrace=${DOTTRACE}, perf=${PERF}) but no profiling output directories were produced."
             exit 0
           fi
 
-          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
-          printf '  %s\n' "${dottrace_dirs[@]}"
+          echo "Collecting from ${#profiling_dirs[@]} profiling director(ies):"
+          printf '  %s\n' "${profiling_dirs[@]}"
 
           file_count=0
-          for d in "${dottrace_dirs[@]}"; do
+          for d in "${profiling_dirs[@]}"; do
             file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
           done
           if [[ "${file_count}" -eq 0 ]]; then
-            echo "Dottrace directories are empty, skipping zip."
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but profiling output directories are empty."
+              exit 1
+            fi
+            echo "::warning::Profiling output directories are empty, skipping zip."
             exit 0
           fi
 
-          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+          if [[ "${PERF}" == "true" ]]; then
+            mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
+            valid_folded_profiles=()
+            for folded_profile in "${folded_profiles[@]}"; do
+              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                valid_folded_profiles+=("${folded_profile}")
+              else
+                echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
+              fi
+            done
+            if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
+              echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
+              exit 1
+            fi
+            echo "Validated positive-sample perf.folded profile(s):"
+            printf '  %s\n' "${valid_folded_profiles[@]}"
+          fi
+
+          zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
-          name: dottrace-${{ matrix.tag }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          name: ${{ steps.collect-profiling.outputs.artifact_name }}
+          path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
 
@@ -2558,7 +2688,7 @@ jobs:
       - name: Download snapshot artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: dottrace-*
+          pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}
           path: snapshots/
           merge-multiple: true
 

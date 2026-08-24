@@ -94,6 +94,7 @@ fi
 log "Isolation:  $DB_ISOLATION"
 log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"
+log "perf:       $PERF (${PERF_FREQUENCY}Hz)"
 log "RPC port:   $RPC_PORT  (network: $NETWORK)"
 # Snapshot sets carry provenance sidecars (capture head + client version) — log
 # them so a mismatched snapshot/image pairing is visible in the run log.
@@ -273,15 +274,19 @@ docker_args=(
 # Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
+perf_client_env=()
 if [[ "$PERF" == "true" ]]; then
-  # Name JIT frames in the profile; W^X would relocate code away from the
-  # addresses the runtime writes to the map.
-  docker_args+=(
-    -e DOTNET_PerfMapEnabled=1
-    -e DOTNET_PerfMapShowOptimizationTiers=1
-    -e DOTNET_EnableWriteXorExecute=0
+  perf_client_env=(
+    DOTNET_PerfMapEnabled=1
+    DOTNET_PerfMapShowOptimizationTiers=1
+    DOTNET_EnableWriteXorExecute=0
   )
+  assert_no_mounts_under "$DIAG_DIR/perf"
+  as_root rm -rf "$DIAG_DIR/perf"
   mkdir -p "$DIAG_DIR/perf"
+  if [[ "$DOTTRACE" != "true" ]]; then
+    for kv in "${perf_client_env[@]}"; do docker_args+=(-e "$kv"); done
+  fi
 fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
@@ -309,7 +314,12 @@ if [[ "$DOTTRACE" == "true" ]]; then
   # Timeline snapshots carry dotTrace's .dtt extension; keeping .dtp for them would let
   # Reporter.exe's .dtp glob pick up a snapshot it cannot convert.
   snapshot_ext="$([[ "$DOTTRACE_MODE" == "timeline" ]] && echo dtt || echo dtp)"
-  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.${snapshot_ext}" --propagate-exit-code -- /nethermind/nethermind)
+  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.${snapshot_ext}" --propagate-exit-code --)
+  if [[ "$PERF" == "true" ]]; then
+    # The dotTrace launcher is itself .NET; only the client may write a perf map.
+    entry_args+=(/usr/bin/env "${perf_client_env[@]}")
+  fi
+  entry_args+=(/nethermind/nethermind)
 fi
 # Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
 # host tuning and enables a shipped PGO profile, which a direct binary call skips.
@@ -335,20 +345,33 @@ if [[ "$PERF" == "true" ]]; then
   node_pid="$(docker top "$CONTAINER_NAME" -eo pid,args 2>/dev/null \
     | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace/ {print $1; exit}')"
   if [[ -z "$node_pid" ]]; then
-    log "ERROR: could not find the client process; perf will not record"
+    die "could not find the client process for perf"
+  fi
+  container_pid="$(awk '/^NSpid:/{print $NF}' "/proc/$node_pid/status" 2>/dev/null || true)"
+  if ! [[ "$container_pid" =~ ^[0-9]+$ ]]; then
+    die "could not resolve the container PID for perf client process $node_pid"
+  fi
+  perf record --event cycles:u --freq "$PERF_FREQUENCY" --call-graph fp --pid "$node_pid" \
+    --output "$DIAG_DIR/perf/perf$SUFFIX.data" \
+    > "$DIAG_DIR/perf/perf-record$SUFFIX.log" 2>&1 &
+  perf_pid=$!
+  sleep 1
+  if ! kill -0 "$perf_pid" 2>/dev/null; then
+    log "ERROR: perf exited immediately:"
+    sed 's/^/    /' "$DIAG_DIR/perf/perf-record$SUFFIX.log" || true
+    die "perf did not start"
   else
-    perf record --freq "$PERF_FREQUENCY" --call-graph fp --pid "$node_pid" \
-      --output "$DIAG_DIR/perf/perf$SUFFIX.data" \
-      > "$DIAG_DIR/perf/perf-record$SUFFIX.log" 2>&1 &
-    perf_pid=$!
-    sleep 1
-    if ! kill -0 "$perf_pid" 2>/dev/null; then
-      log "ERROR: perf exited immediately; no profile will be recorded:"
-      sed 's/^/    /' "$DIAG_DIR/perf/perf-record$SUFFIX.log" || true
-    else
-      { echo "PERF_PID=$perf_pid"; echo "PERF_NODE_PID=$node_pid"; } \
-        >> "$STATE_DIR/node$SUFFIX.env"
-      log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
-    fi
+    IFS=$'\t' read -r perf_recorder_start_time perf_recorder_comm perf_recorder_executable \
+      < <(perf_recorder_identity "$perf_pid") \
+      || die "could not record perf recorder identity"
+    {
+      printf 'PERF_PID=%q\n' "$perf_pid"
+      printf 'PERF_NODE_PID=%q\n' "$node_pid"
+      printf 'PERF_CONTAINER_PID=%q\n' "$container_pid"
+      printf 'PERF_RECORDER_START_TIME=%q\n' "$perf_recorder_start_time"
+      printf 'PERF_RECORDER_COMM=%q\n' "$perf_recorder_comm"
+      printf 'PERF_RECORDER_EXE=%q\n' "$perf_recorder_executable"
+    } >> "$STATE_DIR/node$SUFFIX.env"
+    log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
   fi
 fi
