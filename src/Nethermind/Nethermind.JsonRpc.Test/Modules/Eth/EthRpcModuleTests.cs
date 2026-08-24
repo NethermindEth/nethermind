@@ -2413,6 +2413,47 @@ public partial class EthRpcModuleTests
             Is.True);
     }
 
+    [Test]
+    public async Task Eth_createAccessList_omits_entries_that_do_not_reduce_gas_under_eip7981()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
+        // PUSH20 accessedAccount; BALANCE; POP; STOP — a single cold account access, no storage.
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}"}""";
+
+        // optimize=false keeps the entry, proving the account is genuinely accessed.
+        (JToken unoptimized, long unoptimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
+        Address[] unoptimizedAddresses = unoptimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        Assert.That(unoptimizedAddresses, Does.Contain(new Address(accessedAccount)));
+
+        // Under EIP-7981 the entry's floor-token surcharge outweighs the cold-access saving, so the
+        // gas-minimal list is empty. The reported gas must be the empty-list gas (18005); keeping the
+        // one optimisable entry would report 18005 + 1280 (a 20-byte address at 4 tokens x 16 gas,
+        // EIP-7981 + EIP-7976), so pinning it guards against reporting the discovered-list gas.
+        (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Assert.That(optimized["error"], Is.Null);
+        Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+        Assert.That(optimizedGas, Is.EqualTo(18005));
+        Assert.That(optimizedGas, Is.LessThan(unoptimizedGas));
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        // Caller pre-declares the account it will touch; optimize must still return the gas-minimal
+        // empty list rather than echoing the supplied entry back (AccessList.Empty, not null).
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"0x00000000000000000000000000000000deadbeef","storageKeys":[]}]}""";
+
+        (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Assert.That(optimized["error"], Is.Null);
+        Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+    }
+
     [TestCase(null)]
     [TestCase(0UL)]
     public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(ulong? gasCap)
