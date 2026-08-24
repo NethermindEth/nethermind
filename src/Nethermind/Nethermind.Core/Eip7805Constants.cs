@@ -3,17 +3,33 @@
 
 namespace Nethermind.Core;
 
+/// <summary>Transport bounds on the inclusion lists an EIP-7805 committee can produce.</summary>
+/// <remarks>
+/// The engine API receives the committee's lists already flattened into one aggregate, so every aggregate
+/// bound is a per-member bound times <see cref="InclusionListCommitteeSize"/>. They exist to cap decode
+/// work on untrusted input; none of them is a consensus rule.
+/// </remarks>
 public static class Eip7805Constants
 {
-    public const int MaxBytesPerInclusionList = 8192;
-    // Conservative lower bound for an encoded transaction's size.
-    public const int MinTransactionSizeBytes = 32;
-    // The spec caps bytes, not tx count; this is a stackalloc bound only.
-    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / MinTransactionSizeBytes;
-    // IL_COMMITTEE_SIZE: the flattened newPayloadV6 aggregate spans at most this many members' lists.
+    /// <summary><c>IL_COMMITTEE_SIZE</c>: members whose lists one aggregate spans.</summary>
     public const int InclusionListCommitteeSize = 16;
-    // Upper bound on the flattened aggregate handed to newPayloadV6.
+
+    /// <summary><c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>: byte cap on one member's list.</summary>
+    public const int MaxBytesPerInclusionList = 8192;
+
+    /// <summary>Entries one member's list can carry.</summary>
+    /// <remarks>
+    /// Consensus gossip caps a member's <c>transactions</c> at <see cref="MaxBytesPerInclusionList"/> and an
+    /// empty entry still costs its SSZ offset, so the cap divided by the offset width is the entry ceiling
+    /// the transport enforces. Entries that decode to nothing are conforming, so no tighter bound holds.
+    /// </remarks>
+    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / SszOffsetBytes;
+
+    /// <summary>Transaction bytes the flattened aggregate can carry.</summary>
     public const int MaxAggregateInclusionListBytes = InclusionListCommitteeSize * MaxBytesPerInclusionList;
-    // Corresponding entry-count bound: empty entries cost no bytes but still allocate a slot downstream.
-    public const int MaxAggregateInclusionListTransactions = MaxAggregateInclusionListBytes / MinTransactionSizeBytes;
+
+    /// <summary>Entries the flattened aggregate can carry.</summary>
+    public const int MaxAggregateInclusionListTransactions = InclusionListCommitteeSize * MaxTransactionsPerInclusionList;
+
+    private const int SszOffsetBytes = 4;
 }

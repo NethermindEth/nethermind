@@ -17,6 +17,8 @@ namespace Nethermind.Consensus.Validators;
 
 public static class InclusionListValidator
 {
+    private const int StackAllocEntries = 256;
+
     public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
         => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator);
 
@@ -30,8 +32,8 @@ public static class InclusionListValidator
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
 
-        // A flattened aggregate spans the whole committee, so conforming input can exceed the stackalloc bound.
-        bool[]? rented = il.Length > Eip7805Constants.MaxTransactionsPerInclusionList
+        // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
+        bool[]? rented = il.Length > StackAllocEntries
             ? ArrayPool<bool>.Shared.Rent(il.Length)
             : null;
         try

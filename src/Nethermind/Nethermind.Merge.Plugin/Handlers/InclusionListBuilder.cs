@@ -14,6 +14,11 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider)
 {
+    // Conservative lower bound for an encoded transaction's size.
+    private const int MinTransactionSizeBytes = 32;
+    // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
+    private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
+
     public InclusionListBytes GetInclusionList()
     {
         using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs();
@@ -31,7 +36,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// </remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs()
     {
-        const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
+        const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
 
         using ArrayPoolListRef<Transaction[]> senders = new(capacity);
@@ -109,7 +114,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
                 result.Add(txBytes);
 
                 // No possible tx can fit in the remaining space.
-                if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
+                if (size + MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
                 {
                     break;
                 }
