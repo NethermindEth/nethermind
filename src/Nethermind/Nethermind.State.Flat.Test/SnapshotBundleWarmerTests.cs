@@ -127,6 +127,36 @@ public class SnapshotBundleWarmerTests
         Assert.That(read, Is.SameAs(realNode));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Warmer_miss_does_not_reach_live_reads_or_trie_node_cache(bool storage)
+    {
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakC;
+        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256? cacheAddress = storage ? address : null;
+
+        TrieNode warmed = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        TrieNode live = storage
+            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
+            : bundle.FindStateNodeOrUnknown(path, hash);
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        cache.Add(retired!);
+        retired!.ReleaseLease();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(live, Is.Not.SameAs(warmed));
+            Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
+        }
+    }
+
     // The regression this PR fixes is a +3-5% AVG slowdown from #12793 dropping the warmer's negative cache.
     // Pin that the cache exists: a second warmer visit to the same missing path must be served from the
     // transient sentinel and must not re-probe the persistence-backed lookup a second time.
