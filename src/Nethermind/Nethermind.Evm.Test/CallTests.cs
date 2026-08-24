@@ -138,12 +138,19 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Cancellation_in_nested_frame_disposes_active_frames()
         {
-            Address target = TestItem.AddressC;
-            TestState.CreateAccount(target, UInt256.Zero);
-            byte[] childCode = [(byte)Instruction.STOP];
-            TestState.InsertCode(target, childCode, SpecProvider.GenesisSpec);
+            Address middle = TestItem.AddressC;
+            Address leaf = TestItem.AddressD;
+            TestState.CreateAccount(middle, UInt256.Zero);
+            TestState.CreateAccount(leaf, UInt256.Zero);
+            byte[] leafCode = [(byte)Instruction.STOP];
+            TestState.InsertCode(leaf, leafCode, SpecProvider.GenesisSpec);
+            byte[] middleCode = Prepare.EvmCode
+                .CALL(50_000, leaf, 0, 0, 0, 0, 0)
+                .Op(Instruction.STOP)
+                .Done;
+            TestState.InsertCode(middle, middleCode, SpecProvider.GenesisSpec);
             byte[] code = Prepare.EvmCode
-                .CALL(50_000, target, 0, 0, 0, 0, 0)
+                .CALL(50_000, middle, 0, 0, 0, 0, 0)
                 .Op(Instruction.STOP)
                 .Done;
             (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
@@ -155,12 +162,14 @@ namespace Nethermind.Evm.Test
                     new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                     tracer));
 
+            Assert.That(tracer.ParentState, Is.Not.Null);
+            Assert.That(tracer.IntermediateState, Is.Not.Null);
+            Assert.That(tracer.CancelledState, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetStateStack().Count, Is.Zero);
-                Assert.That(tracer.ParentState, Is.Not.Null);
-                Assert.That(tracer.CancelledState, Is.Not.Null);
                 Assert.That(GetIsDisposed(tracer.ParentState!), Is.True);
+                Assert.That(GetIsDisposed(tracer.IntermediateState!), Is.True);
                 Assert.That(GetIsDisposed(tracer.CancelledState!), Is.True);
             }
         }
@@ -175,6 +184,7 @@ namespace Nethermind.Evm.Test
             private int _pollCount;
 
             public VmState<EthereumGasPolicy>? ParentState { get; private set; }
+            public VmState<EthereumGasPolicy>? IntermediateState { get; private set; }
             public VmState<EthereumGasPolicy>? CancelledState { get; private set; }
 
             bool ITxTracer.IsCancelable => true;
@@ -186,6 +196,12 @@ namespace Nethermind.Evm.Test
                     if (++_pollCount == 1)
                     {
                         ParentState = machine.VmState;
+                        return false;
+                    }
+
+                    if (_pollCount == 2)
+                    {
+                        IntermediateState = machine.VmState;
                         return false;
                     }
 
