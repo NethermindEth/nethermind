@@ -49,7 +49,6 @@
             "ProtectorReward": 50.27,
             "ObserverReward": 25.13,
             "MinimumMinerBlockPerEpoch": 5,
-            "LimitPenaltyEpoch": 5,
             "MinimumSigningTx": 30
           }
         ],

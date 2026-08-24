@@ -84,10 +84,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
         if (!currentSpec.IsTipUpgradePenaltyEnabled)
         {
-            ulong comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            ulong comebackHeight = (XdcConstants.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, currentSpec.LimitPenaltyEpochV2);
+                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, XdcConstants.LimitPenaltyEpochV2);
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 HashSet<Hash256> blockHashes = [];
@@ -121,15 +121,13 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         }
         else
         {
-            // LimitPenaltyEpoch of 0 is treated as 1 to avoid division/multiplication by zero.
-            ulong limitPenaltyEpoch = currentSpec.LimitPenaltyEpoch > 0 ? currentSpec.LimitPenaltyEpoch : 1;
-            ulong comebackHeight = limitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            ulong comebackHeight = XdcConstants.LimitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
                 Dictionary<Address, ulong> penaltyParolees = [];
                 Address[] lastPenalty = [];
 
-                for (ulong i = 0; i < limitPenaltyEpoch; i++)
+                for (ulong i = 0; i < XdcConstants.LimitPenaltyEpoch; i++)
                 {
                     Address[] previousPenalties = GetPreviousPenalties(parentHash, currentSpec, i);
                     foreach (Address previousPenalty in previousPenalties)
@@ -170,7 +168,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 foreach (Address penalty in lastPenalty)
                 {
                     penaltyParolees.TryGetValue(penalty, out ulong epochs);
-                    if (epochs == limitPenaltyEpoch)
+                    if (epochs == XdcConstants.LimitPenaltyEpoch)
                     {
                         txSignerMap.TryGetValue(penalty, out ulong signedCount);
                         if (signedCount >= currentSpec.MinimumSigningTx)

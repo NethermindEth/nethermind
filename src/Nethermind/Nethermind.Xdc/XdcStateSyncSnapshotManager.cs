@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -41,10 +42,16 @@ public class XdcStateSyncSnapshotManager(
             epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
         }
 
-        ulong gapBlockNum = Math.Max(
+        ulong epochBase = Math.Max(
             epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
             spec.EpochLength
-         ) - spec.Gap;
+         );
+
+        // The penalty comeback check at an epoch switch reaches LimitPenaltyEpoch epochs back
+        // (see PenaltyHandler.HandlePenalties), and resolving an epoch needs its gap block snapshot.
+        // Nothing below the pivot is ever processed, so those snapshots only exist if built from synced state here.
+        ulong lookbackFloor = Math.Min(epochBase, Math.Max(spec.SwitchBlock, spec.EpochLength));
+        ulong gapBlockNum = Math.Max(epochBase.SaturatingSub(XdcConstants.LimitPenaltyEpoch * spec.EpochLength), lookbackFloor) - spec.Gap;
 
         if (gapBlockNum + spec.Gap == spec.SwitchBlock)
         {

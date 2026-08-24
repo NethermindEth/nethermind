@@ -15,13 +15,17 @@ namespace Nethermind.Xdc.Test;
 
 internal class XdcStateSyncSnapshotManagerTests
 {
+    // Gap blocks reach XdcConstants.LimitPenaltyEpoch epochs back from the pivot's epoch switch,
+    // floored at the first epoch of the chain — which is what clamps every case but the last.
     [
-        TestCase(24UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15 }),
-        TestCase(25UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
-        TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 15, 25 }),
+        TestCase(24UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15 }),
+        TestCase(25UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15, 25 }),
+        TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 23 }, new int[] { 5, 15, 25 }),
         TestCase(26UL, 10UL, 5UL, new int[] { 0, 9, 18, 28 }, new int[] { 5, 15, 25 }),
         TestCase(11UL, 10UL, 5UL, new int[] { 0, 9 }, new int[] { 5 }),
         TestCase(4UL, 10UL, 5UL, new int[] { 0 }, new int[] { }),
+        // Chain long enough for the full lookback: the whole penalty window, not just the pivot's epoch.
+        TestCase(26UL, 5UL, 2UL, new int[] { 0, 5, 10, 15, 20, 25 }, new int[] { 3, 8, 13, 18, 23 }),
     ]
     public async Task GetGapBlocks_ReturnsExpectedGapBlockNumbers(
         ulong pivotNumber,
@@ -62,7 +66,7 @@ internal class XdcStateSyncSnapshotManagerTests
         Assert.That(resultNumbers, Is.EqualTo(expectedGapBlockNumbers));
     }
 
-    // gapBlockNum = Max(switchBlock - switchBlock%epochLength, epochLength) - gap
+    // The penalty lookback is floored at the switch block, so gapBlockNum = switchBlock - gap here.
     // V1 branch triggers when gapBlockNum + gap == switchBlock
     [TestCase(27UL, 10UL, 10UL, 5UL, new int[] { 10, 19 }, new int[] { 15, 25 })]
     [TestCase(14UL, 10UL, 10UL, 5UL, new int[] { 10 }, new int[] { })]

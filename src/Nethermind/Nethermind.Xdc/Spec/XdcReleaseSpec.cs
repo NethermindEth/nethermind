@@ -30,8 +30,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
     public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = [];
 
@@ -72,7 +70,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         ProtectorReward = configParams.ProtectorReward;
         ObserverReward = configParams.ObserverReward;
         MinimumMinerBlockPerEpoch = configParams.MinimumMinerBlockPerEpoch;
-        LimitPenaltyEpoch = configParams.LimitPenaltyEpoch;
         MinimumSigningTx = configParams.MinimumSigningTx;
     }
 
@@ -127,8 +124,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
-    public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
     public ulong RangeReturnSigner { get; set; }
     public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }

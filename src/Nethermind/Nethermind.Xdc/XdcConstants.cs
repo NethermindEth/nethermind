@@ -48,6 +48,11 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
 
+    // Epochs in a row a node must stay penalized before it may be paroled by signing enough transactions
+    public const ulong LimitPenaltyEpoch = 4;
+    // The same window for the pre-TIPUpgradePenalty rules, where zero means no previous-epoch lookback
+    public const ulong LimitPenaltyEpochV2 = 0;
+
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
     public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");

@@ -113,7 +113,6 @@ public class RpcModuleTests
 
             // Penalty configuration
             MinimumMinerBlockPerEpoch = 1,
-            LimitPenaltyEpoch = 3,
             MinimumSigningTx = 1,
 
             // Smart contract addresses (using zero addresses for tests)

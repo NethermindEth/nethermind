@@ -27,6 +27,32 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     public abstract BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch);
     public abstract EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 
+    /// <summary>
+    /// Walks back from <paramref name="header"/> to the epoch switch block that opens its epoch.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="GetEpochSwitchInfo(XdcBlockHeader)"/> this needs no snapshot, so it still resolves epochs
+    /// whose gap block snapshot is unavailable — the case for epochs below a fast sync pivot, where no block is ever
+    /// processed. Use it wherever only the epoch switch block itself is needed, not the master node set.
+    /// </remarks>
+    /// <returns>The epoch switch block, or <c>null</c> when an ancestor is missing from the block tree.</returns>
+    protected BlockRoundInfo? FindEpochSwitchBlock(XdcBlockHeader header)
+    {
+        while (true)
+        {
+            if (EpochSwitches.TryGet(header.Hash!, out EpochSwitchInfo cached))
+                return cached.EpochSwitchBlockInfo;
+
+            if (IsEpochSwitchAtBlock(header))
+                return new BlockRoundInfo(header.Hash!, header.ExtraConsensusData?.BlockRound ?? 0, header.Number);
+
+            if (Tree.FindHeader(header.ParentHash!) is not XdcBlockHeader parent)
+                return null;
+
+            header = parent;
+        }
+    }
+
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
         Hash256 headerHash = header.Hash;

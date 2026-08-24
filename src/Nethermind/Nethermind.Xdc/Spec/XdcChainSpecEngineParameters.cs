@@ -37,8 +37,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address MasternodeVotingContract { get; set; }
 
-    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public Address RelayerRegistrationSMC { get; set; }
     public Address TRC21IssuerSMC { get; set; }
 
@@ -139,6 +137,5 @@ public sealed class V2ConfigParams
     [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; init; }
     public ulong MinimumMinerBlockPerEpoch { get; init; }
-    public ulong LimitPenaltyEpoch { get; init; }
     public ulong MinimumSigningTx { get; init; }
 }
