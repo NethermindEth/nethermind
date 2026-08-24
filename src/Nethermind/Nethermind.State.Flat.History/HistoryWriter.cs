@@ -164,56 +164,24 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         StateId current = persistedHead;
         bool connected = false;
-        while (current != StateId.PreGenesis)
+
+        // One batch for the whole walk, because the rows are produced in descending block order: visiting a block
+        // writes the row for the *higher* block seen before it, and the lowest row of each key is only resolved once
+        // the walk connects. Committing per block therefore publishes a key's upper row while its lower row does not
+        // exist yet, and a read below the watermark seeks upward, finds the upper row, and answers with a value from
+        // after the block it asked about. Nothing partial can be published if nothing is published until the end.
+        // Not a cross-database transaction: one RocksDB write batch over the column families of one database, which
+        // is the unit the per-block code already relied on - only its extent changes.
+        using (IColumnsWriteBatch<FlatHistoryColumns> walkBatch = _history.StartWriteBatch())
         {
-            // A first capture can span the whole in-memory depth under the persistence lock; stay responsive to
-            // shutdown. Throwing (never returning) aborts the caller's persist, so the sources survive for a retry.
-            cancellationToken.ThrowIfCancellationRequested();
+            HistoryColumnBatches columns = new(walkBatch);
+            connected = WalkAndCapture(ref current, hasWatermark, watermark, snapshotRepository, pending, in columns, cancellationToken);
 
-            if (hasWatermark && current.BlockNumber <= watermark)
-            {
-                // A number-only connect would strand a reorged pre-finalization capture under a healthy watermark.
-                if (!_availability.Matches(current.BlockNumber, current.StateRoot))
-                {
-                    DisableCapture(
-                        $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
-                        $"the chain being persisted ({current.StateRoot}) - a pre-finalization capture was reorged away. " +
-                        $"The watermark stays at {watermark}; resync the flatHistory database to re-enable capture.");
-                    return;
-                }
-
-                connected = true;
-                break;
-            }
-
-            if (snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
-            {
-                using (snapshot)
-                {
-                    CaptureBlock(current.BlockNumber, current.StateRoot, snapshot, pending);
-                    current = snapshot.From;
-                }
-            }
-            else if (snapshotRepository.TryLeaseBasePersistedSnapshot(current, out PersistedSnapshot? persisted))
-            {
-                using (persisted)
-                {
-                    CaptureBlock(current.BlockNumber, current.StateRoot, persisted, pending);
-                    current = persisted.From;
-                }
-            }
-            else
-            {
-                break;
-            }
+            if (connected && pending is not null) ResolvePendingV3(pending, in columns);
         }
-
-        if (current == StateId.PreGenesis) connected = true;
 
         if (connected)
         {
-            if (pending is not null) ResolvePendingV3(pending);
-
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target, _formatVersion);
             _history.SyncWal();
@@ -232,13 +200,73 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         else
         {
-            // With capture ordered before every persist/prune, an unconnectable walk only happens when history was
-            // enabled mid-life — permanent, so stop capturing instead of stalling or rewriting dead rows.
-            DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
-                $"the blocks below were pruned before history was enabled. The watermark stays at " +
-                $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
+            ReportUnconnectedWalk(current, hasWatermark, watermark);
         }
     }
+
+    /// <summary>Descends from the persisted head until it meets the watermark or runs out of sources, capturing each
+    /// block into the caller's batch. Returns whether it connected.</summary>
+    private bool WalkAndCapture(
+        ref StateId current,
+        bool hasWatermark,
+        ulong watermark,
+        ISnapshotRepository snapshotRepository,
+        PendingV3Writes? pending,
+        in HistoryColumnBatches columns,
+        CancellationToken cancellationToken)
+    {
+        while (current != StateId.PreGenesis)
+        {
+            // A first capture can span the whole in-memory depth under the persistence lock; stay responsive to
+            // shutdown. Throwing (never returning) aborts the caller's persist, so the sources survive for a retry.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (hasWatermark && current.BlockNumber <= watermark)
+            {
+                // A number-only connect would strand a reorged pre-finalization capture under a healthy watermark.
+                if (!_availability.Matches(current.BlockNumber, current.StateRoot))
+                {
+                    DisableCapture(
+                        $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
+                        $"the chain being persisted ({current.StateRoot}) - a pre-finalization capture was reorged away. " +
+                        $"The watermark stays at {watermark}; resync the flatHistory database to re-enable capture.");
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
+            {
+                using (snapshot)
+                {
+                    CaptureBlock(current.BlockNumber, current.StateRoot, snapshot, pending, in columns);
+                    current = snapshot.From;
+                }
+            }
+            else if (snapshotRepository.TryLeaseBasePersistedSnapshot(current, out PersistedSnapshot? persisted))
+            {
+                using (persisted)
+                {
+                    CaptureBlock(current.BlockNumber, current.StateRoot, persisted, pending, in columns);
+                    current = persisted.From;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return current == StateId.PreGenesis;
+    }
+
+    /// <summary>With capture ordered before every persist/prune, an unconnectable walk only happens when history was
+    /// enabled mid-life - permanent, so stop capturing instead of stalling or rewriting dead rows.</summary>
+    private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark) =>
+        DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
+            $"the blocks below were pruned before history was enabled. The watermark stays at " +
+            $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
 
     /// <summary>Permanently stops capture for this process, notifying dependants so they can persist retained data
     /// before the pending persist prunes the blocks above the watermark.</summary>
@@ -322,10 +350,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     [SkipLocalsInit]
-    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending)
+    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending, in HistoryColumnBatches columns)
     {
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-        HistoryColumnBatches columns = new(batch);
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
 
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
@@ -372,13 +398,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// persisted base holds the same one-block changeset.
     /// </summary>
     [SkipLocalsInit]
-    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, PersistedSnapshot snapshot, PendingV3Writes? pending)
+    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, PersistedSnapshot snapshot, PendingV3Writes? pending, in HistoryColumnBatches columns)
     {
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-        HistoryColumnBatches columns = new(batch);
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
@@ -506,13 +530,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// <summary>Finalizes the walk's still-unresolved oldest touches from the persisted flat column - capture runs
     /// strictly before this round's flat persist commits, so the column still holds exactly the pre-walk value for
     /// every pending key.</summary>
-    private void ResolvePendingV3(PendingV3Writes pending)
+    private void ResolvePendingV3(PendingV3Writes pending, in HistoryColumnBatches columns)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
 
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-        IWriteBatch accountBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
+        IWriteBatch accountBatch = columns.AccountHistory;
+        IWriteBatch storageBatch = columns.StorageHistory;
 
         Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];

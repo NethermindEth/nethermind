@@ -104,6 +104,47 @@ public class HistoryWriterTests
         }
     }
 
+    // A walk records a key's rows in descending block order: visiting a block writes the row for the higher block
+    // seen before it, and the lowest row is only resolved once the walk connects. Commit per block and a key's upper
+    // row is visible while its lower row does not exist, so a read below the watermark seeks upward, finds the upper
+    // row, and answers with a value from after the block it asked about. One batch for the walk forbids that, and
+    // since nothing partial is ever observable there is no half-written state to assert on instead - the count is it.
+    [Test]
+    public void A_capture_walk_publishes_every_row_in_one_batch()
+    {
+        BatchCountingHistoryColumns counting = new(_historyColumns);
+        HistoryWriter writer = new(_db, counting, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
+
+        // The same key at more than one block of the walk is the shape that goes wrong per batch.
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
+
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        Assert.That(counting.BatchesStarted, Is.EqualTo(1));
+    }
+
+    private sealed class BatchCountingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public int BatchesStarted { get; private set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch()
+        {
+            BatchesStarted++;
+            return inner.StartWriteBatch();
+        }
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+
+        // The fixture owns the wrapped database.
+        public void Dispose() { }
+    }
+
     [TestCase(0ul, null)]
     [TestCase(1ul, "0a")]
     [TestCase(2ul, "0bbb")]
