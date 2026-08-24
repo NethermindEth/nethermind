@@ -11,12 +11,16 @@ namespace Nethermind.Bootnode;
 internal sealed class DiscoveredNodeStore
 {
     private const int DefaultMaxRetainedNodes = 100_000;
+    internal const int DefaultNodePageSize = 1_000;
+    internal const int MaxNodePageSize = 1_000;
 
     private readonly ConcurrentDictionary<Hash256, TrackedNode> _nodes = new();
-    private readonly Queue<RetainedNodeKey> _retentionOrder = new();
+    private readonly LinkedList<Hash256> _retentionOrder = new();
+    private readonly Dictionary<Hash256, LinkedListNode<Hash256>> _retentionEntries = [];
+    private readonly SortedSet<Hash256> _orderedNodes = [];
+    private readonly SortedSet<Hash256> _orderedActiveNodes = [];
     private readonly Lock _lock = new();
     private readonly int _maxRetainedNodes;
-    private long _version;
     private int _activeCount;
     private int _allCount;
     private int _activeDiscv4Count;
@@ -40,21 +44,25 @@ internal sealed class DiscoveredNodeStore
 
         lock (_lock)
         {
-            long version = ++_version;
             if (_nodes.TryGetValue(node.IdHash, out TrackedNode? existing))
             {
                 TrackedNodeSnapshot before = existing.CreateSnapshot();
-                existing.Update(node, protocol, now, isActive, version);
-                ApplyTransition(before, existing.CreateSnapshot());
+                existing.Update(node, protocol, now, isActive);
+                TrackedNodeSnapshot after = existing.CreateSnapshot();
+                ApplyTransition(before, after);
+                UpdateActiveIndex(node.IdHash, after.Active);
             }
             else
             {
-                TrackedNode trackedNode = TrackedNode.Create(node, protocol, now, isActive, version);
+                TrackedNode trackedNode = TrackedNode.Create(node, protocol, now, isActive);
                 _nodes[node.IdHash] = trackedNode;
-                ApplyTransition(null, trackedNode.CreateSnapshot());
+                _orderedNodes.Add(node.IdHash);
+                TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
+                ApplyTransition(null, after);
+                UpdateActiveIndex(node.IdHash, after.Active);
             }
 
-            _retentionOrder.Enqueue(new RetainedNodeKey(node.IdHash, version));
+            TouchRetentionOrder(node.IdHash);
             PruneRetainedNodes();
             return CreateSnapshotCore();
         }
@@ -74,17 +82,18 @@ internal sealed class DiscoveredNodeStore
         return CreateSnapshot();
     }
 
-    public DiscoverySnapshot Remove(Node node)
+    public DiscoverySnapshot Remove(Node node, string protocol)
     {
         lock (_lock)
         {
             if (_nodes.TryGetValue(node.IdHash, out TrackedNode? trackedNode))
             {
-                long version = ++_version;
                 TrackedNodeSnapshot before = trackedNode.CreateSnapshot();
-                trackedNode.MarkInactive(DateTimeOffset.UtcNow, version);
-                ApplyTransition(before, trackedNode.CreateSnapshot());
-                _retentionOrder.Enqueue(new RetainedNodeKey(node.IdHash, version));
+                trackedNode.MarkInactive(protocol, DateTimeOffset.UtcNow);
+                TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
+                ApplyTransition(before, after);
+                UpdateActiveIndex(node.IdHash, after.Active);
+                TouchRetentionOrder(node.IdHash);
                 PruneRetainedNodes();
             }
 
@@ -102,9 +111,20 @@ internal sealed class DiscoveredNodeStore
         return null;
     }
 
-    public NodeDto[] GetActiveNodes() => GetNodes(activeOnly: true);
+    public NodeDto[] GetActiveNodes(int offset = 0, int limit = DefaultNodePageSize) => GetNodes(activeOnly: true, offset, limit);
 
-    public NodeDto[] GetAllNodes() => GetNodes(activeOnly: false);
+    public NodeDto[] GetAllNodes(int offset = 0, int limit = DefaultNodePageSize) => GetNodes(activeOnly: false, offset, limit);
+
+    internal int RetentionOrderCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _retentionOrder.Count;
+            }
+        }
+    }
 
     public DiscoverySnapshot CreateSnapshot()
     {
@@ -114,7 +134,23 @@ internal sealed class DiscoveredNodeStore
         }
     }
 
-    public static string InferProtocol(Node node) => node.Enr is null ? "discv4" : "discv5";
+    internal static bool TryValidatePagination(int offset, int limit, out string error)
+    {
+        if (offset < 0)
+        {
+            error = "offset must be greater than or equal to 0.";
+            return false;
+        }
+
+        if (limit is < 1 or > MaxNodePageSize)
+        {
+            error = $"limit must be between 1 and {MaxNodePageSize}.";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
 
     private DiscoverySnapshot CreateSnapshotCore() =>
         new(
@@ -172,38 +208,84 @@ internal sealed class DiscoveredNodeStore
 
     private void PruneRetainedNodes()
     {
-        while (_nodes.Count > _maxRetainedNodes && _retentionOrder.Count != 0)
+        while (_allCount > _maxRetainedNodes && _retentionOrder.First is { } oldestNode)
         {
-            RetainedNodeKey retainedNodeKey = _retentionOrder.Dequeue();
-            if (!_nodes.TryGetValue(retainedNodeKey.IdHash, out TrackedNode? trackedNode))
+            _retentionOrder.RemoveFirst();
+            _retentionEntries.Remove(oldestNode.Value);
+            _orderedNodes.Remove(oldestNode.Value);
+            _orderedActiveNodes.Remove(oldestNode.Value);
+            if (_nodes.TryRemove(oldestNode.Value, out TrackedNode? trackedNode))
             {
-                continue;
-            }
-
-            TrackedNodeSnapshot snapshot = trackedNode.CreateSnapshot();
-            if (snapshot.Version != retainedNodeKey.Version)
-            {
-                continue;
-            }
-
-            if (_nodes.TryRemove(retainedNodeKey.IdHash, out _))
-            {
-                RemoveFromSnapshot(snapshot);
+                RemoveFromSnapshot(trackedNode.CreateSnapshot());
             }
         }
     }
 
-    private NodeDto[] GetNodes(bool activeOnly)
+    private void TouchRetentionOrder(Hash256 idHash)
     {
-        List<NodeDto> nodes = [];
-        foreach (TrackedNode trackedNode in _nodes.Values)
+        if (_retentionEntries.TryGetValue(idHash, out LinkedListNode<Hash256>? existingEntry))
         {
-            NodeDto? dto = trackedNode.ToDto(activeOnly);
-            if (dto is not null) nodes.Add(dto);
+            _retentionOrder.Remove(existingEntry);
+            _retentionOrder.AddLast(existingEntry);
+            return;
         }
 
-        nodes.Sort(static (left, right) => string.CompareOrdinal(left.NodeId, right.NodeId));
-        return [.. nodes];
+        _retentionEntries.Add(idHash, _retentionOrder.AddLast(idHash));
+    }
+
+    private NodeDto[] GetNodes(bool activeOnly, int offset, int limit)
+    {
+        if (!TryValidatePagination(offset, limit, out string error))
+        {
+            throw new ArgumentOutOfRangeException(offset < 0 ? nameof(offset) : nameof(limit), error);
+        }
+
+        List<TrackedNodeView> nodeViews;
+        lock (_lock)
+        {
+            int nodeCount = activeOnly ? _activeCount : _allCount;
+            nodeViews = new List<TrackedNodeView>(Math.Min(limit, nodeCount));
+            int matchedNodes = 0;
+            SortedSet<Hash256> orderedNodes = activeOnly ? _orderedActiveNodes : _orderedNodes;
+            foreach (Hash256 idHash in orderedNodes)
+            {
+                if (!_nodes.TryGetValue(idHash, out TrackedNode? trackedNode))
+                {
+                    continue;
+                }
+
+                if (matchedNodes++ < offset)
+                {
+                    continue;
+                }
+
+                nodeViews.Add(trackedNode.CreateView());
+                if (nodeViews.Count == limit)
+                {
+                    break;
+                }
+            }
+        }
+
+        NodeDto[] nodes = new NodeDto[nodeViews.Count];
+        for (int i = 0; i < nodeViews.Count; i++)
+        {
+            nodes[i] = nodeViews[i].ToDto();
+        }
+
+        return nodes;
+    }
+
+    private void UpdateActiveIndex(Hash256 idHash, bool active)
+    {
+        if (active)
+        {
+            _orderedActiveNodes.Add(idHash);
+        }
+        else
+        {
+            _orderedActiveNodes.Remove(idHash);
+        }
     }
 
     private sealed class TrackedNode
@@ -213,7 +295,9 @@ internal sealed class DiscoveredNodeStore
         private string _protocol;
         private bool _isBootnode;
         private string? _configuredEnode;
-        private bool _active;
+        private bool _activeDiscv4;
+        private bool _activeDiscv5;
+        private bool _activeConfigured;
         private DateTimeOffset _lastSeenUtc;
         private int _seenCount;
 
@@ -223,7 +307,7 @@ internal sealed class DiscoveredNodeStore
             _protocol = protocol;
             _isBootnode = node.IsBootnode;
             _configuredEnode = node.IsBootnode ? node.ToString(Node.Format.ENode) : null;
-            _active = isActive;
+            SetProtocolActive(protocol, isActive);
             FirstSeenUtc = now;
             _lastSeenUtc = now;
             _seenCount = 1;
@@ -231,15 +315,10 @@ internal sealed class DiscoveredNodeStore
 
         private DateTimeOffset FirstSeenUtc { get; }
 
-        private long _version;
+        public static TrackedNode Create(Node node, string protocol, DateTimeOffset now, bool isActive) =>
+            new(node, protocol, now, isActive);
 
-        public static TrackedNode Create(Node node, string protocol, DateTimeOffset now, bool isActive, long version) =>
-            new(node, protocol, now, isActive)
-            {
-                _version = version
-            };
-
-        public void Update(Node node, string protocol, DateTimeOffset now, bool isActive, long version)
+        public void Update(Node node, string protocol, DateTimeOffset now, bool isActive)
         {
             lock (_lock)
             {
@@ -251,20 +330,21 @@ internal sealed class DiscoveredNodeStore
                 _node = node;
                 _isBootnode |= node.IsBootnode;
                 _protocol = MergeProtocol(_protocol, protocol);
-                _active = _active || isActive;
+                if (isActive)
+                {
+                    SetProtocolActive(protocol, isActive: true);
+                }
                 _lastSeenUtc = now;
                 _seenCount++;
-                _version = version;
             }
         }
 
-        public void MarkInactive(DateTimeOffset now, long version)
+        public void MarkInactive(string protocol, DateTimeOffset now)
         {
             lock (_lock)
             {
-                _active = false;
+                SetProtocolActive(protocol, isActive: false);
                 _lastSeenUtc = now;
-                _version = version;
             }
         }
 
@@ -280,20 +360,47 @@ internal sealed class DiscoveredNodeStore
         {
             lock (_lock)
             {
-                return new TrackedNodeSnapshot(_protocol, _active, _version);
+                return new TrackedNodeSnapshot(_protocol, IsActiveCore);
             }
         }
 
-        public NodeDto? ToDto(bool activeOnly)
+        public TrackedNodeView CreateView()
         {
             lock (_lock)
             {
-                if (activeOnly && !_active)
-                {
-                    return null;
-                }
+                return new TrackedNodeView(
+                    _node,
+                    _protocol,
+                    IsActiveCore,
+                    FirstSeenUtc,
+                    _lastSeenUtc,
+                    _seenCount,
+                    _isBootnode,
+                    _configuredEnode);
+            }
+        }
 
-                return NodeDto.FromNode(_node, _protocol, _active, FirstSeenUtc, _lastSeenUtc, _seenCount, _isBootnode, _configuredEnode);
+        private bool IsActiveCore => _activeDiscv4 || _activeDiscv5 || _activeConfigured;
+
+        private void SetProtocolActive(string protocol, bool isActive)
+        {
+            switch (protocol)
+            {
+                case "discv4":
+                    _activeDiscv4 = isActive;
+                    break;
+                case "discv5":
+                    _activeDiscv5 = isActive;
+                    break;
+                case "both":
+                    _activeDiscv4 = isActive;
+                    _activeDiscv5 = isActive;
+                    break;
+                case "configured":
+                    _activeConfigured = isActive;
+                    break;
+                default:
+                    throw new ArgumentException($"Unsupported discovery protocol '{protocol}'.", nameof(protocol));
             }
         }
 
@@ -318,9 +425,21 @@ internal sealed class DiscoveredNodeStore
         }
     }
 
-    private readonly record struct RetainedNodeKey(Hash256 IdHash, long Version);
+    private readonly record struct TrackedNodeView(
+        Node Node,
+        string Protocol,
+        bool Active,
+        DateTimeOffset FirstSeenUtc,
+        DateTimeOffset LastSeenUtc,
+        int SeenCount,
+        bool IsBootnode,
+        string? ConfiguredEnode)
+    {
+        public NodeDto ToDto() =>
+            NodeDto.FromNode(Node, Protocol, Active, FirstSeenUtc, LastSeenUtc, SeenCount, IsBootnode, ConfiguredEnode);
+    }
 
-    private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active, long Version);
+    private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active);
 }
 
 internal readonly record struct DiscoverySnapshot(

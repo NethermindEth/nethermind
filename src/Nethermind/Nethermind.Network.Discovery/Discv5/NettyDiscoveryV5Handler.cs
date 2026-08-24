@@ -33,8 +33,6 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msg.Content.ReadableBytes);
-
         msg.Retain();
         DatagramPacket queuedPacket = msg;
 

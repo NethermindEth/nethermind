@@ -94,6 +94,9 @@ jobs:
         working-directory: tools
         run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c release -p:SaveDiskSpace=true --no-build
 
+      - name: Test Bootnode Docker entrypoint
+        run: sh tools/Bootnode/docker-entrypoint.test.sh
+
       - name: Build packages
         run: scripts/build/build-bootnode.sh "$GITHUB_SHA"
 

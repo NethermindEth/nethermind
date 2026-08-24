@@ -10,6 +10,8 @@ using Nethermind.Logging.NLog;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
 using NLog;
 using Prometheus;
@@ -234,6 +236,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
         BootnodeKademliaBucketRegistry bucketRegistry = new();
         await using IContainer container = await DiscoveryContainer.BuildAsync(options, logManager, nodeKey, processExitSource, bucketRegistry, shutdownSource.Token);
         IDiscoveryApp discoveryApp = container.Resolve<IDiscoveryApp>();
+        BootnodeDiscoverySource[] discoverySources = ResolveDiscoverySources(container, options.DiscoveryVersion);
         INodeRecordProvider nodeRecordProvider = container.Resolve<INodeRecordProvider>();
         INetworkConfig networkConfig = container.Resolve<INetworkConfig>();
         NetworkNode[] configuredBootnodes = networkConfig.Bootnodes;
@@ -252,7 +255,7 @@ rootCommand.SetAction(async (parseResult, cancellationToken) =>
             Console.WriteLine($"enr:   {identity.Enr}");
         }
 
-        await using BootnodeRuntime runtime = new(discoveryApp, nodeStore, metrics, bucketRegistry, processExitSource, logManager);
+        await using BootnodeRuntime runtime = new(discoveryApp, discoverySources, nodeStore, metrics, bucketRegistry, processExitSource, logManager);
         await runtime.StartAsync(shutdownSource.Token);
 
         await using WebApplication httpApp = BuildHttpApp(options.HttpHost, options.HttpPort, nodeStore, status);
@@ -527,6 +530,22 @@ static BootnodeStatus CreateStatus(BootnodeOptions options, BootnodeIdentity ide
     return new BootnodeStatus(identity, [.. protocols], options.ActiveDiscovery, options.DiscoveryPort, options.HttpPort, options.MetricsPort);
 }
 
+static BootnodeDiscoverySource[] ResolveDiscoverySources(IContainer container, DiscoveryVersion discoveryVersion)
+{
+    List<BootnodeDiscoverySource> sources = new(2);
+    if ((discoveryVersion & DiscoveryVersion.V4) != 0)
+    {
+        sources.Add(new BootnodeDiscoverySource("discv4", container.Resolve<DiscoveryApp>()));
+    }
+
+    if ((discoveryVersion & DiscoveryVersion.V5) != 0)
+    {
+        sources.Add(new BootnodeDiscoverySource("discv5", container.Resolve<DiscoveryV5App>()));
+    }
+
+    return [.. sources];
+}
+
 static WebApplication BuildHttpApp(string httpHost, int httpPort, DiscoveredNodeStore nodeStore, BootnodeStatus status)
 {
     WebApplicationBuilder builder = WebApplication.CreateBuilder();
@@ -540,12 +559,27 @@ static WebApplication BuildHttpApp(string httpHost, int httpPort, DiscoveredNode
     app.MapGet("/", () => Results.Json(status.CreateStatus(nodeStore.CreateSnapshot())));
     app.MapGet("/status", () => Results.Json(status.CreateStatus(nodeStore.CreateSnapshot())));
     app.MapGet("/identity", () => Results.Json(status.Identity));
-    app.MapGet("/nodes/active", () => Results.Json(nodeStore.GetActiveNodes()));
-    app.MapGet("/nodes/all", () => Results.Json(nodeStore.GetAllNodes()));
+    app.MapGet("/nodes/active", (int? offset, int? limit) => CreateNodesResult(nodeStore, activeOnly: true, offset, limit));
+    app.MapGet("/nodes/all", (int? offset, int? limit) => CreateNodesResult(nodeStore, activeOnly: false, offset, limit));
     app.MapPost("/rpc", (JsonElement payload) => JsonRpcEndpoint.Handle(payload, nodeStore, status));
     app.MapPost("/", (JsonElement payload) => JsonRpcEndpoint.Handle(payload, nodeStore, status));
 
     return app;
+}
+
+static IResult CreateNodesResult(DiscoveredNodeStore nodeStore, bool activeOnly, int? offset, int? limit)
+{
+    int resolvedOffset = offset ?? 0;
+    int resolvedLimit = limit ?? DiscoveredNodeStore.DefaultNodePageSize;
+    if (!DiscoveredNodeStore.TryValidatePagination(resolvedOffset, resolvedLimit, out string error))
+    {
+        return Results.BadRequest(new { Error = error });
+    }
+
+    NodeDto[] nodes = activeOnly
+        ? nodeStore.GetActiveNodes(resolvedOffset, resolvedLimit)
+        : nodeStore.GetAllNodes(resolvedOffset, resolvedLimit);
+    return Results.Json(nodes);
 }
 
 static WebApplication BuildMetricsApp(string metricsHost, int metricsPort)

@@ -10,6 +10,7 @@ namespace Nethermind.Bootnode;
 
 internal sealed class BootnodeRuntime(
     IDiscoveryApp discoveryApp,
+    BootnodeDiscoverySource[] discoverySources,
     DiscoveredNodeStore nodeStore,
     BootnodeMetrics metrics,
     BootnodeKademliaBucketRegistry bucketRegistry,
@@ -18,23 +19,35 @@ internal sealed class BootnodeRuntime(
 {
     private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<BootnodeRuntime>();
     private readonly CancellationTokenSource _stopCts = new();
-    private Task? _discoveryTask;
+    private readonly List<(INodeSource Source, EventHandler<NodeEventArgs> Handler)> _nodeRemovedSubscriptions = [];
+    private Task[] _discoveryTasks = [];
     private Task? _metricsTask;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        discoveryApp.NodeRemoved += OnNodeRemoved;
+        SubscribeToNodeRemovals();
         await discoveryApp.StartAsync();
-        _discoveryTask = Task.Run(() => TrackDiscoveredNodes(_stopCts.Token), cancellationToken);
+
+        _discoveryTasks = new Task[discoverySources.Length];
+        for (int i = 0; i < discoverySources.Length; i++)
+        {
+            BootnodeDiscoverySource source = discoverySources[i];
+            _discoveryTasks[i] = Task.Run(() => TrackDiscoveredNodes(source, _stopCts.Token), cancellationToken);
+        }
+
         _metricsTask = Task.Run(() => TrackDiscoveryMetrics(_stopCts.Token), cancellationToken);
     }
 
     public async Task StopAsync()
     {
-        discoveryApp.NodeRemoved -= OnNodeRemoved;
+        UnsubscribeFromNodeRemovals();
         await _stopCts.CancelAsync();
 
-        await StopBackgroundTask(_discoveryTask);
+        for (int i = 0; i < _discoveryTasks.Length; i++)
+        {
+            await StopBackgroundTask(_discoveryTasks[i]);
+        }
+
         await StopBackgroundTask(_metricsTask);
 
         await discoveryApp.StopAsync();
@@ -46,16 +59,15 @@ internal sealed class BootnodeRuntime(
         _stopCts.Dispose();
     }
 
-    private async Task TrackDiscoveredNodes(CancellationToken cancellationToken)
+    private async Task TrackDiscoveredNodes(BootnodeDiscoverySource source, CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (Node node in discoveryApp.DiscoverNodes(cancellationToken))
+            await foreach (Node node in source.NodeSource.DiscoverNodes(cancellationToken))
             {
-                string protocol = DiscoveredNodeStore.InferProtocol(node);
-                metrics.RecordSeen(protocol);
-                metrics.UpdateSnapshot(nodeStore.AddOrUpdate(node, protocol, isActive: true));
-                if (_logger.IsInfo) _logger.Info($"Discovered {protocol} node {node:s}");
+                metrics.RecordSeen(source.Protocol);
+                metrics.UpdateSnapshot(nodeStore.AddOrUpdate(node, source.Protocol, isActive: true));
+                if (_logger.IsDebug) _logger.Debug($"Discovered {source.Protocol} node {node:s}");
             }
 
             if (!cancellationToken.IsCancellationRequested)
@@ -99,12 +111,33 @@ internal sealed class BootnodeRuntime(
         }
     }
 
-    private void OnNodeRemoved(object? sender, NodeEventArgs args)
+    private void OnNodeRemoved(string protocol, NodeEventArgs args)
     {
-        string protocol = nodeStore.GetProtocol(args.Node) ?? DiscoveredNodeStore.InferProtocol(args.Node);
         metrics.RecordRemoved(protocol);
-        metrics.UpdateSnapshot(nodeStore.Remove(args.Node));
+        metrics.UpdateSnapshot(nodeStore.Remove(args.Node, protocol));
         if (_logger.IsDebug) _logger.Debug($"Removed discovery node {args.Node:s}");
+    }
+
+    private void SubscribeToNodeRemovals()
+    {
+        for (int i = 0; i < discoverySources.Length; i++)
+        {
+            BootnodeDiscoverySource source = discoverySources[i];
+            EventHandler<NodeEventArgs> handler = (_, args) => OnNodeRemoved(source.Protocol, args);
+            source.NodeSource.NodeRemoved += handler;
+            _nodeRemovedSubscriptions.Add((source.NodeSource, handler));
+        }
+    }
+
+    private void UnsubscribeFromNodeRemovals()
+    {
+        for (int i = 0; i < _nodeRemovedSubscriptions.Count; i++)
+        {
+            (INodeSource source, EventHandler<NodeEventArgs> handler) = _nodeRemovedSubscriptions[i];
+            source.NodeRemoved -= handler;
+        }
+
+        _nodeRemovedSubscriptions.Clear();
     }
 
     private async Task StopBackgroundTask(Task? task)
@@ -123,3 +156,5 @@ internal sealed class BootnodeRuntime(
         }
     }
 }
+
+internal readonly record struct BootnodeDiscoverySource(string Protocol, INodeSource NodeSource);

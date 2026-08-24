@@ -4,12 +4,33 @@
 
 set -e
 
-if [ "$#" -eq 0 ]; then
-  exec ./Nethermind.Bootnode \
-    --data-dir /nethermind-bootnode/data \
-    --local-ip 0.0.0.0 \
-    --http-host 0.0.0.0 \
-    --metrics-host 0.0.0.0
+has_option() {
+  option_name=$1
+  shift
+
+  for argument do
+    case "$argument" in
+      "$option_name"|"$option_name"=*) return 0 ;;
+    esac
+  done
+
+  return 1
+}
+
+if ! has_option "--data-dir" "$@"; then
+  set -- --data-dir /nethermind-bootnode/data "$@"
+fi
+
+if ! has_option "--local-ip" "$@"; then
+  set -- --local-ip 0.0.0.0 "$@"
+fi
+
+if ! has_option "--http-host" "$@"; then
+  set -- --http-host 0.0.0.0 "$@"
+fi
+
+if ! has_option "--metrics-host" "$@"; then
+  set -- --metrics-host 0.0.0.0 "$@"
 fi
 
 exec ./Nethermind.Bootnode "$@"

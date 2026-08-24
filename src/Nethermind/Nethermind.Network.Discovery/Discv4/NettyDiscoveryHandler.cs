@@ -130,7 +130,6 @@ public class NettyDiscoveryHandler(
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (size < 98)
         {

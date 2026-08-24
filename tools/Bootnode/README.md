@@ -11,14 +11,16 @@ Standalone discovery bootnode for discv4 and discv5.
 - Exposes REST endpoints:
   - `GET /status`
   - `GET /identity`
-  - `GET /nodes/active`
-  - `GET /nodes/all`
+  - `GET /nodes/active?offset=0&limit=1000`
+  - `GET /nodes/all?offset=0&limit=1000`
 - Exposes JSON-RPC over `POST /rpc`:
   - `bootnode_status`
   - `bootnode_nodeInfo`
   - `bootnode_activeNodes`
   - `bootnode_allNodes`
 - Exposes Prometheus metrics on `/metrics` for discovery nodes, message rates, traffic rates, buckets, identity, CPU, and memory.
+
+Node-list responses are ordered by node ID hash and limited to 1,000 entries per request. REST callers can page with `offset` and `limit`; JSON-RPC callers can pass named params such as `{"offset": 1000, "limit": 1000}` or positional params `[1000, 1000]`. JSON-RPC batches are limited to 16 requests.
 
 ## Run
 

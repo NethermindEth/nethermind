@@ -12,8 +12,10 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -115,14 +117,11 @@ namespace Nethermind.Network.Discovery.Test
 
         [Test]
         [NonParallelizable]
-        public async Task UpdatesDiscoveryByteMetrics()
+        public async Task UpdatesDiscoveryBytesSentMetric()
         {
             byte[] sentData = [1, 2, 3, 4];
-            byte[] receivedData = [5, 6, 7];
-            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
             long bytesSentBefore = Interlocked.Read(ref Metrics.DiscoveryBytesSent);
-            long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
 
             await _handler.SendAsync(sentData, to, CancellationToken.None);
             DatagramPacket outboundPacket = _channel.ReadOutbound<DatagramPacket>();
@@ -135,23 +134,47 @@ namespace Nethermind.Network.Discovery.Test
                 ReferenceCountUtil.Release(outboundPacket);
             }
 
-            using CancellationTokenSource cancellationSource = new(10_000);
-            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
-                .ReadMessagesAsync(cancellationSource.Token)
-                .GetAsyncEnumerator(cancellationSource.Token);
-            ValueTask<bool> readTask = enumerator.MoveNextAsync();
+            Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        }
 
-            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
-            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(receivedData), from, to));
+        [Test]
+        [NonParallelizable]
+        public async Task CompositeProtocolPipelineCountsInboundPacketOnce()
+        {
+            byte[] data = new byte[100];
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
+            EmbeddedChannel channel = new();
+            NettyDiscoveryV5Handler discv5Handler = new(new TestLogManager());
+            discv5Handler.InitializeChannel(channel);
+            channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
+            channel.Pipeline.AddLast(new NettyDiscoveryHandler(
+                Substitute.For<IDiscoveryMsgListener>(),
+                channel,
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<ITimestamper>(),
+                new TestLogManager()));
+            channel.Pipeline.AddLast(discv5Handler);
 
-            Assert.That(await readTask, Is.True);
-            PooledUdpReceiveResult forwardedPacket = enumerator.Current;
-            forwardedPacket.Dispose();
-
-            using (Assert.EnterMultipleScope())
+            try
             {
-                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
-                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(receivedData.Length));
+                using CancellationTokenSource cancellationSource = new(10_000);
+                await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = discv5Handler
+                    .ReadMessagesAsync(cancellationSource.Token)
+                    .GetAsyncEnumerator(cancellationSource.Token);
+                ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+                channel.WriteInbound(new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+                Assert.That(await readTask, Is.True);
+                enumerator.Current.Dispose();
+
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
+            }
+            finally
+            {
+                channel.FinishAndReleaseAll();
             }
         }
 

@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using DotNetty.Transport.Bootstrapping;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
@@ -61,7 +62,10 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     public void InitializeChannel(IChannel channel)
-        => ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
+    {
+        channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
+        ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
+    }
 
     public async Task StartAsync()
     {
@@ -157,5 +161,14 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     {
         add => _compositeNodeSource.NodeRemoved += value;
         remove => _compositeNodeSource.NodeRemoved -= value;
+    }
+}
+
+internal sealed class DiscoveryTrafficHandler : SimpleChannelInboundHandler<DatagramPacket>
+{
+    protected override void ChannelRead0(IChannelHandlerContext context, DatagramPacket packet)
+    {
+        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, packet.Content.ReadableBytes);
+        context.FireChannelRead(packet.Retain());
     }
 }

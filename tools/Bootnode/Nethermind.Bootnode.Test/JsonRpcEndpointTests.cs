@@ -4,6 +4,8 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Crypto;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Bootnode.Test;
@@ -54,6 +56,69 @@ public class JsonRpcEndpointTests
         {
             Assert.That(response.RootElement.TryGetProperty("error", out _), Is.True);
             Assert.That(response.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Node_method_applies_pagination_params()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey firstKey = generator.Generate();
+        using PrivateKey secondKey = generator.Generate();
+        DiscoveredNodeStore store = new();
+        store.AddOrUpdate(new Node(firstKey.PublicKey, "127.0.0.1", 30303), "discv4", isActive: true);
+        store.AddOrUpdate(new Node(secondKey.PublicKey, "127.0.0.1", 30304), "discv4", isActive: true);
+        string expectedNodeId = store.GetAllNodes(offset: 1, limit: 1)[0].NodeId;
+        using JsonDocument document = JsonDocument.Parse("""{"jsonrpc":"2.0","id":1,"method":"bootnode_allNodes","params":{"offset":1,"limit":1}}""");
+
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, store, CreateStatus());
+        using JsonDocument response = await ExecuteJson(result);
+
+        JsonElement nodes = response.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(nodes[0].GetProperty("nodeId").GetString(), Is.EqualTo(expectedNodeId));
+        }
+    }
+
+    [TestCase("{\"offset\":-1}")]
+    [TestCase("{\"limit\":1001}")]
+    [TestCase("{\"offest\":1}")]
+    [TestCase("{\"Offset\":1}")]
+    [TestCase("{\"offset\":1,\"offset\":2}")]
+    [TestCase("null")]
+    [TestCase("\"invalid\"")]
+    public async Task Invalid_node_pagination_params_return_json_rpc_error(string parameters)
+    {
+        using JsonDocument document = JsonDocument.Parse($$"""{"jsonrpc":"2.0","id":1,"method":"bootnode_allNodes","params":{{parameters}}}""");
+
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+        using JsonDocument response = await ExecuteJson(result);
+
+        Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32602));
+    }
+
+    [TestCase(0, false)]
+    [TestCase(JsonRpcEndpoint.MaxBatchSize, true)]
+    [TestCase(JsonRpcEndpoint.MaxBatchSize + 1, false)]
+    public async Task Batch_size_is_bounded(int batchSize, bool valid)
+    {
+        string payload = JsonSerializer.Serialize(
+            Enumerable.Range(0, batchSize)
+                .Select(static id => new { jsonrpc = "2.0", id, method = "bootnode_status" }));
+        using JsonDocument document = JsonDocument.Parse(payload);
+
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+        using JsonDocument response = await ExecuteJson(result);
+
+        if (valid)
+        {
+            Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(batchSize));
+        }
+        else
+        {
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
         }
     }
 

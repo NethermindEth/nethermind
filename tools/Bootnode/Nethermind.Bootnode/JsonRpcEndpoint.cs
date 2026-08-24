@@ -8,10 +8,18 @@ namespace Nethermind.Bootnode;
 
 internal static class JsonRpcEndpoint
 {
+    internal const int MaxBatchSize = 16;
+
     public static IResult Handle(JsonElement payload, DiscoveredNodeStore store, BootnodeStatus status)
     {
         if (payload.ValueKind == JsonValueKind.Array)
         {
+            int requestCount = payload.GetArrayLength();
+            if (requestCount is 0 or > MaxBatchSize)
+            {
+                return Results.Json(JsonRpcResponse.Failure(null, -32600, $"Batch must contain between 1 and {MaxBatchSize} requests."));
+            }
+
             List<JsonRpcResponse> responses = [];
             foreach (JsonElement request in payload.EnumerateArray())
             {
@@ -41,12 +49,110 @@ internal static class JsonRpcEndpoint
         string? method = methodElement.GetString();
         return method switch
         {
-            "bootnode_activeNodes" => JsonRpcResponse.Success(id, store.GetActiveNodes()),
-            "bootnode_allNodes" => JsonRpcResponse.Success(id, store.GetAllNodes()),
+            "bootnode_activeNodes" => HandleNodes(payload, id, store, activeOnly: true),
+            "bootnode_allNodes" => HandleNodes(payload, id, store, activeOnly: false),
             "bootnode_status" => JsonRpcResponse.Success(id, status.CreateStatus(store.CreateSnapshot())),
             "bootnode_nodeInfo" => JsonRpcResponse.Success(id, status.Identity),
             _ => JsonRpcResponse.Failure(id, -32601, $"Method not found: {method}")
         };
+    }
+
+    private static JsonRpcResponse HandleNodes(JsonElement payload, object? id, DiscoveredNodeStore store, bool activeOnly)
+    {
+        if (!TryReadPagination(payload, out int offset, out int limit, out string error))
+        {
+            return JsonRpcResponse.Failure(id, -32602, error);
+        }
+
+        NodeDto[] nodes = activeOnly
+            ? store.GetActiveNodes(offset, limit)
+            : store.GetAllNodes(offset, limit);
+        return JsonRpcResponse.Success(id, nodes);
+    }
+
+    private static bool TryReadPagination(JsonElement payload, out int offset, out int limit, out string error)
+    {
+        offset = 0;
+        limit = DiscoveredNodeStore.DefaultNodePageSize;
+
+        if (!payload.TryGetProperty("params", out JsonElement parameters))
+        {
+            return DiscoveredNodeStore.TryValidatePagination(offset, limit, out error);
+        }
+
+        if (parameters.ValueKind == JsonValueKind.Object)
+        {
+            bool hasOffset = false;
+            bool hasLimit = false;
+            foreach (JsonProperty parameter in parameters.EnumerateObject())
+            {
+                switch (parameter.Name)
+                {
+                    case "offset" when !hasOffset:
+                        if (!parameter.Value.TryGetInt32(out offset))
+                        {
+                            error = "offset must be an integer.";
+                            return false;
+                        }
+
+                        hasOffset = true;
+                        break;
+                    case "limit" when !hasLimit:
+                        if (!parameter.Value.TryGetInt32(out limit))
+                        {
+                            error = "limit must be an integer.";
+                            return false;
+                        }
+
+                        hasLimit = true;
+                        break;
+                    case "offset":
+                    case "limit":
+                        error = $"Duplicate pagination parameter '{parameter.Name}'.";
+                        return false;
+                    default:
+                        error = $"Unknown pagination parameter '{parameter.Name}'.";
+                        return false;
+                }
+            }
+
+            return DiscoveredNodeStore.TryValidatePagination(offset, limit, out error);
+        }
+
+        if (parameters.ValueKind == JsonValueKind.Array)
+        {
+            int index = 0;
+            foreach (JsonElement parameter in parameters.EnumerateArray())
+            {
+                if (index > 1)
+                {
+                    error = "params accepts at most offset and limit.";
+                    return false;
+                }
+
+                if (!parameter.TryGetInt32(out int value))
+                {
+                    error = index == 0 ? "offset must be an integer." : "limit must be an integer.";
+                    return false;
+                }
+
+                if (index == 0)
+                {
+                    offset = value;
+                }
+                else
+                {
+                    limit = value;
+                }
+
+                index++;
+            }
+
+            return DiscoveredNodeStore.TryValidatePagination(offset, limit, out error);
+        }
+
+        error = "params must be an object or array.";
+        return false;
     }
 
     private static object? TryReadId(JsonElement payload)
