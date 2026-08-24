@@ -8,10 +8,18 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Serialization.Rlp;
 
+/// <summary>Decodes a list of EIP-2718 <c>TransactionType || TransactionPayload</c> entries.</summary>
 public static class TxsDecoder
 {
     private const int ParallelDecodeThreshold = 32;
 
+    /// <param name="skipErrors">
+    /// When set, undecodable entries are dropped and the result is compacted, so the returned array can be
+    /// shorter than <paramref name="txData"/> and never carries an error. Otherwise the first bad entry
+    /// fails the whole call.
+    /// </param>
+    /// <remarks>Long lists decode in parallel and fall back to the serial pass on any failure, so the
+    /// reported error is always the one a single-threaded decode would have produced.</remarks>
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
@@ -97,6 +105,8 @@ public static class TxsDecoder
 #endif
 }
 
+/// <summary>Outcome of <see cref="TxsDecoder.DecodeTxs"/>: <see cref="Error"/> is non-null exactly when
+/// decoding failed, and <see cref="Transactions"/> is empty in that case.</summary>
 public readonly struct TransactionDecodingResult
 {
     public readonly string? Error;
