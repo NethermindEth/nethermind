@@ -117,11 +117,6 @@ public class AdminRpcModule : IAdminRpcModule
     {
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
 
-        if (_trustedNodesManager.IsTrusted(enodeObj!))
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
-
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         try
@@ -204,7 +199,7 @@ public class AdminRpcModule : IAdminRpcModule
         bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
         return unsubscribed
             ? ResultWrapper<bool>.Success(true)
-            : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+            : ResultWrapper<bool>.Fail(ErrorMessages.SubscriptionNotFound, ErrorCodes.ResourceNotFound, isTemporary: true);
     }
 
     public JsonRpcContext Context { get; set; }

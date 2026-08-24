@@ -20,6 +20,7 @@
     <Project Path="Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/OpcodeTracing/">
+    <Project Path="Nethermind.OpcodeTracing.Plugin.Test/Nethermind.OpcodeTracing.Plugin.Test.csproj" />
     <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/Hive/">
@@ -75,6 +76,7 @@
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
+    <Project Path="Nethermind.Init.Snapshot.Test/Nethermind.Init.Snapshot.Test.csproj" />
     <Project Path="Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />

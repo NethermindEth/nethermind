@@ -22,16 +22,9 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     private int _currentTxIndex = 0;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        // The gas limit per tx go down as the block is processed.
-        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
-        {
-            transaction.GasLimit = Math.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
-        }
-
-        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
-        {
-            transaction.GasLimit = simulateRequestState.TotalGasLeft;
-        }
+        // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
+        // here; on the BAL path this repeats it with the same budget, leaving the accepted limit unchanged.
+        PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
         transaction.Hash = transaction.CalculateHash();
 
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
@@ -49,5 +42,24 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     {
         _currentTxIndex = 0;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
+    /// <inheritdoc/>
+    public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable)
+    {
+        simulateRequestState.BlockStateGasLeft = stateGasAvailable;
+
+        // The per-dimension budgets shrink as the block is processed.
+        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+        {
+            transaction.GasLimit = Math.Min(
+                Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
+                simulateRequestState.TotalGasLeft);
+        }
+
+        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
+        {
+            transaction.GasLimit = simulateRequestState.TotalGasLeft;
+        }
     }
 }
