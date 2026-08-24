@@ -9,34 +9,16 @@ using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.TxPool.Test.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    private static Transaction FrameTx(params TxFrame[] frames) => new()
-    {
-        Type = TxType.FrameTx,
-        SenderAddress = TestItem.AddressA,
-        Frames = frames,
-        FrameSignatures = [],
-    };
-
-    private static TxFrame SelfVerify(ulong gasLimit) =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
-
-    private static TxFrame Execution(ulong gasLimit) =>
-        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit, UInt256.Zero, default);
-
-    private static TxFrame ApprovingDefault(ulong gasLimit) =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
-
-    // Approving flags on a DEFAULT frame do not end the validation prefix: whether that frame approves
-    // at all depends on code the sender controls, so the frames behind it may still run before any gas
-    // is paid and are charged too. That is the ceiling bypass a sender on a delegation had; a layout
-    // whose whole frame list fits under the ceiling costs the node no more than a recognized one and
-    // stays admissible.
+    // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves
+    // at all depends on code the sender controls, so the frames behind it may still run before any gas is
+    // paid. A layout that fits under the ceiling anyway costs the node no more than a recognized one.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
         yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted)
@@ -52,6 +34,32 @@ internal class FrameTxVerifyGasFilterTest
     {
         Transaction tx = FrameTx(frames);
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
+    }
+
+    private static TxFrame SelfVerifyWithState(ulong executionGasLimit, ulong stateGasLimit) =>
+        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default);
+
+    private static TxFrame ExecutionWithState(ulong executionGasLimit, ulong stateGasLimit) =>
+        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, stateGasLimit, UInt256.Zero, default);
+
+    private static IEnumerable<TestCaseData> StatePrefixCases()
+    {
+        yield return new TestCaseData(new[] { SelfVerifyWithState(1_000, 500_000) }, AcceptTxResult.Accepted)
+            .SetName("prefix state exactly at MAX_VERIFY_STATE_GAS is accepted");
+        yield return new TestCaseData(new[] { SelfVerifyWithState(1_000, 500_001) }, AcceptTxResult.FrameTxVerifyStateGasTooHigh)
+            .SetName("prefix state one gas over MAX_VERIFY_STATE_GAS is rejected");
+        yield return new TestCaseData(new[] { SelfVerify(1_000), ExecutionWithState(1_000, 3_000_000) }, AcceptTxResult.Accepted)
+            .SetName("state behind a recognized prefix is outside the ceiling");
+    }
+
+    [TestCaseSource(nameof(StatePrefixCases))]
+    public void Accept_BoundsThePrefixStateGas(TxFrame[] frames, AcceptTxResult expected)
+    {
+        Transaction tx = FrameTx(frames);
+        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxVerifyStateGas = 500_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));

@@ -814,6 +814,7 @@
       "nethermind.evm": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",

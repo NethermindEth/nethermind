@@ -1692,6 +1692,25 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 1_000_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
+        // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check
+        // walks; a field the record drops makes it price differently from the ledger admission wrote.
+        [Test]
+        public async Task Blob_carrying_frame_tx_keeps_its_bookkeeping_across_a_head_it_survives_and_one_it_expires_on()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+
+            Transaction SignedBlobFrameTx(ulong deadline)
+            {
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            await AssertExpiredFrameTxReleasesItsPayerExposure(SignedBlobFrameTx, TxHandlingOptions.None);
+        }
+
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
         // not the unlimited normal-pool default, so a nonce beyond that window is rejected as too far in the future.
         [Test]
@@ -1773,7 +1792,35 @@ namespace Nethermind.TxPool.Test
 
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false)
+        // The pool holds a light record, not the full transaction, and UpdateBucket reads its nonce. Without the
+        // keys that read is an account-nonce comparison, which a keyed sequence has no relation to.
+        [Test]
+        public async Task Keyed_blob_carrying_frame_tx_is_not_evicted_as_stale_after_a_restart()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // The account nonce advances independently of key 0xbeef, whose sequence stays at 0 and stays includable.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
+            Transaction[] restored = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
+            Assert.That(restored, Has.Length.EqualTo(1), "the restart must not evict a keyed transaction whose sequence is current");
+            Assert.That(restored[0].NonceKeys, Is.EqualTo(tx.NonceKeys), "the reloaded record must still select the keyed nonce domain");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
+                "a new head must not evict a reloaded keyed transaction whose sequence is current");
+        }
+
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -1809,16 +1856,19 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
-            List<TxFrame> frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-            ];
+            // An expiry verifier frame may only lead the frame list; behind self_verify it would also be
+            // a VERIFY frame past the validation prefix.
+            List<TxFrame> frames = [];
             if (deadline is not null)
             {
                 byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
                 BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 40_000, UInt256.Zero, expiryData));
             }
+
+            // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
+            // signature verification gas join it.
+            frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
 
             Transaction tx = new()
             {
@@ -1834,6 +1884,7 @@ namespace Nethermind.TxPool.Test
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,
                 NetworkWrapper = wrapper,
+                NonceKeys = nonceKeys,
             };
             tx.Hash = tx.CalculateHash();
             return tx;

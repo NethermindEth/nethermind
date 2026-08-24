@@ -31,6 +31,8 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
+    public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
+        $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
     public const string InvalidSignatureScheme = "unknown signature scheme";
@@ -39,6 +41,7 @@ public static class FrameTxValidation
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
+    public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
 
@@ -154,7 +157,7 @@ public static class FrameTxValidation
 
             if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
-                if (frame.Flags != 0 || !frame.Value.IsZero || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
+                if (frame.Flags != 0 || !frame.Value.IsZero || frame.StateGasLimit != 0 || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
                 {
                     error = InvalidExpiryFrame;
                     return false;
@@ -169,8 +172,9 @@ public static class FrameTxValidation
                 hasExpiryFrame = true;
             }
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 error = FrameGasOverflow;
                 return false;
@@ -249,17 +253,10 @@ public static class FrameTxValidation
     };
 
     /// <summary>
-    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the gas limits
-    /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
+    /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
+    /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
-    /// <remarks>
-    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
-    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
-    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
-    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
-    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
-    /// </remarks>
-    /// <param name="transaction">The frame transaction to price.</param>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -268,7 +265,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].GasLimit);
+            total = Saturating(total, frames[i].ExecutionGasLimit);
         }
 
         foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
@@ -277,6 +274,82 @@ public static class FrameTxValidation
         }
 
         return total;
+    }
+
+    /// <summary>
+    /// Upper bound on the state growth EIP-8141 admits through the public mempool: the sum of a frame
+    /// transaction's validation prefix <c>limits.state</c>, saturating at <see cref="ulong.MaxValue"/> and
+    /// bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
+    /// </summary>
+    public static ulong ValidationWorkStateGas(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+
+        ulong total = 0;
+        for (int i = 0; i < counted; i++)
+        {
+            total = Saturating(total, frames[i].StateGasLimit);
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
+    /// validation prefix, which EIP-8141 bars from the public mempool.
+    /// </summary>
+    /// <remarks>
+    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid. A VERIFY frame
+    /// that reverts invalidates the whole transaction, so one sitting past the prefix does so on state the
+    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/> prices
+    /// admission with, so a layout matching none of the recognized prefixes has no boundary to sit behind
+    /// and is left to the rules that reject it on their own terms. That leaves the equivalent hole open for
+    /// unrecognized layouts until the prefix structure itself is enforced.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        if (RecognizedPrefixLength(frames, transaction.SenderAddress) is not int prefixLength)
+        {
+            return false;
+        }
+
+        for (int i = prefixLength; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == TxFrame.ModeVerify)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries an expiry-verifier frame anywhere but at the head of
+    /// its frame list, the only placement EIP-8141 permits.
+    /// </summary>
+    /// <remarks>
+    /// A public-mempool rule, not a validity rule: an expiry frame's shape and uniqueness are validated but
+    /// never its position, so such a transaction stays consensus-valid. The pool needs the placement because
+    /// it reads the deadline from the leading frame alone (<see cref="TryGetExpiryDeadline"/>); a misplaced
+    /// frame would otherwise carry a deadline the expiry sweep can never see.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static bool HasMisplacedExpiryFrame(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        for (int i = 1; i < frames.Length; i++)
+        {
+            if (IsExpiryVerifyFrame(frames[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -395,18 +468,27 @@ public static class FrameTxValidation
         ulong tokens = 0;
         ulong dataLength = 0;
         ulong totalFrameGas = 0;
+        ulong totalStateGas = 0;
+        ulong valueTransferCost = 0;
         foreach (TxFrame frame in frames)
         {
             tokens += CountCalldataTokens(frame.Data.Span, spec);
             dataLength += (ulong)frame.Data.Length;
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 return false;
             }
 
             totalFrameGas = accumulated;
+            totalStateGas += frame.StateGasLimit;
+
+            if (spec.IsEip2780Enabled && !frame.Value.IsZero && frame.Target is not null && frame.Target != transaction.SenderAddress)
+            {
+                valueTransferCost += GasCostOf.TxValueCostEip2780;
+            }
         }
 
         ulong signatureVerificationCost = 0;
@@ -448,6 +530,7 @@ public static class FrameTxValidation
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
+                             + valueTransferCost
                              + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
@@ -459,7 +542,51 @@ public static class FrameTxValidation
             return false;
         }
 
-        maxGas = Math.Max(standardGas, floorGas);
+        ulong floorReservation = floorGas + totalStateGas;
+        if (floorReservation < floorGas)
+        {
+            return false;
+        }
+
+        maxGas = Math.Max(standardGas, floorReservation);
+        return true;
+    }
+
+    /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
+    public static bool TryCalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out ulong executionReservation,
+        out ulong stateReservation)
+    {
+        executionReservation = 0;
+        stateReservation = 0;
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
+        {
+            return false;
+        }
+
+        ulong frameExecution = 0;
+        foreach (TxFrame frame in transaction.Frames ?? [])
+        {
+            ulong nextExecution = frameExecution + frame.ExecutionGasLimit;
+            ulong nextState = stateReservation + frame.StateGasLimit;
+            if (nextExecution < frameExecution || nextState < stateReservation)
+            {
+                return false;
+            }
+
+            frameExecution = nextExecution;
+            stateReservation = nextState;
+        }
+
+        ulong standardExecution = intrinsicGas + frameExecution;
+        if (standardExecution < intrinsicGas)
+        {
+            return false;
+        }
+
+        executionReservation = Math.Max(standardExecution, floorGas);
         return true;
     }
 
@@ -476,7 +603,8 @@ public static class FrameTxValidation
     /// <remarks>
     /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
     /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Total on any input:
-    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences.
+    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences. Only the leading frame is read —
+    /// the sole placement EIP-8141 permits, and the one <see cref="HasMisplacedExpiryFrame"/> keeps the pool to.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when the transaction carries one.</param>
@@ -493,15 +621,12 @@ public static class FrameTxValidation
             return transaction.PersistedExpiryDeadline is not null;
         }
 
-        for (int i = 0; i < frames.Length; i++)
+        if (frames.Length == 0 || !IsExpiryVerifyFrame(frames[0]))
         {
-            if (IsExpiryVerifyFrame(frames[i]))
-            {
-                deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[i].Data.Span);
-                return true;
-            }
+            return false;
         }
 
-        return false;
+        deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[0].Data.Span);
+        return true;
     }
 }
