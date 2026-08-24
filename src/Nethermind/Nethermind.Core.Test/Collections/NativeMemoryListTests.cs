@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -229,6 +231,38 @@ public class NativeMemoryListTests
     }
 
     [Test]
+    public void Ref_struct_constructor_releases_pinned_buffer_when_enumeration_throws()
+    {
+        const int capacity = 16;
+        HandleLeakMarker[] expected = ArrayPool<HandleLeakMarker>.Shared.Rent(capacity);
+        ArrayPool<HandleLeakMarker>.Shared.Return(expected);
+
+        Assert.Throws<InvalidOperationException>(ConstructFromThrowingEnumerable);
+
+        HandleLeakMarker[] actual = ArrayPool<HandleLeakMarker>.Shared.Rent(capacity);
+        try
+        {
+            Assert.That(actual, Is.SameAs(expected));
+        }
+        finally
+        {
+            ArrayPool<HandleLeakMarker>.Shared.Return(actual);
+        }
+
+        static void ConstructFromThrowingEnumerable()
+        {
+            NativeMemoryListRef<HandleLeakMarker> list = new(capacity, ThrowAfterOneItem());
+            list.Dispose();
+        }
+
+        static IEnumerable<HandleLeakMarker> ThrowAfterOneItem()
+        {
+            yield return default;
+            throw new InvalidOperationException();
+        }
+    }
+
+    [Test]
     public void Empty_constructor_returns_disposable_zero_capacity()
     {
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
@@ -319,4 +353,6 @@ public class NativeMemoryListTests
 
         static void CtorRef(int bad) { NativeMemoryListRef<int> _ = new(4, bad); }
     }
+
+    private readonly struct HandleLeakMarker;
 }
