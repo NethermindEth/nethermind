@@ -44,6 +44,20 @@ public class VmStateStackTests
     }
 
     [Test]
+    public void Holds_every_parent_allowed_by_call_depth_guard()
+    {
+        VmStateStack<EthereumGasPolicy> stack = new(VirtualMachineStatics.MaxCallDepth + 1);
+        VmState<EthereumGasPolicy> frame = new();
+
+        for (int i = 0; i < VirtualMachineStatics.MaxCallDepth; i++)
+        {
+            stack.Push(frame);
+        }
+
+        Assert.That(stack.Count, Is.EqualTo(VirtualMachineStatics.MaxCallDepth));
+    }
+
+    [Test]
     public void Pop_when_empty_throws()
     {
         VmStateStack<EthereumGasPolicy> stack = new(Capacity);

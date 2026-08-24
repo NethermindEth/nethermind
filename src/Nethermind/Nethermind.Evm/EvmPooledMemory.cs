@@ -877,6 +877,11 @@ public struct EvmPooledMemory
         return Math.Max(initializedSize, overwriteEnd);
     }
 
+    /// <summary>Returns array storage for standard <see cref="MemoryManager{T}"/> consumers.</summary>
+    /// <remarks>
+    /// Inline storage is copied in full so existing views remain valid after the spill. The initialized
+    /// prefix is deliberately unchanged, so copied bytes beyond it remain unavailable until materialized.
+    /// </remarks>
     internal byte[] GetArrayForMemoryManager()
     {
         byte[]? memory = _memory;
@@ -885,7 +890,6 @@ public struct EvmPooledMemory
             return memory;
         }
 
-        // Preserve the entire manager-visible span without changing the logical initialized prefix.
         ulong ignoredInitializedSize = _initializedSize;
         return EnsureCapacity(InlineCapacity, InlineCapacity, ref ignoredInitializedSize);
     }

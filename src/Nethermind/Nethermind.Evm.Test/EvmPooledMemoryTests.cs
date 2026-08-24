@@ -685,13 +685,20 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
             Assert.That(GetBackingMemory(ref memory), Is.Null);
 
+            byte[] actual;
             if (pin)
             {
-                using MemoryHandle handle = view.Pin();
+                unsafe
+                {
+                    // The handle pins the view for this scope, and the copy is bounded by the view length.
+                    using MemoryHandle handle = view.Pin();
+                    actual = new ReadOnlySpan<byte>(handle.Pointer, expected.Length).ToArray();
+                }
             }
             else
             {
-                Assert.That(MemoryMarshal.TryGetArray(view, out _), Is.True);
+                Assert.That(MemoryMarshal.TryGetArray(view, out ArraySegment<byte> segment), Is.True);
+                actual = segment.AsSpan().ToArray();
             }
 
             byte[]? backingMemory = GetBackingMemory(ref memory);
@@ -703,6 +710,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             {
                 Assert.That(backingMemory, Is.Not.Null);
                 Assert.That(System.Numerics.BitOperations.IsPow2((uint)backingMemory!.Length), Is.True);
+                Assert.That(actual, Is.EqualTo(expected));
                 Assert.That(view.ToArray(), Is.EqualTo(expected));
                 Assert.That(unmaterializedTail, Is.EqualTo(0xa7));
                 Assert.That(clearedTail.Span[0], Is.EqualTo(0));

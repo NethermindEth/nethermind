@@ -17,6 +17,10 @@ namespace Nethermind.Evm;
 /// <summary>
 /// State for EVM Calls
 /// </summary>
+/// <remarks>
+/// The memory-manager identity keeps views over the inline EVM memory tier valid when storage spills
+/// to an array, without allocating a separate owner for every frame.
+/// </remarks>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
 public class VmState<TGasPolicy> : MemoryManager<byte>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -258,17 +262,29 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
 
     protected override void Dispose(bool disposing) => Dispose();
 
+    /// <inheritdoc/>
     public override Span<byte> GetSpan()
     {
         byte[]? backingArray = _memory.BackingArray;
         return backingArray is null ? _inlineMemory : backingArray;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Pinning an inline-backed view spills the frame to a rented array. Memory views must not be
+    /// retained beyond the lifetime of the frame.
+    /// </remarks>
     public override MemoryHandle Pin(int elementIndex = 0)
         => _memory.GetArrayForMemoryManager().AsMemory(elementIndex).Pin();
 
+    /// <inheritdoc/>
     public override void Unpin() { }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Exposing an inline-backed view as an array spills the frame to a rented array. Memory views
+    /// must not be retained beyond the lifetime of the frame.
+    /// </remarks>
     protected override bool TryGetArray(out ArraySegment<byte> segment)
     {
         segment = _memory.GetArrayForMemoryManager();
