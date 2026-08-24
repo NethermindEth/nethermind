@@ -62,6 +62,31 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
+    [Test]
+    [NonParallelizable]
+    public void Commit_ClearStorage_IncrementsStorageClearedMetric()
+    {
+        Assume.That(useFlat, Is.False);
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        long storageClearedBefore = Db.Metrics.StorageCleared;
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterStorageCommit = Db.Metrics.StorageCleared;
+
+        provider.ClearStorage(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storageClearedAfterStorageCommit, Is.EqualTo(storageClearedBefore));
+            Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
+        }
+    }
+
     /// <summary>
     /// <see cref="IWorldState.IsStorageEmpty"/> backs the EIP-7610 CREATE collision check. State overrides
     /// are applied with <c>commitRoots: false</c>, so the write never reaches the storage trie and the

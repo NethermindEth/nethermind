@@ -87,10 +87,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _accounts.Clear();
                 _accountCount = 0;
-                Metrics.CarryForwardWipes++;
+                Metrics.IncrementCarryForwardWipes();
             }
             if (_accounts.TryAdd(address, account)) _accountCount++;
-            Metrics.CarryForwardAccountCount = _accountCount;
+            Metrics.PublishCarryForwardAccountCount(_accountCount);
         }
     }
 
@@ -105,10 +105,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
-                Metrics.CarryForwardWipes++;
+                Metrics.IncrementCarryForwardWipes();
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
-            Metrics.CarryForwardSlotCount = _slotCount;
+            Metrics.PublishCarryForwardSlotCount(_slotCount);
         }
     }
 
@@ -131,6 +131,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 {
                     if (_accounts.TryRemove(address, out _)) _accountCount--;
                 }
+                Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
 
             if (writtenSlots is not null)
@@ -139,6 +140,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 {
                     if (_slots.TryRemove(key, out _)) _slotCount--;
                 }
+                Metrics.PublishCarryForwardSlotCount(_slotCount);
             }
         }
     }
@@ -149,8 +151,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _accountCount = 0;
         _slots.Clear();
         _slotCount = 0;
-        Metrics.CarryForwardAccountCount = 0;
-        Metrics.CarryForwardSlotCount = 0;
+        Metrics.PublishCarryForwardAccountCount(0);
+        Metrics.PublishCarryForwardSlotCount(0);
     }
 
     private readonly struct CachedSlot(bool found, SlotValue value)
@@ -162,8 +164,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
         : IPersistence.IPersistenceReader
     {
-        // A reader is shared by every thread reading its state, so the hit/miss counters go straight to the
-        // atomic globals. Captured once per reader to keep the increments off the hot path when disabled.
+        // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
+        // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
+        // cost. Existing readers retain that captured value if the flag later changes.
         private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
 
         public Account? GetAccount(Address address)
@@ -171,11 +174,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (current && parent._accounts.TryGetValue(address, out Account? cached))
             {
-                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountHits);
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
                 return cached;
             }
 
-            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountMisses);
+            if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
@@ -187,12 +190,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {
-                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotHits);
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;
             }
 
-            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotMisses);
+            if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
