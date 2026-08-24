@@ -84,28 +84,6 @@ public class InclusionListBuilderTests
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
-    [Test]
-    public void Skips_blob_transactions()
-    {
-        Transaction blobTx = Build.A.Transaction
-            .WithType(TxType.Blob)
-            .WithNonce(0)
-            .WithMaxFeePerGas(10)
-            .WithMaxPriorityFeePerGas(1)
-            .WithMaxFeePerBlobGas(10)
-            .WithBlobVersionedHashes(1)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        Transaction normalTx = TxOfSize(50, 0, TestItem.PrivateKeyB);
-
-        using InclusionListBytes il = BuildBuilder(PoolOf(blobTx, normalTx)).GetInclusionList();
-
-        Assert.That(il.Count, Is.EqualTo(1));
-        Assert.That(Decode(il[0]).Hash, Is.EqualTo(normalTx.Hash));
-    }
-
     // Only what the next block could append belongs in the list, so the pool must do the readiness and
     // affordability filtering against the fee that block will charge.
     [Test]
@@ -130,6 +108,23 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.EqualTo(2));
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
+    }
+
+    // Every drawn sender must reach the list before any one of them gets a second nonce, or an account
+    // with a long ready run spends the byte cap on itself and censors the rest.
+    [Test]
+    public void Interleaves_sender_runs_rather_than_draining_each_in_turn()
+    {
+        const int senderCount = 20;
+        // Long enough that one sender's run alone would overrun the byte cap.
+        const int runLength = 100;
+        Transaction[] txs = [.. Enumerable.Range(0, senderCount)
+            .SelectMany(s => Enumerable.Range(0, runLength).Select(n => TxOfSize(50, n, TestItem.PrivateKeys[s])))];
+        Dictionary<Hash256, Address> senderByHash = txs.ToDictionary(tx => tx.Hash!, tx => tx.SenderAddress!);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+
+        Assert.That(il.Select(b => senderByHash[Decode(b).Hash!]).Distinct().Count(), Is.EqualTo(senderCount));
     }
 
     [Test]

@@ -20,13 +20,14 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         return EncodeTransactionsUpToLimit(in sample);
     }
 
-    /// <summary>Draws candidate transactions for the list, at most one sender's worth per draw.</summary>
+    /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>
     /// Candidates are restricted to what the next block could actually append: senders whose lowest pending
     /// nonce is the account's next one and can pay the base fee, then that sender's gapless nonce run. An
     /// entry outside that set can never be appendable, so it would spend list bytes without adding
     /// censorship resistance. Senders are drawn uniformly rather than by fee, because the list exists for
-    /// the transactions a builder passes over, which are exactly the ones a fee-ordered draw drops first.
+    /// the transactions a builder passes over, which are exactly the ones a fee-ordered draw drops first,
+    /// and their runs are interleaved so no single account can spend the list on itself.
     /// </remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs()
     {
@@ -35,11 +36,9 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
         using ArrayPoolListRef<Transaction[]> senders = new(capacity);
         int seen = 0;
+        // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
         foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
         {
-            // Blob txs MUST NOT appear in an IL.
-            if (bySender is not [{ SupportsBlobs: false }, ..]) continue;
-
             if (senders.Count < capacity)
             {
                 senders.Add(bySender);
@@ -59,23 +58,31 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             (senders[i], senders[j]) = (senders[j], senders[i]);
         }
 
+        // Take one nonce per sender per round rather than draining each run in turn, so a single account
+        // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
         ArrayPoolListRef<Transaction> sample = new(capacity);
-        foreach (Transaction[] bySender in senders)
+        for (int round = 0; ; round++)
         {
-            ulong nextNonce = bySender[0].Nonce;
-            foreach (Transaction tx in bySender)
+            bool advanced = false;
+            foreach (Transaction[] bySender in senders)
             {
-                // A gap or a blob tx ends the run: nothing behind it can be appended either.
-                if (sample.Count == capacity) return sample;
-                if (tx.Nonce != nextNonce || tx.SupportsBlobs) break;
+                if (round >= bySender.Length) continue;
+                Transaction tx = bySender[round];
+                // Buckets are nonce-ordered, so once a gap breaks this offset it can never realign: the
+                // run ends there, because nothing behind a gap can be appended either.
+                if (tx.Nonce != bySender[0].Nonce + (ulong)round) continue;
 
                 sample.Add(tx);
-                nextNonce++;
+                advanced = true;
+                if (sample.Count == capacity) return sample;
             }
+            if (!advanced) return sample;
         }
-        return sample;
     }
 
+    /// <summary>The base fee the next block will charge.</summary>
+    /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
+    /// stands in and pre-fork EIP-1559 parameters are resolved for a post-fork block.</remarks>
     private UInt256 NextBlockBaseFee()
     {
         BlockHeader? head = blockTree.Head?.Header;
