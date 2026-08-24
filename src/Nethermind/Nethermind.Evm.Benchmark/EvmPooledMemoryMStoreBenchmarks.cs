@@ -41,6 +41,23 @@ public class EvmPooledMemoryMStoreBenchmarks
     }
 
     [Benchmark]
+    public ulong JumpThenContiguousMStore()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            int offset = MemorySize - EvmPooledMemory.WordSize;
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, offset);
+            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, offset + EvmPooledMemory.WordSize);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Benchmark]
     public ulong SequentialGrowth()
     {
         EvmPooledMemory memory = default;
@@ -61,48 +78,6 @@ public class EvmPooledMemoryMStoreBenchmarks
 }
 
 [MemoryDiagnoser]
-[BenchmarkCategory("EVM", "Memory", "MSTORE")]
-public class EvmPooledMemoryFirstMStoreBenchmarks
-{
-    private const int FourKiB = 4 * 1024;
-    private const int SixtyFourKiB = 64 * 1024;
-
-    [Params(0, 64, FourKiB, SixtyFourKiB)]
-    public int Offset { get; set; }
-
-    [Benchmark]
-    public ulong FirstMStore()
-    {
-        EvmPooledMemory memory = default;
-        try
-        {
-            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset);
-            return memory.Size;
-        }
-        finally
-        {
-            memory.Dispose();
-        }
-    }
-
-    [Benchmark]
-    public ulong JumpThenContiguousMStore()
-    {
-        EvmPooledMemory memory = default;
-        try
-        {
-            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset);
-            EvmPooledMemoryBenchmarkHelper.MStore(ref memory, Offset + EvmPooledMemory.WordSize);
-            return memory.Size;
-        }
-        finally
-        {
-            memory.Dispose();
-        }
-    }
-}
-
-[MemoryDiagnoser]
 [BenchmarkCategory("EVM", "Memory", "MSTORE", "ReservedTail")]
 public class EvmPooledMemoryReservedMStoreBenchmarks
 {
@@ -111,7 +86,7 @@ public class EvmPooledMemoryReservedMStoreBenchmarks
 
     private static readonly byte[] Word = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
 
-    [Params(1, 2, 16)]
+    [Params(1, 16)]
     public int WordCount { get; set; }
 
     [Benchmark(Baseline = true)]
@@ -243,28 +218,6 @@ public class EvmPooledMemorySolidityLifecycleBenchmarks
     }
 
     [Benchmark]
-    public ulong PrologueThenLargerAllocation()
-    {
-        ref EvmPooledMemory memory = ref _state.Memory;
-        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
-        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x100);
-        ulong size = memory.Size;
-        memory.Dispose();
-        return size;
-    }
-
-    [Benchmark]
-    public ulong PrologueThenWordAt0x120()
-    {
-        ref EvmPooledMemory memory = ref _state.Memory;
-        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x40);
-        EvmPooledMemoryBenchmarkHelper.MStore(ref memory, 0x120);
-        ulong size = memory.Size;
-        memory.Dispose();
-        return size;
-    }
-
-    [Benchmark]
     public ulong PrologueThenFirstSpill()
     {
         ref EvmPooledMemory memory = ref _state.Memory;
@@ -330,7 +283,7 @@ public class EvmPooledMemoryReservedMStore8Benchmarks
     private EvmPooledMemory _initialized;
     private EvmPooledMemory _reserved;
 
-    [Params(1, 16, 256)]
+    [Params(1, 256)]
     public int ByteCount { get; set; }
 
     [GlobalSetup]

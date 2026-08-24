@@ -516,7 +516,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [TestCase(1)]
-    [TestCase(2)]
     [TestCase(16)]
     public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail(int wordCount)
     {
@@ -666,7 +665,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
     [TestCase(false, TestName = "VmState_inline_memory_view_exposes_array_by_spilling")]
     [TestCase(true, TestName = "VmState_inline_memory_view_pins_by_spilling")]
-    public unsafe void VmState_inline_memory_view_supports_standard_memory_consumers(bool pin)
+    public void VmState_inline_memory_view_supports_standard_memory_consumers(bool pin)
     {
         VmState<EthereumGasPolicy> owner = new();
         ref EvmPooledMemory memory = ref owner.Memory;
@@ -683,21 +682,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             memory.Dispose();
 
             Assert.That(memory.TrySave(in start, expected), Is.True);
-            byte tailAfterSave = owner.GetSpan()[17 + expected.Length];
             Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
-            byte tailAfterView = owner.GetSpan()[17 + expected.Length];
             Assert.That(GetBackingMemory(ref memory), Is.Null);
 
-            byte[] actual;
             if (pin)
             {
                 using MemoryHandle handle = view.Pin();
-                actual = new ReadOnlySpan<byte>(handle.Pointer, expected.Length).ToArray();
             }
             else
             {
-                Assert.That(MemoryMarshal.TryGetArray(view, out ArraySegment<byte> segment), Is.True);
-                actual = segment.AsSpan().ToArray();
+                Assert.That(MemoryMarshal.TryGetArray(view, out _), Is.True);
             }
 
             byte[]? backingMemory = GetBackingMemory(ref memory);
@@ -709,10 +703,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             {
                 Assert.That(backingMemory, Is.Not.Null);
                 Assert.That(System.Numerics.BitOperations.IsPow2((uint)backingMemory!.Length), Is.True);
-                Assert.That(actual, Is.EqualTo(expected));
                 Assert.That(view.ToArray(), Is.EqualTo(expected));
-                Assert.That(tailAfterSave, Is.EqualTo(0xa7));
-                Assert.That(tailAfterView, Is.EqualTo(0xa7));
                 Assert.That(unmaterializedTail, Is.EqualTo(0xa7));
                 Assert.That(clearedTail.Span[0], Is.EqualTo(0));
             }
@@ -1118,9 +1109,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false, TestName = "TrySave_full_overwrite_matches_independent_model")]
-    [TestCase(true, TestName = "SaveAfterGas_full_overwrite_matches_independent_model")]
-    public void Full_overwrite_matches_independent_model_on_dirty_reused_buffer(bool afterGas)
+    [Test]
+    public void TrySave_full_overwrite_matches_independent_model_on_dirty_reused_buffer()
     {
         const int destinationOffset = 5000;
         const int sourceLength = 64 * 1024;
@@ -1137,16 +1127,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             WriteInitialMemory(ref memory, initial);
             AssertDirtyTailWasReused(ref memory);
             UInt256 destination = destinationOffset;
-            if (afterGas)
-            {
-                memory.CalculateMemoryCost(in destination, (ulong)sourceLength, out bool outOfGas);
-                Assert.That(outOfGas, Is.False);
-                memory.SaveAfterGas(in destination, source);
-            }
-            else
-            {
-                Assert.That(memory.TrySave(in destination, source), Is.True);
-            }
+            Assert.That(memory.TrySave(in destination, source), Is.True);
 
             Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
         }

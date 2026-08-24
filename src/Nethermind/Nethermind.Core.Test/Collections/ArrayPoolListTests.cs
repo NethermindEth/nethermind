@@ -447,20 +447,14 @@ public class ArrayPoolListTests
 
 public class ArrayPoolUtilitiesTests
 {
-    private static TestCaseData[] CapacityCases() =>
+    private static object[][] CapacityCases() =>
     [
-        new TestCaseData(1, 1)
-            .SetName("Power_of_two_capacity_preserves_one"),
-        new TestCaseData(3, 4)
-            .SetName("Power_of_two_capacity_rounds_three"),
-        new TestCaseData((1 << 28) + 1, 1 << 29)
-            .SetName("Power_of_two_capacity_rounds_zkevm_oversized_boundary"),
-        new TestCaseData((1 << 30) + 1, (1 << 30) + 1)
-            .SetName("Power_of_two_capacity_preserves_length_above_signed_power_of_two_limit"),
-        new TestCaseData(Array.MaxLength, Array.MaxLength)
-            .SetName("Power_of_two_capacity_preserves_maximum_array_length"),
-        new TestCaseData(int.MaxValue, int.MaxValue)
-            .SetName("Power_of_two_capacity_preserves_maximum_integer_length"),
+        [1, 1],
+        [3, 4],
+        [(1 << 28) + 1, 1 << 29],
+        [(1 << 30) + 1, (1 << 30) + 1],
+        [Array.MaxLength, Array.MaxLength],
+        [int.MaxValue, int.MaxValue],
     ];
 
     [TestCaseSource(nameof(CapacityCases))]

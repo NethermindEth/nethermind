@@ -254,42 +254,6 @@ public class EvmPooledMemoryOverwriteGrowthBenchmarks
 }
 
 [MemoryDiagnoser]
-[BenchmarkCategory("EVM", "Memory", "LazyOverwriteTail")]
-public class EvmPooledMemoryLazyOverwriteTailBenchmarks
-{
-    private const int PayloadLength = 4 * EvmPooledMemory.WordSize;
-
-    private static readonly byte[] Payload = EvmPooledMemoryBenchmarkHelper.CreatePayload(PayloadLength);
-    private static readonly byte[] Word = EvmPooledMemoryBenchmarkHelper.CreatePayload(EvmPooledMemory.WordSize);
-
-    [Params(0, 1, 128)]
-    public int FollowingWordCount { get; set; }
-
-    [Benchmark]
-    public ulong OverwriteThenMStore()
-    {
-        EvmPooledMemory memory = default;
-        try
-        {
-            UInt256 start = UInt256.Zero;
-            memory.TrySave(in start, Payload);
-
-            for (int i = 0; i < FollowingWordCount; i++)
-            {
-                UInt256 destination = (UInt256)(PayloadLength + i * EvmPooledMemory.WordSize);
-                memory.TrySaveWord(in destination, Word);
-            }
-
-            return memory.Size;
-        }
-        finally
-        {
-            memory.Dispose();
-        }
-    }
-}
-
-[MemoryDiagnoser]
 [BenchmarkCategory("EVM", "Memory", "ReadMaterialization")]
 public class EvmPooledMemoryReadMaterializationBenchmarks
 {

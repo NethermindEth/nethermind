@@ -37,10 +37,6 @@ namespace Nethermind.Evm.Test
             Assert.That(res.Error, Is.EqualTo(EvmExceptionType.StackUnderflow.ToString()));
         }
 
-        /// <summary>
-        /// The byte index selects how much of the word is rewritten, so it has to be covered across its
-        /// whole range rather than at one end.
-        /// </summary>
         [Test]
         public void Sign_ext_fills_above_a_negative_sign_byte([Range(0, 31)] int byteIndex)
         {
@@ -51,7 +47,6 @@ namespace Nethermind.Evm.Test
             AssertSignExtend(byteIndex, value, expected);
         }
 
-        /// <summary>A clear sign byte has to drop what sits above it, not merely leave it alone.</summary>
         [Test]
         public void Sign_ext_clears_above_a_positive_sign_byte([Range(0, 30)] int byteIndex)
         {
