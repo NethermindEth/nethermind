@@ -160,17 +160,23 @@ public class SnapshotBundleWarmerTests
     // The regression this PR fixes is a +3-5% AVG slowdown from #12793 dropping the warmer's negative cache.
     // Pin that the cache exists: a second warmer visit to the same missing path must be served from the
     // transient sentinel and must not re-probe the persistence-backed lookup a second time.
-    [Test]
-    public void Repeated_warmer_miss_is_served_from_the_negative_cache()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Repeated_warmer_miss_is_served_from_the_negative_cache(bool storage)
     {
         NullTrieNodeCache cache = new();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
 
         TreePath path = TreePath.FromHexString("12");
         Hash256 hash = TestItem.KeccakA;
+        Hash256 address = TestItem.KeccakC;
 
-        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        _ = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        _ = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
 
         Assert.That(cache.TryGetCount, Is.EqualTo(1));
     }
