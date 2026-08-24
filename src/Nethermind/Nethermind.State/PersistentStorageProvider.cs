@@ -57,11 +57,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
+        if (!resetBlockChanges)
+        {
+            for (int i = _storageClearJournal.Count - 1; i >= 0; i--)
+            {
+                RestoreStorageClear(_storageClearJournal[i].Address);
+            }
+        }
+
+        _storageClearJournal.Clear();
         base.Reset();
         EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
-        _storageClearJournal.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -486,12 +494,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         private bool _missingAreDefault;
         private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
+            if (_spare is not null && _spare.Capacity > _dictionary.Capacity)
+            {
+                _dictionary = _spare;
+            }
+
+            _spare = null;
             _dictionary.ClearAndTrim(capacity, capacity);
         }
         public void ClearAndSetMissingAsDefault()
@@ -506,7 +521,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
-                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(Comparer.Instance);
+                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(Comparer.Instance);
+                _spare = null;
             }
 
             ClearSnapshot snapshot = new(previousEntries, _missingAreDefault);
@@ -518,6 +534,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (snapshot.PreviousEntries is not null)
             {
+                _dictionary.Clear();
+                if (_spare is null || _dictionary.Capacity > _spare.Capacity)
+                {
+                    _spare = _dictionary;
+                }
+
                 _dictionary = snapshot.PreviousEntries;
             }
             else

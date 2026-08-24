@@ -141,11 +141,16 @@ public class StorageProviderTests(bool useFlat)
 
     private static int GetCapacity(object collection)
     {
+        object dictionary = GetDictionary(collection);
+        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
+    }
+
+    private static object GetDictionary(object collection)
+    {
         FieldInfo dictionaryField = collection.GetType().GetField(
             "_dictionary",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object dictionary = dictionaryField.GetValue(collection)!;
-        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
+        return dictionaryField.GetValue(collection)!;
     }
 
     private static object GetPrivateField(object owner, string fieldName) =>
@@ -615,8 +620,9 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
-    [Test]
-    public void Restoring_storage_clear_preserves_committed_storage()
+    [TestCase(StorageClearRollback.Snapshot)]
+    [TestCase(StorageClearRollback.ResetKeepingBlockChanges)]
+    public void Rolling_back_storage_clear_preserves_committed_storage(StorageClearRollback rollback)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
@@ -643,7 +649,21 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
             Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
 
-            provider.Restore(snapshot);
+            if (rollback == StorageClearRollback.ResetKeepingBlockChanges)
+            {
+                provider.Set(previouslyRead, _values[1]);
+                provider.ClearStorage(TestItem.AddressA);
+            }
+
+            if (rollback == StorageClearRollback.Snapshot)
+            {
+                provider.Restore(snapshot);
+            }
+            else
+            {
+                provider.Reset(resetBlockChanges: false);
+            }
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
@@ -655,6 +675,39 @@ public class StorageProviderTests(bool useFlat)
             provider.Commit(Frontier.Instance);
             provider.CommitTree(baseBlock.Number + 1);
             Assert.That(provider.StateRoot, Is.EqualTo(baseBlock.StateRoot));
+        }
+    }
+
+    [Test]
+    public void Restored_storage_clear_reuses_dictionary()
+    {
+        const int ReadCount = 64;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell existingCell = new(ctx.Address1, 1);
+
+        provider.Set(existingCell, _values[1]);
+        provider.Commit(Frontier.Instance);
+        object blockChange = GetBlockChange(provider, ctx.Address1);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.ClearStorage(ctx.Address1);
+        for (int i = 0; i < ReadCount; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)(i + 2)));
+        }
+
+        object clearedDictionary = GetDictionary(blockChange);
+        int clearedCapacity = GetCapacity(blockChange);
+
+        provider.Restore(snapshot);
+        provider.ClearStorage(ctx.Address1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetDictionary(blockChange), Is.SameAs(clearedDictionary));
+            Assert.That(GetCapacity(blockChange), Is.EqualTo(clearedCapacity));
         }
     }
 
@@ -1276,6 +1329,12 @@ public class StorageProviderTests(bool useFlat)
         ResetKeepingBlockChanges,
         ReadOnlyCommit,
         CommitAfterWrite,
+    }
+
+    public enum StorageClearRollback
+    {
+        Snapshot,
+        ResetKeepingBlockChanges,
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer
