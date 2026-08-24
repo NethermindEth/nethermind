@@ -35,9 +35,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
+    /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
+    public bool IndependentStatePool;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EthereumGasPolicy FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
+        new()
+        {
+            Value = executionGasLimit,
+            StateReservoir = stateGasLimit > long.MaxValue ? long.MaxValue : (long)stateGasLimit,
+            IndependentStatePool = true
+        };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) =>
@@ -132,6 +143,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
             return true;
+        }
+
+        if (gas.IndependentStatePool)
+        {
+            gas.OutOfGas = true;
+            return false;
         }
 
         ulong spillAmount = CalculateStateGasSpill(in gas, stateGasCost);
@@ -245,14 +262,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
-            true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
+            true => UpdateGas(ref gas, GetColdAccountAccessCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
     }
 
+    /// <inheritdoc cref="IGasPolicy{TSelf}.GetColdAccountAccessCost"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ColdAccountAccessCost(IReleaseSpec spec) =>
+    public static ulong GetColdAccountAccessCost(IReleaseSpec spec) =>
         spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -556,6 +574,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             StateReservoir = childStateReservoir,
             StateGasUsed = 0,
             StateGasSpill = 0,
+            IndependentStatePool = parentGas.IndependentStatePool,
         };
     }
 
@@ -667,24 +686,24 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// EIP-2780 recipient charge on top of TX_BASE_COST.
     /// </summary>
     /// <remarks>
-    /// State-independent by design: a flat cold touch for a non-self recipient, plus transfer-log and
-    /// value-move costs on value transfers. New-account and delegation costs are charged elsewhere.
+    /// State-independent by design: a flat cold touch for a non-self recipient, plus TX_VALUE_COST on
+    /// value transfers (the EIP-7708 transfer log is folded into TX_VALUE_COST). Contract creation's
+    /// recipient balance write is already covered by the create charge (CREATE_ACCESS under EIP-8038),
+    /// so it adds nothing here even with value. New-account and delegation costs are charged elsewhere.
     /// </remarks>
     private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec)
     {
         if (!spec.IsEip2780Enabled) return 0;
 
-        bool hasValue = !tx.Value.IsZero;
-
-        if (tx.IsContractCreation)
-            return hasValue ? GasCostOf.TransferLogEip2780 : 0;
+        // The create charge (CREATE_ACCESS under EIP-8038) already covers the recipient balance write; a value endowment adds nothing.
+        if (tx.IsContractCreation) return 0;
 
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        ulong cost = ColdAccountAccessCost(spec);
-        if (hasValue)
-            cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+        ulong cost = GetColdAccountAccessCost(spec);
+        if (!tx.Value.IsZero)
+            cost += GasCostOf.TxValueCostEip2780;
 
         return cost;
     }

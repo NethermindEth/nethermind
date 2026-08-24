@@ -39,6 +39,11 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
+    /// EIP-8141 mempool admission: run only the validation prefix, halting once the payer is set.
+    /// </summary>
+    FrameValidationPrefixOnly = 32,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

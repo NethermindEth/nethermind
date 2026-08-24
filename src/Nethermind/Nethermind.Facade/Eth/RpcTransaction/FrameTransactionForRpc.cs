@@ -19,6 +19,13 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public override TxType? Type => TxType;
 
+    /// <summary><c>nonce_keys</c>, sharing the sequence number reported as <c>nonce</c>.</summary>
+    /// <remarks>
+    /// Absent for an envelope nonce, which is a different signing payload from the key set <c>[0]</c>.
+    /// See <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>.
+    /// </remarks>
+    public UInt256[]? NonceKeys { get; set; }
+
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
@@ -40,6 +47,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public FrameTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData)
     {
+        NonceKeys = transaction.NonceKeys;
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
         RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
@@ -74,6 +82,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // The invariant FrameTxDecoder establishes for a decoded frame tx, so GasLimit readers see the same
         // value whichever path built it. The processor still derives the real budget from the frames.
         tx.GasLimit = totalFrameGas;
+        tx.NonceKeys = NonceKeys;
         tx.Frames = frames;
         tx.FrameSignatures = signatures;
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;

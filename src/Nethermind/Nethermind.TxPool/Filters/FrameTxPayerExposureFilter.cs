@@ -7,6 +7,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -39,10 +40,10 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // This runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
-        // bound is on the pending set the pool would hold, which a replacement does not grow (EIP-8141
-        // decrements on "eviction, replacement, inclusion, or reorg removal").
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, ReplacedPendingReservation(tx, payer)))
+        // A snapshot: AddCore settles the replacement later, under the pool lock. TryReserve ignores the
+        // discount when the payer holds no reservation, so skip the bucket walk and its pool lock there.
+        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
+        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
             // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);
@@ -54,35 +55,39 @@ internal sealed class FrameTxPayerExposureFilter(
         return AcceptTxResult.Accepted;
     }
 
-    /// <summary>
-    /// The reservation held by a pending transaction of the same sender and nonce that <paramref name="tx"/>
-    /// would displace, or zero when it would join the pending set rather than replace one.
-    /// </summary>
-    /// <remarks>Matches on the payer too: displacing a tx paid by someone else frees that payer, not this one.</remarks>
+    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
+    /// set instead.</summary>
+    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
+    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.</remarks>
     private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
     {
-        ReplacementSearch search = new(tx.Nonce, payer);
+        ReplacementSearch search = new(tx, payer);
         TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
         pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
         {
-            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
             if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce == state.Nonce
+            if (pending.Nonce > state.Nonce) return false;
+
+            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
                 && pending.PayerAddress == state.Payer
                 && !pending.IsOverflowInTxCostAndValue(out UInt256 cost))
             {
                 state.Reserved = cost;
+                return false;
             }
 
-            return false;
+            // Same nonce, another domain: only one entry can compete, so keep looking for it.
+            return true;
         });
 
         return search.Reserved;
     }
 
-    private struct ReplacementSearch(ulong nonce, Address payer)
+    private struct ReplacementSearch(Transaction tx, Address payer)
     {
-        public readonly ulong Nonce = nonce;
+        public readonly Transaction Tx = tx;
+        public readonly ulong Nonce = tx.Nonce;
         public readonly Address Payer = payer;
         public UInt256 Reserved;
     }

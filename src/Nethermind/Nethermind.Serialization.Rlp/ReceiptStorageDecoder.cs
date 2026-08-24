@@ -200,7 +200,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 byte status = decoderContext.DecodeByte();
-                ulong gasUsed = decoderContext.DecodeULong();
+                int gasUsedEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                ulong executionGasUsed = decoderContext.DecodeULong();
+                ulong stateGasUsed = decoderContext.DecodeULong();
+                decoderContext.Check(gasUsedEnd);
 
                 int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 List<LogEntry> frameLogs = [];
@@ -209,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
                     frameLogs.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
                 }
 
-                frameReceipts.Add(new TxFrameReceipt(status, gasUsed, frameLogs.ToArray()));
+                frameReceipts.Add(new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray()));
                 decoderContext.Check(frameEnd);
             }
 
@@ -230,9 +233,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 TxFrameReceipt frameReceipt = frameReceipts[i];
                 int logsLength = GetFrameLogsLength(frameReceipt);
-                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOf(frameReceipt.GasUsed) + Rlp.LengthOfSequence(logsLength));
+                int gasUsedLength = Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
+                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
                 writer.Encode((ulong)frameReceipt.Status);
-                writer.Encode(frameReceipt.GasUsed);
+                writer.StartSequence(gasUsedLength);
+                writer.Encode(frameReceipt.ExecutionGasUsed);
+                writer.Encode(frameReceipt.StateGasUsed);
                 writer.StartSequence(logsLength);
                 for (int j = 0; j < frameReceipt.Logs.Length; j++)
                 {
@@ -243,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
             Rlp.LengthOf((ulong)frameReceipt.Status)
-            + Rlp.LengthOf(frameReceipt.GasUsed)
+            + Rlp.LengthOfSequence(Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed))
             + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
 
         private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)

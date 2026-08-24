@@ -3,12 +3,8 @@
 
 namespace Nethermind.Specs.Forks;
 
-/// <summary>
-/// Devnet fork enabling EIP-8141 frame transactions on top of Osaka. Matches the frame
-/// transactions devnet layout, where the genesis generator schedules the frame-tx opcodes via
-/// <c>bogotaTime</c> over an Osaka-from-genesis network. Not scheduled on any public network.
-/// </summary>
-public class Bogota() : NamedReleaseSpec<Bogota>(Osaka.Instance)
+/// <summary>Fork enabling EIP-8141 frame transactions on top of Amsterdam.</summary>
+public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {

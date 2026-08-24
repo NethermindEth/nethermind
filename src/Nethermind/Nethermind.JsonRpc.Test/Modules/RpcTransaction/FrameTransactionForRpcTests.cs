@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -87,7 +89,8 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
             Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("gasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
@@ -245,7 +248,7 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, GasLimit = frameGasLimit },
+                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = frameGasLimit },
                 new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC },
             ],
         };
@@ -269,8 +272,8 @@ public class FrameTransactionForRpcTests
             Gas = 12,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, GasLimit = 30_000 },
-                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC, GasLimit = 40_000 },
+                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = 30_000 },
+                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC, ExecutionGasLimit = 40_000 },
             ],
         };
 
@@ -285,10 +288,104 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, GasLimit = ulong.MaxValue }],
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue }],
         };
 
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
+    }
+
+    private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.NonceKeys = nonceKeys;
+        tx.Nonce = nonceSeq;
+        return tx;
+    }
+
+    private static IEnumerable<TestCaseData> NonceKeySets()
+    {
+        yield return new TestCaseData(new UInt256[] { 1, 7 }, new[] { "0x1", "0x7" }).SetArgDisplayNames("MultiKey");
+        // [0] is the account-nonce domain, a different payload from the absent list.
+        yield return new TestCaseData(new UInt256[] { 0 }, new[] { "0x0" }).SetArgDisplayNames("LegacyDomainSingleton");
+    }
+
+    [TestCaseSource(nameof(NonceKeySets))]
+    public void FrameTransactionForRpc_SerializesNonceKeys(UInt256[] nonceKeys, string[] expected)
+    {
+        Transaction tx = BuildKeyedFrameTx(nonceKeys);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out JsonElement keys), Is.True);
+            Assert.That(keys.EnumerateArray().Select(static k => k.GetString()), Is.EqualTo(expected));
+            Assert.That(doc.RootElement.GetProperty("nonce").GetString(), Is.EqualTo("0x3"));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_OmitsNonceKeys_ForEnvelopeNonce()
+    {
+        Transaction tx = BuildKeyedFrameTx(nonceKeys: null);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out _), Is.False);
+    }
+
+    [TestCaseSource(nameof(NonceKeySets))]
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsNonceKeys(UInt256[] nonceKeys, string[] _)
+    {
+        Transaction original = BuildKeyedFrameTx(nonceKeys);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.NonceKeys, Is.EqualTo(nonceKeys));
+            Assert.That(roundTripped.Nonce, Is.EqualTo(original.Nonce));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_KeepsAbsentNonceKeys()
+    {
+        Transaction original = BuildKeyedFrameTx(nonceKeys: null);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        Assert.That(roundTripped.NonceKeys, Is.Null);
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_DeserializesNonceKeys_FromCallParams()
+    {
+        const string json = """
+            {
+                "from": "0x0000000000000000000000000000000000000001",
+                "nonce": "0x3",
+                "nonceKeys": ["0x1", "0x7"],
+                "frames": [{"mode": 0, "flags": 3, "gasLimit": "0x186a0", "value": "0x0", "data": "0x"}]
+            }
+            """;
+
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+
+        Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
+        Transaction tx = rpc.ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.NonceKeys, Is.EqualTo(new UInt256[] { 1, 7 }));
+            Assert.That(tx.Nonce, Is.EqualTo(3UL));
+        }
     }
 
     [Test]
@@ -318,7 +415,7 @@ public class FrameTransactionForRpcTests
             BlockHash = Keccak.Zero,
             FrameReceipts =
             [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: []),
+                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, executionGasUsed: 21_000, stateGasUsed: 97_920, logs: []),
             ],
         };
 
@@ -328,6 +425,8 @@ public class FrameTransactionForRpcTests
         {
             Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(1));
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receiptForRpc.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000));
+            Assert.That(receiptForRpc.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920));
         }
     }
 }

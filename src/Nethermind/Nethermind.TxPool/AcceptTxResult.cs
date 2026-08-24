@@ -132,6 +132,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
         /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>.
+        /// A separate mempool bound from <see cref="FrameTxVerifyGasTooHigh"/>; it too refuses only propagation, not validity.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(29, TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
+
+        /// <summary>
         /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
         /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
         /// </summary>
@@ -151,7 +157,26 @@ namespace Nethermind.TxPool
         /// <summary>
         /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxMissingSidecar = new(24, TxPoolErrorMessages.FrameTxMissingSidecar);
+        // Equality is by id alone, so this cannot keep 24 — KeyedNonceUnmet already holds it.
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix, whose revert
+        /// would invalidate the transaction on state the pool never validated. It stays consensus-valid; only public
+        /// mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(25, TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list, the only placement
+        /// the spec permits. It stays consensus-valid; only public mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(26, TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.
+        /// </summary>
+        public static readonly AcceptTxResult FrameSimulationFailed = new(28, TxPoolErrorMessages.FrameSimulationFailed);
 
         private int Id { get; } = id;
         private string Code { get; } = code;
