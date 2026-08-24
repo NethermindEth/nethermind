@@ -168,6 +168,8 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetStateStack().Count, Is.Zero);
+                Assert.That(tracer.IntermediateState, Is.Not.SameAs(tracer.ParentState));
+                Assert.That(tracer.IntermediateState, Is.Not.SameAs(tracer.CancelledState));
                 Assert.That(GetIsDisposed(tracer.ParentState!), Is.True);
                 Assert.That(GetIsDisposed(tracer.IntermediateState!), Is.True);
                 Assert.That(GetIsDisposed(tracer.CancelledState!), Is.True);
