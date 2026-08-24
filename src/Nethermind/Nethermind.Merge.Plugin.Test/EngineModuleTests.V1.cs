@@ -661,6 +661,49 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task same_head_finalization_notifies_pos_switcher_and_blocks_terminal_replacement()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "1000001" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        PoSSwitcher poSSwitcher = chain.PoSSwitcher as PoSSwitcher
+            ?? throw new AssertionException("Expected the merge test chain to use PoSSwitcher.");
+        await chain.AddBlockThroughPoW();
+        Block terminalBlock = chain.BlockTree.Head!;
+        Block replacementTerminalBlock = Build.A.Block
+            .WithNumber(terminalBlock.Number)
+            .WithDifficulty(terminalBlock.Difficulty)
+            .WithTotalDifficulty(terminalBlock.TotalDifficulty)
+            .WithGasLimit(terminalBlock.GasLimit + 1)
+            .TestObject;
+        Hash256 terminalBlockHash = terminalBlock.Hash!;
+
+        Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+        Assert.That(replacementTerminalBlock.IsTerminalBlock(chain.SpecProvider), Is.True);
+
+        ExecutionPayload postMergeBlock = await SendNewBlockV1(rpc, chain);
+        ResultWrapper<ForkchoiceUpdatedV1Result> firstHeadUpdate = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(postMergeBlock.BlockHash, Keccak.Zero, terminalBlockHash));
+        Assert.That(firstHeadUpdate.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(poSSwitcher.TransitionFinished, Is.False);
+
+        bool? transitionFinishedWhenBlockTreeFinalized = null;
+        chain.BlockTree.BlocksFinalized += (_, _) => transitionFinishedWhenBlockTreeFinalized = poSSwitcher.TransitionFinished;
+        ForkchoiceStateV1 sameHeadFinalization = new(postMergeBlock.BlockHash, terminalBlockHash, terminalBlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(sameHeadFinalization);
+        bool replacementUpdated = poSSwitcher.TryUpdateTerminalBlock(replacementTerminalBlock.Header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(terminalBlockHash));
+            Assert.That(transitionFinishedWhenBlockTreeFinalized, Is.True);
+            Assert.That(poSSwitcher.TransitionFinished, Is.True);
+            Assert.That(replacementUpdated, Is.False);
+        }
+    }
+
+    [Test]
     public async Task forkchoiceUpdatedV1_should_update_safe_block_hash()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();

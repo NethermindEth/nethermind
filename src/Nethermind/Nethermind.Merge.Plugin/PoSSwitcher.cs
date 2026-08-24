@@ -43,11 +43,13 @@ namespace Nethermind.Merge.Plugin
         private readonly ISpecProvider _specProvider;
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
+        private readonly object _transitionLock = new();
         private Hash256? _terminalBlockHash;
 
         private ulong? _terminalBlockNumber;
         private ulong? _firstPoSBlockNumber;
-        private bool _hasEverReachedTerminalDifficulty;
+        private bool _hasLocalChainCrossedTerminalTotalDifficulty;
+        private bool _hasTerminalBlockMetadata;
         private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
@@ -79,37 +81,32 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            if (_terminalBlockNumber is not null || HasLocalChainCrossedTerminalTotalDifficulty())
-                _hasEverReachedTerminalDifficulty = true;
+            _hasTerminalBlockMetadata = _terminalBlockNumber is not null;
+            _hasLocalChainCrossedTerminalTotalDifficulty = HasLocalChainCrossedTerminalTotalDifficulty();
 
             if (_terminalBlockNumber is null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
-                _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
+                _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {HasEverReachedTerminalBlock()}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
         }
 
         private void LoadFinalTotalDifficulty()
         {
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
-            if (TerminalTotalDifficulty is null)
+            UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
+            if (terminalTotalDifficulty is null)
                 return;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (HasPostTerminalTotalDifficultyPivot(terminalTotalDifficulty.Value))
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
-            else
+            else if (HasPostTerminalTotalDifficultyGenesis(terminalTotalDifficulty.Value))
             {
-                if (_chainSpec?.Genesis is null) return;
-
-                UInt256 genesisDifficulty = _chainSpec.Genesis.Difficulty;
-                if (genesisDifficulty >= TerminalTotalDifficulty) // networks with the merge in genesis
-                {
-                    _finalTotalDifficulty = genesisDifficulty;
-                }
+                _finalTotalDifficulty = _chainSpec.Genesis.Difficulty;
             }
         }
 
@@ -129,17 +126,18 @@ namespace Nethermind.Merge.Plugin
             if (terminalTotalDifficulty is null)
                 return false;
 
-            // pivot post TTD, so the node syncs a post-merge chain segment
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= terminalTotalDifficulty)
-                return true;
-
-            // networks with the merge in genesis
-            if (_chainSpec?.Genesis is not null && _chainSpec.Genesis.Difficulty >= terminalTotalDifficulty)
+            if (HasPostTerminalTotalDifficultyPivot(terminalTotalDifficulty.Value) || HasPostTerminalTotalDifficultyGenesis(terminalTotalDifficulty.Value))
                 return true;
 
             // BestSuggestedHeader excludes beacon-inserted headers, so it reflects the locally synced chain
             return (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? _blockTree.Head?.Header.TotalDifficulty) >= terminalTotalDifficulty;
         }
+
+        private bool HasPostTerminalTotalDifficultyPivot(UInt256 terminalTotalDifficulty) =>
+            _syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= terminalTotalDifficulty;
+
+        private bool HasPostTerminalTotalDifficultyGenesis(UInt256 terminalTotalDifficulty) =>
+            _chainSpec?.Genesis is not null && _chainSpec.Genesis.Difficulty >= terminalTotalDifficulty;
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
@@ -147,29 +145,36 @@ namespace Nethermind.Merge.Plugin
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
-            // Config-known FinalTotalDifficulty must not block recording the locally observed terminal block,
-            // so this checks the finalized hash (EIP-3675 step 3) rather than TransitionFinished.
-            if (_terminalBlockExplicitSpecified || _finalizedBlockHash != Keccak.Zero || !header.IsTerminalBlock(_specProvider))
+            bool shouldNotifyTerminalBlockReached;
+            lock (_transitionLock)
             {
-                return false;
+                // Config-known FinalTotalDifficulty must not block recording the locally observed terminal block,
+                // so this checks the finalized hash (EIP-3675 step 3) rather than TransitionFinished.
+                if (_terminalBlockExplicitSpecified || _finalizedBlockHash != Keccak.Zero || IsPostMergeGenesis(header) || !header.IsTerminalBlock(_specProvider))
+                {
+                    return false;
+                }
+
+                _terminalBlockNumber = header.Number;
+                _terminalBlockHash = header.Hash;
+                _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
+                _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
+                _firstPoSBlockNumber = header.Number + 1;
+                _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
+
+                _hasLocalChainCrossedTerminalTotalDifficulty = true;
+                shouldNotifyTerminalBlockReached = !_hasTerminalBlockMetadata;
+                _hasTerminalBlockMetadata = true;
             }
 
-            _terminalBlockNumber = header.Number;
-            _terminalBlockHash = header.Hash;
-            _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
-            _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
-            _firstPoSBlockNumber = header.Number + 1;
-            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
-
-            if (!_hasEverReachedTerminalDifficulty)
+            if (shouldNotifyTerminalBlockReached)
             {
                 TerminalBlockReached?.Invoke(this, EventArgs.Empty);
-                _hasEverReachedTerminalDifficulty = true;
                 if (_logger.IsInfo) _logger.Info($"Reached terminal block {header}");
             }
-            else
+            else if (_logger.IsInfo)
             {
-                if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+                _logger.Info($"Updated terminal block {header}");
             }
 
             return true;
@@ -177,18 +182,35 @@ namespace Nethermind.Merge.Plugin
 
         public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash)
         {
+            bool unsubscribeFromNewHeadBlock = false;
             if (finalizedHash != Keccak.Zero)
             {
-                if (_finalizedBlockHash == Keccak.Zero)
+                lock (_transitionLock)
                 {
-                    _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
-                }
+                    if (_finalizedBlockHash == Keccak.Zero)
+                    {
+                        unsubscribeFromNewHeadBlock = true;
+                    }
 
-                _finalizedBlockHash = finalizedHash;
+                    _finalizedBlockHash = finalizedHash;
+                }
             }
+
+            if (unsubscribeFromNewHeadBlock)
+                _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Keccak.Zero;
+        public bool TransitionFinished
+        {
+            get
+            {
+                if (FinalTotalDifficulty is not null)
+                    return true;
+
+                lock (_transitionLock)
+                    return _finalizedBlockHash != Keccak.Zero;
+            }
+        }
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
@@ -253,12 +275,22 @@ namespace Nethermind.Merge.Plugin
         private bool IsPostMergeGenesis(BlockHeader header) =>
             header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
-        // Re-evaluates local evidence so a crossing is detected even when TryUpdateTerminalBlock never ran
-        // (e.g. a CL-driven crossing on a DB that predates terminal-block persistence). The field itself is
-        // only set in Initialize and TryUpdateTerminalBlock, which keeps the TerminalBlockReached event
-        // firing exactly once at a live crossing.
-        public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty || HasLocalChainCrossedTerminalTotalDifficulty();
+        /// <summary>
+        /// Returns whether this switcher has observed local TTD evidence or concrete terminal PoW metadata.
+        /// </summary>
+        public bool HasEverReachedTerminalBlock()
+        {
+            bool hasLocalChainCrossedTerminalTotalDifficulty = HasLocalChainCrossedTerminalTotalDifficulty();
+            lock (_transitionLock)
+            {
+                _hasLocalChainCrossedTerminalTotalDifficulty |= hasLocalChainCrossedTerminalTotalDifficulty;
+                return _hasLocalChainCrossedTerminalTotalDifficulty || _hasTerminalBlockMetadata;
+            }
+        }
 
+        /// <summary>
+        /// Raised once, outside the transition lock, when this process first records concrete terminal PoW metadata.
+        /// </summary>
         public event EventHandler? TerminalBlockReached;
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;

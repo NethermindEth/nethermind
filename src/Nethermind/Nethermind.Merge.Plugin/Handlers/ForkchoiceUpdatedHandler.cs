@@ -277,10 +277,10 @@ public class ForkchoiceUpdatedHandler(
 
         if (shouldUpdateHead)
         {
-            _poSSwitcher.ForkchoiceUpdated(newHeadHeader, finalizedBlockHash);
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadHeader.ToString(BlockHeader.Format.Short)}");
         }
 
+        _poSSwitcher.ForkchoiceUpdated(newHeadHeader, finalizedBlockHash);
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
     }

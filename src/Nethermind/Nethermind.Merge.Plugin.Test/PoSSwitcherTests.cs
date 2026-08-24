@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -247,33 +252,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public void Can_load_parameters_after_the_restart()
-        {
-            using MemDb metadataDb = new();
-            ulong terminalBlock = 4;
-            TestSpecProvider specProvider = new(London.Instance);
-            specProvider.TerminalTotalDifficulty = 5000000;
-            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
-
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
-            Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
-            blockTree.SuggestBlock(block);
-            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
-            Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock + 1));
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
-
-            TestSpecProvider newSpecProvider = new(London.Instance);
-            newSpecProvider.TerminalTotalDifficulty = 5000000L;
-            // we're using the same MemDb for a new switcher
-            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(blockTree, metadataDb, newSpecProvider);
-
-            Assert.That(newSpecProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock + 1));
-            Assert.That(newPoSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
-        }
-
-        [Test]
         public void Final_total_difficulty_from_config_does_not_mark_terminal_block_as_reached()
         {
             TestSpecProvider specProvider = new(London.Instance);
@@ -316,8 +294,27 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(5));
             }
 
-            PoSSwitcher restarted = new(mergeConfig, new SyncConfig(), metadataDb, blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
-            Assert.That(restarted.HasEverReachedTerminalBlock(), Is.True);
+            IBlockTree restartedBlockTree = Substitute.For<IBlockTree>();
+            restartedBlockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(0).Header);
+            TestSpecProvider restartedSpecProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000L };
+            PoSSwitcher restarted = new(mergeConfig, new SyncConfig(), metadataDb, restartedBlockTree, restartedSpecProvider, new ChainSpec(), LimboLogs.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MatchesTerminalBlock(ReadTerminalMetadata(metadataDb), terminalBlock), Is.True);
+                Assert.That(restartedSpecProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(5));
+                Assert.That(restarted.HasEverReachedTerminalBlock(), Is.True);
+            }
+
+            int restartedTerminalBlockReachedCount = 0;
+            restarted.TerminalBlockReached += (_, _) => restartedTerminalBlockReachedCount++;
+            bool restoredTerminalBlockUpdated = restarted.TryUpdateTerminalBlock(terminalBlock.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restoredTerminalBlockUpdated, Is.True);
+                Assert.That(restartedTerminalBlockReachedCount, Is.Zero);
+            }
         }
 
         [Test]
@@ -331,6 +328,165 @@ namespace Nethermind.Merge.Plugin.Test
             PoSSwitcher poSSwitcher = new(mergeConfig, new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
 
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+        }
+
+        [Test]
+        public void Local_ttd_evidence_at_initialization_does_not_suppress_terminal_block_notification()
+        {
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.BestSuggestedHeader.Returns(CreateTerminalBlock(4).Header);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
+            int terminalBlockReachedCount = 0;
+            poSSwitcher.TerminalBlockReached += (_, _) => terminalBlockReachedCount++;
+
+            bool updated = poSSwitcher.TryUpdateTerminalBlock(CreateTerminalBlock(5).Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+                Assert.That(updated, Is.True);
+                Assert.That(terminalBlockReachedCount, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void Best_suggested_header_regression_does_not_clear_local_ttd_evidence()
+        {
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+
+            blockTree.BestSuggestedHeader.Returns(CreateTerminalBlock(4).Header);
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+
+            blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+        }
+
+        [Test]
+        public void Post_merge_genesis_is_not_persisted_as_terminal_pow()
+        {
+            using MemDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.UpdateMergeTransitionInfo(0, 0);
+            ChainSpec chainSpec = new() { Parameters = new ChainParameters { TerminalTotalDifficulty = 0 } };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), metadataDb, Substitute.For<IBlockTree>(), specProvider, chainSpec, LimboLogs.Instance);
+            int terminalBlockReachedCount = 0;
+            poSSwitcher.TerminalBlockReached += (_, _) => terminalBlockReachedCount++;
+            Block genesis = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+
+            bool updated = poSSwitcher.TryUpdateTerminalBlock(genesis.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updated, Is.False);
+                Assert.That(terminalBlockReachedCount, Is.Zero);
+                Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber), Is.False);
+                Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWHash), Is.False);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.Zero);
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Concurrent_terminal_candidates_serialize_metadata_writes_and_raise_one_notification(CancellationToken cancellationToken)
+        {
+            using BlockingTerminalMetadataDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), metadataDb, Substitute.For<IBlockTree>(), specProvider, new ChainSpec(), LimboLogs.Instance);
+            Block firstTerminalBlock = CreateTerminalBlock(4);
+            Block secondTerminalBlock = CreateTerminalBlock(5);
+            int terminalBlockReachedCount = 0;
+            poSSwitcher.TerminalBlockReached += (_, _) => Interlocked.Increment(ref terminalBlockReachedCount);
+
+            Task<bool> firstUpdate = Task.Run(() => poSSwitcher.TryUpdateTerminalBlock(firstTerminalBlock.Header));
+            TaskCompletionSource competingCandidateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> secondUpdateCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Thread secondUpdateThread;
+            try
+            {
+                await metadataDb.FirstTerminalNumberWrite.WaitAsync(cancellationToken);
+
+                secondUpdateThread = StartOperation(
+                    () => poSSwitcher.TryUpdateTerminalBlock(secondTerminalBlock.Header),
+                    competingCandidateStarted,
+                    secondUpdateCompletion);
+                await competingCandidateStarted.Task.WaitAsync(cancellationToken);
+                await AssertOperationBlocksWhileTerminalMetadataWriteIsPaused(secondUpdateThread, secondUpdateCompletion.Task, cancellationToken);
+            }
+            finally
+            {
+                metadataDb.ReleaseFirstTerminalNumberWrite();
+            }
+
+            bool firstUpdateResult = await firstUpdate.WaitAsync(cancellationToken);
+            bool secondUpdateResult = await secondUpdateCompletion.Task.WaitAsync(cancellationToken);
+
+            (ulong Number, Hash256? Hash) persistedTerminalMetadata = ReadTerminalMetadata(metadataDb);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstUpdateResult, Is.True);
+                Assert.That(secondUpdateResult, Is.True);
+                Assert.That(terminalBlockReachedCount, Is.EqualTo(1));
+                Assert.That(MatchesTerminalBlock(persistedTerminalMetadata, secondTerminalBlock), Is.True);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(persistedTerminalMetadata.Number + 1));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Terminal_update_and_finalization_are_serialized(CancellationToken cancellationToken)
+        {
+            using BlockingTerminalMetadataDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), metadataDb, Substitute.For<IBlockTree>(), specProvider, new ChainSpec(), LimboLogs.Instance);
+            Block terminalBlock = CreateTerminalBlock(4);
+            Block replacementTerminalBlock = CreateTerminalBlock(5);
+
+            Task<bool> terminalUpdate = Task.Run(() => poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header));
+            TaskCompletionSource finalizationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> finalizationCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Thread finalizationThread;
+            try
+            {
+                await metadataDb.FirstTerminalNumberWrite.WaitAsync(cancellationToken);
+
+                finalizationThread = StartOperation(
+                    () =>
+                    {
+                        poSSwitcher.ForkchoiceUpdated(terminalBlock.Header, TestItem.KeccakA);
+                        return true;
+                    },
+                    finalizationStarted,
+                    finalizationCompletion);
+                await finalizationStarted.Task.WaitAsync(cancellationToken);
+                await AssertOperationBlocksWhileTerminalMetadataWriteIsPaused(finalizationThread, finalizationCompletion.Task, cancellationToken);
+
+                Assert.That(finalizationCompletion.Task.IsCompleted, Is.False);
+            }
+            finally
+            {
+                metadataDb.ReleaseFirstTerminalNumberWrite();
+            }
+
+            bool terminalUpdated = await terminalUpdate.WaitAsync(cancellationToken);
+            await finalizationCompletion.Task.WaitAsync(cancellationToken);
+            int terminalMetadataWriteCountBeforeReplacement = metadataDb.TerminalMetadataWriteCount;
+            bool replacementUpdated = poSSwitcher.TryUpdateTerminalBlock(replacementTerminalBlock.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(terminalUpdated, Is.True);
+                Assert.That(poSSwitcher.TransitionFinished, Is.True);
+                Assert.That(replacementUpdated, Is.False);
+                Assert.That(metadataDb.TerminalMetadataWriteCount, Is.EqualTo(terminalMetadataWriteCountBeforeReplacement));
+                Assert.That(MatchesTerminalBlock(ReadTerminalMetadata(metadataDb), terminalBlock), Is.True);
+            }
         }
 
         [TestCase(0, 1, true)]
@@ -390,6 +546,95 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(poSSwitcher.FinalTotalDifficulty, Is.Null);
         }
 
+        private static Block CreatePreTerminalBlock(ulong number) =>
+            Build.A.Block.WithNumber(number).WithTotalDifficulty(4000000L).WithDifficulty(1000000L).TestObject;
+
+        private static Block CreateTerminalBlock(ulong number) =>
+            Build.A.Block.WithNumber(number).WithTotalDifficulty(5000000L).WithDifficulty(1000000L).TestObject;
+
+        private static (ulong Number, Hash256? Hash) ReadTerminalMetadata(IDb metadataDb)
+        {
+            RlpReader persistedNumberReader = new(metadataDb.Get(MetadataDbKeys.TerminalPoWNumber));
+            RlpReader persistedHashReader = new(metadataDb.Get(MetadataDbKeys.TerminalPoWHash));
+            return (persistedNumberReader.DecodeULong(), persistedHashReader.DecodeKeccak());
+        }
+
+        private static bool MatchesTerminalBlock((ulong Number, Hash256? Hash) terminalMetadata, Block block) =>
+            terminalMetadata.Number == block.Header.Number && terminalMetadata.Hash == block.Header.Hash;
+
+        private static Thread StartOperation(
+            Func<bool> operation,
+            TaskCompletionSource operationStarted,
+            TaskCompletionSource<bool> operationCompletion)
+        {
+            Thread operationThread = new(() =>
+            {
+                operationStarted.TrySetResult();
+                try
+                {
+                    operationCompletion.TrySetResult(operation());
+                }
+                catch (Exception exception)
+                {
+                    operationCompletion.TrySetException(exception);
+                }
+            }) { IsBackground = true };
+            operationThread.Start();
+            return operationThread;
+        }
+
+        private static async Task AssertOperationBlocksWhileTerminalMetadataWriteIsPaused(
+            Thread operationThread,
+            Task operationCompletion,
+            CancellationToken cancellationToken)
+        {
+            while ((operationThread.ThreadState & ThreadState.WaitSleepJoin) == 0)
+            {
+                if (operationCompletion.IsCompleted)
+                {
+                    await operationCompletion;
+                    Assert.Fail("Operation completed while the terminal metadata write was paused.");
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+            }
+        }
+
+        private sealed class BlockingTerminalMetadataDb : MemDb
+        {
+            private readonly TaskCompletionSource _firstTerminalNumberWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly TaskCompletionSource _releaseFirstTerminalNumberWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _terminalMetadataWriteCount;
+            private int _terminalNumberWriteCount;
+
+            public Task FirstTerminalNumberWrite => _firstTerminalNumberWrite.Task;
+
+            public int TerminalMetadataWriteCount => Volatile.Read(ref _terminalMetadataWriteCount);
+
+            public void ReleaseFirstTerminalNumberWrite() => _releaseFirstTerminalNumberWrite.TrySetResult();
+
+            public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                if (IsTerminalMetadataKey(key))
+                {
+                    Interlocked.Increment(ref _terminalMetadataWriteCount);
+                    if (IsTerminalNumberKey(key) && Interlocked.CompareExchange(ref _terminalNumberWriteCount, 1, 0) == 0)
+                    {
+                        _firstTerminalNumberWrite.TrySetResult();
+                        _releaseFirstTerminalNumberWrite.Task.GetAwaiter().GetResult();
+                    }
+                }
+
+                base.Set(key, value, flags);
+            }
+
+            private static bool IsTerminalMetadataKey(ReadOnlySpan<byte> key) =>
+                IsTerminalNumberKey(key) || key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWHash;
+
+            private static bool IsTerminalNumberKey(ReadOnlySpan<byte> key) =>
+                key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWNumber;
+        }
 
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
         {
