@@ -18,7 +18,8 @@ public static class PredeployInstaller
 
     private static readonly Predeploy[] Predeploys =
     [
-        // EIP-8141 mandates the runtime code only; the account's other fields survive activation untouched.
+        // EIP-8141 mandates the runtime code only, leaving the account's other fields; installing at the fork
+        // is a stop-gap, and deploying it like the other system contracts later would give it a nonce.
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, null, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
         new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true),

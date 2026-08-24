@@ -11,9 +11,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-/// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures,
-/// max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas, blob_versioned_hashes]</c>, with EIP-8250's
-/// <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 reference list.</summary>
+/// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
+/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
+/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
