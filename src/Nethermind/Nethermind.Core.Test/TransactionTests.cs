@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -87,15 +86,21 @@ public class TransactionTests
     }
 
     // The compensating invariant for SupportsBlobs being type-3-only: a blob-carrying frame tx must
-    // still be recognised as carrying blobs, or it would bypass every blob path in the node.
+    // still be recognised as carrying blobs, or it would slip past the node's blob paths.
     [TestCase(0, false)]
     [TestCase(2, true)]
     public void FrameTx_CarriesBlobs_TracksBlobPresenceNotType(int blobCount, bool expected)
     {
+        byte[]?[] blobVersionedHashes = new byte[blobCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            blobVersionedHashes[i] = new byte[32];
+        }
+
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
-            BlobVersionedHashes = Enumerable.Range(0, blobCount).Select(static _ => new byte[32]).ToArray()
+            BlobVersionedHashes = blobVersionedHashes
         };
 
         using (Assert.EnterMultipleScope())
