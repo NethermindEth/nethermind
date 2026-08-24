@@ -2504,6 +2504,59 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_retry_submitted_transaction_after_ambiguous_cell_quarantine()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        ITimestamper timestamper = Substitute.For<ITimestamper>();
+        timestamper.UtcNowOffset.Returns(_ => now);
+        using SparseBlobPoolPeerRegistry registry = new(
+            _transactionPool,
+            new BlobCustodyTracker(),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            maxAdmissionDelay: TimeSpan.Zero,
+            timestamper: timestamper);
+        TestSparseBlobPeer submittingPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer[] invalidPeers =
+        [
+            new(TestItem.PublicKeyA),
+            submittingPeer,
+            new(TestItem.PublicKeyD)
+        ];
+        TestSparseBlobPeer retryPeer = new(TestItem.PublicKeyB);
+        _transactionPool.ValidateTxForBlobSampling(tx).Returns(AcceptTxResult.Accepted);
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+        _transactionPool.TryGetPendingBlobCellMask(tx.Hash!, out Arg.Any<BlobCellMask>())
+            .Returns(call =>
+            {
+                call[1] = cellMask;
+                return true;
+            });
+
+        registry.AddPeer(submittingPeer);
+        Assert.That(registry.RecordTransaction(submittingPeer, tx), Is.Null);
+        Assert.That(registry.RecordCells(submittingPeer, tx.Hash!, cellMask, cells), Is.True);
+        _transactionPool.MergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>())
+            .Returns(BlobCellMergeResult.InvalidCells);
+
+        for (int i = 0; i < invalidPeers.Length; i++)
+        {
+            registry.AddPeer(invalidPeers[i]);
+            Assert.That(registry.RecordCells(invalidPeers[i], tx.Hash!, cellMask, cells), Is.True);
+            Assert.That(registry.TryApplyRecordedCells(tx.Hash!), Is.False);
+        }
+
+        registry.AddPeer(retryPeer);
+        Assert.That(registry.RecordAnnouncement(retryPeer, tx.Hash!, cellMask), Is.False);
+
+        now += TimeSpan.FromMinutes(5);
+
+        Assert.That(registry.RecordAnnouncement(retryPeer, tx.Hash!, cellMask), Is.True);
+        Assert.That(registry.RecordCells(retryPeer, tx.Hash!, cellMask, cells), Is.True);
+    }
+
+    [Test]
     public void should_apply_cells_if_tx_becomes_pending_while_cells_are_buffered()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: true);

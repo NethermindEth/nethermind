@@ -50,6 +50,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private static readonly TimeSpan EarlyCellsTtl = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan TrackedStateTtl = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaxTrackedStateLifetime = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AmbiguousCellValidationQuarantine = TimeSpan.FromMinutes(5);
     private static readonly PublicKey NoLastResortPeer = new(new byte[PublicKey.LengthInBytes]);
 
     private readonly ITxPool _txPool;
@@ -1816,11 +1817,32 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             state.AmbiguousCellValidationFailures++;
         }
 
-        return state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
+        bool quarantined = state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
+        if (quarantined)
+        {
+            state.CellValidationQuarantinedUntil = _timestamper.UtcNowOffset + AmbiguousCellValidationQuarantine;
+        }
+
+        return quarantined;
     }
 
-    private static bool IsCellValidationQuarantined(TrackedSparseBlobTx state) =>
-        state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
+    private bool IsCellValidationQuarantined(TrackedSparseBlobTx state)
+    {
+        if (state.AmbiguousCellValidationFailures < MaxAmbiguousValidationFailures)
+        {
+            return false;
+        }
+
+        if (_timestamper.UtcNowOffset < state.CellValidationQuarantinedUntil)
+        {
+            return true;
+        }
+
+        state.AmbiguousCellValidationFailures = 0;
+        state.CellValidationQuarantinedUntil = default;
+        state.AmbiguousFailureSources.Clear();
+        return false;
+    }
 
     private void OnMaintenanceElapsed(object? sender, EventArgs eventArgs)
     {
@@ -2574,6 +2596,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public DateTimeOffset MaxExpiresAt { get; } = createdAt + MaxTrackedStateLifetime;
         public DateTimeOffset ExpiresAt { get; set; } = createdAt + TrackedStateTtl;
         public DateTimeOffset CellsExpiresAt { get; set; }
+        public DateTimeOffset CellValidationQuarantinedUntil { get; set; }
         public Dictionary<PublicKey, BlobCellMask> Announcements { get; } = [];
         public HashSet<PublicKey> AmbiguousFailureSources { get; } = [];
         public Dictionary<PublicKey, BlobCellMask> InFlightByPeer { get; } = [];
