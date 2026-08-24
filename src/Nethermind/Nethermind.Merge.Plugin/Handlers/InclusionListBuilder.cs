@@ -36,8 +36,13 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         using ArrayPoolListRef<Transaction[]> senders = new(capacity);
         int seen = 0;
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
         {
+            // Dropped before sampling, not at encode time, so an unenforceable tx never takes a slot a
+            // Profile 1 one could have used and leaves the list short.
+            Transaction[] bySender = WithoutFrameTxs(pending);
+            if (bySender.Length == 0) continue;
+
             if (senders.Count < capacity)
             {
                 senders.Add(bySender);
@@ -77,6 +82,28 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             }
             if (!advanced) return sample;
         }
+    }
+
+    /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
+    /// <remarks>
+    /// EIP-8369 classifies a frame transaction as Profile 2, whose omission an inclusion-list check cannot
+    /// judge until the bounded validation replay lands, so listing one buys no censorship resistance while
+    /// still spending the byte cap. Removing them also keeps the gapless-run test below meaningful: an
+    /// EIP-8250 keyed nonce shares <see cref="Transaction.Nonce"/> with account nonces but counts in a
+    /// separate per-key sequence, so one left in the run would break the offset for every tx behind it.
+    /// </remarks>
+    private static Transaction[] WithoutFrameTxs(Transaction[] bySender)
+    {
+        int kept = 0;
+        foreach (Transaction tx in bySender)
+            if (!tx.SupportsFrames) kept++;
+        if (kept == bySender.Length) return bySender;
+
+        Transaction[] result = new Transaction[kept];
+        int j = 0;
+        foreach (Transaction tx in bySender)
+            if (!tx.SupportsFrames) result[j++] = tx;
+        return result;
     }
 
     /// <summary>The base fee the next block will charge.</summary>

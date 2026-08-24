@@ -105,6 +105,40 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
+    // EIP-8369: an EIP-8141 frame transaction is a Profile 2 candidate, whose appendability turns on the
+    // validation-operand state surface (EIP-8250 keyed nonces, EIP-8272 recent roots, a bounded validation
+    // replay) that this validator does not reconstruct. Judging it by the Profile 1 rules would read the
+    // account nonce it does not use and report an honest payload as censoring. The well-formedness
+    // assertion keeps the case honest: without it the entry could be passing for being malformed.
+    [Test]
+    public void Omitted_frame_transaction_is_not_judged()
+    {
+        Transaction frameTx = BuildFrameTx();
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithTransactions([])
+            .WithInclusionListTransactions([frameTx])
+            .TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+    }
+
+    private static Transaction BuildFrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = TestBlockchainIds.ChainId,
+        SenderAddress = TestItem.AddressA,
+        Nonce = 0,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasLimit = 100_000,
+        GasPrice = 1.GWei,
+        DecodedMaxFeePerGas = 10.GWei,
+    };
+
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
     {

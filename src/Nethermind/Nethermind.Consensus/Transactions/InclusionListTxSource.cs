@@ -84,15 +84,22 @@ public class InclusionListTxSource(
     {
         int kept = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) kept++;
+            if (!IsBlobCarrying(txs[i])) kept++;
         if (kept == txs.Length) return txs;
 
         Transaction[] result = new Transaction[kept];
         int j = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) result[j++] = txs[i];
+            if (!IsBlobCarrying(txs[i])) result[j++] = txs[i];
         return result;
     }
+
+    /// <remarks>
+    /// An inclusion list is decoded from the canonical form, where the blob hashes are all that marks an
+    /// EIP-8141 blob-carrying frame transaction, so the type-3-only <see cref="Transaction.SupportsBlobs"/>
+    /// does not cover it on its own.
+    /// </remarks>
+    private static bool IsBlobCarrying(Transaction tx) => tx.SupportsBlobs || tx.CarriesBlobs;
 
     public bool SupportsBlobs => false;
 }

@@ -96,6 +96,35 @@ public class InclusionListBuilderTests
         pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
     }
 
+    // EIP-8369 classifies a frame transaction as Profile 2, whose omission the inclusion-list check does
+    // not judge, so listing one spends the byte cap on an entry that buys no censorship resistance. Its
+    // EIP-8250 keyed nonce also counts in a per-key sequence rather than the account's, so one left in the
+    // run breaks the gapless-offset test for every transaction behind it — hence both assertions.
+    [Test]
+    public void Frame_transactions_are_kept_out_and_do_not_break_the_sender_run()
+    {
+        Transaction frameTx = FrameTx(TestItem.AddressA, nonce: 0);
+        Transaction nonce0 = TxOfSize(50, 0);
+        Transaction nonce1 = TxOfSize(50, 1);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(frameTx, nonce0, nonce1)).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
+    }
+
+    private static Transaction FrameTx(Address sender, ulong nonce) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = TestBlockchainIds.ChainId,
+        SenderAddress = sender,
+        Nonce = nonce,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasLimit = 100_000,
+        GasPrice = 1,
+        DecodedMaxFeePerGas = 10,
+    };
+
     // A later nonce only becomes appendable once the block includes the earlier one, so a gap ends the run.
     [Test]
     public void Stops_a_sender_run_at_a_nonce_gap()

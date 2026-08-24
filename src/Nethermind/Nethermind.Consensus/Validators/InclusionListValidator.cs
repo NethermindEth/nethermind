@@ -67,7 +67,14 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
+            if (included[i]) continue;
+            // EIP-8369: only a Profile 1 entry's omission is judged here. A frame transaction is Profile 2,
+            // whose appendability turns on the validation-operand state surface — EIP-8250 keyed nonces,
+            // EIP-8272 recent roots, a bounded validation replay at a builder-claimed index — that EIP-8369
+            // leaves to a future extension of EIP-7805. Reading one through the Profile 1 rules below would
+            // judge it on the account nonce it does not use and report an honest payload as censoring.
+            if (il[i].SupportsFrames) continue;
+            if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
