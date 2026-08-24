@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Config;
@@ -15,8 +14,12 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Logging;
+
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Evm.State;
 
 /// <summary>
@@ -38,8 +41,14 @@ public sealed class PrecompileCaches
     /// <summary> Key+output bytes above which a result is not worth a slot in the surviving tier. </summary>
     private const int MaxSurvivingEntryBytes = 2048;
 
-    /// <summary> Initial capacity for every precompile cache partition. </summary>
-    private const int PartitionInitialCapacity = 1024;
+    /// <summary> Per-partition budget below which caching holds too few results to be enabled. </summary>
+    private const int MinUsefulPartitionBytes = 64 * 1024;
+
+    /// <summary> Entry count above which a partition grows on demand instead of being sized upfront. </summary>
+    private const int MaxPartitionCapacity = 32 * 1024;
+
+    /// <summary> Total budget above which the operator is warned that the cache may not fit the node. </summary>
+    private const long ImplausibleTotalBytes = 1024L * 1024 * 1024;
 
     // Metric label values
     private const string ProbeBlockHit = "block_hit";
@@ -60,14 +69,15 @@ public sealed class PrecompileCaches
     private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
 
     // ReSharper disable once UnusedMember.Global - used by DI
-    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig)
-        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L) { }
+    /// <summary> Caches the results of every precompile from <paramref name="precompileProvider"/> that supports caching. </summary>
+    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig, ILogManager? logManager = null)
+        : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L, logManager) { }
 
     /// <summary> Byte-exact budget, bypassing <see cref="IBlocksConfig.PrecompileCacheMaxKilobytes"/>. </summary>
-    public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes)
-        : this(maxBytes > 0 ? CacheablePrecompiles(precompileProvider) : [], config, maxBytes) { }
+    internal PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
+        : this(maxBytes > 0 ? CacheablePrecompiles(precompileProvider) : [], config, maxBytes, logManager) { }
 
-    private PrecompileCaches(List<(AddressAsKey Address, string Name)> precompiles, PreBlockCachesConfig config, long maxBytes)
+    private PrecompileCaches(List<(AddressAsKey Address, string Name)> precompiles, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
     {
         // equal shares per precompile for now
         long partitionSize = precompiles.Count == 0 ? 0 : maxBytes / precompiles.Count;
@@ -80,17 +90,63 @@ public sealed class PrecompileCaches
         );
 
         Metrics.PrecompileCachePartitionMaxBytes = precompiles.Count == 0 ? 0 : partitionSize;
+
+        LogCacheBudget(precompiles.Count, partitionSize, maxBytes, logManager);
+    }
+
+    private static void LogCacheBudget(int partitionCount, long partitionSize, long maxBytes, ILogManager? logManager)
+    {
+        ILogger logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PrecompileCaches>();
+
+        if (partitionCount == 0)
+        {
+            if (logger.IsTrace) logger.Trace("Precompile result caching is disabled.");
+        }
+        else if (partitionSize < MinUsefulPartitionBytes)
+        {
+            if (logger.IsWarn)
+            {
+                logger.Warn($"Precompile result caching is effectively off: the budget leaves {partitionSize / 1024} KB per precompile. "
+                    + $"Raise {nameof(IBlocksConfig.PrecompileCacheMaxKilobytes)}, or set it to -1 to disable caching explicitly.");
+            }
+        }
+        else if (maxBytes >= ImplausibleTotalBytes)
+        {
+            if (logger.IsWarn)
+            {
+                logger.Warn($"Precompile result cache may grow to {maxBytes / (1024 * 1024)} MB, {partitionSize / (1024 * 1024)} MB for each of "
+                    + $"{partitionCount} precompiles. Check that it fits the memory budget of this node.");
+            }
+        }
+        else if (logger.IsTrace)
+        {
+            logger.Trace($"Precompile result cache: {partitionSize / 1024} KB for each of {partitionCount} precompiles.");
+        }
     }
 
     /// <summary> Entries held by the surviving tier, across every precompile. </summary>
-    public int SurvivingCacheCount => _survivingCache.Count;
+    internal int SurvivingCacheCount => _survivingCache.Count;
 
     /// <summary> The per-block partition for <paramref name="address"/>, or <c>false</c> if it is not cached. </summary>
     public bool TryGetPartition(Address address, [NotNullWhen(true)] out Partition? partition) =>
         _partitions.TryGetValue(address, out partition);
 
     /// <summary> Total per-block entries across every partition. </summary>
-    public int BlockCacheCount => _partitions.Sum(static partition => partition.Value.Count);
+    /// <remarks>
+    /// Property is for tests only unless optimized - counting on <see cref="ConcurrentDictionary{TKey,TValue}"/>
+    /// takes all locks inside, stopping any new admissions.
+    /// </remarks>
+    internal int BlockCacheCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
+                count += partition.Value.Count;
+
+            return count;
+        }
+    }
 
     /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
     public void ClearBlockCache()
@@ -104,17 +160,29 @@ public sealed class PrecompileCaches
         }
     }
 
-    private static List<(AddressAsKey Address, string Name)> CacheablePrecompiles(IPrecompileProvider precompileProvider) =>
-    [
-        .. precompileProvider.GetPrecompiles()
-            .Where(static precompile => precompile.Value.Precompile?.SupportsCaching == true)
-            .Select(static precompile => (Address: precompile.Key, Name: precompile.Value.Precompile!.Name))
-    ];
+    private static List<(AddressAsKey Address, string Name)> CacheablePrecompiles(IPrecompileProvider precompileProvider)
+    {
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = precompileProvider.GetPrecompiles();
+
+        List<(AddressAsKey Address, string Name)> cacheable = new(precompiles.Count);
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> precompile in precompiles)
+        {
+            if (precompile.Value.Precompile?.SupportsCaching == true)
+                cacheable.Add((precompile.Key, precompile.Value.Precompile.Name));
+        }
+
+        return cacheable;
+    }
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
+    /// <remarks>
+    /// Admission stops at the limit instead of evicting: the worst case is that caching stops helping for the
+    /// rest of the block, which is the behaviour of not caching at all.
+    /// </remarks>
     public sealed class Partition
     {
-        private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries = new(CollectionExtensions.LockPartitions, PartitionInitialCapacity);
+        private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries;
+
         private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
         private readonly string _name;
 
@@ -131,17 +199,28 @@ public sealed class PrecompileCaches
         private long _rejectedDuplicate;
         private long _tooLarge;
 
-        public long MaxBytes { get; }
-        public long UsedBytes => Volatile.Read(ref _bytes);
         internal int Count => _entries.Count;
+
+        internal long MaxBytes { get; }
+
+        /// <summary> Bytes reserved for this partition. </summary>
+        /// <remarks>
+        /// Admission reserves before it checks, so this may read above <see cref="MaxBytes"/> while an over-the-limit entry is being processed.
+        /// </remarks>
+        internal long UsedBytes => Volatile.Read(ref _bytes);
 
         internal Partition(string name, long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
         {
+            // prefer partition to never resize - resizing takes locks on the whole dictionary
+            int maxEntries = (int)Math.Min(maxBytes / EntryOverheadBytes, MaxPartitionCapacity);
+
+            _entries = new ConcurrentDictionary<Key, Result<byte[]>>(CollectionExtensions.LockPartitions, maxEntries);
             _name = name;
             MaxBytes = maxBytes;
             _survivingCache = survivingCache;
         }
 
+        /// <summary> Looks <paramref name="key"/> up in this partition, then in the surviving tier. </summary>
         public bool TryGet(in Key key, out Result<byte[]> result)
         {
             if (_entries.TryGetValue(key, out result))
@@ -161,7 +240,8 @@ public sealed class PrecompileCaches
         }
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
-        public void TryAdd(in Key key, Result<byte[]> result)
+        /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
+        public bool TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
@@ -170,23 +250,21 @@ public sealed class PrecompileCaches
             {
                 Interlocked.Add(ref _bytes, -reservation);
                 Record(ref _rejectedFull);
-                return;
+                return false;
             }
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
-            if (_entries.TryAdd(copiedKey, result))
-            {
-                Record(ref _admitted);
-            }
-            else
+            if (!_entries.TryAdd(copiedKey, result))
             {
                 // another thread computed the same result concurrently - this copy is redundant
                 Interlocked.Add(ref _bytes, -reservation);
                 Record(ref _rejectedDuplicate);
+                return false;
             }
 
+            Record(ref _admitted);
             if (entryBytes <= MaxSurvivingEntryBytes)
             {
                 _survivingCache.Set(copiedKey, result);
@@ -196,6 +274,8 @@ public sealed class PrecompileCaches
             {
                 Record(ref _tooLarge);
             }
+
+            return true;
         }
 
         internal void Clear()
@@ -229,6 +309,7 @@ public sealed class PrecompileCaches
         }
     }
 
+    /// <summary> Key combining precompile address, its effective input, and the fork it ran under. </summary>
     public readonly struct Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<Key>
     {
         // Surviving tier is shared and needs a discriminator
@@ -240,7 +321,7 @@ public sealed class PrecompileCaches
         internal int DataLength => Data.Length;
 
         /// <summary> Creates a copy that owns its data. </summary>
-        public Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
+        internal Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
 
         public bool Equals(Key other) => ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is Key other && Equals(other);

@@ -59,9 +59,9 @@ namespace Nethermind.Config
 
         public PreWarmMode PreWarming { get; set; } = PreWarmMode.BlockAndMempool;
 
-        // A caller buys at most ~2.8 bytes of cache per gas spent (sha256 & blake2f asymptote with EVM call overhead counted),
-        // while real blocks store a few hundred KB. The 32 MB default leaves enough room for one 60M-gas block.
-        // Needs revisiting if block gas limit changes significantly.
+        // A caller buys at most ~3.4 bytes of cache per gas spent, so a 60M-gas block could ask at max for ~200 MB.
+        // Real blocks store a few hundred KB, so 32 MB is a deliberate cut-off few times below max.
+        // Needs revisiting if the block gas limit changes significantly.
         public int PrecompileCacheMaxKilobytes { get; set; } = 32768;
 
         public int PreWarmStateConcurrency { get; set; } = 0;
