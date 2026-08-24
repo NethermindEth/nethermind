@@ -45,7 +45,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         return baseResult;
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider, int newPayloadVersion)
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
          => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 
     /// <summary>

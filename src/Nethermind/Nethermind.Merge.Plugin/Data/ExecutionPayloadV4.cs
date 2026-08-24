@@ -120,7 +120,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider, int newPayloadVersion)
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
     {
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
         // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the

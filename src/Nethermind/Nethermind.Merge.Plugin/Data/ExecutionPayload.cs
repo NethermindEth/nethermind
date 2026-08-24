@@ -290,11 +290,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     };
 
     /// <inheritdoc/>
-    /// <remarks>getPayloadV1 returns this shape, which stops being returnable once blob transactions exist.</remarks>
-    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+    /// <remarks>Answers only for this shape, the one getPayloadV1 returns, which stops being returnable
+    /// once blob transactions exist. Not virtual: a subclass gates newPayload through
+    /// <see cref="ValidateForkOnNewPayload"/>, and is wrapped in its own <c>GetPayloadVnResult</c> here.</remarks>
+    public bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 
     /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
     /// <param name="newPayloadVersion">The <c>engine_newPayload</c> version the payload arrived on.</param>
-    public virtual bool ValidateFork(ISpecProvider specProvider, int newPayloadVersion) => ValidateFork(specProvider);
+    public virtual bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) =>
+        !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }

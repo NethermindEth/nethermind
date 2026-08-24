@@ -73,7 +73,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
-        if (!executionPayload.ValidateFork(_specProvider, version))
+        if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
