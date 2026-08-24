@@ -370,7 +370,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
       setup_group: sequential
 
   matrix-guard:
