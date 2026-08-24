@@ -1391,6 +1391,16 @@ public class Eth72ProtocolHandlerTests
             m.RequestId == request.RequestId &&
             m.Hashes.SequenceEqual(new[] { firstHash }) &&
             m.Cells.Length == 1));
+        _transactionPool.Received(1).TryGetBlobCells(
+            firstHash,
+            requestedMask,
+            out Arg.Any<BlobCellMask>(),
+            out Arg.Any<byte[][]>());
+        _transactionPool.DidNotReceive().TryGetBlobCells(
+            secondHash,
+            requestedMask,
+            out Arg.Any<BlobCellMask>(),
+            out Arg.Any<byte[][]>());
         _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 

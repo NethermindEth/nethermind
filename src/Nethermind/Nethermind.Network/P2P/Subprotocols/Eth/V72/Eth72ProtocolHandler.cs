@@ -580,16 +580,32 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            if (!TryBuildCellsResponse(hash, requestedMask, out byte[][] cells))
+            if (!TryGetCellsResponseMetadata(
+                    hash,
+                    requestedMask,
+                    out bool hasMetadata,
+                    out int blobCount,
+                    out int materializationWork))
             {
                 continue;
             }
 
             int nextHashesContentLength = hashesContentLength + Rlp.LengthOf(hash);
-            int nextCellsContentLength = cellsContentLength + Rlp.LengthOf(cells);
+            int nextCellsContentLength = cellsContentLength + GetCellsGroupLength(blobCount, requestedMask.Count);
             if (EstimateCellsResponseLength(message.RequestId, nextHashesContentLength, nextCellsContentLength) > SoftCellsResponseBytes)
             {
-                break;
+                continue;
+            }
+
+            if (!TryBuildCellsResponse(
+                    hash,
+                    requestedMask,
+                    hasMetadata,
+                    blobCount,
+                    materializationWork,
+                    out byte[][] cells))
+            {
+                continue;
             }
 
             responseHashes.Add(hash);
@@ -888,19 +904,26 @@ public class Eth72ProtocolHandler(
         AddPendingCellRequest(hash.ValueHash256, requestMask);
     }
 
-    private bool TryBuildCellsResponse(Hash256 hash, BlobCellMask requestedMask, out byte[][] cells)
+    private bool TryGetCellsResponseMetadata(
+        Hash256 hash,
+        BlobCellMask requestedMask,
+        out bool hasMetadata,
+        out int blobCount,
+        out int materializationWork)
     {
-        cells = [];
+        hasMetadata = false;
+        blobCount = 0;
+        materializationWork = 0;
         if (requestedMask.IsEmpty)
         {
             return false;
         }
 
-        bool hasMetadata = _txPool.TryGetPendingBlobCellMetadata(
+        hasMetadata = _txPool.TryGetPendingBlobCellMetadata(
             hash,
             out BlobCellMask locallyAvailableMask,
-            out int blobCount,
-            out int materializationWork);
+            out blobCount,
+            out materializationWork);
         if (!hasMetadata)
         {
             if (!_txPool.TryGetPendingBlobCellMask(hash, out locallyAvailableMask))
@@ -917,6 +940,19 @@ public class Eth72ProtocolHandler(
         {
             return false;
         }
+
+        return true;
+    }
+
+    private bool TryBuildCellsResponse(
+        Hash256 hash,
+        BlobCellMask requestedMask,
+        bool hasMetadata,
+        int blobCount,
+        int materializationWork,
+        out byte[][] cells)
+    {
+        cells = [];
 
         int work = checked(blobCount * requestedMask.Count + materializationWork);
 
@@ -966,6 +1002,13 @@ public class Eth72ProtocolHandler(
 
             _sparseBlobPoolPeerRegistry.ReleaseCellServeWork();
         }
+    }
+
+    private static int GetCellsGroupLength(int blobCount, int cellIndexCount)
+    {
+        int cellCount = checked(blobCount * cellIndexCount);
+        int encodedCellLength = Rlp.LengthOfByteString(CkzgLib.Ckzg.BytesPerCell, 0);
+        return Rlp.LengthOfSequence(checked(cellCount * encodedCellLength));
     }
 
     private bool TryConsumeCellServeTokens(int work)
@@ -1447,9 +1490,7 @@ public class Eth72ProtocolHandler(
     private int GetExpectedCellsResponseBound(long requestId, BlobCellMask requestMask)
     {
         int maxBlobCount = _maxCellsPerTransaction / BlobCellMask.CellCount;
-        int maxCellCount = checked(maxBlobCount * requestMask.Count);
-        int encodedCellLength = Rlp.LengthOfByteString(CkzgLib.Ckzg.BytesPerCell, 0);
-        int cellGroupLength = Rlp.LengthOfSequence(checked(maxCellCount * encodedCellLength));
+        int cellGroupLength = GetCellsGroupLength(maxBlobCount, requestMask.Count);
         return EstimateCellsResponseLength(requestId, Rlp.LengthOf(Hash256.Zero), cellGroupLength);
     }
 
