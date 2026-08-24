@@ -2726,6 +2726,110 @@ public class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
+    // The deployment branch reads the code change recorded for a freshly created account, and TXDIFF's
+    // "before" side resolves it through PreTxCode; no other test drives those captures from an opcode.
+    [Test]
+    public void Execute_TxTraceAndTxDiff_ReadDeploymentPrestate()
+    {
+        byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address deployed = ContractAddress.From(Observer, salt, initCode);
+        byte[] deployedCodeHash = Keccak.Compute(runtimeCode).BytesToArray();
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txtrace(0x02, 0), To32(1)),                                        // contracts_deployed
+            (Txtrace(0x0A, 0), To32(AddressAsWord(deployed))),                  // deployed address
+            (Txtrace(0x0B, 0), deployedCodeHash),                               // deployed code hash
+            (Txdiff(0x04, deployed, 0), Keccak.OfAnEmptyString.BytesToArray()), // code hash before
+            (Txdiff(0x05, deployed, 0), deployedCodeHash)));                    // code hash after
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // Payer and max cost come from the frame context rather than the diff, so they are read back
+    // against TXPARAM, which exposes the same two values to the body.
+    [Test]
+    public void Execute_TxTrace_ReadsThePayerAndMaxCost()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txtrace(0x15, 0), To32(AddressAsWord(Sender))),
+            ([.. Txtrace(0x14, 0), .. Txparam(0x06), (byte)Instruction.EQ], To32(1))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    public enum BalanceMove { Net, NetZero, Reverted }
+
+    private static TestCaseData[] BalancePrestateScenarios() =>
+    [
+        new TestCaseData(BalanceMove.Net) { TestName = "Execute_TxDiffBalance_NetChange_SeparatesBeforeFromAfter" },
+        new TestCaseData(BalanceMove.NetZero) { TestName = "Execute_TxDiffBalance_NetZeroMove_ReportsTheUnchangedBalance" },
+        new TestCaseData(BalanceMove.Reverted) { TestName = "Execute_TxDiffBalance_RevertedMove_KeepsThePreTxCapture" },
+    ];
+
+    // TXDIFF reads "before" from PreTxBalance only while the account carries a net change, and the live
+    // balance otherwise; a capture lost to collapse or rollback would report zero through both branches.
+    [TestCaseSource(nameof(BalancePrestateScenarios))]
+    public void Execute_TxDiffBalance_ReadsThePreTxCapture(BalanceMove move)
+    {
+        UInt256 initial = 5_000;
+        UInt256 transferred = 1_000;
+        Address sink = TestItem.AddressD;
+        // A reverting sink hands the value back, so only the net-zero move leaves the balance where it started.
+        UInt256 expectedAfter = move == BalanceMove.NetZero ? initial : initial + transferred;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        if (move == BalanceMove.Reverted)
+        {
+            DeployContract(sink, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        }
+
+        DeployContract(Observer, move == BalanceMove.Net
+            ? Prepare.EvmCode.Op(Instruction.STOP).Done
+            : Prepare.EvmCode.CallWithValue(sink, 50_000, transferred).Op(Instruction.POP).Op(Instruction.STOP).Done,
+            initial);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txdiff(0x02, Observer, 0), To32(initial)),
+            (Txdiff(0x03, Observer, 0), To32(expectedAfter))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer, value: transferred),
+            Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // A source written against the single-property contract must still satisfy the interface, so an
+    // upgrade cannot fail at type load; it just never installs a slice and offers no diff.
+    [Test]
+    public void SetGeneratingBlockAccessList_SourceWithoutTheOverride_StaysIdle()
+    {
+        IBlockAccessListSource legacy = new SinglePropertyBlockAccessListSource();
+
+        legacy.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+
+        Assert.That(legacy.GeneratedBlockAccessList, Is.Null);
+    }
+
+    private sealed class SinglePropertyBlockAccessListSource : IBlockAccessListSource
+    {
+        public BlockAccessListAtIndex? GeneratedBlockAccessList => null;
+    }
+
+    private static byte[] Txparam(byte param)
+        => Prepare.EvmCode.PushData((UInt256)param).Op(Instruction.TXPARAM).Done;
+
     // TXTRACE stack order is (param, index) with param on top.
     private static byte[] Txtrace(byte param, UInt256 index)
         => Prepare.EvmCode.PushData(index).PushData((UInt256)param).Op(Instruction.TXTRACE).Done;
