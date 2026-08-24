@@ -4,12 +4,10 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -100,8 +98,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     public void Add(TransientResource transientResource)
     {
-        transientResource.WaitForExclusiveLease();
-
         if (_maxCacheMemoryThreshold == 0)
         {
             for (int i = 0; i < ShardCount; i++)
@@ -132,50 +128,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
             }
         }
 
-        static TrieNode? TryMaterializeResolvedMiss(TrieNode miss)
-        {
-            CappedArray<byte> fullRlp = miss.FullRlp;
-            if (!fullRlp.IsNotNullOrEmpty || miss.Keccak is not { } keccak) return null;
-
-            // The warmer may still resolve this miss after retirement, so never read its mutable node data.
-            byte[] rlp = fullRlp.AsSpan().ToArray();
-            if (ValueKeccak.Compute(rlp) != keccak) return null;
-
-            TrieNode materialized = new(NodeType.Unknown, keccak, new CappedArray<byte>(rlp));
-            TreePath path = TreePath.Empty;
-            try
-            {
-                return materialized.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? materialized : null;
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return null;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return null;
-            }
-        }
-
-        bool hasMissNodes = transientResource.MissNodes.Count != 0;
         Parallel.For(0, ShardCount, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
                 if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
-            }
-
-            if (hasMissNodes)
-            {
-                (int hashCode, TrieNode? node)[] missShard = transientResource.MissNodes.Shards[i];
-                for (int j = 0; j < missShard.Length; j++)
-                {
-                    if (missShard[j].node is { } miss && TryMaterializeResolvedMiss(miss) is { } materialized)
-                    {
-                        AddToCacheWithHashCode(i, missShard[j].hashCode, materialized);
-                    }
-                }
             }
         });
 

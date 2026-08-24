@@ -35,9 +35,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
     /// <summary>
-    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/>. Entries
-    /// resolve in place for the warmer only; live reads use <see cref="Nodes"/>. At retirement,
-    /// <see cref="TrieNodeCache.Add"/> may materialize a verified detached copy for the shared cache.
+    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/> but
+    /// holding private warmer nodes that resolve in place. No live read consults it (live reads use <see cref="Nodes"/>
+    /// only) and <see cref="TrieNodeCache.Add"/> never promotes it into the shared <see cref="TrieNodeCache"/>.
     /// </summary>
     public TrieNodeCache.ChildCache MissNodes = new(size.NodesCacheSize);
 
@@ -49,22 +49,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
-
-    /// <summary>
-    /// Waits until this retired resource is held only by its owner.
-    /// </summary>
-    /// <remarks>
-    /// The owner calls this only after swapping the resource out, so no new warmer can reach its caches. Existing
-    /// warmer reads may still hold leases while writing a cache entry and must drain before retirement scans it.
-    /// </remarks>
-    internal void WaitForExclusiveLease()
-    {
-        SpinWait spinWait = default;
-        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
-        {
-            spinWait.SpinOnce();
-        }
-    }
 
     /// <summary>
     /// Releases one lease; the final release returns the resource to the pool it was checked out from.
