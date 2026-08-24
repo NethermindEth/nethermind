@@ -141,6 +141,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
         /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>.
+        /// A separate mempool bound from <see cref="FrameTxVerifyGasTooHigh"/>; it too refuses only propagation, not validity.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
+
+        /// <summary>
         /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
         /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
         /// </summary>
@@ -174,6 +180,11 @@ namespace Nethermind.TxPool
         /// the spec permits. It stays consensus-valid; only public mempool propagation is refused.
         /// </summary>
         public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.
+        /// </summary>
+        public static readonly AcceptTxResult FrameSimulationFailed = new(TxPoolErrorMessages.FrameSimulationFailed);
 
         /// <summary>
         /// Declares a result distinct from every other declared result.

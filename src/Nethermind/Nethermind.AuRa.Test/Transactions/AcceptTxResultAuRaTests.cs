@@ -12,8 +12,8 @@ namespace Nethermind.AuRa.Test.Transactions;
 public class AcceptTxResultAuRaTests
 {
     /// <remarks>
-    /// This is the only result declared outside <see cref="AcceptTxResult"/>, so it is the only one whose id
-    /// depends on the runtime having initialised that type first.
+    /// Declared outside <see cref="AcceptTxResult"/>, so its id depends on the runtime having initialised
+    /// that type first.
     /// </remarks>
     [Test]
     public void Permission_denied_is_distinguishable_from_every_pool_result()

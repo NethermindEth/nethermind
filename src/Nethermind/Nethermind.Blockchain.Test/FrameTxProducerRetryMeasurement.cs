@@ -128,7 +128,7 @@ public class FrameTxProducerRetryMeasurement
             .Done;
 
     [TestCase(true, 236_285ul, TestName = "control: a prefix that approves is included and paid for")]
-    [TestCase(false, 100_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
+    [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
     [TestCase(false, 236_285ul, TestName = "never approves, at a measured private-pool prefix")]
     public void ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {

@@ -45,6 +45,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_STATE_GAS.")]
+        public static long PendingTransactionsFrameTxVerifyStateGasTooHigh { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because one of their protocol-validated signatures does not verify.")]
         public static long PendingTransactionsFrameTxSignatureInvalid { get; set; }
 
@@ -71,6 +75,14 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of EIP-8141 frame-transaction payers currently holding a pending-cost reservation.")]
         public static long FrameTxPayersWithReservedExposure;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
+        public static long PendingTransactionsFrameTxSimulationFailed;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
+        public static long PendingTransactionsFrameTxSimulationUndecided;
 
         [CounterMetric]
         [Description(

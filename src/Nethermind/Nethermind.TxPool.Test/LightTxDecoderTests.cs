@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -44,8 +45,12 @@ public class LightTxDecoderTests
 
         LightTransaction decoded = LightTxDecoder.Decode(full[..^droppedTrailingFields]);
 
-        Assert.That(decoded.Type, Is.EqualTo(TxType.Blob));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Type, Is.EqualTo(TxType.Blob));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
+            Assert.That(decoded.NonceKeys, Is.Null);
+        }
     }
 
     // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
@@ -59,18 +64,49 @@ public class LightTxDecoderTests
         Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
     }
 
-    // Zero is a deadline, not an absent field: the trailing fields are positional, so the two must decode apart.
-    [TestCase(null)]
-    [TestCase(0ul)]
-    [TestCase(1_000ul)]
-    public void Round_trip_preserves_the_expiry_deadline(ulong? deadline)
+    // Both trailing fields are optional and positional, so every combination has to decode back to what was
+    // written - in particular a zero deadline is a deadline, not an absent field.
+    [TestCaseSource(nameof(TrailingFieldCases))]
+    public void Round_trip_preserves_the_optional_trailing_fields(UInt256[] nonceKeys, ulong? deadline)
     {
-        Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline);
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline, nonceKeys);
 
-        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).PersistedExpiryDeadline, Is.EqualTo(deadline));
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(nonceKeys));
+            Assert.That(decoded.PersistedExpiryDeadline, Is.EqualTo(deadline));
+        }
     }
 
-    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null)
+    private static IEnumerable<TestCaseData> TrailingFieldCases()
+    {
+        // [0] aliases the account nonce, so it must survive as itself rather than collapse to an absent field.
+        UInt256[][] nonceKeySets = [null, [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
+        foreach (ulong? deadline in (ulong?[])[null, 0ul, 1_000ul])
+        {
+            foreach (UInt256[] nonceKeys in nonceKeySets)
+            {
+                yield return new TestCaseData(nonceKeys, deadline);
+            }
+        }
+    }
+
+    // A full set of 32-byte keys is the only case that reaches the long-form sequence header and fills the
+    // decoder's stack buffer exactly.
+    private static UInt256[] FullWidthKeys()
+    {
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)(keys.Length - 1 - i);
+        }
+
+        return keys;
+    }
+
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -88,6 +124,7 @@ public class LightTxDecoderTests
             PoolIndex = 11,
             Timestamp = 42,
             NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], ProofVersion.V1),
+            NonceKeys = nonceKeys,
         };
 
         if (type == TxType.FrameTx)
