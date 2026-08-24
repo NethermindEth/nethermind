@@ -8,12 +8,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -39,6 +42,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IReceiptStorage _receiptStorage;
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+    private readonly IHeaderStore _headerStore;
     private readonly IDb _metadataDb;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
@@ -74,6 +78,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockAccessListStore blockAccessListStore,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
+        IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
         IBlocksConfig blocksConfig,
@@ -89,6 +94,7 @@ public class HistoryPruner : IHistoryPruner
         _receiptStorage = receiptStorage;
         _blockAccessListStore = blockAccessListStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
+        _headerStore = headerStore;
         _metadataDb = dbProvider.MetadataDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
@@ -561,19 +567,29 @@ public class HistoryPruner : IHistoryPruner
         return candidates;
     }
 
-    /// <summary>Heights whose bloom says their receipts might be worth keeping, at a header read each rather than
-    /// a body read. A false positive only over-retains.</summary>
+    /// <summary>Heights whose bloom says their receipts might be worth keeping, over one bulk level read and one
+    /// sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
     private List<ulong> CandidatesFromHeaders(ulong fromInclusive, ulong toExclusive)
     {
         List<ulong> candidates = [];
-        for (ulong number = fromInclusive; number < toExclusive; number++)
+
+        using ArrayPoolListRef<ulong> numbers = new((int)(toExclusive - fromInclusive));
+        for (ulong number = fromInclusive; number < toExclusive; number++) numbers.Add(number);
+
+        Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
+        using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(numbers);
+
+        for (int i = 0; i < levels.Count; i++)
         {
-            ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
+            ChainLevelInfo? level = levels[i];
             if (level is null) continue;
 
+            ulong number = fromInclusive + (ulong)i;
             foreach (BlockInfo info in level.BlockInfos)
             {
-                BlockHeader? header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.None, number);
+                if (!prefetched.TryGetValue(info.BlockHash.ValueHash256, out BlockHeader? header))
+                    header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.None, number);
+
                 if (header is null) continue;
 
                 if (_receiptRetention.ShouldRetainReceipts(header))

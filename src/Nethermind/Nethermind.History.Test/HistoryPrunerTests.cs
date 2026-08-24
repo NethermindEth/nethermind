@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -284,6 +285,7 @@ public class HistoryPrunerTests
             Substitute.For<IBlockAccessListStore>(),
             specProvider,
             Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IHeaderStore>(),
             dbProvider,
             historyConfig,
             BlocksConfig,
@@ -534,6 +536,7 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IBlockAccessListStore>(),
         testBlockchain.Container.Resolve<ISpecProvider>(),
         testBlockchain.Container.Resolve<IChainLevelInfoRepository>(),
+        testBlockchain.Container.Resolve<IHeaderStore>(),
         testBlockchain.Container.Resolve<IDbProvider>(),
         testBlockchain.Container.Resolve<IHistoryConfig>(),
         testBlockchain.Container.Resolve<IBlocksConfig>(),

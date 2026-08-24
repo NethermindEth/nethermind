@@ -109,6 +109,29 @@ public class HeaderStore(
         }
     }
 
+    public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive)
+    {
+        Dictionary<ValueHash256, BlockHeader> prefetched = [];
+        if (toExclusive <= fromInclusive || headerDb is not ISortedKeyValueStore sorted) return prefetched;
+
+        Span<byte> startKey = stackalloc byte[40];
+        Span<byte> endKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, startKey);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, endKey);
+
+        using ISortedView view = sorted.GetViewBetween(startKey, endKey);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length != 40) continue;
+
+            BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
+            header.Hash ??= new Hash256(view.CurrentKey[8..]);
+            prefetched[header.Hash.ValueHash256] = header;
+        }
+
+        return prefetched;
+    }
+
     public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count)
     {
         Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
