@@ -14,17 +14,16 @@ internal static class FixtureExclusions
     {
         ["stCreate2"] =
         [
-            "create2collisionStorage",
-            "create2collisionStorageParis",
-            "RevertInCreateInInitCreate2",
+            "create2collisionStorage*",
+            "RevertInCreateInInitCreate2*",
         ],
         ["stSStoreTest"] =
         [
             "InitCollision",
             "InitCollisionParis",
         ],
-        ["stExtCodeHash"] = ["dynamicAccountOverwriteEmpty_Paris"],
-        ["stRevertTest"] = ["RevertInCreateInInit_Paris"],
+        ["stExtCodeHash"] = ["dynamicAccountOverwriteEmpty*"],
+        ["stRevertTest"] = ["RevertInCreateInInit*"],
         ["stSpecialTest"] = ["FailedCreateRevertsDeletionParis"],
         ["eip7610_create_collision"] =
         [
