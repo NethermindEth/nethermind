@@ -490,6 +490,16 @@ public class HistoryPruner : IHistoryPruner
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
+        // A span answered in full costs nothing per height to decide, so slicing it only multiplies the work: a
+        // range removal unlinks the SST files lying entirely inside it, so a hundred narrow ranges give back less
+        // disk than one wide one, the receipt cache is dropped once per range, and the slice width would quietly
+        // undercut the drain floor ChunkStep guarantees. Slice only where headers have to be read.
+        if (answeredFrom <= from && answeredTo >= to)
+        {
+            ReclaimReceiptSlice(from, to, answered);
+            return to;
+        }
+
         for (ulong cursor = from; cursor < to;)
         {
             ulong sliceEnd = ulong.Min(cursor + ReceiptRetentionSlice, to);
@@ -622,25 +632,39 @@ public class HistoryPruner : IHistoryPruner
         return removedAll;
     }
 
+    /// <summary>True only when every body at the height was accounted for - retained, or removed here because it
+    /// could not be. Both callers read true as "this height needs nothing further", so answering on "any retained"
+    /// would let a sibling that did not load keep a receipts row of its own under a deleted block range. A height
+    /// that cannot be accounted for goes back to the caller's range removal, which loses the sibling that did
+    /// retain: unavoidable, since reaching one row and not the other needs the body the range does not.</summary>
     private bool TryRetainAt(ulong number)
     {
         ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
         if (level is null) return false;
 
-        bool any = false;
+        bool retainedAny = false;
+        bool accountedForAll = level.BlockInfos.Length > 0;
         foreach (BlockInfo info in level.BlockInfos)
         {
             Block? block = _blockTree.FindBlock(info.BlockHash, BlockTreeLookupOptions.None, number);
-            if (block is null) continue;
+            if (block is null)
+            {
+                accountedForAll = false;
+                continue;
+            }
 
             if (_receiptStorage.TryRetainSelfDescribing(block))
             {
                 Metrics.SlicedReceiptsRetained++;
-                any = true;
+                retainedAny = true;
+            }
+            else
+            {
+                _receiptStorage.RemoveReceipts(block);
             }
         }
 
-        return any;
+        return retainedAny && accountedForAll;
     }
 
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.

@@ -172,12 +172,23 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         // after the block it asked about. Nothing partial can be published if nothing is published until the end.
         // Not a cross-database transaction: one RocksDB write batch over the column families of one database, which
         // is the unit the per-block code already relied on - only its extent changes.
-        using (IColumnsWriteBatch<FlatHistoryColumns> walkBatch = _history.StartWriteBatch())
+        IColumnsWriteBatch<FlatHistoryColumns> walkBatch = _history.StartWriteBatch();
+        try
         {
             HistoryColumnBatches columns = new(walkBatch);
             connected = WalkAndCapture(ref current, hasWatermark, watermark, snapshotRepository, pending, in columns, cancellationToken);
 
             if (connected && pending is not null) ResolvePendingV3(pending, in columns);
+        }
+        finally
+        {
+            // Disposing writes, so every way out short of a connected walk has to discard first - the shutdown
+            // throw as much as the two refusals. Publishing what an aborted walk accumulated is exactly the row
+            // set this whole arrangement exists to prevent: upper rows on disk with their lower siblings missing.
+            // The shutdown case would be rewritten by the retry, but the refusals disable capture for the process,
+            // so nothing would ever come back to correct them.
+            if (!connected) walkBatch.Clear();
+            walkBatch.Dispose();
         }
 
         if (connected)

@@ -77,6 +77,7 @@ public class HistoryWriterTests
     [TestCase(4ul, 0ul, ExpectedKind.Tombstone)]
     public void Captures_account_value_as_of_block(ulong readBlock, ulong balance, ExpectedKind kind)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
         CommitBlock(2, 3, accountChanges: [(AddrA, null)]);
@@ -152,6 +153,7 @@ public class HistoryWriterTests
     [TestCase(4ul, "", true)]
     public void Captures_storage_value_as_of_block(ulong readBlock, string? expectedHex, bool expectTombstone = false)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, Slot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, Slot(0x0b, 0xbb))]);
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, null)]);
@@ -183,6 +185,7 @@ public class HistoryWriterTests
     [Test]
     public void Recorded_bytes_match_the_flat_encoders()
     {
+        SeedGenesisFloor();
         Account account = new(7, 4242);
         SlotValue slot = Slot(0xde, 0xad, 0xbe, 0xef);
         CommitBlock(0, 1, accountChanges: [(AddrB, account)], storageChanges: [(AddrB, Slot2, slot)]);
@@ -235,6 +238,7 @@ public class HistoryWriterTests
     [TestCase(4ul, 300ul)] // still present afterwards
     public void Account_selfdestruct_then_recreate_reads_per_height(ulong readBlock, ulong expectedBalance)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, null)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
@@ -274,6 +278,7 @@ public class HistoryWriterTests
     [TestCase(4ul, "0c", true, true)]
     public void Storage_killed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex, bool viaSelfDestruct, bool killBlockConverted)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         if (viaSelfDestruct)
             CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
@@ -290,6 +295,7 @@ public class HistoryWriterTests
     [Test]
     public void Storage_untouched_after_selfdestruct_reads_empty_while_rewritten_slot_reads_new_value()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a)), (AddrA, Slot2, HistorySlot(0x0b))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
@@ -306,6 +312,7 @@ public class HistoryWriterTests
     [Test]
     public void Storage_destructed_and_rewritten_in_same_block_reads_the_rewrite()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
 
@@ -322,6 +329,7 @@ public class HistoryWriterTests
     [Test]
     public void Selfdestruct_of_account_without_persisted_storage_records_no_clear()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, selfDestructs: [(AddrA, true)]);
 
@@ -333,6 +341,7 @@ public class HistoryWriterTests
     [Test]
     public void Empty_account_round_trips_as_present_not_tombstone()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(0UL, UInt256.Zero))]);
 
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -416,13 +425,27 @@ public class HistoryWriterTests
         }
     }
 
+    // A walk that does not connect must leave the column as it found it. Publishing what it accumulated is the row
+    // set the single batch exists to prevent: a key's upper row is written while visiting a lower block, its lowest
+    // row only once the walk connects, so half a walk answers reads below the watermark with a value from after the
+    // block they asked about - and the refusal paths disable capture, so nothing would ever come back to correct it.
     [Test]
-    public void Capture_without_publish_still_stamps_format()
+    public void An_unconnected_walk_publishes_nothing()
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // unconnected: markers written, watermark never published
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
 
-        Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance));
+        // No seed, so the walk can reach neither a watermark nor PreGenesis and refuses to connect.
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
+            Assert.That(_accountHistory.TryGetAt(1, AccountKey(AddrA), buffer), Is.EqualTo(-1));
+            Assert.That(_accountHistory.TryGetAt(2, AccountKey(AddrA), buffer), Is.EqualTo(-1));
+            Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance));
+        }
     }
 
     [Test]
@@ -965,6 +988,7 @@ public class HistoryWriterTests
     [Test]
     public void Capture_after_real_compaction_has_no_gaps()
     {
+        SeedGenesisFloor();
         const int compactSize = 8;
         const int blockCount = 24; // 3 full compaction windows at CompactSize 8.
 
@@ -1036,6 +1060,7 @@ public class HistoryWriterTests
     [Test]
     public void Accounts_read_back_at_a_height_reproduce_that_height_state_root()
     {
+        SeedGenesisFloor();
         Account accountA = new(3, 300);
         Account accountB = new(7, 700);
 
