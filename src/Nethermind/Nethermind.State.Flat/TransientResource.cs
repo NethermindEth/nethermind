@@ -34,13 +34,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
-    /// <summary>
-    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/> but
-    /// holding private warmer nodes that resolve in place. No live read consults it (live reads use <see cref="Nodes"/>
-    /// only) and <see cref="TrieNodeCache.Add"/> never promotes it into the shared <see cref="TrieNodeCache"/>.
-    /// </summary>
-    public TrieNodeCache.ChildCache MissNodes = new(size.NodesCacheSize);
-
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
         _returnPool = pool;
@@ -49,6 +42,22 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+
+    /// <summary>
+    /// Waits until this retired resource is held only by its owner.
+    /// </summary>
+    /// <remarks>
+    /// The owner calls this only after swapping the resource out, so no new warmer can reach its caches. Existing
+    /// warmer reads may still hold leases while writing a cache entry and must drain before retirement scans it.
+    /// </remarks>
+    internal void WaitForExclusiveLease()
+    {
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
+        {
+            spinWait.SpinOnce();
+        }
+    }
 
     /// <summary>
     /// Releases one lease; the final release returns the resource to the pool it was checked out from.
@@ -80,7 +89,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Reset()
     {
         Nodes.Reset();
-        MissNodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -125,17 +133,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
-    public bool TryGetMissStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => MissNodes.TryGet(null, path, hash, out node);
-
-    public TrieNode GetOrAddMissStateNode(in TreePath path, TrieNode trieNode) => MissNodes.GetOrAdd(null, path, trieNode);
-
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
     public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
-
-    public bool TryGetMissStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => MissNodes.TryGet(address, path, hash, out node);
-
-    public TrieNode GetOrAddMissStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => MissNodes.GetOrAdd(address, path, trieNode);
 }

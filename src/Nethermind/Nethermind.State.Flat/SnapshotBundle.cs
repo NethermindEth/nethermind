@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -168,7 +167,8 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node))
+        else if (_transientResource.TryGetStateNode(path, hash, out node)
+                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -191,7 +191,7 @@ public sealed class SnapshotBundle : IDisposable
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
-            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : CreateWarmerUnknownNode(hash);
         }
 
         try
@@ -212,14 +212,16 @@ public sealed class SnapshotBundle : IDisposable
             return node;
         }
 
-        if (transientResource.TryGetMissStateNode(path, hash, out node))
-        {
-            return node;
-        }
-
         return TryFindStateNodeInPersistence(path, hash, out node)
             ? transientResource.GetOrAddStateNode(path, node)
-            : transientResource.GetOrAddMissStateNode(path, new TrieNode(NodeType.Unknown, hash));
+            : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
+    }
+
+    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
+    {
+        TrieNode node = new(NodeType.Unknown, hash);
+        node.MarkWarmerOwned();
+        return node;
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -296,7 +298,8 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
+                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -322,7 +325,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
                 ? node
-                : new TrieNode(NodeType.Unknown, hash);
+                : CreateWarmerUnknownNode(hash);
         }
 
         try
@@ -343,14 +346,9 @@ public sealed class SnapshotBundle : IDisposable
             return node;
         }
 
-        if (transientResource.TryGetMissStorageNode((Hash256AsKey)address, path, hash, out node))
-        {
-            return node;
-        }
-
         return TryFindStorageNodeInPersistence(address, path, hash, out node)
             ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
-            : transientResource.GetOrAddMissStorageNode((Hash256AsKey)address, path, new TrieNode(NodeType.Unknown, hash));
+            : transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, CreateWarmerUnknownNode(hash));
     }
 
     private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -401,91 +399,6 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
-    }
-
-    /// <summary>
-    /// The trie warmer's state RLP load, publishing what it read into <see cref="TransientResource.Nodes"/>.
-    /// </summary>
-    /// <remarks>
-    /// A warmer miss means the node is absent from the in-memory structures, not from persistence, so the warmer
-    /// resolves it with this read. Without publishing, that read serves only the warmer's own throwaway node: the
-    /// block's live reads and <see cref="TrieNodeCache.Add"/> both consult <see cref="TransientResource.Nodes"/>,
-    /// so they repeat the same persistence read instead of reusing it.
-    /// <para>
-    /// The published node is a detached node decoded <em>before</em> it is stored and never handed to the warmer, so
-    /// no reader can observe it mid-resolution. Its immutable RLP backing array is shared with the warmer node, but
-    /// its mutable decoded node data is independent.
-    /// </para>
-    /// <para>
-    /// Invariant, checked rather than assumed: a node is published only when the RLP hashes to the requested
-    /// <paramref name="hash"/>. The underlying read is keyed by path alone, so the bytes are not guaranteed to be
-    /// the node the warmer asked for, and a reader has no way to detect a wrong one - every guard in this area
-    /// compares against the node's own claimed <c>Keccak</c>.
-    /// </para>
-    /// </remarks>
-    internal byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        byte[]? rlp = TryLoadStateRlp(path, hash, flags);
-        if (rlp is { Length: > 0 })
-        {
-            PublishWarmedNode(null, path, hash, rlp);
-        }
-
-        return rlp;
-    }
-
-    /// <inheritdoc cref="TryLoadStateRlpForWarmer"/>
-    internal byte[]? TryLoadStorageRlpForWarmer(Hash256AsKey address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        byte[]? rlp = TryLoadStorageRlp(address.Value, path, hash, flags);
-        if (rlp is { Length: > 0 })
-        {
-            PublishWarmedNode(address, path, hash, rlp);
-        }
-
-        return rlp;
-    }
-
-    private void PublishWarmedNode(Hash256AsKey? address, in TreePath path, Hash256 hash, byte[] rlp)
-    {
-        // Persistence is keyed by path rather than hash, so bind the returned bytes to the requested node before
-        // inserting them where readers can only validate the node's claimed Keccak.
-        if (ValueKeccak.Compute(rlp) != hash) return;
-
-        TrieNode node = new(NodeType.Unknown, hash, new CappedArray<byte>(rlp));
-        TreePath nodePath = path;
-        try
-        {
-            if (!node.TryResolveNode(NullTrieNodeResolver.Instance, ref nodePath)) return;
-        }
-        catch (IndexOutOfRangeException)
-        {
-            return;
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return;
-        }
-
-        // A detached, resolved node is required because the warmer resolves its own placeholder in place.
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return;
-
-        try
-        {
-            if (address is { } addressKey)
-            {
-                transientResource.GetOrAddStorageNode(addressKey, path, node);
-            }
-            else
-            {
-                transientResource.GetOrAddStateNode(path, node);
-            }
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
     }
 
     // This is called only during trie commit
