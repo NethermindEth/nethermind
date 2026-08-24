@@ -20,13 +20,7 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly
-#if ZK_EVM
-        ZkEvmQueue<VmState<TGasPolicy>>
-#else
-        EvmObjectPool<VmState<TGasPolicy>>
-#endif
-        _statePool = new();
+    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new();
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -214,7 +208,7 @@ public class VmState<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            StackPool.Shared.ReturnStacks(DataStack);
+            StackPool.ReturnStacks(DataStack);
             DataStack = null;
         }
 
@@ -276,7 +270,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] AllocateStacks() => StackPool.Shared.RentStacks();
+    private static byte[] AllocateStacks() => StackPool.RentStacks();
 
     private static ref byte As32AlignedRef(byte[] array)
     {
