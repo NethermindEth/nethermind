@@ -30,6 +30,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -54,6 +55,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
+    private readonly ITxValidator _txValidator;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -82,6 +84,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IStateReader stateReader,
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
+        ITxValidator txValidator,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -96,6 +99,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
         _specProvider = specProvider;
+        _txValidator = txValidator;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -219,13 +223,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return cachedResult;
             }
 
-            // Re-deriving compliance costs a full re-execution, so spend it only where the answer can still
-            // be acted on: the head itself, and only while its parent state is around to replay against.
-            if (block.Number < (_blockTree.Head?.Number ?? 0) || !_stateReader.HasStateForBlock(parentHeader))
+            // Compliance depends only on the block, the list and the state the block committed, so a
+            // canonical block is answerable from that state alone. Re-executing it instead would replay
+            // the whole pruning window whenever a consensus client resends the recent chain.
+            if (_stateReader.HasStateForBlock(block.Header))
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-evaluated. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return NewPayloadV1Result.InclusionListNotEvaluated(block.Hash);
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                return EvaluateInclusionListFromState(block);
             }
+
+            // bogota.md engine_newPayloadV6 (2.1) requires a VALID response to carry a compliance answer,
+            // and with the block's state pruned there is none to derive.
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload whose inclusion list is no longer evaluable. Block {block.ToString(Block.Format.Short)} found in main chain.");
+            return NewPayloadV1Result.Syncing;
         }
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
@@ -327,6 +337,27 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
 
         return ValueKeccak.Compute(span);
+    }
+
+    /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
+    /// <remarks>
+    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
+    /// is readable at its own state root, so the only work left is recovering the list's senders.
+    /// </remarks>
+    private ResultWrapper<PayloadStatusV1> EvaluateInclusionListFromState(Block block)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
+
+        ValidationResult result = InclusionListValidator.IsSatisfied(
+            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
+            ? ValidationResult.Valid
+            : ValidationResult.InclusionListUnsatisfied;
+
+        _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, null, ComputeInclusionListDigest(block)));
+        return result == ValidationResult.Valid
+            ? NewPayloadV1Result.Valid(block.Hash)
+            : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
     }
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block

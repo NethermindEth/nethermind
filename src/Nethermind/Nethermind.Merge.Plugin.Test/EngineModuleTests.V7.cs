@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -509,9 +510,11 @@ public partial class EngineModuleTests
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
     }
 
-    // Only the head is still attestable, so an older canonical block must not be re-executed to answer for it.
+    // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer. Appendability is
+    // judged against the state the block committed, so a canonical block is answerable without the
+    // re-execution that would replay the whole pruning window on every resend.
     [Test]
-    public async Task NewPayloadV6_does_not_re_evaluate_an_inclusion_list_behind_head()
+    public async Task NewPayloadV6_answers_an_inclusion_list_behind_head_without_re_executing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -523,11 +526,18 @@ public partial class EngineModuleTests
         Transaction censoredTx = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        int processed = 0;
+        chain.BranchProcessor.BlockProcessing += (_, _) => Interlocked.Increment(ref processed);
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
 
-        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(resend.Data.InclusionListSatisfied, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.False);
+            Assert.That(processed, Is.Zero, "the block must not be re-executed");
+        }
     }
 
     private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)

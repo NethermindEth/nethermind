@@ -48,9 +48,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<PayloadStatusV2>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
         PayloadStatusV1 status = result.Data;
-        // Both IL statuses are pipeline-internal: on the wire the block is VALID and the compliance
-        // answer moves into inclusionListSatisfied, where null means never evaluated (execution-apis#609).
-        bool internalIlStatus = status.Status is PayloadStatus.InclusionListUnsatisfied or PayloadStatus.InclusionListNotEvaluated;
+        // INCLUSION_LIST_UNSATISFIED is pipeline-internal: on the wire the block is VALID and the
+        // compliance answer moves into inclusionListSatisfied (execution-apis#609).
+        bool unsatisfied = status.Status == PayloadStatus.InclusionListUnsatisfied;
         bool? inclusionListSatisfied = status.Status switch
         {
             PayloadStatus.InclusionListUnsatisfied => false,
@@ -63,7 +63,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
         {
-            Status = internalIlStatus ? PayloadStatus.Valid : status.Status,
+            Status = unsatisfied ? PayloadStatus.Valid : status.Status,
             LatestValidHash = status.LatestValidHash,
             ValidationError = status.ValidationError,
             InclusionListSatisfied = inclusionListSatisfied
@@ -102,6 +102,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
         // execution-apis#609: report compliance retained from the head's engine_newPayloadV6 validation.
+        // The list is not part of the block body, so a head this process never validated leaves nothing
+        // to re-derive from and the field stays null.
         bool? inclusionListSatisfied = result.Data.PayloadStatus.Status == PayloadStatus.Valid
             && _inclusionListSatisfiedByBlock.TryGet(forkchoiceState.HeadBlockHash, out bool satisfied)
             ? satisfied
