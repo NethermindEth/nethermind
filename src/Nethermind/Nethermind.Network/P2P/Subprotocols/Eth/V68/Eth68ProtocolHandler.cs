@@ -23,6 +23,7 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -371,6 +372,18 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
+
+    /// <inheritdoc/>
+    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    {
+        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
+        {
+            tx = default;
+            return false;
+        }
+
+        return base.TryGetPooledTransactionToServe(hash, out tx);
+    }
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {

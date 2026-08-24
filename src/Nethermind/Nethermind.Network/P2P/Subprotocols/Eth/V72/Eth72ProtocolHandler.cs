@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -520,7 +521,23 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
-    protected override Transaction PreparePooledTransactionForResponse(Transaction tx) => ElideBlobPayload(tx);
+    // eth/72 strips V1 blob payloads from pooled transaction responses, so they are served from
+    // the sidecar-free record instead of materializing blobs from persistent storage.
+    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    {
+        if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
+        {
+            return false;
+        }
+
+        if (tx.GetProofVersion() is not ProofVersion.V0)
+        {
+            return true;
+        }
+
+        // V0 has no cells-only encoding, so eth/72 peers require its full blob sidecar.
+        return _txPool.TryGetPendingTransaction(hash, out tx);
+    }
 
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
@@ -1746,21 +1763,6 @@ public class Eth72ProtocolHandler(
 
     private static int GetFixedByteArrayListLength(int count, int itemLength)
         => Rlp.LengthOfSequence(checked(count * Rlp.LengthOfByteString(itemLength, firstByte: 0)));
-
-    private static Transaction ElideBlobPayload(Transaction tx)
-    {
-        if (!tx.SupportsBlobs
-            || tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
-        {
-            return tx;
-        }
-
-        Transaction clone = new();
-        tx.CopyTo(clone, copyHash: true);
-        clone.NetworkWrapper = wrapper with { Blobs = [] };
-        clone.ClearLengthCache();
-        return clone;
-    }
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

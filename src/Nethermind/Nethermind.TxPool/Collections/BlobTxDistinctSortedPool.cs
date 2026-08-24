@@ -168,6 +168,23 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     }
 
     /// <summary>
+    /// Gets a pooled blob transaction for metadata-only consumers with blob and cell payloads
+    /// elided while preserving commitments and proofs.
+    /// </summary>
+    /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
+    internal virtual bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (TryGetValueNonLocked(hash, out blobTx))
+        {
+            blobTx = BlobTransactionPayload.Elide(blobTx);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Gets the cell availability mask of a pooled blob transaction without touching blob payloads,
     /// the blob cache, or persistent storage.
     /// </summary>
