@@ -26,6 +26,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private const int MinProviderProbabilityPercent = 15;
     private const int MaxProviderProbabilityPercent = 100;
     private const int MaxAnnouncementsPerPeer = 2048;
+    private const int MaxRetainedAnnouncementsPerPeer = 2048;
     private const int MaxAmbiguousValidationFailures = 3;
     private const int MaxEarlyCellsPerTransactionBytes = 2 * 1024 * 1024;
     private const long MaxEarlyCellsBytes = 64L * 1024 * 1024;
@@ -325,7 +326,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 if (state.Announcements.Remove(peerId))
                 {
-                    ReleaseAnnouncement(peerId, trackedHash);
+                    ReleaseAnnouncement(peerId, trackedHash, state.Submitted);
                 }
 
                 if (state.InFlightByPeer.Remove(peerId, out BlobCellMask inFlightMask))
@@ -460,7 +461,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                     accepted = true;
                 }
-                else if (TryReserveAnnouncement(peer, hash.ValueHash256))
+                else if (TryReserveAnnouncement(peer, hash.ValueHash256, state.Submitted))
                 {
                     state.Announcements.Add(peer.Id, announcementMask);
                     Touch(state, _timestamper.UtcNowOffset);
@@ -775,7 +776,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 PublicKey peerId = peer.Id;
                 if (state.Announcements.Remove(peerId))
                 {
-                    ReleaseAnnouncement(peerId, hash.ValueHash256);
+                    ReleaseAnnouncement(peerId, hash.ValueHash256, state.Submitted);
                 }
             }
         }
@@ -1603,6 +1604,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
                 {
                     state.Submitted = true;
                     state.Submitting = false;
+                    RetainSubmittedAnnouncements(state);
                     ReleaseTransaction(state);
                     ReleaseCells(state);
                     state.Transaction = null;
@@ -1805,7 +1807,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             if (state.Announcements.Remove(sourcePeerId))
             {
-                ReleaseAnnouncement(sourcePeerId, state.Hash);
+                ReleaseAnnouncement(sourcePeerId, state.Hash, state.Submitted);
             }
         }
 
@@ -1987,7 +1989,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             foreach (PublicKey peerId in state.Announcements.Keys)
             {
-                ReleaseAnnouncement(peerId, hash.ValueHash256);
+                ReleaseAnnouncement(peerId, hash.ValueHash256, state.Submitted);
             }
 
             foreach (KeyValuePair<PublicKey, BlobCellMask> inFlight in state.InFlightByPeer)
@@ -2105,7 +2107,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         state.ExpiresAt = slidingExpiration < state.MaxExpiresAt ? slidingExpiration : state.MaxExpiresAt;
     }
 
-    private bool TryReserveAnnouncement(ISparseBlobPoolPeer peer, ValueHash256 hash)
+    private bool TryReserveAnnouncement(ISparseBlobPoolPeer peer, ValueHash256 hash, bool retained)
     {
         lock (_accountingLock)
         {
@@ -2116,39 +2118,113 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             PublicKey peerId = peer.Id;
             PeerUsage usage = GetPeerUsage(peerId);
-            if (usage.Announcements >= MaxAnnouncementsPerPeer)
+            int count = retained ? usage.RetainedAnnouncements : usage.Announcements;
+            int limit = retained ? MaxRetainedAnnouncementsPerPeer : MaxAnnouncementsPerPeer;
+            if (count >= limit)
             {
+                RemovePeerUsageIfEmpty(peerId, usage);
                 return false;
             }
 
-            usage.Announcements++;
+            if (retained)
+            {
+                usage.RetainedAnnouncements++;
+            }
+            else
+            {
+                usage.Announcements++;
+            }
+
             usage.AnnouncedHashes[hash] = usage.AnnouncedHashes.GetValueOrDefault(hash) + 1;
             AddTrackedHashReference(usage, hash);
             return true;
         }
     }
 
-    private void ReleaseAnnouncement(PublicKey peerId, ValueHash256 hash)
+    private void RetainSubmittedAnnouncements(TrackedSparseBlobTx state)
     {
+        List<PublicKey>? droppedAnnouncements = null;
         lock (_accountingLock)
         {
-            if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage) && usage.Announcements > 0)
+            foreach (PublicKey peerId in state.Announcements.Keys)
             {
-                usage.Announcements--;
-                int references = usage.AnnouncedHashes.GetValueOrDefault(hash);
-                if (references <= 1)
+                if (!_peerUsage.TryGetValue(peerId, out PeerUsage? usage)
+                    || usage.Announcements == 0)
                 {
-                    usage.AnnouncedHashes.Remove(hash);
+                    (droppedAnnouncements ??= []).Add(peerId);
+                    continue;
+                }
+
+                usage.Announcements--;
+                if (usage.RetainedAnnouncements < MaxRetainedAnnouncementsPerPeer)
+                {
+                    usage.RetainedAnnouncements++;
                 }
                 else
                 {
-                    usage.AnnouncedHashes[hash] = references - 1;
+                    ReleaseAnnouncementReference(usage, state.Hash);
+                    (droppedAnnouncements ??= []).Add(peerId);
                 }
 
-                ReleaseTrackedHashReference(usage, hash);
                 RemovePeerUsageIfEmpty(peerId, usage);
             }
         }
+
+        if (droppedAnnouncements is not null)
+        {
+            for (int i = 0; i < droppedAnnouncements.Count; i++)
+            {
+                state.Announcements.Remove(droppedAnnouncements[i]);
+            }
+        }
+    }
+
+    private void ReleaseAnnouncement(PublicKey peerId, ValueHash256 hash, bool retained)
+    {
+        lock (_accountingLock)
+        {
+            if (!_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
+            {
+                return;
+            }
+
+            if (retained)
+            {
+                if (usage.RetainedAnnouncements == 0)
+                {
+                    return;
+                }
+
+                usage.RetainedAnnouncements--;
+            }
+            else
+            {
+                if (usage.Announcements == 0)
+                {
+                    return;
+                }
+
+                usage.Announcements--;
+            }
+
+            ReleaseAnnouncementReference(usage, hash);
+            RemovePeerUsageIfEmpty(peerId, usage);
+        }
+    }
+
+    private static void ReleaseAnnouncementReference(PeerUsage usage, ValueHash256 hash)
+    {
+        int references = usage.AnnouncedHashes.GetValueOrDefault(hash);
+        if (references <= 1)
+        {
+            usage.AnnouncedHashes.Remove(hash);
+        }
+        else
+        {
+            usage.AnnouncedHashes[hash] = references - 1;
+        }
+
+        ReleaseTrackedHashReference(usage, hash);
     }
 
     private bool TryReserveTransaction(ISparseBlobPoolPeer peer, ValueHash256 hash, int byteLength)
@@ -2361,7 +2437,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             ReleaseInFlight(inFlight.Key, hash, inFlight.Value.Count, releaseHashReference: true);
             if (state.Announcements.Remove(inFlight.Key))
             {
-                ReleaseAnnouncement(inFlight.Key, hash);
+                ReleaseAnnouncement(inFlight.Key, hash, state.Submitted);
             }
         }
 
@@ -2415,6 +2491,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private void RemovePeerUsageIfEmpty(PublicKey peerId, PeerUsage usage)
     {
         if (usage.Announcements == 0
+            && usage.RetainedAnnouncements == 0
             && usage.AnnouncedHashes.Count == 0
             && usage.TrackedHashes.Count == 0
             && usage.EarlyCellBytes == 0
@@ -2482,6 +2559,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public Dictionary<ValueHash256, int> AnnouncedHashes { get; } = [];
         public Dictionary<ValueHash256, int> TrackedHashes { get; } = [];
         public int Announcements { get; set; }
+        public int RetainedAnnouncements { get; set; }
         public long EarlyCellBytes { get; set; }
         public long TransactionBytes { get; set; }
         public int InFlightCellWork { get; set; }

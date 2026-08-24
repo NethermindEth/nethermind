@@ -551,6 +551,41 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_release_announcement_quota_after_sparse_submission()
+    {
+        const int maxAnnouncementsPerPeer = 2048;
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        using SparseBlobPoolPeerRegistry registry = new(
+            _transactionPool,
+            new BlobCustodyTracker(),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            maxAdmissionDelay: TimeSpan.Zero);
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        registry.AddPeer(peer);
+        _transactionPool.ValidateTxForBlobSampling(tx).Returns(AcceptTxResult.Accepted);
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+
+        int accepted = 0;
+        for (int i = 0; i < maxAnnouncementsPerPeer - 1; i++)
+        {
+            if (registry.RecordAnnouncement(peer, HashFromInt(i), cellMask))
+            {
+                accepted++;
+            }
+        }
+
+        Assert.That(accepted, Is.EqualTo(maxAnnouncementsPerPeer - 1));
+        Assert.That(registry.RecordAnnouncement(peer, tx.Hash!, cellMask), Is.True);
+        Assert.That(registry.RecordAnnouncement(peer, HashFromInt(maxAnnouncementsPerPeer), cellMask), Is.False);
+
+        Assert.That(registry.RecordTransaction(peer, tx), Is.Null);
+        Assert.That(registry.RecordCells(peer, tx.Hash!, cellMask, cells), Is.True);
+
+        Assert.That(registry.RecordAnnouncement(peer, HashFromInt(maxAnnouncementsPerPeer), cellMask), Is.True);
+    }
+
+    [Test]
     public void should_use_canonical_cell_request_code_for_geth_peer()
     {
         RecreateHandler(providerProbabilityPercent: 100);
