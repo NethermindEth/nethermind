@@ -171,7 +171,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         // exist yet, and a read below the watermark seeks upward, finds the upper row, and answers with a value from
         // after the block it asked about. Nothing partial can be published if nothing is published until the end.
         // Not a cross-database transaction: one RocksDB write batch over the column families of one database, which
-        // is the unit the per-block code already relied on - only its extent changes.
+        // is the unit the per-block code already relied on - only its extent changes. That extent is the contract
+        // to know about: resident batch memory is now the walk's whole changeset in native buffers rather than one
+        // block's, on top of the snapshots being read, and a first capture over a deep in-memory tier is where that
+        // bites. It cannot be flushed part-way without reintroducing the very interleaving above, so the size is
+        // inherent rather than tunable. It also rests on every history write staying WriteFlags.None: a write
+        // carrying DisableWAL would let FlushOnTooManyWrites split this batch every 256 writes and publish half of
+        // it.
+        // Separate from `connected` on purpose: connecting is what the walk achieved, complete is whether the batch
+        // is a whole row set. ResolvePendingV3 runs after the walk connects and writes the lowest row of every
+        // pending key into this same batch, so a throw in there would leave `connected` true over a batch holding
+        // upper rows whose lower siblings were never written - the row set this arrangement exists to prevent.
+        bool complete = false;
         IColumnsWriteBatch<FlatHistoryColumns> walkBatch = _history.StartWriteBatch();
         try
         {
@@ -179,15 +190,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             connected = WalkAndCapture(ref current, hasWatermark, watermark, snapshotRepository, pending, in columns, cancellationToken);
 
             if (connected && pending is not null) ResolvePendingV3(pending, in columns);
+            complete = connected;
         }
         finally
         {
-            // Disposing writes, so every way out short of a connected walk has to discard first - the shutdown
-            // throw as much as the two refusals. Publishing what an aborted walk accumulated is exactly the row
-            // set this whole arrangement exists to prevent: upper rows on disk with their lower siblings missing.
-            // The shutdown case would be rewritten by the retry, but the refusals disable capture for the process,
-            // so nothing would ever come back to correct them.
-            if (!connected) walkBatch.Clear();
+            // Disposing writes, so anything short of a complete row set has to be discarded first - the shutdown
+            // throw as much as the two refusals. The shutdown case would be rewritten by the retry, but a refusal
+            // disables capture for the process, so nothing would ever come back to correct what it left behind.
+            if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
         }
 

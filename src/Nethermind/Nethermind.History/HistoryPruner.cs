@@ -490,11 +490,13 @@ public class HistoryPruner : IHistoryPruner
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
-        // A span answered in full costs nothing per height to decide, so slicing it only multiplies the work: a
-        // range removal unlinks the SST files lying entirely inside it, so a hundred narrow ranges give back less
-        // disk than one wide one, the receipt cache is dropped once per range, and the slice width would quietly
-        // undercut the drain floor ChunkStep guarantees. Slice only where headers have to be read.
-        if (answeredFrom <= from && answeredTo >= to)
+        // A span with nothing retained in it is one range removal and no per-height work at all, so slicing it only
+        // multiplies cost: a range removal unlinks the SST files lying entirely inside it, so a hundred narrow
+        // ranges give back less disk than one wide one, the receipt cache is dropped once per range, and the slice
+        // width would quietly undercut the drain floor ChunkStep guarantees. The test is the empty set, not the
+        // covered span: a span answered in full still costs a body read per retained height, which is exactly the
+        // work the slices exist to put a deadline between.
+        if (answered.Count == 0 && answeredFrom <= from && answeredTo >= to)
         {
             ReclaimReceiptSlice(from, to, answered);
             return to;
@@ -642,7 +644,6 @@ public class HistoryPruner : IHistoryPruner
         ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
         if (level is null) return false;
 
-        bool retainedAny = false;
         bool accountedForAll = level.BlockInfos.Length > 0;
         foreach (BlockInfo info in level.BlockInfos)
         {
@@ -656,7 +657,6 @@ public class HistoryPruner : IHistoryPruner
             if (_receiptStorage.TryRetainSelfDescribing(block))
             {
                 Metrics.SlicedReceiptsRetained++;
-                retainedAny = true;
             }
             else
             {
@@ -664,7 +664,10 @@ public class HistoryPruner : IHistoryPruner
             }
         }
 
-        return retainedAny && accountedForAll;
+        // Whether anything was retained is not the question the callers ask - they ask whether the height still needs
+        // something done to it. A height where every body loaded and none could be made self-describing was fully
+        // removed here, and answering false would send the caller back over it for a second removal.
+        return accountedForAll;
     }
 
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
