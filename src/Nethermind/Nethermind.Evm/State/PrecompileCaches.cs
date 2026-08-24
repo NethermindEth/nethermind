@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Config;
@@ -59,6 +58,8 @@ public sealed class PrecompileCaches
     /// <summary> Bounded by entry count and by <see cref="MaxSurvivingEntryBytes"/>, and is never cleared. </summary>
     private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
 
+    // ReSharper disable once UnusedMember.Global - used by DI
+    /// <summary> Caches the results of every precompile from <paramref name="precompileProvider"/> that supports caching. </summary>
     public PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, IBlocksConfig blocksConfig, ILogManager? logManager = null)
         : this(precompileProvider, config, blocksConfig.PrecompileCacheMaxKilobytes * 1024L, logManager) { }
 
@@ -140,10 +141,13 @@ public sealed class PrecompileCaches
     private static List<AddressAsKey> CacheableAddresses(IPrecompileProvider precompileProvider)
     {
         FrozenDictionary<AddressAsKey, CodeInfo> precompiles = precompileProvider.GetPrecompiles();
+
         List<AddressAsKey> addresses = new(precompiles.Count);
-        addresses.AddRange(precompiles
-            .Where(static precompile => precompile.Value.Precompile?.SupportsCaching == true)
-            .Select(static precompile => precompile.Key));
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> precompile in precompiles)
+        {
+            if (precompile.Value.Precompile?.SupportsCaching == true)
+                addresses.Add(precompile.Key);
+        }
 
         return addresses;
     }
@@ -163,13 +167,13 @@ public sealed class PrecompileCaches
 
         internal int Count => _entries.Count;
 
-        public long MaxBytes { get; }
+        internal long MaxBytes { get; }
 
         /// <summary> Bytes reserved for this partition. </summary>
         /// <remarks>
         /// Admission reserves before it checks, so this may read above <see cref="MaxBytes"/> while an over-the-limit entry is being processed.
         /// </remarks>
-        public long UsedBytes => Volatile.Read(ref _bytes);
+        internal long UsedBytes => Volatile.Read(ref _bytes);
 
         internal Partition(long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
         {
@@ -181,6 +185,7 @@ public sealed class PrecompileCaches
             _survivingCache = survivingCache;
         }
 
+        /// <summary> Looks <paramref name="key"/> up in this partition, then in the surviving tier. </summary>
         public bool TryGet(in Key key, out Result<byte[]> result) =>
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
@@ -216,6 +221,7 @@ public sealed class PrecompileCaches
         }
     }
 
+    /// <summary> Key combining precompile address, its effective input, and the fork it ran under. </summary>
     public readonly struct Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<Key>
     {
         // Surviving tier is shared and needs a discriminator
@@ -227,7 +233,7 @@ public sealed class PrecompileCaches
         internal int DataLength => Data.Length;
 
         /// <summary> Creates a copy that owns its data. </summary>
-        public Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
+        internal Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
 
         public bool Equals(Key other) => ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is Key other && Equals(other);
