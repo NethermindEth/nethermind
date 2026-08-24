@@ -12,9 +12,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
-
-
 ROOT = Path(__file__).resolve().parents[2]
 PERF_FOLD = ROOT / "scripts" / "perf-fold.awk"
 PERF_REPORT = ROOT / "scripts" / "perf-report.sh"
@@ -24,6 +21,41 @@ RPC_WORKFLOW = ROOT / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
 START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
+PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
+
+WORKFLOW_JOB_PATTERN = re.compile(
+    r"(?ms)^  (?P<name>[A-Za-z0-9_-]+):[^\r\n]*\r?\n"
+    r"(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:[^\r\n]*(?:\r?\n|\Z)|\Z)"
+)
+WORKFLOW_NAMED_STEP_PATTERN = re.compile(
+    r"(?ms)^      - name: (?P<name>[^\r\n]+)\r?\n(?P<body>.*?)(?=^      - |\Z)"
+)
+WORKFLOW_STEP_IF_PATTERN = re.compile(r"(?m)^        if: (?P<condition>[^\r\n]*)\r?$")
+
+
+def workflow_job_body(workflow: str, job_name: str) -> str:
+    jobs = [match for match in WORKFLOW_JOB_PATTERN.finditer(workflow) if match["name"] == job_name]
+    if len(jobs) != 1:
+        raise AssertionError(f"expected exactly one {job_name!r} job, found {len(jobs)}")
+    return jobs[0]["body"]
+
+
+def workflow_named_step_body(workflow: str, job_name: str, step_name: str) -> str:
+    steps = [
+        match
+        for match in WORKFLOW_NAMED_STEP_PATTERN.finditer(workflow_job_body(workflow, job_name))
+        if match["name"] == step_name
+    ]
+    if len(steps) != 1:
+        raise AssertionError(f"expected exactly one {job_name}/{step_name} step, found {len(steps)}")
+    return steps[0]["body"]
+
+
+def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
+    conditions = WORKFLOW_STEP_IF_PATTERN.findall(workflow_named_step_body(workflow, job_name, step_name))
+    if len(conditions) != 1:
+        raise AssertionError(f"expected exactly one condition for {job_name}/{step_name}, found {len(conditions)}")
+    return conditions[0]
 
 
 def find_bash() -> str | None:
@@ -49,6 +81,12 @@ class PerfReportingTests(unittest.TestCase):
     def write_folded(self, name: str, contents: str) -> Path:
         path = self.directory / name
         path.write_text(contents, encoding="utf-8")
+        return path
+
+    def write_executable(self, name: str, contents: str) -> Path:
+        path = self.directory / name
+        path.write_text(contents, encoding="utf-8")
+        path.chmod(path.stat().st_mode | 0o111)
         return path
 
     def run_report(self, *args: str, locale: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -191,7 +229,10 @@ class PerfReportingTests(unittest.TestCase):
         empty = self.write_folded("empty.folded", "")
         whitespace = self.write_folded("whitespace.folded", " \t\n\n")
         zero = self.write_folded("zero.folded", ".NET;Frame 0\n")
-        valid = self.write_folded("valid.folded", ".NET;Frame 1\n")
+        valid = self.write_folded(
+            "valid.folded",
+            ".NET;instance void [Nethermind.Trie] Nethermind.Trie.TrieStore::Commit() 1\n",
+        )
 
         result = self.run_report("top", str(empty))
 
@@ -202,7 +243,128 @@ class PerfReportingTests(unittest.TestCase):
                 validation = self.run_folded_profile_validator(profile)
                 self.assertNotEqual(validation.returncode, 0)
                 self.assertIn("no positive-sample stack", validation.stderr)
-        self.assertEqual(self.run_folded_profile_validator(valid).returncode, 0)
+        validation = self.run_folded_profile_validator(valid)
+        self.assertEqual(validation.returncode, 0, validation.stderr)
+        self.assertIn("managed=1 (100.00%)", validation.stdout)
+
+    def test_folded_profile_validator_requires_managed_samples_and_reports_leaf_split(self) -> None:
+        managed = "instance void [Nethermind.Trie] Nethermind.Trie.TrieStore::Commit()"
+        cases = (
+            ("unknown", ".NET;[unknown] (libcoreclr.so) 7\n", False, "unknown=7 (100.00%)"),
+            ("native", ".NET;rocksdb::DBImpl::BackgroundCall 5\n", False, "native=5 (100.00%)"),
+            (
+                "mixed",
+                f".NET;{managed} 5\n.NET;rocksdb::DBImpl::BackgroundCall 3\n.NET;[unknown] (libcoreclr.so) 2\n",
+                True,
+                "managed=5 (50.00%), native=3 (30.00%), unknown=2 (20.00%)",
+            ),
+        )
+
+        for name, contents, succeeds, split in cases:
+            with self.subTest(profile=name):
+                validation = self.run_folded_profile_validator(self.write_folded(f"{name}.folded", contents))
+                self.assertEqual(validation.returncode == 0, succeeds, f"{validation.stdout}\n{validation.stderr}")
+                self.assertIn(split, validation.stdout)
+                if not succeeds:
+                    self.assertIn("no managed leaf samples", validation.stderr)
+
+    def test_perf_preflight_and_recorder_use_the_direct_perf_process(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 0 ;;\n"
+            "  record) exit 0 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        output = self.directory / "perf.data"
+        record_log = self.directory / "perf-record.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+        environment["PERF_OUTPUT"] = str(output)
+        environment["PERF_RECORD_LOG"] = str(record_log)
+
+        result = self.run_rpc_library(
+            """
+            set -euo pipefail
+            id() {
+              if [[ "${1:-}" == "-u" ]]; then printf '0\\n'; else command id "$@"; fi
+            }
+            require_perf_access
+            start_perf_recorder 99 4321 "$PERF_OUTPUT" "$PERF_RECORD_LOG"
+            wait "$PERF_RECORDER_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(commands[0], "stat --event cycles:u -- true")
+        self.assertIn("record --event cycles:u --freq 99 --call-graph fp --pid 4321", commands[1])
+        self.assertIn(
+            '  perf record --event cycles:u --freq "$frequency" --call-graph fp --pid "$node_pid" \\\n'
+            '    --output "$output" \\\n'
+            '    > "$record_log" 2>&1 &\n'
+            "  PERF_RECORDER_PID=$!",
+            RPC_LIB.read_text(encoding="utf-8"),
+        )
+
+    def test_perf_preflight_rejects_non_root_without_running_perf(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable("bin/id", "#!/usr/bin/env bash\necho 1000\n")
+        self.write_executable(
+            "bin/perf",
+            "#!/usr/bin/env bash\nprintf 'called\\n' >> \"$PERF_COMMAND_LOG\"\nexit 0\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library("set -euo pipefail; require_perf_access", environment)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires the self-hosted runner to execute as root", result.stderr)
+        self.assertFalse(command_log.exists())
+
+    def test_perf_preflight_rejects_unusable_cycles_access_without_recording(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 1 ;;\n"
+            "  record) exit 99 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library(
+            """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_perf_recorder 99 4321 ignored.data ignored.log
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("perf cannot sample cycles:u as root", result.stderr)
+        self.assertEqual(command_log.read_text(encoding="utf-8").splitlines(), ["stat --event cycles:u -- true"])
 
     def test_perf_recorder_identity_rejects_pid_reuse_without_signaling(self) -> None:
         proc_root = self.directory / "proc"
@@ -244,20 +406,71 @@ class PerfReportingTests(unittest.TestCase):
         self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
         self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
         self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
+        self.assertEqual(
+            expb_workflow.count(
+                "# Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard."
+            ),
+            2,
+        )
+        for job_name in ("benchmark", "benchmark-multi"):
+            job_body = workflow_job_body(expb_workflow, job_name)
+            self.assertIn(
+                'if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then',
+                job_body,
+            )
+            self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)
         self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
-        self.assertIn("perf record --event cycles:u", start_node)
+        self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
+        self.assertIn("require_perf_access", rpc_workflow)
+        self.assertIn("require_perf_access", start_node)
+        self.assertLess(
+            rpc_workflow.index("- name: Verify perf profiling prerequisites"),
+            rpc_workflow.index("- name: Ensure Docker is installed"),
+        )
+        self.assertLess(
+            start_node.index('if [[ "$PERF" == "true" ]]; then\n  require_perf_access'),
+            start_node.index('mkdir -p "$STATE_DIR"'),
+        )
+        self.assertIn(
+            "# 6) Start perf once the node serves RPC, so it excludes startup but includes\n#    the benchmark warm-up.",
+            start_node,
+        )
+        self.assertNotIn("itself rather than startup and warm-up", start_node)
+        self.assertIn("perf record --event cycles:u", RPC_LIB.read_text(encoding="utf-8"))
         self.assertIn('bash "$HERE/../validate-folded-profile.sh" "$folded_tmp"', stop_node)
         self.assertIn('signal_perf_recorder_if_matches INT', stop_node)
         self.assertIn('signal_perf_recorder_if_matches KILL', stop_node)
 
-        workflow = yaml.safe_load(expb_workflow)
-        expected_gate = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
         for job_name in ("benchmark", "benchmark-multi"):
-            steps = workflow["jobs"][job_name]["steps"]
             for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
-                matching_steps = [step for step in steps if step.get("name") == step_name]
-                self.assertEqual(len(matching_steps), 1, f"{job_name}/{step_name}")
-                self.assertEqual(matching_steps[0].get("if"), expected_gate, f"{job_name}/{step_name}")
+                self.assertEqual(workflow_named_step_if(expb_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
+
+        perf_preflight = workflow_named_step_body(
+            rpc_workflow,
+            "benchmark",
+            "Verify perf profiling prerequisites",
+        )
+        self.assertIn("source scripts/rpc-bench/lib.sh", perf_preflight)
+        self.assertIn("require_perf_access", perf_preflight)
+        mutated_rpc_workflow = rpc_workflow.replace("          require_perf_access\n", "", 1)
+        self.assertNotEqual(mutated_rpc_workflow, rpc_workflow)
+        with self.assertRaises(AssertionError):
+            self.assertIn(
+                "require_perf_access",
+                workflow_named_step_body(
+                    mutated_rpc_workflow,
+                    "benchmark",
+                    "Verify perf profiling prerequisites",
+                ),
+            )
+
+        dottrace_only = "always() && needs.resolve.outputs.dottrace == 'true'"
+        mutated_workflow = expb_workflow.replace(PROFILE_ARTIFACT_GATE, dottrace_only, 1)
+        self.assertNotEqual(mutated_workflow, expb_workflow)
+        with self.assertRaises(AssertionError):
+            for job_name in ("benchmark", "benchmark-multi"):
+                for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
+                    self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
 
 
 if __name__ == "__main__":

@@ -30,3 +30,34 @@ if ! awk '
   echo "error: folded profile '$profile' has no positive-sample stack" >&2
   exit 1
 fi
+
+if ! awk '
+  {
+    line = $0
+    sub(/\r$/, "", line)
+    if (line ~ /^[^[:space:];][^;]*;[^[:space:]].*[[:space:]][1-9][0-9]*[[:space:]]*$/) {
+      count = line
+      sub(/^.*[[:space:]]/, "", count)
+      stack = line
+      sub(/[[:space:]][1-9][0-9]*[[:space:]]*$/, "", stack)
+      frame_count = split(stack, frames, ";")
+      leaf = frames[frame_count]
+      total += count
+      if (leaf ~ /\[[A-Za-z0-9_.-]+\][[:space:]].*::/) {
+        managed += count
+      } else if (leaf ~ /^\[unknown\]([[:space:]]|$)/) {
+        unknown += count
+      } else {
+        native += count
+      }
+    }
+  }
+  END {
+    printf "Folded profile leaf/self samples: managed=%d (%.2f%%), native=%d (%.2f%%), unknown=%d (%.2f%%)\\n", \
+      managed, managed * 100 / total, native, native * 100 / total, unknown, unknown * 100 / total
+    exit managed == 0
+  }
+' "$profile"; then
+  echo "error: folded profile '$profile' has no managed leaf samples; check perf-map symbolization" >&2
+  exit 1
+fi

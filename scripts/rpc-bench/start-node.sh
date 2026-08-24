@@ -70,6 +70,10 @@ case "$DOTTRACE_MODE" in
   *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
 esac
 
+if [[ "$PERF" == "true" ]]; then
+  require_perf_access
+fi
+
 mkdir -p "$STATE_DIR"
 [[ -d "$DB_SOURCE" ]] || {
   log "DB_SOURCE '$DB_SOURCE' is not a directory. Snapshot candidates on this runner:"
@@ -337,8 +341,8 @@ docker run "${docker_args[@]}" "$NODE_IMAGE" ${entry_args[@]+"${entry_args[@]}"}
 wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="
 
-# 6) Start perf once the node serves RPC, so the sampled window is the benchmark
-#    itself rather than startup and warm-up.
+# 6) Start perf once the node serves RPC, so it excludes startup but includes
+#    the benchmark warm-up.
 if [[ "$PERF" == "true" ]]; then
   # docker top reports HOST pids, which is what perf needs. Under dotTrace the
   # client is a child of the profiler launcher, so pick the client explicitly.
@@ -351,10 +355,9 @@ if [[ "$PERF" == "true" ]]; then
   if ! [[ "$container_pid" =~ ^[0-9]+$ ]]; then
     die "could not resolve the container PID for perf client process $node_pid"
   fi
-  perf record --event cycles:u --freq "$PERF_FREQUENCY" --call-graph fp --pid "$node_pid" \
-    --output "$DIAG_DIR/perf/perf$SUFFIX.data" \
-    > "$DIAG_DIR/perf/perf-record$SUFFIX.log" 2>&1 &
-  perf_pid=$!
+  start_perf_recorder "$PERF_FREQUENCY" "$node_pid" "$DIAG_DIR/perf/perf$SUFFIX.data" \
+    "$DIAG_DIR/perf/perf-record$SUFFIX.log"
+  perf_pid="$PERF_RECORDER_PID"
   sleep 1
   if ! kill -0 "$perf_pid" 2>/dev/null; then
     log "ERROR: perf exited immediately:"

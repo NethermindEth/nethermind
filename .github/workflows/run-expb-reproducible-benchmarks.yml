@@ -870,6 +870,7 @@ jobs:
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
+          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
           expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
           if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
@@ -2086,6 +2087,7 @@ jobs:
             curl -LsSf https://astral.sh/uv/install.sh | sh
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
+          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
           expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
           if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"

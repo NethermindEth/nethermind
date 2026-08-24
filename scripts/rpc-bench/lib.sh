@@ -38,6 +38,30 @@ as_root() {
   fi
 }
 
+# perf record must be launched directly as root so its PID is the recorder PID
+# persisted for safe teardown, rather than a short-lived sudo wrapper.
+require_perf_access() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    die "perf profiling requires the self-hosted runner to execute as root; do not wrap perf in sudo because teardown must retain the recorder PID"
+  fi
+  if ! command -v perf >/dev/null 2>&1; then
+    die "perf profiling requires the host perf executable; install the kernel's linux-tools package on this runner"
+  fi
+  if ! perf stat --event cycles:u -- true >/dev/null 2>&1; then
+    die "perf cannot sample cycles:u as root; check kernel perf support, kernel.perf_event_paranoid, and perf_event access restrictions"
+  fi
+}
+
+# Start the recorder directly and expose its actual PID to the caller through
+# PERF_RECORDER_PID. The caller must invoke require_perf_access first.
+start_perf_recorder() {
+  local frequency="$1" node_pid="$2" output="$3" record_log="$4"
+  perf record --event cycles:u --freq "$frequency" --call-graph fp --pid "$node_pid" \
+    --output "$output" \
+    > "$record_log" 2>&1 &
+  PERF_RECORDER_PID=$!
+}
+
 # Echo the stable identity fields for a process: start time, comm, and executable.
 # RPC_BENCH_PROC_ROOT lets the unit test exercise PID-reuse handling without a live process.
 perf_recorder_identity() {
