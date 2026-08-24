@@ -521,23 +521,10 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
-    // eth/72 strips V1 blob payloads from pooled transaction responses, so they are served from
+    // eth/72 strips blob payloads from pooled transaction responses, so they are served from
     // the sidecar-free record instead of materializing blobs from persistent storage.
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
-    {
-        if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
-        {
-            return false;
-        }
-
-        if (tx.GetProofVersion() is not ProofVersion.V0)
-        {
-            return true;
-        }
-
-        // V0 has no cells-only encoding, so eth/72 peers require its full blob sidecar.
-        return _txPool.TryGetPendingTransaction(hash, out tx);
-    }
+        => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
@@ -1733,11 +1720,6 @@ public class Eth72ProtocolHandler(
     private static int GetAnnouncementSize(Transaction tx)
     {
         if (!tx.SupportsBlobs)
-        {
-            return tx.GetLength();
-        }
-
-        if (tx.GetProofVersion() is ProofVersion.V0)
         {
             return tx.GetLength();
         }
