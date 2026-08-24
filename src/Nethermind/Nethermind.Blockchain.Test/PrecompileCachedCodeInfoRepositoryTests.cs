@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -361,6 +362,37 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(caches.BlockCacheCount, Is.EqualTo(entriesPerPartition + 1), "a full partition must not consume another precompile's share");
             Assert.That(partition2!.UsedBytes, Is.EqualTo(entryCost), "the second precompile must still cache after the first one is full");
         }
+    }
+
+    [Test]
+    public void Run_FromManyThreads_KeepsThePartitionAccountingExact()
+    {
+        const int inputLength = 4;
+        const int entryCost = inputLength * 2 + PrecompileCaches.EntryOverheadBytes;
+        const int admittedEntries = 64;
+
+        (IPrecompile resolved, PrecompileCaches caches) = ResolveWithCache(
+            new TestPrecompile(supportsCaching: true),
+            maxBytes: entryCost * admittedEntries);
+
+        caches.TryGetPartition(PrecompileAddress, out PrecompileCaches.Partition? partition);
+        bool seenOverBudget = false;
+
+        Parallel.For(0, admittedEntries * 8, i =>
+        {
+            resolved.Run(new byte[] { (byte)i, (byte)(i >> 8), 2, 3 }, Prague.Instance);
+            if (caches.BlockCacheCount * (long)entryCost > partition!.MaxBytes) seenOverBudget = true;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seenOverBudget, Is.False, "no thread may observe more admitted bytes than the budget");
+            Assert.That(caches.BlockCacheCount, Is.GreaterThan(0), "precondition: concurrent admission still caches");
+            Assert.That(partition!.UsedBytes, Is.EqualTo(caches.BlockCacheCount * (long)entryCost), "every reserved byte must belong to an admitted entry");
+        }
+
+        caches.ClearBlockCache();
+        Assert.That(partition.UsedBytes, Is.Zero, "a rollback must not drift the counter across the block clear");
     }
 
     [Test]
