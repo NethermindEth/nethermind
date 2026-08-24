@@ -70,20 +70,26 @@ public partial class EngineRpcModule : IEngineRpcModule
         });
     }
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(
+    public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
+        => ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+
+    /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdated"/> and maps
+    /// its result onto the Bogota <see cref="ForkchoiceUpdatedV2Result"/> shape.</summary>
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> ForkchoiceUpdatedWithInclusionList(
+        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         // Out of fork the attributes are rejected below with -38005, so don't retain the list at all.
         if (payloadAttributes?.InclusionListTransactions is { } ilTxs
             && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
-            // An oversized IL is a no-op, not a protocol error. Set itself only registers the list;
-            // decoding and sender recovery happen off this thread, and only if a build starts.
+            // An oversized IL is a no-op, not a protocol error. Set only registers the list: decoding and
+            // sender recovery are deferred to the build, so an update that never builds pays nothing.
             if (ExceedsAggregateInclusionListBound(ilTxs))
             {
-                if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries); building without it.");
+                if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV{version}: discarding oversized inclusion list ({ilTxs.Length} entries); building without it.");
             }
             else
             {
@@ -91,7 +97,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
         }
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdated(forkchoiceState, payloadAttributes, version);
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
