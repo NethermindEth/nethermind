@@ -132,6 +132,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
         /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>.
+        /// A separate mempool bound from <see cref="FrameTxVerifyGasTooHigh"/>; it too refuses only propagation, not validity.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(29, TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
+
+        /// <summary>
         /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
         /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
         /// </summary>
@@ -175,7 +181,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.
         /// </summary>
-        public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(29, TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
+        public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(30, TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
         private int Id { get; } = id;
         private string Code { get; } = code;

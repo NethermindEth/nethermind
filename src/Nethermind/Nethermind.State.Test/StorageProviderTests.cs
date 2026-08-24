@@ -62,6 +62,48 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
+    /// <summary>
+    /// <see cref="IWorldState.IsStorageEmpty"/> backs the EIP-7610 CREATE collision check. State overrides
+    /// are applied with <c>commitRoots: false</c>, so the write never reaches the storage trie and the
+    /// committed root cannot see it — the block-level change set has to be consulted.
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="clearFirst"/> arms pin the check order: a full <c>state</c> override clears the
+    /// storage before writing and the clear marker survives until the trie flush, so testing the marker
+    /// before the change set would report the account empty and bypass EIP-7610.
+    /// </remarks>
+    [TestCase(false, false, false, TestName = "Uncommitted_write_is_visible")]
+    [TestCase(true, false, false, TestName = "Uncommitted_write_after_clear_is_visible")]
+    [TestCase(false, true, true, TestName = "Uncommitted_write_reverted_to_zero_stays_empty")]
+    [TestCase(true, true, true, TestName = "Clear_then_write_reverted_to_zero_stays_empty")]
+    public void IsStorageEmpty_sees_uncommitted_storage_change(bool clearFirst, bool zeroAfterwards, bool expectedEmpty)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            if (clearFirst)
+            {
+                provider.ClearStorage(TestItem.AddressA);
+            }
+
+            StorageCell cell = new(TestItem.AddressA, 1);
+            provider.Set(cell, [0x2a]);
+            if (zeroAfterwards)
+            {
+                provider.Set(cell, StorageTree.ZeroBytes);
+            }
+
+            // The state-override path: commit the journal without flushing anything to the trie.
+            provider.Commit(Frontier.Instance, commitRoots: false);
+
+            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.EqualTo(expectedEmpty));
+        }
+    }
+
     [Test]
     [NonParallelizable]
     public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
