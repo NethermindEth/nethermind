@@ -4,12 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Enumeration;
 
 namespace Ethereum.Test.Base;
 
 internal static class FixtureExclusions
 {
-    private static readonly Dictionary<string, string[]> ExcludedFixtureNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string[]> ExcludedFixturePatterns = new(StringComparer.OrdinalIgnoreCase)
     {
         ["stCreate2"] =
         [
@@ -27,32 +28,11 @@ internal static class FixtureExclusions
         ["stSpecialTest"] = ["FailedCreateRevertsDeletionParis"],
         ["eip7610_create_collision"] =
         [
-            "test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]",
-            "test_create2_collision_storage[fork_Amsterdam-state_test-initcode-with-deploy]",
-            "test_create2_collision_storage[fork_Amsterdam-state_test-sstore-initcode]",
-            "test_create2_collision_storage[fork_Paris-state_test-empty-initcode]",
-            "test_create2_collision_storage[fork_Paris-state_test-initcode-with-deploy]",
-            "test_create2_collision_storage[fork_Paris-state_test-sstore-initcode]",
-            "test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE2-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_ConstantinopleFix-state_test-opcode_CREATE-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_ConstantinopleFix-state_test-opcode_CREATE2-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_Osaka-state_test-opcode_CREATE-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_Osaka-state_test-opcode_CREATE2-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_Prague-state_test-opcode_CREATE-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_opcode[fork_Prague-state_test-opcode_CREATE2-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Berlin-tx_type_0-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Berlin-tx_type_0-state_test-non-empty-balance-revert-initcode]",
-            "test_init_collision_create_tx[fork_Berlin-tx_type_1-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Berlin-tx_type_1-state_test-non-empty-balance-revert-initcode]",
-            "test_init_collision_create_tx[fork_Frontier-tx_type_0-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Homestead-tx_type_0-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_0-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_0-state_test-non-empty-balance-revert-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_1-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_1-state_test-non-empty-balance-revert-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_2-state_test-non-empty-balance-correct-initcode]",
-            "test_init_collision_create_tx[fork_Shanghai-tx_type_2-state_test-non-empty-balance-revert-initcode]",
+            "test_collision_with_create2_revert_in_initcode[fork_*",
+            "test_create*_collision_storage[fork_*",
+            "test_init_collision_create_opcode[fork_*-opcode_*-non-empty-balance-correct-initcode]*",
+            "test_init_collision_create_tx[fork_*-non-empty-balance-correct-initcode]*",
+            "test_init_collision_create_tx[fork_*-non-empty-balance-revert-initcode]*",
         ],
     };
 
@@ -80,12 +60,12 @@ internal static class FixtureExclusions
 
     private static bool IsExcluded(string? category, string fixtureName)
     {
-        if (category is null || !ExcludedFixtureNames.TryGetValue(category, out string[]? names))
+        if (category is null || !ExcludedFixturePatterns.TryGetValue(category, out string[]? patterns))
             return false;
 
-        foreach (string name in names)
+        foreach (string pattern in patterns)
         {
-            if (fixtureName.Equals(name, StringComparison.Ordinal))
+            if (FileSystemName.MatchesSimpleExpression(pattern, fixtureName))
                 return true;
         }
 
@@ -97,7 +77,7 @@ internal static class FixtureExclusions
         if (testName is null)
             return string.Empty;
 
-        int caseSuffix = testName.IndexOf("_d", StringComparison.Ordinal);
+        int caseSuffix = testName.LastIndexOf("_d", StringComparison.Ordinal);
         return caseSuffix >= 0 ? testName[..caseSuffix] : testName;
     }
 }
