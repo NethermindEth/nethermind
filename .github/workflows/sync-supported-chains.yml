@@ -189,7 +189,7 @@ jobs:
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
-          make compile
+          make compile-sedge
 
       - name: Run Sedge
         working-directory: sedge

@@ -204,7 +204,7 @@ jobs:
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
-          make compile
+          make compile-sedge
 
       - name: Run Sedge
         working-directory: sedge
