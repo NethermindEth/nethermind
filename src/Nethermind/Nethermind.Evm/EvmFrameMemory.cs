@@ -9,10 +9,12 @@ namespace Nethermind.Evm;
 
 /// <summary>Owns the fixed inline memory tier for one pooled EVM frame.</summary>
 /// <remarks>
-/// Existing memory views follow the frame when <see cref="SetBackingArray"/> changes its storage.
-/// Array extraction deliberately fails while inline so a query cannot force a spill. Pinning inline
-/// storage allocates a dedicated array, and the returned array-backed handle owns the pin; any view
-/// over pooled storage must not outlive the frame.
+/// Memory views obtained from this manager resolve their spans against the frame's current storage
+/// after <see cref="SetBackingArray"/> changes it. A span or <see cref="MemoryHandle"/> already obtained
+/// remains attached to the previous storage; later growth does not retarget a pin. Array extraction
+/// deliberately fails while inline so a query cannot force a spill. Pinning while inline allocates a
+/// dedicated array, and the returned array-backed handle owns the pin; any view over pooled storage
+/// must not outlive the frame.
 /// </remarks>
 internal sealed class EvmFrameMemory : MemoryManager<byte>
 {

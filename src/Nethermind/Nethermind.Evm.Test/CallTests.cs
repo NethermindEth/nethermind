@@ -136,6 +136,35 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Create_init_code_survives_reverted_frame_reuse()
+        {
+            byte[] initCode = Prepare.EvmCode.Revert(0, 0).Done;
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, UInt256.Zero)
+                .Op(Instruction.STOP)
+                .Done;
+            RetainedCreateInputTracer tracer = new(Machine);
+
+            Execute(tracer, createCode);
+            Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+
+            byte[] replacement = new byte[EvmPooledMemory.WordSize];
+            Array.Fill(replacement, (byte)0xa5);
+            byte[] overwriteCode = Prepare.EvmCode
+                .StoreDataInMemory(0, replacement)
+                .Op(Instruction.STOP)
+                .Done;
+            Execute(tracer, overwriteCode);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.CreateReverted, Is.True);
+                Assert.That(tracer.SecondTopLevelState, Is.SameAs(tracer.FirstTopLevelState));
+                Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+            }
+        }
+
+        [Test]
         public void Cancellation_in_nested_frame_disposes_active_frames()
         {
             Address middle = TestItem.AddressC;
@@ -210,6 +239,40 @@ namespace Nethermind.Evm.Test
                     CancelledState = machine.VmState;
                     return true;
                 }
+            }
+        }
+
+        private sealed class RetainedCreateInputTracer(EthereumVirtualMachine machine) : TestAllTracerWithOutput
+        {
+            private int _transactionCount;
+
+            public ReadOnlyMemory<byte> CreateInput { get; private set; }
+            public bool CreateReverted { get; private set; }
+            public VmState<EthereumGasPolicy>? FirstTopLevelState { get; private set; }
+            public VmState<EthereumGasPolicy>? SecondTopLevelState { get; private set; }
+
+            public override void ReportAction(ulong gas, UInt256 value, Address from, Address to,
+                ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+            {
+                base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+                if (callType == ExecutionType.TRANSACTION)
+                {
+                    if (_transactionCount++ == 0)
+                        FirstTopLevelState = machine.VmState;
+                    else
+                        SecondTopLevelState = machine.VmState;
+                }
+                else if (callType == ExecutionType.CREATE)
+                {
+                    CreateInput = input;
+                }
+            }
+
+            public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+            {
+                base.ReportActionRevert(gas, output);
+                CreateReverted = true;
             }
         }
 
