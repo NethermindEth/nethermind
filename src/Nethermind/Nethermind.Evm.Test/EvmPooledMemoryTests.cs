@@ -724,6 +724,36 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Reinitializing_inline_owner_drops_stale_array_backing()
+    {
+        using EvmFrameMemory owner = new();
+        owner.GetSpan().Fill(0x5c);
+        byte[] staleBacking = new byte[EvmPooledMemory.InlineCapacity * 2];
+        staleBacking.AsSpan().Fill(0xa7);
+        owner.SetBackingArray(staleBacking);
+        EvmPooledMemory memory = new(owner);
+        UInt256 location = UInt256.Zero;
+        UInt256 length = 32;
+
+        try
+        {
+            Assert.That(memory.BackingArray, Is.Null);
+            Assert.That(memory.TryLoad(in location, in length, out ReadOnlyMemory<byte> data), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owner.GetSpan().Length, Is.EqualTo(EvmPooledMemory.InlineCapacity));
+                Assert.That(data.Span.IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                Assert.That(staleBacking.AsSpan().IndexOfAnyExcept((byte)0xa7), Is.EqualTo(-1));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
     public void VmState_owned_load_survives_inline_memory_reuse()
     {
         VmState<EthereumGasPolicy> owner = new();

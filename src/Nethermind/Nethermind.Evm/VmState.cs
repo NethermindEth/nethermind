@@ -238,7 +238,6 @@ public class VmState<TGasPolicy> : IDisposable
 
     private StackTrace? _creationStackTrace;
 
-#pragma warning disable CA2015 // This finalizer only reports undisposed pooled state; it does not release the managed backing storage.
     ~VmState()
     {
         if (!_isDisposed)
@@ -246,7 +245,6 @@ public class VmState<TGasPolicy> : IDisposable
             Console.Error.WriteLine($"Warning: {nameof(VmState<TGasPolicy>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
-#pragma warning restore CA2015
 #endif
 
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)

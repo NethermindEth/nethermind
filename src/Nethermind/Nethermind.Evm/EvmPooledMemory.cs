@@ -33,6 +33,7 @@ public struct EvmPooledMemory
     {
         _initializedSize = isFresh ? (ulong)InlineCapacity : 0;
         _inlineMemoryManager = inlineMemoryManager;
+        inlineMemoryManager.SetBackingArray(null);
         _memory = null;
         Size = 0;
     }

@@ -163,7 +163,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
-        using FrameCleanupScope _ = new(this);
+        using FrameCleanupScope _ = new(this, vmState);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ReadOnlySpan<byte> previousCallOutput = ReadOnlySpan<byte>.Empty;
@@ -342,23 +342,34 @@ public partial class VirtualMachine<TGasPolicy>(
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
 
-    private void DisposeActiveFrames()
+    private void DisposeActiveFrames(VmState<TGasPolicy> topLevel)
     {
-        _currentState?.Dispose();
+        if (!ReferenceEquals(_currentState, topLevel))
+        {
+            _currentState?.Dispose();
+        }
+
         _currentState = null;
         while (_stateStack.Count != 0)
         {
-            _stateStack.Pop().Dispose();
+            VmState<TGasPolicy> parent = _stateStack.Pop();
+            if (!ReferenceEquals(parent, topLevel))
+            {
+                parent.Dispose();
+            }
         }
     }
 
-    private readonly struct FrameCleanupScope(VirtualMachine<TGasPolicy> vm) : IDisposable
+    private readonly struct FrameCleanupScope(
+        VirtualMachine<TGasPolicy> vm,
+        VmState<TGasPolicy> topLevel) : IDisposable
     {
         public void Dispose()
         {
+            // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
             if (vm._currentState is not null || vm._stateStack.Count != 0)
             {
-                vm.DisposeActiveFrames();
+                vm.DisposeActiveFrames(topLevel);
             }
         }
     }
