@@ -234,28 +234,30 @@ public class NativeMemoryListTests
     public void Ref_struct_constructor_releases_pinned_buffer_when_enumeration_throws()
     {
         const int capacity = 16;
-        HandleLeakMarker[] expected = ArrayPool<HandleLeakMarker>.Shared.Rent(capacity);
-        ArrayPool<HandleLeakMarker>.Shared.Return(expected);
+        PoolMarker[] expected = ArrayPool<PoolMarker>.Shared.Rent(capacity);
+        ArrayPool<PoolMarker>.Shared.Return(expected);
 
         Assert.Throws<InvalidOperationException>(ConstructFromThrowingEnumerable);
 
-        HandleLeakMarker[] actual = ArrayPool<HandleLeakMarker>.Shared.Rent(capacity);
+        // The private element type isolates this .NET 10 SharedArrayPool TLS bucket, whose next Rent
+        // returns its most recently returned array; identity therefore proves constructor cleanup.
+        PoolMarker[] actual = ArrayPool<PoolMarker>.Shared.Rent(capacity);
         try
         {
             Assert.That(actual, Is.SameAs(expected));
         }
         finally
         {
-            ArrayPool<HandleLeakMarker>.Shared.Return(actual);
+            ArrayPool<PoolMarker>.Shared.Return(actual);
         }
 
         static void ConstructFromThrowingEnumerable()
         {
-            NativeMemoryListRef<HandleLeakMarker> list = new(capacity, ThrowAfterOneItem());
+            NativeMemoryListRef<PoolMarker> list = new(capacity, ThrowAfterOneItem());
             list.Dispose();
         }
 
-        static IEnumerable<HandleLeakMarker> ThrowAfterOneItem()
+        static IEnumerable<PoolMarker> ThrowAfterOneItem()
         {
             yield return default;
             throw new InvalidOperationException();
@@ -354,5 +356,5 @@ public class NativeMemoryListTests
         static void CtorRef(int bad) { NativeMemoryListRef<int> _ = new(4, bad); }
     }
 
-    private readonly struct HandleLeakMarker;
+    private readonly struct PoolMarker;
 }
