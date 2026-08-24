@@ -18,6 +18,7 @@ using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -89,6 +90,11 @@ namespace Nethermind.TxPool
         // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
         private int _expiringFrameTxCount;
 
+#if DEBUG
+        // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
+        private int _poolMutations;
+#endif
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -101,7 +107,7 @@ namespace Nethermind.TxPool
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         /// <param name="transactionsGossipPolicy"></param>
-        /// <param name="incomingTxFilter"></param>
+        /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
         /// <param name="frameTxPrefixSimulator">Optional EIP-8141 opaque-prefix simulator; unwired on chains without frame transactions.</param>
@@ -113,7 +119,7 @@ namespace Nethermind.TxPool
             ILogManager? logManager,
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
-            IIncomingTxFilter? incomingTxFilter = null,
+            IIncomingTxFilter[]? incomingTxFilters = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false,
             IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
@@ -208,9 +214,9 @@ namespace Nethermind.TxPool
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve work over an uncapped signature list, so let the cheap filters reject first
             ];
 
-            if (incomingTxFilter is not null)
+            if (incomingTxFilters is not null)
             {
-                postHashFilters.Add(incomingTxFilter);
+                postHashFilters.AddRange(incomingTxFilters);
             }
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
@@ -291,18 +297,104 @@ namespace Nethermind.TxPool
 
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
         {
+            TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
+            TrackPoolMutation();
             RemovePendingDelegations(args.Value);
-            if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            if (HasExpiryDeadline(args.Value))
+            {
+                int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative(remaining);
+            }
+
             ReleasePayerExposure(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        [Conditional("DEBUG")]
+        private void TrackPoolMutation()
+        {
+#if DEBUG
+            Interlocked.Increment(ref _poolMutations);
+#endif
+        }
+
+        // A negative count arms the expiry sweep's zero-count fast path for good. Judge the decrement's own result:
+        // removal holds no head lock, so re-reading the field lets a concurrent insert hide the excursion.
+        [Conditional("DEBUG")]
+        private static void AssertExpiringFrameTxCountNotNegative(int remaining) =>
+            Debug.Assert(remaining >= 0, "Expiring frame transaction count went negative.");
+
+        // A missed release or decrement persists for the life of the pool, locking the payer out or disarming the
+        // expiry sweep. Per head rather than per operation: the walk is O(pool size) and insert and removal are hot.
+        [Conditional("DEBUG")]
+        private void AssertFrameTxBookkeeping()
+        {
+#if DEBUG
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                // Read before the snapshots, or the window reopens: the pool drops its snapshot cache before
+                // raising Removed, so a walk that sees this bump rebuilds behind the handler that released.
+                int mutations = Volatile.Read(ref _poolMutations);
+
+                Dictionary<AddressAsKey, UInt256> pooledExposure = [];
+                int pooledExpiring = 0;
+                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
+                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
+
+                int recordedExpiring = Volatile.Read(ref _expiringFrameTxCount);
+                List<KeyValuePair<AddressAsKey, UInt256>> recordedExposure = [.. _payerExposure.Reservations];
+
+                // RemoveTransaction and EvictTransaction run outside the head lock held here, so a mutation across
+                // the reading means it was torn rather than the pool inconsistent.
+                if (Volatile.Read(ref _poolMutations) != mutations) continue;
+
+                Debug.Assert(recordedExpiring == pooledExpiring,
+                    $"Expiring frame transaction count is {recordedExpiring}, but {pooledExpiring} pooled transactions carry a deadline.");
+                Debug.Assert(recordedExposure.Count == pooledExposure.Count,
+                    $"Payer exposure ledger holds {recordedExposure.Count} payers, but {pooledExposure.Count} are pooled.");
+
+                foreach (KeyValuePair<AddressAsKey, UInt256> reservation in recordedExposure)
+                {
+                    // Not Debug.Assert: its message argument is eager, and this one would format once per payer per head.
+                    if (!pooledExposure.TryGetValue(reservation.Key, out UInt256 pooled) || pooled != reservation.Value)
+                    {
+                        Debug.Fail($"Payer {reservation.Key} holds {reservation.Value} reserved, but its pooled transactions total {pooled}.");
+                    }
+                }
+
+                return;
+            }
+
+            if (_logger.IsTrace) _logger.Trace("Frame transaction bookkeeping check skipped: every reading was torn by a concurrent pool mutation.");
+#endif
+        }
+
+#if DEBUG
+        // A payer the pool never resolved — a record restored from storage — prices null here and at release
+        // alike, so its exposure is out of this check's reach rather than verified by it.
+        private static void AccumulateFrameTxBookkeeping(Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, ref int expiring)
+        {
+            foreach (Transaction tx in snapshot)
+            {
+                if (HasExpiryDeadline(tx)) expiring++;
+
+                // A zero cost is never recorded by admission, so it must not be expected back either.
+                if (!TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost) || maxCost.IsZero)
+                {
+                    continue;
+                }
+
+                exposure[payer] = exposure.TryGetValue(payer, out UInt256 running) ? running + maxCost : maxCost;
+            }
+        }
+#endif
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
@@ -373,6 +465,7 @@ namespace Nethermind.TxPool
                         }
 
                         UpdateBuckets();
+                        AssertFrameTxBookkeeping();
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;
@@ -863,16 +956,33 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <remarks>
         /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
-        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert. Replays the amount
-        /// admission recorded on the transaction, since a pooled blob-carrying frame transaction is a light
-        /// record with no frames to re-price, and the pricing spec moves with the head besides.
+        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert.
         /// </remarks>
         private void ReleasePayerExposure(Transaction tx)
         {
-            if (tx.PayerAddress is not null && tx.PayerExposure is { } maxCost)
+            if (TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost))
             {
-                _payerExposure.Subtract(tx.PayerAddress, maxCost);
+                _payerExposure.Subtract(payer, maxCost);
             }
+        }
+
+        /// <summary>The exposure <paramref name="tx"/> holds against its payer for as long as it stays pending.</summary>
+        /// <remarks>
+        /// Shared with the bookkeeping check so it cannot drift from what the pool actually releases. Replays
+        /// what admission recorded rather than re-pricing: a pooled blob-carrying frame transaction is a light
+        /// record with no frames to price, and the pricing spec moves with the head besides.
+        /// </remarks>
+        private static bool TryGetPayerReservation(Transaction tx, [NotNullWhen(true)] out Address? payer, out UInt256 maxCost)
+        {
+            payer = tx.SupportsFrames ? tx.PayerAddress : null;
+            if (payer is null || tx.PayerExposure is not { } reserved)
+            {
+                maxCost = UInt256.Zero;
+                return false;
+            }
+
+            maxCost = reserved;
+            return true;
         }
 
         private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)

@@ -45,9 +45,9 @@
             "TimeoutSyncThreshold": 3,
             "TimeoutPeriod": 10,
             "MinePeriod": 2,
-            "MasternodeReward": 63420000000000001704,
-            "ProtectorReward": 50270000000000003128,
-            "ObserverReward": 25129999999999999006,
+            "MasternodeReward": 63.42,
+            "ProtectorReward": 50.27,
+            "ObserverReward": 25.13,
             "MinimumMinerBlockPerEpoch": 5,
             "LimitPenaltyEpoch": 5,
             "MinimumSigningTx": 30
@@ -142,7 +142,7 @@
         "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
         "blockSignerContract": "0x0000000000000000000000000000000000000089",
         "randomizeSMCBinary": "0x0000000000000000000000000000000000000090",
-        "XDCXAddrBinary": "0x0000000000000000000000000000000000000091",
+        "XDCXAddressBinary": "0x0000000000000000000000000000000000000091",
         "tradingStateAddressBinary": "0x0000000000000000000000000000000000000092",
         "XDCXLendingAddressBinary": "0x0000000000000000000000000000000000000093",
         "XDCXLendingFinalizedTradeAddressBinary": "0x0000000000000000000000000000000000000094"

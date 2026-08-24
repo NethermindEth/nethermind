@@ -1699,6 +1699,25 @@ namespace Nethermind.TxPool.Test
             Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
 
+        // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check
+        // walks; a field the record drops makes it price differently from the ledger admission wrote.
+        [Test]
+        public async Task Blob_carrying_frame_tx_keeps_its_bookkeeping_across_a_head_it_survives_and_one_it_expires_on()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+
+            Transaction SignedBlobFrameTx(ulong deadline)
+            {
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            await AssertExpiredFrameTxReleasesItsPayerExposure(SignedBlobFrameTx, TxHandlingOptions.None);
+        }
+
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
         // not the unlimited normal-pool default, so a nonce beyond that window is rejected as too far in the future.
         [Test]
