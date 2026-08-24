@@ -4,8 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
-using Nethermind.Core;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Ethereum.Legacy.Blockchain.Test;
@@ -34,47 +32,36 @@ public class FixtureExclusionsTests
         Assert.That(FixtureExclusions.Filter([test], sourceFile), expectedRetained ? Is.EquivalentTo([test]) : Is.Empty);
     }
 
-    [Test]
-    public void Filters_generated_storage_collisions_from_state_and_blockchain_formats()
+    [TestCase("test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
+    [TestCase("test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE-non-empty-balance-correct-initcode]")]
+    [TestCase("test_init_collision_create_tx[fork_Shanghai-tx_type_2-state_test-non-empty-balance-revert-initcode]")]
+    public void Filters_listed_generated_storage_collisions_from_state_and_blockchain_formats(string fixtureName)
     {
-        Dictionary<Address, AccountState> pre = CreatePreState(hasStorage: true, nonce: 0, hasCode: false);
+        string name = $"{fixtureName}_d0g0v0_";
         EthereumTest[] tests =
         [
-            new GeneralStateTest { Pre = pre },
-            new BlockchainTest { Pre = pre },
+            new GeneralStateTest { Name = name },
+            new BlockchainTest { Name = name },
         ];
 
         Assert.That(FixtureExclusions.Filter(tests, "fixtures/eip7610_create_collision/test_initcollision.json"), Is.Empty);
     }
 
-    [TestCase("eip7610_create_collision/test_initcollision", true, 1ul, false)]
-    [TestCase("eip7610_create_collision/test_initcollision", true, 0ul, true)]
-    [TestCase("eip7610_create_collision/test_initcollision", false, 0ul, false)]
-    [TestCase("another_fixture/test_initcollision", true, 0ul, false)]
-    [TestCase("eip7610_create_collision_backup/test_initcollision", true, 0ul, false)]
-    public void Retains_fixtures_outside_the_retired_storage_collision_rule(
-        string category, bool hasStorage, ulong nonce, bool hasCode)
+    [TestCase("eip7610_create_collision", "test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE-non-empty-nonce-correct-initcode]")]
+    [TestCase("eip7610_create_collision", "test_init_collision_create_tx[fork_London-tx_type_0-state_test-non-empty-balance-correct-initcode]")]
+    [TestCase("another_fixture", "test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
+    [TestCase("eip7610_create_collision_backup", "test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
+    public void Retains_unlisted_generated_fixtures(string category, string fixtureName)
     {
         GeneralStateTest test = new()
         {
             Category = category,
-            Pre = CreatePreState(hasStorage, nonce, hasCode),
+            Name = $"{fixtureName}_d0g0v0_",
         };
 
         string sourceFile = $"fixtures/{category}/fixture.json";
         Assert.That(FixtureExclusions.Filter([test], sourceFile), Is.EquivalentTo([test]));
     }
-
-    private static Dictionary<Address, AccountState> CreatePreState(bool hasStorage, ulong nonce, bool hasCode) =>
-        new()
-        {
-            [Address.Zero] = new AccountState
-            {
-                Nonce = nonce,
-                Code = hasCode ? [1] : [],
-                Storage = hasStorage ? new Dictionary<UInt256, byte[]> { [UInt256.One] = [1] } : [],
-            },
-        };
 }
 
 public class ArgsZeroOneBalance : LegacyStateTestFixture<ArgsZeroOneBalance>;
