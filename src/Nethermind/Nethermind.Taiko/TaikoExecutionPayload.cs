@@ -16,9 +16,9 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
 {
     /// <summary>
     /// Taiko always uses V2 payloads regardless of the EVM spec (Cancun/Prague/Osaka).
-    /// The base ValidateFork would reject V2 payloads when EIP-4844 is active.
+    /// The base gate would reject V2 payloads when EIP-4844 is active.
     /// </summary>
-    public override bool ValidateFork(ISpecProvider specProvider) => true;
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) => true;
 
     /// <summary>
     /// Taiko always uses V2 engine API payloads. The base ValidateParams rejects V2 once
