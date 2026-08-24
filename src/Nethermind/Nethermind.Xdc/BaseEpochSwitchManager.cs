@@ -48,6 +48,13 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
+            // The parent opens the same epoch whenever the child is not itself an epoch switch, so its entry carries over
+            if (EpochSwitchHeaders.TryGet(header.ParentHash!, out Hash256 cachedParentHash))
+            {
+                EpochSwitchHeaders.Set(headerHash, cachedParentHash);
+                return Tree.FindHeader(cachedParentHash) as XdcBlockHeader;
+            }
+
             if (Tree.FindHeader(header.ParentHash!) is not XdcBlockHeader parent)
                 return null;
 

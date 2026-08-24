@@ -66,7 +66,7 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
                 syncConfig.PivotNumber.Returns(xdcFinalPivot.Number);
 
                 IStateReader stateReader = context.Resolve<IStateReader>();
-                return new XdcStateSyncPivot(blockTree, syncConfig, stateReader, snapshotManager);
+                return new XdcStateSyncPivot(blockTree, syncConfig, stateReader, snapshotManager, _logManager);
             });
         });
 
@@ -99,7 +99,7 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
         IStateReader stateReader = Substitute.For<IStateReader>();
         IXdcStateSyncSnapshotManager snapshotManager = Substitute.For<IXdcStateSyncSnapshotManager>();
 
-        XdcStateSyncPivot statePivot = new(blockTree, syncConfig, stateReader, snapshotManager);
+        XdcStateSyncPivot statePivot = new(blockTree, syncConfig, stateReader, snapshotManager, _logManager);
 
         // The header sync downloads the pivot itself, so it is not in the block tree when state sync starts
         Assert.That(statePivot.GetPivotHeader(), Is.Null);

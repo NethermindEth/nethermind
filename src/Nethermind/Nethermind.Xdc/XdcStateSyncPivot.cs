@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Core.Extensions;
@@ -18,14 +19,17 @@ public class XdcStateSyncPivot(
     IBlockTree blockTree,
     ISyncConfig syncConfig,
     IStateReader stateReader,
-    IXdcStateSyncSnapshotManager syncSnapshotManager) : IStateSyncPivot
+    IXdcStateSyncSnapshotManager syncSnapshotManager,
+    ILogManager logManager) : IStateSyncPivot
 {
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISyncConfig _syncConfig = syncConfig;
     private readonly IStateReader _stateReader = stateReader;
+    private readonly ILogger _logger = logManager.GetClassLogger<XdcStateSyncPivot>();
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
+    private bool _loggedPending;
 
     private readonly IXdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
 
@@ -72,10 +76,18 @@ public class XdcStateSyncPivot(
             return;
         }
 
-        if (_blockTree.FindHeader(pivotNumber) is not XdcBlockHeader pivotHeader) return;
+        if (_blockTree.FindHeader(pivotNumber) is not XdcBlockHeader pivotHeader)
+        {
+            LogPending($"pivot block {pivotNumber} is not in the block tree yet");
+            return;
+        }
 
         XdcBlockHeader[]? gapBlockHeaders = _syncSnapshotManager.GetGapBlocks(pivotHeader);
-        if (gapBlockHeaders is null) return;
+        if (gapBlockHeaders is null)
+        {
+            LogPending($"gap blocks below pivot {pivotNumber} are not in the block tree yet");
+            return;
+        }
 
         foreach (XdcBlockHeader gapBlockHeader in gapBlockHeaders)
         {
@@ -84,5 +96,15 @@ public class XdcStateSyncPivot(
 
         _pivotHeader = pivotHeader;
         _initialized = true;
+
+        if (_logger.IsInfo) _logger.Info($"State sync pivot {pivotNumber} ready with {gapBlockHeaders.Length} gap block(s) to sync first.");
+    }
+
+    /// <summary>Reports the first wait only, so a node that never resolves is distinguishable from one that resolves late.</summary>
+    private void LogPending(string reason)
+    {
+        if (_loggedPending) return;
+        _loggedPending = true;
+        if (_logger.IsInfo) _logger.Info($"Waiting for headers before state sync can start: {reason}.");
     }
 }
