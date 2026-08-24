@@ -289,7 +289,7 @@ transactions observed two epochs back (blocks at heights that are multiples of `
 
 - **Pre-`TIPUpgradeReward`** — `Reward` XDC for the epoch, split proportionally to each masternode's signing
   count.
-- **Post-`TIPUpgradeReward`** — fixed `MasternodeReward` / `ProtectorReward` / `ObserverReward` (Wei) per
+- **Post-`TIPUpgradeReward`** — fixed `MasternodeReward` / `ProtectorReward` / `ObserverReward` (XDC) per
   qualifying signer, with minted and burned totals reported to the minted-record contract
   ([`IMintedRecordContract`](Contracts/IMintedRecordContract.cs)).
 
@@ -416,7 +416,8 @@ closed on mainnet.
 
 - Post-`TipTrc21Fee`, gas fees are paid to the **candidate owner** of the block beneficiary rather than the
   beneficiary itself.
-- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected.
+- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected during execution,
+  and on pool admission, so they are never gossiped.
 
 ### Block execution context
 
@@ -434,6 +435,9 @@ value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opc
 
 - [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts fee-exempt transactions only from current
   epoch candidates, and only when the signed block is recent.
+- [`BlackListedAddressFilter`](TxPool/BlackListedAddressFilter.cs) rejects transactions with a blacklisted
+  sender or recipient once `BlackListHFNumber` activates, so they never reach a block or a peer. The rejection
+  code is deliberately not `AcceptTxResult.Invalid`, which would disconnect the relaying peer.
 - [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) withholds the DEX/lending family; sign and randomize
   transactions are gossiped normally.
 - [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets the fee-exempt transactions bypass the
@@ -557,7 +561,7 @@ either fails to load.
 | `TimeoutPeriod` | **seconds** | Round timeout before a timeout vote is broadcast |
 | `TimeoutSyncThreshold` | count | Broadcast `SyncInfo` after this many consecutive timeouts |
 | `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
-| `MasternodeReward` / `ProtectorReward` / `ObserverReward` | Wei | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`) |
+| `MasternodeReward` / `ProtectorReward` / `ObserverReward` | XDC | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`). Stated in XDC, as in the reference client, and scaled to wei on load. `63.42` on Apothem |
 | `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
 | `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty` |
 | `MinimumSigningTx` | count | Signing transactions needed to leave penalty |

@@ -95,7 +95,6 @@ namespace Nethermind.Core
 
         // eip-2780: reduce intrinsic transaction gas and reprice state-touching primitives.
         public const ulong TransactionEip2780 = 12000; // TX_BASE_COST: ECDSA recovery + sender account access + sender account write
-        public const ulong TxValueCostEip2780 = 4244; // recipient balance write for a value-bearing transfer (non-create)
-        public const ulong TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event cost
+        public const ulong TxValueCostEip2780 = 6000; // TX_VALUE_COST: recipient balance write + folded eip-7708 transfer log for a value-bearing transfer (non-create)
     }
 }
