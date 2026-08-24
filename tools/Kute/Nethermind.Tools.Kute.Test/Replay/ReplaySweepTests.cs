@@ -1,0 +1,345 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using Nethermind.Tools.Kute.Replay;
+using NUnit.Framework;
+using ZstdSharp;
+
+namespace Nethermind.Tools.Kute.Test.Replay;
+
+public class ReplaySweepTests
+{
+    private string _directory = null!;
+
+    [SetUp]
+    public void SetUp() =>
+        _directory = Directory.CreateTempSubdirectory(nameof(ReplaySweepTests)).FullName;
+
+    [TearDown]
+    public void TearDown() =>
+        Directory.Delete(_directory, recursive: true);
+
+    [Test]
+    public async Task Forces_the_block_tag_on_every_request()
+    {
+        // The whole point of the harness: a trace captured against historical blocks must land on the
+        // node's current head, or every call is answered from a state the node no longer has.
+        string path = WriteTrace(".jsonl", Requests(20, index => index % 2 == 0 ? "latest" : $"0x{index:x}"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 20,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(server.Requests, Is.EqualTo(20));
+        Assert.That(results[0].Rewritten, Is.EqualTo(10), "only the records that were not already 'latest' need rewriting");
+
+        foreach (string body in server.Bodies)
+        {
+            using JsonDocument document = JsonDocument.Parse(body);
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+        }
+    }
+
+    [Test]
+    public async Task Keeps_the_captured_tag_when_asked_to()
+    {
+        string path = WriteTrace(".jsonl", Requests(6, index => $"0x{index:x}"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            BlockTag = null,
+            // One worker, so the order requests arrive in is the order the trace holds them.
+            Concurrencies = [1],
+            MeasuredRequests = 6,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].Rewritten, Is.Zero);
+        Assert.That(server.Bodies.Count, Is.EqualTo(6));
+
+        for (int i = 0; i < server.Bodies.Count; i++)
+        {
+            using JsonDocument document = JsonDocument.Parse(server.Bodies[i]);
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo($"0x{i:x}"));
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(8)]
+    public async Task Keeps_exactly_the_requested_number_of_requests_in_flight(int concurrency)
+    {
+        // A sweep only means something if the level label is the load actually offered. The delay holds
+        // requests open long enough that a harness running fewer or more in parallel would show it.
+        string path = WriteTrace(".jsonl", Requests(concurrency * 6, _ => "latest"));
+        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(25));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [concurrency],
+            MeasuredRequests = concurrency * 6,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].Concurrency, Is.EqualTo(concurrency));
+        Assert.That(server.PeakInFlight, Is.EqualTo(concurrency));
+        Assert.That(server.Connections, Is.LessThanOrEqualTo(concurrency));
+    }
+
+    [Test]
+    public async Task Excludes_warm_up_requests_from_the_measurement()
+    {
+        // Warm-up traffic must reach the node, so caches and JIT are warm, but must not enter the
+        // latency distribution, where it would show up as a fat tail that is really just cold start.
+        string path = WriteTrace(".jsonl", Requests(50, _ => "latest"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 10,
+            WarmupRequests = 5,
+        });
+
+        Assert.That(server.Requests, Is.EqualTo(15), "the node sees warm-up and measured traffic");
+        Assert.That(results[0].Total, Is.EqualTo(10), "only the measured window is reported");
+        Assert.That(results[0].Latencies.Count, Is.EqualTo(10));
+    }
+
+    [Test]
+    public async Task Measures_the_request_window_not_the_whole_pass()
+    {
+        // Elapsed drives the reported throughput, so it has to span the requests themselves. Timing the
+        // whole pass instead would charge the node for the reader decompressing a skipped prefix.
+        string path = WriteTrace(".jsonl", Requests(20, _ => "latest"));
+        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(25));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [1],
+            MeasuredRequests = 6,
+            WarmupRequests = 3,
+        });
+
+        LevelResult result = results[0];
+        double summedLatencies = 0d;
+        foreach (TimeSpan latency in result.Latencies)
+        {
+            summedLatencies += latency.TotalMilliseconds;
+        }
+
+        Assert.That(result.Elapsed, Is.GreaterThanOrEqualTo(result.Max), "the window contains every request");
+        Assert.That(result.Elapsed.TotalMilliseconds, Is.EqualTo(summedLatencies).Within(30d),
+            "one worker answers in series, so the window is the sum of its request latencies");
+    }
+
+    [Test]
+    public async Task Replays_the_same_prefix_at_every_level()
+    {
+        // Levels are only comparable if they answer the same requests, so each level restarts the trace.
+        string path = WriteTrace(".jsonl", Requests(30, _ => "latest"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [1, 2, 4],
+            MeasuredRequests = 5,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results.Count, Is.EqualTo(3));
+        Assert.That(results.Select(result => result.Concurrency), Is.EqualTo(new[] { 1, 2, 4 }));
+        Assert.That(server.Requests, Is.EqualTo(15));
+
+        // Concurrent levels may answer in any order, so compare the sets each level was given.
+        string[] firstLevel = [.. server.Bodies.Take(5).Order()];
+        string[] secondLevel = [.. server.Bodies.Skip(5).Take(5).Order()];
+        string[] thirdLevel = [.. server.Bodies.Skip(10).Take(5).Order()];
+
+        Assert.That(secondLevel, Is.EqualTo(firstLevel));
+        Assert.That(thirdLevel, Is.EqualTo(firstLevel));
+    }
+
+    [Test]
+    public async Task Skips_leading_records()
+    {
+        string path = WriteTrace(".jsonl", Requests(10, index => $"0x{index:x}"));
+        await using StubJsonRpcServer server = new();
+
+        await Run(server, path, options => options with
+        {
+            BlockTag = null,
+            Concurrencies = [1],
+            Skip = 7,
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(server.Bodies.Count, Is.EqualTo(3));
+        using JsonDocument document = JsonDocument.Parse(server.Bodies[0]);
+        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("0x7"));
+    }
+
+    [Test]
+    public async Task Replays_the_whole_trace_when_no_request_count_is_given()
+    {
+        string path = WriteTrace(".jsonl.zst", Requests(37, _ => "latest"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].Total, Is.EqualTo(37));
+    }
+
+    private static IEnumerable<TestCaseData> FailureCases()
+    {
+        yield return new TestCaseData(
+            (Func<string, (HttpStatusCode, string)>)(_ => (HttpStatusCode.OK, """{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"out of gas"}}""")),
+            nameof(LevelResult.RpcErrors)).SetName("JSON-RPC error member");
+
+        yield return new TestCaseData(
+            (Func<string, (HttpStatusCode, string)>)(_ => (HttpStatusCode.InternalServerError, "boom")),
+            nameof(LevelResult.HttpErrors)).SetName("Non-success status");
+    }
+
+    [TestCaseSource(nameof(FailureCases))]
+    public async Task Separates_failure_kinds(Func<string, (HttpStatusCode Status, string Body)> responder, string expectedCounter)
+    {
+        // A degrading node fails differently from a saturated socket layer, and a sweep that lumps them
+        // together hides which one happened.
+        string path = WriteTrace(".jsonl", Requests(8, _ => "latest"));
+        await using StubJsonRpcServer server = new(responder);
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 8,
+            WarmupRequests = 0,
+        });
+
+        LevelResult result = results[0];
+        Assert.That(result.Succeeded, Is.Zero);
+        Assert.That(result.Failed, Is.EqualTo(8));
+        Assert.That(result.FailureRate, Is.EqualTo(1d));
+
+        int counted = expectedCounter switch
+        {
+            nameof(LevelResult.RpcErrors) => result.RpcErrors,
+            nameof(LevelResult.HttpErrors) => result.HttpErrors,
+            _ => result.TransportErrors,
+        };
+        Assert.That(counted, Is.EqualTo(8));
+    }
+
+    [Test]
+    public async Task Counts_a_large_result_as_a_success()
+    {
+        // Only the head of a response is buffered for error detection, so a result larger than that
+        // buffer must not be mistaken for a failure.
+        string big = new('a', 200_000);
+        string path = WriteTrace(".jsonl", Requests(4, _ => "latest"));
+        await using StubJsonRpcServer server = new(_ => (HttpStatusCode.OK, $"{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x{big}\"}}"));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 4,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].Succeeded, Is.EqualTo(4));
+        Assert.That(results[0].Failed, Is.Zero);
+    }
+
+    [Test]
+    public async Task Dry_run_rewrites_without_sending_anything()
+    {
+        string path = WriteTrace(".jsonl.zst", Requests(25, index => index < 5 ? "latest" : $"0x{index:x}"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            DryRun = true,
+            MeasuredRequests = 0,
+        });
+
+        Assert.That(server.Requests, Is.Zero);
+        Assert.That(results[0].Rewritten, Is.EqualTo(20));
+        Assert.That(results[0].Succeeded, Is.EqualTo(25));
+    }
+
+    [Test]
+    public void Dry_run_fails_loudly_on_a_record_it_cannot_rewrite()
+    {
+        // Silently replaying a record at the wrong block would make the whole run meaningless, so a
+        // record without a block parameter has to stop the dry run rather than pass through it.
+        string path = WriteTrace(".jsonl", ["""{"method":"eth_chainId","params":[],"id":1,"jsonrpc":"2.0"}"""]);
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = new Uri("http://127.0.0.1:1/"),
+            Concurrencies = [1],
+            DryRun = true,
+            MeasuredRequests = 0,
+        };
+
+        ReplaySweep sweep = new(options, TextWriter.Null);
+
+        Assert.That(async () => await sweep.RunAsync(CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    private static Task<IReadOnlyList<LevelResult>> Run(
+        StubJsonRpcServer server,
+        string path,
+        Func<ReplayOptions, ReplayOptions> configure)
+    {
+        ReplayOptions options = configure(new ReplayOptions
+        {
+            InputPath = path,
+            Address = server.Address,
+            Concurrencies = [2],
+            Timeout = TimeSpan.FromSeconds(30),
+        });
+
+        return new ReplaySweep(options, TextWriter.Null).RunAsync(CancellationToken.None);
+    }
+
+    private static IReadOnlyList<string> Requests(int count, Func<int, string> blockTag)
+    {
+        string[] records = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            records[i] = $"{{\"method\":\"eth_call\",\"params\":[{{\"to\":\"0x{i:x2}\",\"data\":\"0xabcdef\"}},\"{blockTag(i)}\",{{}}],\"id\":{i},\"jsonrpc\":\"2.0\"}}";
+        }
+
+        return records;
+    }
+
+    private string WriteTrace(string extension, IReadOnlyList<string> records)
+    {
+        string path = Path.Combine(_directory, $"trace{extension}");
+        byte[] bytes = Encoding.UTF8.GetBytes(string.Join('\n', records) + '\n');
+
+        using FileStream file = File.Create(path);
+        if (Path.GetExtension(path) == ".zst")
+        {
+            using CompressionStream compressor = new(file);
+            compressor.Write(bytes);
+        }
+        else
+        {
+            file.Write(bytes);
+        }
+
+        return path;
+    }
+}

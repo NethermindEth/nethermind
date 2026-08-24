@@ -9,6 +9,7 @@
       <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
       <PackageReference Include="System.CommandLine" />
       <PackageReference Include="Prometheus.Client.MetricPusher" />
+      <PackageReference Include="ZstdSharp.Port" />
     </ItemGroup>
 
     <ItemGroup>
