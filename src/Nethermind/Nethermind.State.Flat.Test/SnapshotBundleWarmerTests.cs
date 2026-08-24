@@ -226,12 +226,11 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // A warmer miss means the node is absent from the in-memory structures, not from persistence, so the warmer
-    // resolves it with a persistence RLP read. That read must land in the transient where the block's live reads
-    // (and TrieNodeCache.Add) can reuse it, or every warmed node is read from persistence twice.
+    // A warmer resolves misses in its private negative cache. Retirement must carry a verified, independently
+    // decoded copy into the shared cache without making the in-flight warmer node visible to live reads.
     [TestCase(false)]
     [TestCase(true)]
-    public void Warmer_persistence_read_is_published_for_live_reads(bool storage)
+    public void Resolved_warmer_miss_is_promoted_as_a_detached_node_at_retirement(bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -267,23 +266,19 @@ public class SnapshotBundleWarmerTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Published already decoded: a reader can never observe it mid-resolution.
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Leaf));
-            // ...and it is a private copy, never the instance the warmer resolves in place.
-            Assert.That(live, Is.Not.SameAs(warmed));
+            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(found, Is.True);
-            Assert.That(cached, Is.SameAs(live));
+            Assert.That(cached, Is.Not.SameAs(warmed));
+            Assert.That(cached!.NodeType, Is.EqualTo(NodeType.Leaf));
+            Assert.That(cached.FullRlp.UnderlyingArray, Is.Not.SameAs(warmed.FullRlp.UnderlyingArray));
         }
 
-        // The live read was served from the transient instead of repeating the warmer's persistence read.
         if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
         else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     // The persistence read behind the warmer is keyed by path alone, so it can return a different node than the
-    // one the warmer asked for. Publishing those bytes under the requested hash would satisfy every reader-side
-    // guard by construction (they all compare the node's own claimed Keccak), poisoning live reads and the shared
-    // cache. Nothing matching the requested hash may be published unless the RLP actually hashes to it.
+    // one the warmer asked for. Retirement must not associate those bytes with the requested hash.
     [TestCase(false)]
     [TestCase(true)]
     public void Warmer_does_not_publish_a_node_the_rlp_does_not_hash_to(bool storage)
@@ -313,20 +308,84 @@ public class SnapshotBundleWarmerTests
         if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
         else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
 
-        TrieNode live = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, requestedHash)
-            : bundle.FindStateNodeOrUnknown(path, requestedHash);
-
         (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
         cache.Add(retired!);
         retired!.ReleaseLease();
 
-        using (Assert.EnterMultipleScope())
+        Assert.That(cache.TryGet(cacheAddress, in path, requestedHash, out _), Is.False,
+            "the mismatched persistence node was promoted under the requested hash");
+    }
+
+    [TestCase(false, new byte[] { 0xc2, 0x80, 0x01 }, typeof(IndexOutOfRangeException))]
+    [TestCase(true, new byte[] { 0xc2, 0x80, 0x01 }, typeof(IndexOutOfRangeException))]
+    [TestCase(false, new byte[] { 0xf8 }, typeof(ArgumentOutOfRangeException))]
+    [TestCase(true, new byte[] { 0xf8 }, typeof(ArgumentOutOfRangeException))]
+    public void Invalid_warmer_miss_rlp_is_not_promoted_at_retirement(bool storage, byte[] invalidRlp, Type expectedException)
+    {
+        Hash256 address = TestItem.KeccakC;
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
+        Hash256? cacheAddress = storage ? address : null;
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(invalidRlp);
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(invalidRlp);
+
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TrieNode warmed = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+
+        TreePath resolvePath = path;
+        Assert.Throws(expectedException, () =>
+            warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath));
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        Assert.DoesNotThrow(() => cache.Add(retired!));
+        retired!.ReleaseLease();
+
+        Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
+    }
+
+    [Test]
+    public void Retired_resource_waits_for_exclusive_lease()
+    {
+        using SnapshotBundle bundle = NewBundle();
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        TransientResource resource = retired!;
+        Task? wait = null;
+        bool extraLeaseHeld = false;
+
+        try
         {
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown),
-                "the mismatched persistence node was published under the requested hash");
-            Assert.That(cache.TryGet(cacheAddress, in path, requestedHash, out _), Is.False,
-                "the mismatched persistence node was promoted under the requested hash");
+            extraLeaseHeld = resource.TryAcquireLease();
+            Assert.That(extraLeaseHeld, Is.True);
+
+            TaskCompletionSource waitStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            wait = Task.Run(() =>
+            {
+                waitStarted.SetResult();
+                resource.WaitForExclusiveLease();
+            });
+
+            Assert.That(waitStarted.Task.Wait(BailOutTimeout), Is.True);
+            Assert.That(wait.Wait(TimeSpan.FromMilliseconds(100)), Is.False,
+                "retirement did not wait for an in-flight warmer lease");
+
+            resource.ReleaseLease();
+            extraLeaseHeld = false;
+
+            Assert.That(wait.Wait(BailOutTimeout), Is.True);
+        }
+        finally
+        {
+            if (extraLeaseHeld) resource.ReleaseLease();
+            if (wait is not null && !wait.IsCompleted) wait.Wait(BailOutTimeout);
+            resource.ReleaseLease();
         }
     }
 
