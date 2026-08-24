@@ -730,7 +730,9 @@ public class Eip8141ScenarioTests
 
         // A DEFAULT frame rather than VERIFY: only a non-static frame can record what it observed.
         Transaction tx = FrameTx(Sender, nonce: 0,
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, Sender, gasLimit: 300_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, Sender, executionGasLimit: 300_000,
+                stateGasLimit: (ulong)(2 * GasCostOf.SSetState),
+                UInt256.Zero, default),
             SenderFrame(Recipient));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
