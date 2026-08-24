@@ -392,7 +392,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
         byte[]? memory = _memory;
-        if (memory is not null && Size <= (ulong)memory.Length && Size <= _initializedSize)
+        if (memory is not null && overwriteEnd <= (ulong)memory.Length && overwriteEnd <= _initializedSize)
         {
             ref byte memoryData = ref MemoryMarshal.GetArrayDataReference(memory);
             Unsafe.Add(ref memoryData, offset) = value;
@@ -772,7 +772,7 @@ public struct EvmPooledMemory
 #if ZK_EVM
     private static byte[] RentLarge(int minLength, out ulong initializedSize)
     {
-        byte[] array = SafeArrayPool<byte>.Rent(minLength, out bool isFresh);
+        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
         initializedSize = isFresh ? (ulong)array.Length : 0;
         return array;
     }
@@ -853,6 +853,8 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private ulong RentForOverwriteSlow(ulong overwriteStart, ulong overwriteEnd, ulong preservedEnd)
     {
+        // Bulk callers overwrite the entire range, so only its preceding gap needs materializing;
+        // incremental accesses use chunked over-zeroing instead.
         ulong initializedSize = _initializedSize;
         if (_memory is null && _inlineMemoryManager is not null && overwriteEnd <= InlineCapacity)
         {
@@ -873,6 +875,19 @@ public struct EvmPooledMemory
         }
 
         return Math.Max(initializedSize, overwriteEnd);
+    }
+
+    internal byte[] GetArrayForMemoryManager()
+    {
+        byte[]? memory = _memory;
+        if (memory is not null)
+        {
+            return memory;
+        }
+
+        // Preserve the entire manager-visible span without changing the logical initialized prefix.
+        ulong ignoredInitializedSize = _initializedSize;
+        return EnsureCapacity(InlineCapacity, InlineCapacity, ref ignoredInitializedSize);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

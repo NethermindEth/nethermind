@@ -27,8 +27,6 @@ public static class SafeArrayPool<T>
     /// <remarks>The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.</remarks>
     public static SingleThreadedPow2Pool Shared => Pool;
 
-    internal static T[] Rent(int minimumLength, out bool isFresh) => Pool.Rent(minimumLength, out isFresh);
-
     /// <summary>A single-threaded, power-of-two array pool for the zkVM guest.</summary>
     public sealed class SingleThreadedPow2Pool : ArrayPool<T>
     {

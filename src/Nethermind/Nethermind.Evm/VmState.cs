@@ -264,9 +264,16 @@ public class VmState<TGasPolicy> : MemoryManager<byte>
         return backingArray is null ? _inlineMemory : backingArray;
     }
 
-    public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+    public override MemoryHandle Pin(int elementIndex = 0)
+        => _memory.GetArrayForMemoryManager().AsMemory(elementIndex).Pin();
 
     public override void Unpin() { }
+
+    protected override bool TryGetArray(out ArraySegment<byte> segment)
+    {
+        segment = _memory.GetArrayForMemoryManager();
+        return true;
+    }
 
     public void InitializeStacks(ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {

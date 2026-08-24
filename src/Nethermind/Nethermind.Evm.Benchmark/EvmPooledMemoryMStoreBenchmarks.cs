@@ -320,3 +320,48 @@ public class EvmPooledMemoryMStore8Benchmarks
         }
     }
 }
+
+[MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "MSTORE8", "ReservedTail")]
+public class EvmPooledMemoryReservedMStore8Benchmarks
+{
+    private const int ReservationSize = 4 * 1024;
+
+    private EvmPooledMemory _initialized;
+    private EvmPooledMemory _reserved;
+
+    [Params(1, 16, 256)]
+    public int ByteCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        EvmPooledMemoryBenchmarkHelper.MStore8(ref _initialized, 0);
+        EvmPooledMemoryBenchmarkHelper.MStore8(ref _reserved, 0);
+        UInt256 start = UInt256.Zero;
+        _reserved.CalculateMemoryCost(in start, ReservationSize, out _);
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _initialized.Dispose();
+        _reserved.Dispose();
+    }
+
+    [Benchmark(Baseline = true)]
+    public ulong InitializedPrefix() => WriteBytes(ref _initialized);
+
+    [Benchmark]
+    public ulong ReservedInitializedPrefix() => WriteBytes(ref _reserved);
+
+    private ulong WriteBytes(ref EvmPooledMemory memory)
+    {
+        for (int offset = 0; offset < ByteCount; offset++)
+        {
+            EvmPooledMemoryBenchmarkHelper.MStore8(ref memory, offset);
+        }
+
+        return memory.Size;
+    }
+}

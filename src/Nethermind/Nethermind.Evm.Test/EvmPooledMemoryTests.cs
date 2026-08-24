@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -662,6 +664,65 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [TestCase(false, TestName = "VmState_inline_memory_view_exposes_array_by_spilling")]
+    [TestCase(true, TestName = "VmState_inline_memory_view_pins_by_spilling")]
+    public unsafe void VmState_inline_memory_view_supports_standard_memory_consumers(bool pin)
+    {
+        VmState<EthereumGasPolicy> owner = new();
+        ref EvmPooledMemory memory = ref owner.Memory;
+        byte[] expected = CreatePattern(96, 0x41);
+        UInt256 start = 17;
+        UInt256 length = (UInt256)expected.Length;
+
+        try
+        {
+            UInt256 zero = UInt256.Zero;
+            memory.CalculateMemoryCost(in zero, 256, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.LoadSpanAfterGas(in zero, 256).Fill(0xa7);
+            memory.Dispose();
+
+            Assert.That(memory.TrySave(in start, expected), Is.True);
+            byte tailAfterSave = owner.GetSpan()[17 + expected.Length];
+            Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
+            byte tailAfterView = owner.GetSpan()[17 + expected.Length];
+            Assert.That(GetBackingMemory(ref memory), Is.Null);
+
+            byte[] actual;
+            if (pin)
+            {
+                using MemoryHandle handle = view.Pin();
+                actual = new ReadOnlySpan<byte>(handle.Pointer, expected.Length).ToArray();
+            }
+            else
+            {
+                Assert.That(MemoryMarshal.TryGetArray(view, out ArraySegment<byte> segment), Is.True);
+                actual = segment.AsSpan().ToArray();
+            }
+
+            byte[]? backingMemory = GetBackingMemory(ref memory);
+            byte unmaterializedTail = backingMemory![17 + expected.Length];
+            UInt256 tail = (UInt256)(17 + expected.Length);
+            UInt256 one = UInt256.One;
+            Assert.That(memory.TryLoad(in tail, in one, out ReadOnlyMemory<byte> clearedTail), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(backingMemory, Is.Not.Null);
+                Assert.That(System.Numerics.BitOperations.IsPow2((uint)backingMemory!.Length), Is.True);
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That(view.ToArray(), Is.EqualTo(expected));
+                Assert.That(tailAfterSave, Is.EqualTo(0xa7));
+                Assert.That(tailAfterView, Is.EqualTo(0xa7));
+                Assert.That(unmaterializedTail, Is.EqualTo(0xa7));
+                Assert.That(clearedTail.Span[0], Is.EqualTo(0));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [Test]
     public void VmState_owned_load_survives_inline_memory_reuse()
     {
@@ -856,17 +917,21 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             Assert.That(outOfGas, Is.False);
 
             memory.CopyAfterGas(in destination, in source, EvmPooledMemory.WordSize);
+            UInt256 inspectLength = EvmPooledMemory.WordSize;
+            ReadOnlyMemory<byte> inspected = memory.Inspect(in source, in inspectLength);
+            byte[]? backingMemory = GetBackingMemory(ref memory);
 
             using (Assert.EnterMultipleScope())
             {
-                byte[]? backingMemory = GetBackingMemory(ref memory);
                 Assert.That(backingMemory, Has.Length.EqualTo(1024));
                 if (originalBackingMemory is not null)
                 {
                     Assert.That(backingMemory, Is.SameAs(originalBackingMemory));
                 }
-                Assert.That(ReadVisibleMemory(ref memory).AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+                Assert.That(inspected.IsEmpty, Is.True);
             }
+
+            Assert.That(ReadVisibleMemory(ref memory).AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
         }
         finally
         {
