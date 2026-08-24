@@ -207,12 +207,8 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst>();
         }
 
-        // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
-        {
-            // Note: Seems to be needed on block 21827914 for some reason
+        if (accountExists)
             state.ClearStorage(contractAddress);
-        }
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);

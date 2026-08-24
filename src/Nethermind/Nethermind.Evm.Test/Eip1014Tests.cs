@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test
             Execute(callCode);
 
             AssertEip1014(expectedAddress, _defaultDeployedCode);
-            Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
+            AssertStorage(new StorageCell(expectedAddress, 1), UInt256.Zero);
         }
 
         [Test]

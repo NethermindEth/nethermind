@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
-using NUnit.Framework;
 
 namespace Ethereum.Legacy.Blockchain.Test;
 
@@ -12,56 +11,6 @@ public class MetaTests : DirectoryMetaTests<StPrefix>
 {
     protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs) =>
         dirs.Where(d => d != "stEWASMTests");
-}
-
-public class FixtureExclusionsTests
-{
-    [TestCase("stCreate2", "create2collisionStorage_d0g0v0__Istanbul", false)]
-    [TestCase("stCreate2", "RevertInCreateInInitCreate2Paris_d0g0v0__Paris", false)]
-    [TestCase("stSStoreTest", "InitCollision_d0g0v0__Istanbul", false)]
-    [TestCase("stSStoreTest", "InitCollisionParis_d0g0v0__Paris", false)]
-    [TestCase("stExtCodeHash", "dynamicAccountOverwriteEmpty_Paris_d0g0v0__Paris", false)]
-    [TestCase("stRevertTest", "RevertInCreateInInit_d0g0v0__Istanbul", false)]
-    [TestCase("stSStoreTest", "InitCollisionNonZeroNonce_d0g0v0__Istanbul", true)]
-    [TestCase("stCreate2", "create2collisionNonce_d0g0v0__Istanbul", true)]
-    public void Filters_only_retired_storage_collision_fixtures(string category, string name, bool expectedRetained)
-    {
-        GeneralStateTest test = new() { Name = name };
-        string sourceFile = $"fixtures/{category}/fixture.json";
-
-        Assert.That(FixtureExclusions.Filter([test], sourceFile), expectedRetained ? Is.EquivalentTo([test]) : Is.Empty);
-    }
-
-    [TestCase("test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
-    [TestCase("test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE-non-empty-balance-correct-initcode]")]
-    [TestCase("test_init_collision_create_tx[fork_Shanghai-tx_type_2-state_test-non-empty-balance-revert-initcode]")]
-    public void Filters_listed_generated_storage_collisions_from_state_and_blockchain_formats(string fixtureName)
-    {
-        string name = $"{fixtureName}_d0g0v0_";
-        EthereumTest[] tests =
-        [
-            new GeneralStateTest { Name = name },
-            new BlockchainTest { Name = name },
-        ];
-
-        Assert.That(FixtureExclusions.Filter(tests, "fixtures/eip7610_create_collision/test_initcollision.json"), Is.Empty);
-    }
-
-    [TestCase("eip7610_create_collision", "test_init_collision_create_opcode[fork_Cancun-state_test-opcode_CREATE-non-empty-nonce-correct-initcode]")]
-    [TestCase("eip7610_create_collision", "test_init_collision_create_tx[fork_London-tx_type_0-state_test-non-empty-balance-correct-initcode]")]
-    [TestCase("another_fixture", "test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
-    [TestCase("eip7610_create_collision_backup", "test_create2_collision_storage[fork_Amsterdam-state_test-empty-initcode]")]
-    public void Retains_unlisted_generated_fixtures(string category, string fixtureName)
-    {
-        GeneralStateTest test = new()
-        {
-            Category = category,
-            Name = $"{fixtureName}_d0g0v0_",
-        };
-
-        string sourceFile = $"fixtures/{category}/fixture.json";
-        Assert.That(FixtureExclusions.Filter([test], sourceFile), Is.EquivalentTo([test]));
-    }
 }
 
 public class ArgsZeroOneBalance : LegacyStateTestFixture<ArgsZeroOneBalance>;

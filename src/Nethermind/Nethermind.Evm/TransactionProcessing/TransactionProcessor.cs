@@ -1724,11 +1724,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareDeployment(Address contractAddress)
         {
-            if (!WorldState.IsNonZeroAccount(contractAddress, out _))
-                return true;
+            if (WorldState.IsNonZeroAccount(contractAddress, out bool accountExists))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
+                return false;
+            }
 
-            if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
-            return false;
+            if (accountExists)
+                WorldState.ClearStorage(contractAddress);
+
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
