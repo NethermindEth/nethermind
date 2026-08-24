@@ -44,35 +44,40 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
 
     private Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorageAccounts, CancellationToken token)
     {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+
         StorageRootRewrite[] rewrites = new StorageRootRewrite[updatedStorageAccounts.Count];
         int i = 0;
         foreach (Hash256 address in updatedStorageAccounts)
         {
-            Hash256? newRoot = ReassembleStorageTrie(address, token);
+            Hash256? newRoot = ReassembleStorageTrie(reader, batch, address, token);
             rewrites[i++] = new StorageRootRewrite(address.ValueHash256, newRoot ?? Keccak.EmptyTreeHash);
         }
         Array.Sort(rewrites, static (a, b) => a.AccountHash.CompareTo(b.AccountHash));
 
         if (_logger.IsInfo) _logger.Info($"Trie reassembly: rebuilt {rewrites.Length} storage tries; rebuilding state.");
 
-        return ReassembleStateTrie(rewrites, token);
+        return ReassembleStateTrie(reader, batch, rewrites, token);
     }
 
-    private Hash256? ReassembleStateTrie(ReadOnlySpan<StorageRootRewrite> storageRootRewrites, CancellationToken token)
+    private Hash256? ReassembleStateTrie(
+        IPersistence.IPersistenceReader reader,
+        IPersistence.IWriteBatch batch,
+        ReadOnlySpan<StorageRootRewrite> storageRootRewrites,
+        CancellationToken token)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-
         TreePath path = TreePath.Empty;
         TrieNode? root = ReassembleSubtree(reader, batch, address: null, ref path, storageRootRewrites, token);
         return root is null ? null : Persist(batch, address: null, ref path, root).Keccak;
     }
 
-    private Hash256? ReassembleStorageTrie(Hash256 address, CancellationToken token)
+    private Hash256? ReassembleStorageTrie(
+        IPersistence.IPersistenceReader reader,
+        IPersistence.IWriteBatch batch,
+        Hash256 address,
+        CancellationToken token)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-
         TreePath path = TreePath.Empty;
         TrieNode? root = ReassembleSubtree(reader, batch, address, ref path, storageRootRewrites: default, token);
         return root is null ? null : Persist(batch, address, ref path, root).Keccak;
@@ -132,28 +137,33 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         int childCount = 0;
         int lastNibble = -1;
 
-        for (int nibble = 0; nibble < BranchChildCount; nibble++)
+        int searchFrom = 0;
+        while (true)
         {
+            int nibble = FindNextChildNibble(reader, address, in path, searchFrom);
+            if (nibble < 0) break;
+            searchFrom = nibble + 1;
+
+            while (rewriteCursor < storageRootRewrites.Length
+                   && NibbleAt(storageRootRewrites[rewriteCursor].AccountHash, path.Length) < nibble)
+                rewriteCursor++;
+
             int rewriteStart = rewriteCursor;
             while (rewriteCursor < storageRootRewrites.Length
                    && NibbleAt(storageRootRewrites[rewriteCursor].AccountHash, path.Length) == nibble)
                 rewriteCursor++;
 
             path.AppendMut(nibble);
-
-            if (HasAnyLeafUnderPrefix(reader, address, in path))
-            {
-                TrieNode? child = ReassembleSubtree(reader, batch, address, ref path, storageRootRewrites[rewriteStart..rewriteCursor], token);
-                if (child is not null)
-                {
-                    children ??= new TrieNode?[BranchChildCount];
-                    children[nibble] = child;
-                    childCount++;
-                    lastNibble = nibble;
-                }
-            }
-
+            TrieNode? child = ReassembleSubtree(reader, batch, address, ref path, storageRootRewrites[rewriteStart..rewriteCursor], token);
             path.TruncateMut(path.Length - 1);
+
+            if (child is not null)
+            {
+                children ??= new TrieNode?[BranchChildCount];
+                children[nibble] = child;
+                childCount++;
+                lastNibble = nibble;
+            }
         }
 
         if (childCount == 0)
@@ -241,20 +251,26 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         return (index & 1) == 0 ? b >> 4 : b & 0xF;
     }
 
-    private static bool HasAnyLeafUnderPrefix(IPersistence.IPersistenceReader reader, Hash256? address, in TreePath prefix)
+    /// <summary>
+    /// Returns the lowest nibble at or after <paramref name="startNibble"/> whose subtree under
+    /// <paramref name="prefix"/> holds at least one flat leaf, or -1 when no such nibble exists.
+    /// </summary>
+    private static int FindNextChildNibble(IPersistence.IPersistenceReader reader, Hash256? address, in TreePath prefix, int startNibble)
     {
-        ValueHash256 lower = prefix.ToLowerBoundPath();
+        if (startNibble >= BranchChildCount) return -1;
+
+        ValueHash256 lower = prefix.Append(startNibble).ToLowerBoundPath();
         ValueHash256 upper = prefix.ToUpperBoundPath();
 
         if (address is null)
         {
             using IPersistence.IFlatIterator it = reader.CreateAccountIterator(lower, upper);
-            return it.MoveNext();
+            return it.MoveNext() ? NibbleAt(it.CurrentKey, prefix.Length) : -1;
         }
         else
         {
             using IPersistence.IFlatIterator it = reader.CreateStorageIterator(address, lower, upper);
-            return it.MoveNext();
+            return it.MoveNext() ? NibbleAt(it.CurrentKey, prefix.Length) : -1;
         }
     }
 }
