@@ -93,9 +93,8 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [frame_receipt, ...]].
-        // It carries no transaction-level status or bloom, so StatusCode is derived from the frame
-        // statuses and Logs holds their union — a wire receipt then reads like an executed one.
+        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [frame_receipt, ...]] — no transaction-level
+        // status or bloom on the wire (they would change the receipts root), so both are derived from the frames.
         private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
         {
             int sequenceLength = ctx.ReadSequenceLength();

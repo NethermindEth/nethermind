@@ -16,7 +16,8 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
 {
     public static readonly TxFrameDecoder Instance = new();
 
-    // The spec bounds frame data only through gas, which is charged after decoding; mirrors the base tx cap.
+    // EIP8141-DEVIATION: the spec bounds frame data only through gas, which is charged after
+    // decoding; this mirrors the base tx data cap to guard the allocation.
     private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<TxFrame>((int)30.MiB, nameof(TxFrame.Data));
 
     protected override TxFrame DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

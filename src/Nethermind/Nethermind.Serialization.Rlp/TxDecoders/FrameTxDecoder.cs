@@ -32,7 +32,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
     private static readonly RlpLimit SignaturesCountLimit = RlpLimit.For<Transaction>(SignaturesDecodeCap, nameof(Transaction.FrameSignatures));
-    // EIP-7594's per-transaction blob limit applies to frame txs unchanged, so reuse the blob tx cap.
+    // Decode-side allocation guard only — EIP-7594's per-tx blob limit is far tighter and is
+    // enforced by the transaction validator.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
 
     private static readonly RlpLimit ReferencesCountLimit = RlpLimit.For<Transaction>(Eip8272Constants.MaxRecentRootReferences, nameof(Transaction.RecentRootReferences));

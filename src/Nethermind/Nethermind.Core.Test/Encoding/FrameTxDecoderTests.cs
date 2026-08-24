@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -24,8 +25,7 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class FrameTxDecoderTests
 {
-    // ShardBlobNetworkWrapperRlp.BlobCountLimit, which is internal to the serialization assembly.
-    private const int BlobVersionedHashesDecodeCap = 128;
+    private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -440,7 +440,7 @@ public class FrameTxDecoderTests
 
         if (rejected)
         {
-            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpException>());
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
         }
         else
         {
@@ -459,7 +459,7 @@ public class FrameTxDecoderTests
 
         if (rejected)
         {
-            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpException>());
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
         }
         else
         {
