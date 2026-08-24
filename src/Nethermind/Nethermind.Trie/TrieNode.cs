@@ -495,7 +495,7 @@ namespace Nethermind.Trie
 
                 if (!VerifyWarmerOwnedRlp(rlp))
                 {
-                    ThrowInvalidKeccak();
+                    ThrowInvalidKeccak(path);
                 }
 
                 if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
@@ -525,8 +525,12 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
 
+            // A path-keyed persistence read can legitimately answer with another version of the node at that path,
+            // so this is the same expected staleness as a missing node rather than a corrupted trie.
             [DoesNotReturn, StackTraceHidden]
-            void ThrowInvalidKeccak() => throw new TrieException($"Trie returned RLP with an unexpected Keccak for node {Keccak}");
+            void ThrowInvalidKeccak(in TreePath nodePath) => throw new TrieNodeException(
+                $"Trie returned RLP with an unexpected Keccak for node {Keccak}", nodePath,
+                Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in CappedArray<byte> rlp, in TreePath nodePath) => throw new TrieNodeException(

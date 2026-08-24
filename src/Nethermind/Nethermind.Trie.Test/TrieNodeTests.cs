@@ -191,6 +191,27 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Warmer_owned_try_resolve_rejects_rlp_of_another_node()
+    {
+        (byte[] unrelatedRlp, _) = EncodedLeaf();
+        Hash256 requestedHash = Keccak.Compute("requested node");
+        TrieNode trieNode = new(NodeType.Unknown, requestedHash);
+        trieNode.MarkWarmerOwned();
+
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, requestedHash, ReadFlags.None).Returns(unrelatedRlp);
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(trieNode.IsWarmerResolved, Is.False);
+            Assert.That(trieNode.FullRlp.IsNotNull, Is.False);
+        }
+    }
+
+    [Test]
     public void Encoding_leaf_without_key_throws_trie_exception()
     {
         TrieNode trieNode = new(NodeType.Leaf);

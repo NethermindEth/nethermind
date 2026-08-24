@@ -994,7 +994,10 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    // A warm up is an optimization, so an unresolvable node just ends the traversal. In particular, a
+                    // path-keyed persistence read may answer with another version of the node at that path, which is
+                    // expected while the warmer runs ahead of, or behind, the live reads.
+                    if (!node.TryResolveNode(TrieStore, ref path)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {
