@@ -109,19 +109,19 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            if (_stateBoundary.BestPersistedState is not ulong blockNumber)
-            {
-                // Nothing was processed yet (fresh or still-syncing node): there is no processed head to
-                // restore, and the best-suggested-body clamp in LoadBestKnown is the entire recovery.
-                if (Logger.IsInfo) Logger.Info("Skipping head rollback for 'header < body' recovery - no block has been processed yet.");
-                return;
-            }
-
+            ulong? persistedNumber = _stateBoundary.BestPersistedState;
+            ulong blockNumber = persistedNumber ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
-            if (canonicalBlock is not null && canonicalBlock.WasProcessed)
+            if (canonicalBlock?.WasProcessed == true && FindBlock(canonicalBlock.BlockHash, BlockTreeLookupOptions.None) is not null)
             {
                 SetHeadBlock(canonicalBlock.BlockHash!);
+            }
+            else if (canonicalBlock is { WasProcessed: false } && persistedNumber is null)
+            {
+                // The persisted ceiling is unavailable and the surviving suggested candidate was not processed;
+                // load-time clamps are sufficient.
+                if (Logger.IsInfo) Logger.Info("Skipping head rollback for 'header < body' recovery - persisted ceiling is unavailable and the surviving suggested candidate was not processed.");
             }
             else
             {
@@ -275,7 +275,7 @@ public partial class BlockTree
         Block? found = null;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (blockInfo.IsBeaconBody != findBeacon)
+            if (findBeacon ? !blockInfo.IsBeaconBody : blockInfo.IsBeaconInfo)
             {
                 continue;
             }

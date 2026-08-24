@@ -12,6 +12,8 @@ namespace Nethermind.Core
     public class ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
     {
         private const int NotFound = -1;
+        private const BlockMetadata BeaconMetadataMask =
+            BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain;
 
         public bool HasNonBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
         public bool HasBeaconBlocks => BlockInfos.Any(static b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
@@ -89,6 +91,11 @@ namespace Nethermind.Core
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
+        private static bool HasMatchingStableFields(BlockInfo blockInfo, BlockInfo existingBlockInfo) =>
+            blockInfo.BlockHash.Equals(existingBlockInfo.BlockHash)
+            && blockInfo.TotalDifficulty.Equals(existingBlockInfo.TotalDifficulty)
+            && (blockInfo.Metadata & ~BeaconMetadataMask) == (existingBlockInfo.Metadata & ~BeaconMetadataMask);
+
         public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain, bool keepExistingMetadata = false)
         {
             BlockInfo[] blockInfos = BlockInfos;
@@ -100,15 +107,17 @@ namespace Nethermind.Core
             }
             else
             {
+                BlockInfo existingBlockInfo = blockInfos[foundIndex.Value];
                 if (keepExistingMetadata)
-                    blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata;
+                    blockInfo.Metadata |= existingBlockInfo.Metadata;
                 else if (blockInfo.IsBeaconInfo)
-                    // A header-only beacon re-insert (pivot update, beacon-headers backfill) must not un-record
-                    // an already stored body, or startup misreads the level as 'header < body' corruption.
-                    blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain);
+                {
+                    // Beacon reinserts can carry partial metadata; retain the stored beacon classification.
+                    blockInfo.Metadata |= existingBlockInfo.Metadata & BeaconMetadataMask;
+                }
 
-                if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
-                    blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;
+                if (HasMatchingStableFields(blockInfo, existingBlockInfo))
+                    blockInfo.WasProcessed |= existingBlockInfo.WasProcessed;
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;

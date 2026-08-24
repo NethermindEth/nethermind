@@ -37,21 +37,113 @@ public class ChainLevelInfoTests
     }
 
     [TestCase(
-        BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconHeader,
+        BlockMetadata.BeaconBody,
         BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody,
-        TestName = "Keeps beacon main chain flag")]
+        TestName = "Keeps stored header metadata on body-only re-insert")]
+    [TestCase(
+        BlockMetadata.BeaconBody,
+        BlockMetadata.BeaconHeader,
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody,
+        TestName = "Keeps stored body metadata on header-only re-insert")]
+    [TestCase(
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconBody,
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain,
+        TestName = "Keeps stored main-chain metadata on body-only re-insert")]
     [TestCase(
         BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody,
         BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
-        TestName = "Keeps beacon body flag on header-only re-insert")]
-    public void Reinserting_beacon_block_info_keeps_sticky_beacon_flags_by_default(BlockMetadata existingMetadata, BlockMetadata newMetadata)
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain,
+        TestName = "Keeps stored body metadata on partial header re-insert")]
+    [TestCase(
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconBody,
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain,
+        TestName = "Keeps all stored beacon metadata on body-only re-insert")]
+    public void Reinserting_beacon_block_info_keeps_sticky_beacon_flags_by_default(
+        BlockMetadata existingMetadata,
+        BlockMetadata newMetadata,
+        BlockMetadata expectedMetadata)
     {
         ChainLevelInfo level = new(false, new BlockInfo(_hash, 0, existingMetadata));
 
         level.InsertBlockInfo(_hash, new BlockInfo(_hash, 0, newMetadata), setAsMain: false);
 
-        Assert.That(level.BlockInfos[0].Metadata,
-            Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain));
+        Assert.That(level.BlockInfos[0].Metadata, Is.EqualTo(expectedMetadata));
+    }
+
+    [TestCase(
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconBody,
+        TestName = "Keeps processed flag when body metadata expands stored beacon metadata")]
+    [TestCase(
+        BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconHeader,
+        TestName = "Keeps processed flag when header metadata expands stored beacon metadata")]
+    public void Reinserting_beacon_block_info_keeps_processed_flag_when_metadata_expands(
+        BlockMetadata existingMetadata,
+        BlockMetadata newMetadata)
+    {
+        BlockMetadata allBeaconMetadata = BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain;
+        ChainLevelInfo level = new(false, new BlockInfo(_hash, 0, existingMetadata) { WasProcessed = true });
+
+        level.InsertBlockInfo(_hash, new BlockInfo(_hash, 0, newMetadata), setAsMain: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(level.BlockInfos[0].Metadata, Is.EqualTo(allBeaconMetadata), "metadata");
+            Assert.That(level.BlockInfos[0].WasProcessed, Is.True, "processed");
+        }
+    }
+
+    [TestCase(true, false, TestName = "Does not keep processed flag when non-beacon metadata changes")]
+    [TestCase(false, true, TestName = "Does not keep processed flag when total difficulty changes")]
+    public void Reinserting_beacon_block_info_does_not_keep_processed_flag_when_stable_fields_change(
+        bool changesNonBeaconMetadata,
+        bool changesTotalDifficulty)
+    {
+        BlockInfo incomingBlockInfo = new(_hash, 0, BlockMetadata.BeaconBody);
+        if (changesNonBeaconMetadata)
+        {
+            incomingBlockInfo.Metadata |= BlockMetadata.Finalized;
+        }
+
+        if (changesTotalDifficulty)
+        {
+            incomingBlockInfo.TotalDifficulty = 1;
+        }
+
+        ChainLevelInfo level = new(false,
+            new BlockInfo(_hash, 0, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain) { WasProcessed = true });
+
+        level.InsertBlockInfo(_hash, incomingBlockInfo, setAsMain: false);
+
+        Assert.That(level.BlockInfos[0].WasProcessed, Is.False);
+    }
+
+    [TestCase(5UL, 0UL, TestName = "Keeps processed flag when cached block number differs from incoming block number")]
+    [TestCase(0UL, 5UL, TestName = "Keeps processed flag when incoming block number differs from cached block number")]
+    public void Reinserting_beacon_block_info_keeps_processed_flag_when_block_number_differs(
+        ulong existingBlockNumber,
+        ulong incomingBlockNumber)
+    {
+        BlockInfo existingBlockInfo = new(_hash, 0, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain)
+        {
+            BlockNumber = existingBlockNumber,
+            WasProcessed = true,
+        };
+        BlockInfo incomingBlockInfo = new(_hash, 0, BlockMetadata.BeaconBody) { BlockNumber = incomingBlockNumber };
+        ChainLevelInfo level = new(false, existingBlockInfo);
+
+        level.InsertBlockInfo(_hash, incomingBlockInfo, setAsMain: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(level.BlockInfos[0].Metadata,
+                Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain), "metadata");
+            Assert.That(level.BlockInfos[0].WasProcessed, Is.True, "processed");
+        }
     }
 
     [Test]
