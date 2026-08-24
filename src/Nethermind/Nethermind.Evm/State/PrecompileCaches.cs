@@ -112,14 +112,18 @@ public sealed class PrecompileCaches
     }
 
     /// <summary> Entries held by the surviving tier, across every precompile. </summary>
-    public int SurvivingCacheCount => _survivingCache.Count;
+    internal int SurvivingCacheCount => _survivingCache.Count;
 
     /// <summary> The per-block partition for <paramref name="address"/>, or <c>false</c> if it is not cached. </summary>
     public bool TryGetPartition(Address address, [NotNullWhen(true)] out Partition? partition) =>
         _partitions.TryGetValue(address, out partition);
 
     /// <summary> Total per-block entries across every partition. </summary>
-    public int BlockCacheCount
+    /// <remarks>
+    /// Property is for tests only unless optimized - counting on <see cref="ConcurrentDictionary{TKey,TValue}"/>
+    /// takes all locks inside, stopping any new admissions.
+    /// </remarks>
+    internal int BlockCacheCount
     {
         get
         {
@@ -190,6 +194,7 @@ public sealed class PrecompileCaches
             _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/>, if the partition has room for it. </summary>
+        /// <remarks> Reserves before checking, so a concurrent reservation near the limit can refuse an entry the partition had room for. </remarks>
         public bool TryAdd(in Key key, Result<byte[]> result)
         {
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
