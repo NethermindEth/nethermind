@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Autofac;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -12,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -47,6 +49,31 @@ public class DisposableScopeOverridableEnvTests
 
         Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+    }
+
+    /// <remarks>
+    /// A block override that moves the number must commit the base state at the new number so reads resolve there;
+    /// one that keeps the number must still resolve the base state, whose root the header keeps either way.
+    /// </remarks>
+    [TestCase(0ul, TestName = "BuildAndOverride_WithBlockOverrideKeepingNumber_ResolvesBaseState")]
+    [TestCase(1ul, TestName = "BuildAndOverride_WithBlockOverrideChangingNumber_ResolvesBaseState")]
+    public void BuildAndOverride_WithBlockOverride_ResolvesBaseState(ulong numberDelta)
+    {
+        using TestContext ctx = new();
+        BlockHeader header = ctx.SeedBalance(TestItem.AddressA, 123);
+        ulong baseNumber = header.Number;
+        Hash256 baseRoot = header.StateRoot!;
+        BlockOverride blockOverride = new() { Number = baseNumber + numberDelta, Time = header.Timestamp + 12 };
+
+        using Scope<Components> scope = ctx.Env.BuildAndOverride(header, blockOverride: blockOverride);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+            Assert.That(header.Number, Is.EqualTo(baseNumber + numberDelta));
+            Assert.That(header.StateRoot, Is.EqualTo(baseRoot));
+            Assert.That(scope.Component.WorldState.StateRoot, Is.EqualTo(baseRoot));
+        }
     }
 
     [Test]
@@ -98,6 +125,19 @@ public class DisposableScopeOverridableEnvTests
             _childLifetime = rootLifetime.BeginLifetimeScope(builder => builder.AddModule(envModule));
             ChildComponents = _childLifetime.Resolve<Components>();
             Env = _childLifetime.Resolve<IOverridableEnv<Components>>();
+        }
+
+        /// <summary>Commits <paramref name="balance"/> for <paramref name="address"/> at block 0 and returns a header the env can be built on.</summary>
+        public BlockHeader SeedBalance(Address address, UInt256 balance)
+        {
+            IWorldState worldState = _container.Resolve<IMainProcessingContext>().WorldState;
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(address, balance);
+                worldState.Commit(Frontier.Instance);
+                worldState.CommitTree(0);
+                return Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).TestObject;
+            }
         }
 
         public void Dispose()

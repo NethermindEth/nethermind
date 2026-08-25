@@ -451,9 +451,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (_pendingOverrides is not null)
                 {
-                    foreach (ValueHash256 overridden in _pendingOverrides.Values)
+                    foreach ((UInt256 index, ValueHash256 overridden) in _pendingOverrides)
                     {
-                        if (overridden != default)
+                        // A materialized slot is judged by _dictionary above, which holds any later write to it.
+                        if (overridden != default && !_dictionary.ContainsKey(index))
                         {
                             return true;
                         }

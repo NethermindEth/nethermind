@@ -175,6 +175,63 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>
+    /// Once a slot is materialized, later writes to it are judged by the change set, as on the eager path
+    /// (<see cref="IsStorageEmpty_sees_uncommitted_storage_change"/>), not by the override it started from.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Lazy_storage_override_zeroed_by_a_committed_write_leaves_storage_empty(bool readBeforeWrite)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1));
+        StorageCell cell = new(ctx.Address1, 5);
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [5] = SlotValue(7) }, replaceAll: false);
+            if (readBeforeWrite)
+            {
+                provider.Get(cell);
+            }
+
+            provider.Set(cell, StorageTree.ZeroBytes);
+            provider.Commit(Frontier.Instance, commitRoots: false);
+
+            Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.True);
+        }
+    }
+
+    [Test]
+    public void Lazy_storage_overrides_installed_twice_for_one_address_accumulate_until_replaced()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1));
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(3) }, replaceAll: false);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [1] = SlotValue(4) }, replaceAll: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 0)).ToArray(), Is.EqualTo(_values[3]), "first stateDiff");
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[4]), "second stateDiff");
+            }
+
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [2] = SlotValue(5) }, replaceAll: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 0)).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "materialized slot after full state override");
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "pending slot after full state override");
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[5]), "full state override");
+            }
+        }
+    }
+
     [Test]
     public void Lazy_storage_override_does_not_outlive_its_scope()
     {
@@ -226,14 +283,14 @@ public class StorageProviderTests(bool useFlat)
         lazy.StateProvider.ApplyStateOverridesNoCommit(codeRepo, overrides, Frontier.Instance, lazyStorage: true);
         lazy.StateProvider.Commit(Frontier.Instance, commitRoots: false);
 
-        using (Assert.EnterMultipleScope())
+        foreach (Address address in overrides.Keys)
         {
-            foreach (Address address in overrides.Keys)
+            Assert.That(lazy.StateProvider.IsStorageEmpty(address), Is.EqualTo(eager.StateProvider.IsStorageEmpty(address)), $"{address} IsStorageEmpty");
+            for (int index = 0; index < SlotRange + 4; index++)
             {
-                Assert.That(lazy.StateProvider.IsStorageEmpty(address), Is.EqualTo(eager.StateProvider.IsStorageEmpty(address)), $"{address} IsStorageEmpty");
-                for (int index = 0; index < SlotRange + 4; index++)
+                StorageCell cell = new(address, (UInt256)index);
+                using (Assert.EnterMultipleScope())
                 {
-                    StorageCell cell = new(address, (UInt256)index);
                     Assert.That(lazy.StateProvider.Get(cell).ToArray(), Is.EqualTo(eager.StateProvider.Get(cell).ToArray()), $"{cell} Get");
                     Assert.That(lazy.StateProvider.GetOriginal(cell).ToArray(), Is.EqualTo(eager.StateProvider.GetOriginal(cell).ToArray()), $"{cell} GetOriginal");
                 }
