@@ -103,7 +103,7 @@ internal class EpochSwitchManager(
     /// <inheritdoc/>
     /// <remarks>
     /// Resolves the epoch switch blocks first and reads their master node sets afterwards, so an epoch that the walk
-    /// only passes through no longer has to have its snapshot available.
+    /// only passes through doesn't need to have its snapshot available.
     /// </remarks>
     public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
