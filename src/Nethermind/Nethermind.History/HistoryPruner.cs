@@ -603,26 +603,20 @@ public class HistoryPruner : IHistoryPruner
         return candidates;
     }
 
-    /// <summary>Cheaper than a range of one height. False when a body is missing, so the caller ranges it.</summary>
+    /// <summary>Removes by the hashes the level already names, so no body is read - a body here costs milliseconds
+    /// and buys nothing, since the receipt row is keyed by height and hash. False when the height has no level, so
+    /// the caller falls back to a range that covers it whatever its hashes are.</summary>
     private bool TryRemoveReceiptsAt(ulong number)
     {
         ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
-        if (level is null) return false;
+        if (level is null || level.BlockInfos.Length == 0) return false;
 
-        bool removedAll = level.BlockInfos.Length > 0;
         foreach (BlockInfo info in level.BlockInfos)
         {
-            Block? block = _blockTree.FindBlock(info.BlockHash, BlockTreeLookupOptions.None, number);
-            if (block is null)
-            {
-                removedAll = false;
-                continue;
-            }
-
-            _receiptStorage.RemoveReceipts(block);
+            _receiptStorage.RemoveReceipts(number, info.BlockHash);
         }
 
-        return removedAll;
+        return true;
     }
 
     /// <summary>True when every body at the height was accounted for - retained, or removed here. A height that

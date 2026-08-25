@@ -925,6 +925,31 @@ namespace Nethermind.Blockchain.Receipts
             RemoveBlockTx(block);
         }
 
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+            if (_pendingReceipts is not null)
+            {
+                _pendingReceipts.Remove(blockHash, () => RemoveReceiptsCore(blockNumber, blockHash));
+            }
+            else
+            {
+                RemoveReceiptsCore(blockNumber, blockHash);
+            }
+        }
+
+        [SkipLocalsInit]
+        private void RemoveReceiptsCore(ulong blockNumber, Hash256 blockHash)
+        {
+            _pendingCanonical.TryRemove(blockHash.ValueHash256, out _);
+            if (DropRetainedBody(blockHash.ValueHash256)) UpdateRetentionMetrics();
+
+            _receiptsCache.Delete(blockHash);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            _receiptsDb.Remove(blockNumPrefixed);
+        }
+
         /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
         /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)

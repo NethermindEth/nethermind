@@ -36,6 +36,11 @@ namespace Nethermind.Blockchain.Receipts
         /// is pruned, so they stay readable without it. False when the implementation does not support it.</summary>
         bool TryRetainSelfDescribing(Block block) => false;
 
+        /// <summary>Drops one block's receipts named by hash, so the caller does not have to load its body. Leaves the
+        /// transaction index to <see cref="SweepTransactionIndex"/>, exactly as <see cref="RemoveReceiptsRange"/> does.
+        /// Required rather than defaulted: a throwing default would let a pruning node fail its first pass.</summary>
+        void RemoveReceipts(ulong blockNumber, Hash256 blockHash);
+
         /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> without reading any of
         /// them. Leaves the transaction index to <see cref="SweepTransactionIndex"/>.</summary>
         void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => throw new NotSupportedException();

@@ -71,6 +71,29 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             $"{storage.GetType().Name} inherits the throwing default, so a pruning node configured with it would fail every pass");
 
     [Test]
+    public void InMemoryReceiptStorage_RemoveReceiptsByHash_TakesOnlyThatBlock()
+    {
+        InMemoryReceiptStorage storage = new();
+        Dictionary<ulong, Block> blocks = [];
+
+        for (ulong number = 1; number <= 3; number++)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            storage.Insert(block, [Build.A.Receipt.WithBlockHash(block.Hash).TestObject]);
+            blocks[number] = block;
+        }
+
+        storage.RemoveReceipts(2, blocks[2].Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.HasBlock(1, blocks[1].Hash!), Is.True);
+            Assert.That(storage.HasBlock(2, blocks[2].Hash!), Is.False);
+            Assert.That(storage.HasBlock(3, blocks[3].Hash!), Is.True);
+        }
+    }
+
+    [Test]
     public void InMemoryReceiptStorage_RemoveReceiptsRange_HoldsTheBounds()
     {
         InMemoryReceiptStorage storage = new();
