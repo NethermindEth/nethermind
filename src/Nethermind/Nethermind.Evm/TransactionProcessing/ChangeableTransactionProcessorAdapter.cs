@@ -6,45 +6,36 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class ChangeableTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
     {
-        public ITransactionProcessorAdapter CurrentAdapter { get; set; }
-        public ITransactionProcessor TransactionProcessor { get; }
-
-        private ChangeableTransactionProcessorAdapter(ITransactionProcessorAdapter adapter) => CurrentAdapter = adapter;
-
-        public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-            : this(new ExecuteTransactionProcessorAdapter(transactionProcessor)) => TransactionProcessor = transactionProcessor;
+        /// <summary>The current runtime mode: given a processor, builds the adapter that runs it. Swapped by the debug tracer between Execute and Trace.</summary>
+        public TransactionProcessorAdapterFactory CurrentAdapterFactory { get; set; } = static processor => new ExecuteTransactionProcessorAdapter(processor);
+        public ITransactionProcessor TransactionProcessor { get; } = transactionProcessor;
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            CurrentAdapter.Execute(transaction, txTracer);
+            CurrentAdapterFactory(TransactionProcessor).Execute(transaction, txTracer);
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            => CurrentAdapter.SetBlockExecutionContext(in blockExecutionContext);
+            => TransactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
         /// <summary>
-        /// Builds an adapter that runs <paramref name="transactionProcessor"/> in this adapter's current
-        /// runtime mode (Execute vs Trace), re-read on every call.
+        /// Builds an adapter that runs <paramref name="processor"/> in this adapter's current runtime mode,
+        /// re-read on every call.
         /// </summary>
         /// <remarks>
         /// Lets the EIP-7928 block-access-list pool's per-worker processors honour the debug tracer's runtime
         /// Execute↔Trace swap: the debug scope registers this as its <see cref="TransactionProcessorAdapterFactory"/>,
-        /// so each worker tracks this shared adapter's mode while executing on its own processor.
+        /// so each worker applies this shared adapter's current mode to its own processor.
         /// </remarks>
-        public ITransactionProcessorAdapter ForProcessor(ITransactionProcessor transactionProcessor)
-            => new PerProcessorAdapter(this, transactionProcessor);
+        public ITransactionProcessorAdapter ForProcessor(ITransactionProcessor processor)
+            => new PerProcessorAdapter(this, processor);
 
-        // GethStyleTracer swaps CurrentAdapter between the Execute and Trace adapters only.
-        private bool IsTracing => CurrentAdapter is TraceTransactionProcessorAdapter;
-
-        private sealed class PerProcessorAdapter(ChangeableTransactionProcessorAdapter mode, ITransactionProcessor transactionProcessor)
+        private sealed class PerProcessorAdapter(ChangeableTransactionProcessorAdapter mode, ITransactionProcessor processor)
             : ITransactionProcessorAdapter
         {
             public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-                mode.IsTracing
-                    ? transactionProcessor.Trace(transaction, txTracer)
-                    : transactionProcessor.Execute(transaction, txTracer);
+                mode.CurrentAdapterFactory(processor).Execute(transaction, txTracer);
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                => processor.SetBlockExecutionContext(in blockExecutionContext);
         }
     }
 }
