@@ -36,6 +36,12 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "2")]
     uint PruningTimeoutSeconds { get; set; }
 
+    [ConfigItem(
+        Description = "Keep the body of every height whose receipts are retained, so its transactions stay queryable. Also spares the pruner from re-encoding those receipts to stand alone, which costs a signature recovery per transaction. Has no effect without a retention backend, and costs the disk of a whole body for every height it keeps.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool RetainBodiesWithReceipts { get; set; }
+
     // This member needs to be a method instead of a property
     // not to be picked up by the configuration handler
     bool Enabled() => Pruning != PruningModes.Disabled;

@@ -48,6 +48,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
     private readonly IPrunedReceiptRetention _receiptRetention;
+    private readonly bool _retainBodies;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
@@ -100,6 +101,7 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
+        _retainBodies = historyConfig.RetainBodiesWithReceipts;
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -436,7 +438,9 @@ public class HistoryPruner : IHistoryPruner
                 // short, and the rest of the chunk stops with it rather than stranding undecided receipts.
                 to = RetainReceiptsAndReclaimTheRest(from, to, cancellationToken);
 
-                _blockTree.DeleteOldBlockRange(from, to);
+                // Retaining bodies has to drop them height by height, beside the retention that decides which
+                // survive; one range over the chunk would take those with it.
+                if (!_retainBodies) _blockTree.DeleteOldBlockRange(from, to);
                 _blockAccessListStore.DeleteRange(from, to);
 
                 _blocksReclaimCursor = to;
@@ -523,6 +527,23 @@ public class HistoryPruner : IHistoryPruner
         if (candidates.Count == 0)
         {
             _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
+            if (_retainBodies) _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
+            return;
+        }
+
+        if (_retainBodies)
+        {
+            // A kept height keeps its body, so its receipts stay readable through it and need no re-encoding at
+            // all - which is what was paying a signature recovery per transaction, on most heights of the span.
+            HashSet<ulong> keep = [.. candidates];
+            for (ulong number = fromInclusive; number < toExclusive; number++)
+            {
+                if (keep.Contains(number) || TryRemoveReceiptsAt(number)) continue;
+
+                _receiptStorage.RemoveReceiptsRange(number, number + 1);
+                _blockTree.DeleteOldBlockRange(number, number + 1);
+            }
+
             return;
         }
 
@@ -614,6 +635,7 @@ public class HistoryPruner : IHistoryPruner
         foreach (BlockInfo info in level.BlockInfos)
         {
             _receiptStorage.RemoveReceipts(number, info.BlockHash);
+            if (_retainBodies) _blockTree.DeleteOldBlock(number, info.BlockHash);
         }
 
         return true;

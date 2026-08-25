@@ -184,6 +184,10 @@ namespace Nethermind.Blockchain
         /// their hashes and whether or not a chain level lists them.</summary>
         void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive);
 
+        /// <summary>Drops one old block's body, for a caller keeping some of the heights in a range it is reclaiming.
+        /// </summary>
+        void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);
+
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
         /// <summary>
