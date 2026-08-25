@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
@@ -17,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -101,6 +103,181 @@ public class StorageProviderTests(bool useFlat)
             provider.Commit(Frontier.Instance, commitRoots: false);
 
             Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.EqualTo(expectedEmpty));
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Lazy_storage_override_serves_overridden_slots_and_resolves_the_rest_by_mode(bool replaceAll)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1, 1, 2));
+        Dictionary<UInt256, ValueHash256> overrides = new() { [0] = SlotValue(3), [2] = SlotValue(4) };
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.TrySetStorageOverrides(ctx.Address1, overrides, replaceAll), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 0)).ToArray(), Is.EqualTo(_values[3]), "overridden existing slot");
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[4]), "overridden new slot");
+                Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(replaceAll ? StorageTree.ZeroBytes : _values[2]), "slot outside the override");
+            }
+        }
+    }
+
+    [Test]
+    public void Lazy_storage_override_is_the_original_of_a_transaction_write_and_survives_a_restore()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1, 1));
+        StorageCell cell = new(ctx.Address1, 0);
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(3) }, replaceAll: false);
+            provider.TakeSnapshot(newTransactionStart: true);
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[3]));
+
+            provider.Set(cell, _values[5]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[5]), "the journal write wins");
+                Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[3]), "the override is the tx original");
+            }
+
+            // CallAndRestore ends every call with a transaction-level reset that keeps the block-level state.
+            provider.Reset(resetBlockChanges: false);
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[3]), "the override outlives the call");
+        }
+    }
+
+    [TestCase(true, false, true, true, TestName = "Full_state_override_of_zero_hides_existing_storage")]
+    [TestCase(true, true, false, false, TestName = "Full_state_override_with_non_zero_slot_is_not_empty")]
+    [TestCase(false, true, false, false, TestName = "State_diff_with_non_zero_slot_is_not_empty")]
+    [TestCase(false, false, true, false, TestName = "State_diff_of_zero_keeps_existing_storage_non_empty")]
+    [TestCase(false, false, false, true, TestName = "State_diff_of_zero_on_empty_storage_stays_empty")]
+    public void Lazy_storage_override_is_reflected_by_IsStorageEmpty(bool replaceAll, bool nonZeroOverride, bool seeded, bool expectedEmpty)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1, seeded ? [1] : []));
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [5] = SlotValue(nonZeroOverride ? (byte)7 : (byte)0) }, replaceAll);
+
+            Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.EqualTo(expectedEmpty));
+        }
+    }
+
+    [Test]
+    public void Lazy_storage_override_does_not_outlive_its_scope()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1, 1));
+        StorageCell cell = new(ctx.Address1, 0);
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(0) }, replaceAll: true);
+            Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.True);
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+                Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.False);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The lazy path must be observably identical to writing every override and committing it at block level:
+    /// same values, same EIP-2200 originals, same EIP-7610 emptiness, for overridden and untouched slots alike.
+    /// </summary>
+    [Test]
+    public void Lazy_storage_override_matches_eager_application()
+    {
+        const int SlotRange = 12;
+        Random random = new(42);
+        using Context eager = new(useFlat, setInitialState: false);
+        using Context lazy = new(useFlat, setInitialState: false);
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            [eager.Address1] = new AccountOverride { State = RandomSlots(random, SlotRange) },
+            [eager.Address2] = new AccountOverride { StateDiff = RandomSlots(random, SlotRange) },
+            [TestItem.AddressA] = new AccountOverride { State = RandomSlots(random, SlotRange) },
+            [TestItem.AddressB] = new AccountOverride { StateDiff = RandomSlots(random, SlotRange) },
+        };
+        IOverridableCodeInfoRepository codeRepo = Substitute.For<IOverridableCodeInfoRepository>();
+
+        using IDisposable eagerScope = eager.StateProvider.BeginScope(SeedAndClose(eager.StateProvider, SeedTwoContracts));
+        using IDisposable lazyScope = lazy.StateProvider.BeginScope(SeedAndClose(lazy.StateProvider, SeedTwoContracts));
+        eager.StateProvider.ApplyStateOverridesNoCommit(codeRepo, overrides, Frontier.Instance);
+        eager.StateProvider.Commit(Frontier.Instance, commitRoots: false);
+        lazy.StateProvider.ApplyStateOverridesNoCommit(codeRepo, overrides, Frontier.Instance, lazyStorage: true);
+        lazy.StateProvider.Commit(Frontier.Instance, commitRoots: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Address address in overrides.Keys)
+            {
+                Assert.That(lazy.StateProvider.IsStorageEmpty(address), Is.EqualTo(eager.StateProvider.IsStorageEmpty(address)), $"{address} IsStorageEmpty");
+                for (int index = 0; index < SlotRange + 4; index++)
+                {
+                    StorageCell cell = new(address, (UInt256)index);
+                    Assert.That(lazy.StateProvider.Get(cell).ToArray(), Is.EqualTo(eager.StateProvider.Get(cell).ToArray()), $"{cell} Get");
+                    Assert.That(lazy.StateProvider.GetOriginal(cell).ToArray(), Is.EqualTo(eager.StateProvider.GetOriginal(cell).ToArray()), $"{cell} GetOriginal");
+                }
+            }
+        }
+
+        void SeedTwoContracts(WorldState provider)
+        {
+            SeedSlots(provider, eager.Address1, 1, 2, 3, 4, 5, 6, 7, 8);
+            SeedSlots(provider, eager.Address2, 8, 7, 6, 5, 4, 3, 2, 1);
+        }
+    }
+
+    private static ValueHash256 SlotValue(byte value) => ((UInt256)value).ToValueHash();
+
+    private static Dictionary<UInt256, ValueHash256> RandomSlots(Random random, int slotRange)
+    {
+        Dictionary<UInt256, ValueHash256> slots = [];
+        for (int i = 0; i < slotRange / 2; i++)
+        {
+            // Zero overrides included: they must read as empty without making the storage non-empty.
+            slots[(UInt256)random.Next(slotRange)] = SlotValue((byte)random.Next(3));
+        }
+
+        return slots;
+    }
+
+    private static void SeedSlots(WorldState provider, Address address, params byte[] values)
+    {
+        provider.CreateAccount(address, 0);
+        for (int index = 0; index < values.Length; index++)
+        {
+            provider.Set(new StorageCell(address, (UInt256)index), [values[index]]);
+        }
+    }
+
+    private static BlockHeader SeedAndClose(WorldState provider, Action<WorldState> seed)
+    {
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            seed(provider);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            return Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
         }
     }
 

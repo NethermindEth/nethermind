@@ -329,6 +329,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
+    /// <inheritdoc cref="IStorageOverrideSink.TrySetStorageOverrides"/>
+    /// <remarks>
+    /// The overrides are held by the address's <see cref="PerContractState"/>, so they share the lifetime of
+    /// the block-level change set: they survive transaction-level resets and are dropped with it in
+    /// <see cref="Reset"/> and <see cref="ClearStorageMap"/>.
+    /// </remarks>
+    public void SetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll) =>
+        GetOrCreateStorage(address).SetOverrides(slots, replaceAll);
+
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
@@ -421,10 +430,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         private bool _missingAreDefault;
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        // Lazily applied storage overrides (see IStorageOverrideSink): the caller's dictionary, consulted on a
+        // miss and materialized into _dictionary at that point, so an untouched slot costs nothing.
+        private Dictionary<UInt256, ValueHash256>? _pendingOverrides;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
-        /// <summary>Whether any uncommitted block-level change leaves a slot at a non-zero value.</summary>
+        /// <summary>Whether any uncommitted block-level change, materialized or still pending, leaves a slot at a non-zero value.</summary>
         public bool HasNonZeroValue
         {
             get
@@ -437,6 +449,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
+                if (_pendingOverrides is not null)
+                {
+                    foreach (ValueHash256 overridden in _pendingOverrides.Values)
+                    {
+                        if (overridden != default)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
                 return false;
             }
         }
@@ -444,24 +467,63 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
+            _pendingOverrides = null;
             _dictionary.ClearAndTrim(capacity, capacity);
         }
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
+            _pendingOverrides = null;
             _dictionary.Clear();
+        }
+
+        public void SetPendingOverrides(Dictionary<UInt256, ValueHash256> overrides)
+        {
+            // An override replaces whatever was already read or installed for the slot.
+            if (_dictionary.Count != 0)
+            {
+                foreach (UInt256 index in overrides.Keys)
+                {
+                    _dictionary.Remove(index);
+                }
+            }
+
+            if (_pendingOverrides is null)
+            {
+                _pendingOverrides = overrides;
+                return;
+            }
+
+            Dictionary<UInt256, ValueHash256> merged = new(_pendingOverrides);
+            foreach ((UInt256 index, ValueHash256 value) in overrides)
+            {
+                merged[index] = value;
+            }
+
+            _pendingOverrides = merged;
         }
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
         {
             ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
-            if (!exists && _missingAreDefault)
+            if (!exists)
             {
-                // Where we know the rest of the tree is empty
-                // we can say the value was found but is default
-                // rather than having to check the database
-                value = StorageChangeTrace.ZeroBytes;
-                exists = true;
+                if (_pendingOverrides is not null && _pendingOverrides.TryGetValue(storageCellIndex, out ValueHash256 overridden))
+                {
+                    // Before == After: the override is the block-level value, exactly what an eager write
+                    // followed by a commit would have left here for GetOriginal and SSTORE metering.
+                    byte[] bytes = overridden == default ? StorageTree.ZeroBytes : overridden.Bytes.WithoutLeadingZeros().ToArray();
+                    value = new StorageChangeTrace(bytes, bytes);
+                    exists = true;
+                }
+                else if (_missingAreDefault)
+                {
+                    // Where we know the rest of the tree is empty
+                    // we can say the value was found but is default
+                    // rather than having to check the database
+                    value = StorageChangeTrace.ZeroBytes;
+                    exists = true;
+                }
             }
             return ref value;
         }
@@ -567,6 +629,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             EnsureStorageTree();
             BlockChange.ClearAndSetMissingAsDefault();
+        }
+
+        public void SetOverrides(Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+        {
+            // Counts as a block-level write so the change set is kept when the storage tree is created
+            // (CreateStorageTree) and consulted by IsEmpty, as it would be after eager writes.
+            _wasWritten = true;
+            if (replaceAll)
+            {
+                BlockChange.ClearAndSetMissingAsDefault();
+            }
+
+            BlockChange.SetPendingOverrides(slots);
         }
 
         public void Return()

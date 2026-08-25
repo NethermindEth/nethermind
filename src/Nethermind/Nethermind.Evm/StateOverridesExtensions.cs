@@ -17,14 +17,22 @@ public static class StateOverridesExtensions
 {
     private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
+    /// <summary>Applies account overrides to <paramref name="state"/> without committing them.</summary>
+    /// <param name="lazyStorage">
+    /// Serve storage overrides through <see cref="IStorageOverrideSink"/> when <paramref name="state"/> supports it,
+    /// so only the slots the call reads are ever materialized. Such overrides are never merkleized, so this
+    /// is only for callers that never commit the roots of the overridden state.
+    /// </param>
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        bool lazyStorage = false)
     {
         if (overrides is not null)
         {
+            IStorageOverrideSink? storageOverrideSink = lazyStorage ? state as IStorageOverrideSink : null;
             overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
@@ -45,7 +53,7 @@ public static class StateOverridesExtensions
                 }
 
                 state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
-                state.UpdateState(accountOverride, address);
+                state.UpdateState(accountOverride, address, storageOverrideSink);
             }
         }
     }
@@ -66,24 +74,25 @@ public static class StateOverridesExtensions
         state.RecalculateStateRoot();
     }
 
-    private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
+    private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address, IStorageOverrideSink? storageOverrideSink)
     {
-        void ApplyState(Dictionary<UInt256, Hash256> diff)
+        (Dictionary<UInt256, ValueHash256>? slots, bool replaceAll) = accountOverride.State is not null
+            ? (accountOverride.State, true)
+            : (accountOverride.StateDiff, false);
+
+        if (slots is null || storageOverrideSink?.TrySetStorageOverrides(address, slots, replaceAll) == true)
         {
-            foreach ((UInt256 index, Hash256 value) in diff)
-            {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
-            }
+            return;
         }
 
-        if (accountOverride.State is not null)
+        if (replaceAll)
         {
             stateProvider.ClearStorage(address);
-            ApplyState(accountOverride.State);
         }
-        else if (accountOverride.StateDiff is not null)
+
+        foreach ((UInt256 index, ValueHash256 value) in slots)
         {
-            ApplyState(accountOverride.StateDiff);
+            stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
         }
     }
 
