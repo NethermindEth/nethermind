@@ -64,8 +64,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                // Runs on failure too: this is the only place the partition is re-queued and the
-                // active-request count released.
+                // Must also run on failure, or the partition is never re-queued.
                 _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
             }
 
@@ -164,19 +163,29 @@ namespace Nethermind.Synchronization.SnapSync
                     return AddRangeResult.OutOfBounds;
                 }
 
-                for (int i = 0; i < responses.Length; i++)
+                try
                 {
-                    // only the last can have proofs
-                    IByteArrayList proofs = null;
-                    if (i == responses.Length - 1)
+                    for (int i = 0; i < responses.Length; i++)
                     {
-                        proofs = response.Proofs;
+                        // only the last can have proofs
+                        IByteArrayList proofs = null;
+                        if (i == responses.Length - 1)
+                        {
+                            proofs = response.Proofs;
+                        }
+
+                        result = AddStorageRangeForAccount(request, i, responses[i], proofs);
+                        Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+
+                        slotCount += responses[i].Count;
                     }
-
-                    result = AddStorageRangeForAccount(request, i, responses[i], proofs);
-                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
-
-                    slotCount += responses[i].Count;
+                }
+                catch
+                {
+                    // Retry the whole range, not the remainder: mid-loop nothing records which accounts
+                    // were stored. Ones already handled end up queued twice, which re-derives the same slots.
+                    _progressTracker.RetryStorageRange(request.Copy());
+                    throw;
                 }
 
                 if (requestLength > responses.Length)
@@ -362,8 +371,9 @@ namespace Nethermind.Synchronization.SnapSync
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
-            using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
+            try
             {
+                using IWriteBatch writeBatch = _codeDb.StartWriteBatch();
                 for (int i = 0; i < codes.Count; i++)
                 {
                     ReadOnlySpan<byte> codeSpan = codes[i];
@@ -376,6 +386,13 @@ namespace Nethermind.Synchronization.SnapSync
                         writeBatch[codeHash.Bytes] = code;
                     }
                 }
+            }
+            catch
+            {
+                // Retry every hash, not the unserved ones: the batch's own flush may be what failed, so
+                // nothing can be assumed stored.
+                _progressTracker.ReportCodeRequestFinished(requestedHashes.ToArray());
+                throw;
             }
 
             Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);

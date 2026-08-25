@@ -33,9 +33,11 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 public class SnapProviderTests
 {
 
-    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null) =>
+    private ContainerBuilder CreateContainerBuilder(
+        TestSyncConfig? testSyncConfig = null,
+        Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
         new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig()));
+            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig(), factoryCreator));
 
     private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null) =>
         CreateContainerBuilder(testSyncConfig).Build();
@@ -159,12 +161,7 @@ public class SnapProviderTests
         PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(account);
 
-        // Drain the account range partition so that the storage request is the only outstanding work.
-        progressTracker.IsFinished(out SnapSyncBatch? accountBatch);
-        ValueHash256 partitionLimit = accountBatch!.AccountRangeRequest!.LimitHash!.Value;
-        progressTracker.UpdateAccountRangePartitionProgress(partitionLimit, Keccak.MaxValue, false);
-        progressTracker.ReportAccountRangePartitionFinished(partitionLimit);
-        accountBatch.Dispose();
+        DrainAccountRangePartition(progressTracker);
 
         progressTracker.IsFinished(out SnapSyncBatch? storageBatch);
         using (SlotsAndProofs response = CreateEmptySlotsResponse(storageBatch!.StorageRangeRequest!.Accounts.Count + 1))
@@ -183,12 +180,75 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_ProcessingThrows_KeepsRangePhaseCompletable()
+    {
+        using IContainer container = CreateContainerBuilder(
+                new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 },
+                (_, _) => new TestSnapTrieFactory(
+                    static () => throw new NotSupportedException("no state tree expected"),
+                    static () => throw new IOException("state backend unavailable")))
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
+        progressTracker.EnqueueAccountStorage(account);
+
+        DrainAccountRangePartition(progressTracker);
+
+        progressTracker.IsFinished(out SnapSyncBatch? storageBatch);
+        using (SlotsAndProofs response = CreateEmptySlotsResponse(storageBatch!.StorageRangeRequest!.Accounts.Count))
+        {
+            Assert.That(() => snapProvider.AddStorageRange(storageBatch.StorageRangeRequest, response), Throws.InstanceOf<IOException>());
+        }
+        storageBatch.Dispose();
+
+        progressTracker.IsFinished(out SnapSyncBatch? retryBatch);
+        Assert.That(retryBatch, Is.Not.Null, "the storage request was not offered again");
+        Assert.That(retryBatch.StorageRangeRequest!.Accounts.AsSpan()[0].Path, Is.EqualTo(account.Path));
+
+        progressTracker.ReportFullStorageRequestFinished(retryBatch.StorageRangeRequest.Accounts.Count);
+        retryBatch.Dispose();
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    [Test]
+    public void AddCodes_ProcessingThrows_KeepsRangePhaseCompletable()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        progressTracker.EnqueueCodeHash(TestItem.ValueKeccaks[0]);
+
+        DrainAccountRangePartition(progressTracker);
+
+        progressTracker.IsFinished(out SnapSyncBatch? codeBatch);
+        Assert.That(() => snapProvider.AddCodes(codeBatch!.CodesRequest!, new ThrowingByteArrayList()), Throws.InstanceOf<IOException>());
+        codeBatch!.Dispose();
+
+        progressTracker.IsFinished(out SnapSyncBatch? retryBatch);
+        Assert.That(retryBatch, Is.Not.Null, "the code request was not offered again");
+        Assert.That(retryBatch.CodesRequest!.AsSpan()[0], Is.EqualTo(TestItem.ValueKeccaks[0]));
+
+        progressTracker.ReportCodeRequestFinished([]);
+        retryBatch.Dispose();
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    [Test]
     public void AddAccountRange_ProcessingThrows_KeepsRangePhaseCompletable()
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(
+        using IContainer container = CreateContainerBuilder(
                 new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 },
-                (_, _) => new TestSnapTrieFactory(static () => throw new IOException("state backend unavailable"))))
+                (_, _) => new TestSnapTrieFactory(static () => throw new IOException("state backend unavailable")))
             .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
             .Build();
 
@@ -402,6 +462,22 @@ public class SnapProviderTests
         List<string> Paths,
         List<string> Accounts
     );
+
+    private static void DrainAccountRangePartition(ProgressTracker progressTracker)
+    {
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        ValueHash256 partitionLimit = batch!.AccountRangeRequest!.LimitHash!.Value;
+        progressTracker.UpdateAccountRangePartitionProgress(partitionLimit, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(partitionLimit);
+        batch.Dispose();
+    }
+
+    private sealed class ThrowingByteArrayList : IByteArrayList
+    {
+        public int Count => 1;
+        public ReadOnlySpan<byte> this[int index] => throw new IOException("code stream unavailable");
+        public void Dispose() { }
+    }
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
