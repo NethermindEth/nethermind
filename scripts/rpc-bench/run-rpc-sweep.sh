@@ -257,9 +257,17 @@ echo "Schedule (${ROUNDS} round(s)): ${schedule[*]}"
 log_system_provenance
 
 for entry in "${schedule[@]}"; do
-  ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+  # ctype[@image][#K=V[,K=V]] — the optional env suffix reaches only this arm's node (on top of NODE_ENV_VARS), so
+  # one sweep can compare config values of the same image; it is folded into the label so arms stay distinct.
+  arm_env=""; spec="$entry"
+  if [[ "$spec" == *#* ]]; then arm_env="${spec#*#}"; spec="${spec%%#*}"; fi
+  ctype="${spec%%@*}"
+  if [[ "$spec" == *@* ]]; then img="${spec#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else img="$NM_IMAGE"; label="$ctype"; fi
+  if [[ -n "$arm_env" ]]; then
+    label="${label}_$(printf '%s' "$arm_env" | sed -E 's/NETHERMIND_[A-Z]+CONFIG_//g' | tr -c 'a-zA-Z0-9' '_' | tr -s '_' | sed 's/_$//')"
+    arm_env="${arm_env//,/ }"
+  fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( LABEL_SEEN["$label"] > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
@@ -270,6 +278,7 @@ for entry in "${schedule[@]}"; do
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
        LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
+       NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
   fi

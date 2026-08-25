@@ -632,7 +632,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema, stage only validated aggregate files, render the PR comment (pooled repeats, A/A spread, paired timings, classes). |
 | `prepare-eth-call-corpus.py` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
-| `run-rpc-sweep.sh` | One node per `clients` entry (times `rounds`, ABBA), cells per rps, corpus warm-up/parity/timings, step summary. |
+| `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]]` (times `rounds`, ABBA; the env suffix is passed as `docker -e` to that arm's node only and folded into its label, so one sweep can compare config values of one image), cells per rps, corpus warm-up/parity/timings, step summary. |
 | `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
 | `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI). |
 | `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
