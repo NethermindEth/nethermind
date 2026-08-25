@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -18,6 +19,11 @@ namespace Nethermind.Tools.Kute.Test.Replay;
 /// in flight at once. A harness holding fewer open can never satisfy it, so the assertion does not
 /// depend on a response delay outlasting the scheduler.
 /// </para>
+/// <para>
+/// Teardown races are swallowed; any other connection failure is recorded in <see cref="Failures"/>
+/// and rethrown when the server is disposed, so a broken test environment cannot hide behind a
+/// passing assertion.
+/// </para>
 /// </remarks>
 public sealed class StubJsonRpcServer : IAsyncDisposable
 {
@@ -32,6 +38,8 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
     private readonly TimeSpan _delay;
     private readonly int _releaseAt;
     private readonly TaskCompletionSource _barrier = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private readonly ConcurrentQueue<Exception> _failures = new();
 
     private int _inFlight;
     private int _peakInFlight;
@@ -69,6 +77,9 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
     /// <summary>Connections accepted so far.</summary>
     public int Connections => Volatile.Read(ref _connections);
 
+    /// <summary>Connection failures that happened while the server was live, oldest first.</summary>
+    public IReadOnlyCollection<Exception> Failures => _failures;
+
     /// <summary>Bodies of every request received, in the order they were fully read.</summary>
     public IReadOnlyList<string> Bodies
     {
@@ -96,8 +107,9 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (SocketException)
+        catch (Exception e) when (e is SocketException or ObjectDisposedException && token.IsCancellationRequested)
         {
+            // Stopping the listener fails its pending accept; a live listener failing is real and propagates.
         }
 
         await Task.WhenAll(connections);
@@ -138,8 +150,19 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
                 Interlocked.Increment(ref _requests);
             }
         }
-        catch (Exception e) when (e is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+        catch (OperationCanceledException)
         {
+            // Shutdown cancels pending reads and delays; nothing to record.
+        }
+        catch (Exception e) when (e is IOException or SocketException or ObjectDisposedException && token.IsCancellationRequested)
+        {
+            // Teardown races reads and writes on live sockets; the same failures mid-test are real.
+        }
+        catch (Exception e) when (!token.IsCancellationRequested)
+        {
+            // Recorded so a test can observe the failure before disposal rethrows it.
+            _failures.Enqueue(e);
+            throw;
         }
     }
 

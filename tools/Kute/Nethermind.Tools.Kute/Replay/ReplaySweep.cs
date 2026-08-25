@@ -550,7 +550,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
         protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
         {
-            await _gate.WaitForBurstAsync();
+            await _gate.WaitForBurstAsync(cancellationToken);
             await stream.WriteAsync(_body, cancellationToken);
         }
 
@@ -569,7 +569,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             private readonly TaskCompletionSource _burstSerializing = new(TaskCreationOptions.RunContinuationsAsynchronously);
             private int _remaining = participants;
 
-            public async Task WaitForBurstAsync()
+            public async Task WaitForBurstAsync(CancellationToken token)
             {
                 if (Interlocked.Decrement(ref _remaining) <= 0)
                 {
@@ -578,7 +578,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
                 try
                 {
-                    await _burstSerializing.Task.WaitAsync(s_timeout);
+                    await _burstSerializing.Task.WaitAsync(s_timeout, token);
                 }
                 catch (TimeoutException)
                 {
