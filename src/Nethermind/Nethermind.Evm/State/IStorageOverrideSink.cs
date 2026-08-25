@@ -15,8 +15,9 @@ namespace Nethermind.Evm.State;
 /// <remarks>
 /// A slot the call never touches costs nothing; one that is read is materialized into the block-level change
 /// set at that read, so <see cref="IWorldState.GetOriginal"/> and SSTORE metering see the override exactly as
-/// after an eager write followed by a commit. The overrides live for the current scope only and are never
-/// merkleized: a caller that needs them reflected in a state root must write them eagerly.
+/// after an eager write followed by a commit. Install them before any storage access of the current commit
+/// round: values already read or journaled in that round are not revisited. The overrides live for the current
+/// scope only and are never merkleized: a caller that needs them reflected in a state root must write them eagerly.
 /// </remarks>
 public interface IStorageOverrideSink
 {

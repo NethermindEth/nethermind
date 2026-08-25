@@ -42,10 +42,11 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Identical code is served by one <see cref="CodeInfo"/> across requests through the shared code cache:
+    /// Identical code is served by one <see cref="CodeInfo"/> across requests through the overrides' code cache:
     /// the jump-destination analysis is reused, and the instruction stream is reachable at all, as its build
     /// threshold counts hits per instance and its cache is keyed by <see cref="CodeInfo.CodeHash"/> - a fresh,
-    /// hash-less instance per request would never get there.
+    /// hash-less instance per request would never get there. The code is request-supplied, so only code within
+    /// the spec's code-size limit is cached, keeping the cache's footprint bounded like that of on-chain code.
     /// </remarks>
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
@@ -53,11 +54,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         CodeInfo value)
     {
         ValueHash256 codeHash = value.CodeHash != default ? value.CodeHash : ValueKeccak.Compute(value.Code.Span);
-        CodeInfo? shared = value.IsEmpty ? null : codeCache.Get(in codeHash);
+        bool cacheable = !value.IsEmpty && value.Code.Length <= vmSpec.MaxCodeSize;
+        CodeInfo? shared = cacheable ? codeCache.Get(in codeHash) : null;
         if (shared is null)
         {
             value.CodeHash = codeHash;
-            if (!value.IsEmpty)
+            if (cacheable)
             {
                 codeCache.Set(in codeHash, value);
             }

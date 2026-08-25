@@ -13,12 +13,19 @@ namespace Nethermind.State.OverridableEnv;
 
 public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider) : IOverridableEnvFactory
 {
+    private const int OverrideCodeCacheSize = 1024;
+
+    // Shared by every env this factory creates, but separate from the block-processing code cache: RPC-supplied
+    // override code must not evict on-chain code from it.
+    private readonly StaticCodeCache _overrideCodeCache = new(OverrideCodeCacheSize);
+
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
-            .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
+            .AddDecorator<ICodeInfoRepository>((ctx, codeInfoRepository) =>
+                new OverridableCodeInfoRepository(codeInfoRepository, ctx.Resolve<IWorldState>(), _overrideCodeCache))
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
