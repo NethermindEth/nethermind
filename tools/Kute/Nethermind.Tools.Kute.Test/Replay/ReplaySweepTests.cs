@@ -201,6 +201,57 @@ public class ReplaySweepTests
         Assert.That(results[0].Total, Is.EqualTo(37));
     }
 
+    [Test]
+    public async Task Strips_fee_fields_from_every_request()
+    {
+        // A stale gasPrice makes the node reject the call before it executes, and the rejected share
+        // drifts with the base fee, so the run silently gets faster as the network moves.
+        string path = WriteTrace(".jsonl", FeeBearingRequests(12));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            StripFeeFields = true,
+            MeasuredRequests = 12,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].FeesStripped, Is.EqualTo(12));
+        Assert.That(server.Bodies.Count, Is.EqualTo(12));
+
+        foreach (string body in server.Bodies)
+        {
+            using JsonDocument document = JsonDocument.Parse(body);
+            JsonElement call = document.RootElement.GetProperty("params")[0];
+
+            Assert.That(call.TryGetProperty("gasPrice", out _), Is.False);
+            Assert.That(call.GetProperty("gas").GetString(), Is.EqualTo("0x77359400"), "only fee fields go");
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+        }
+    }
+
+    [Test]
+    public async Task Keeps_fee_fields_when_asked_to()
+    {
+        string path = WriteTrace(".jsonl", FeeBearingRequests(5));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            StripFeeFields = false,
+            MeasuredRequests = 5,
+            WarmupRequests = 0,
+        });
+
+        Assert.That(results[0].FeesStripped, Is.Zero);
+
+        foreach (string body in server.Bodies)
+        {
+            using JsonDocument document = JsonDocument.Parse(body);
+            Assert.That(document.RootElement.GetProperty("params")[0].TryGetProperty("gasPrice", out _), Is.True);
+        }
+    }
+
     private static IEnumerable<TestCaseData> FailureCases()
     {
         yield return new TestCaseData(
@@ -308,9 +359,22 @@ public class ReplaySweepTests
             Address = server.Address,
             Concurrencies = [2],
             Timeout = TimeSpan.FromSeconds(30),
+            // Off by default here so a test asserting on request bodies sees them as written.
+            StripFeeFields = false,
         });
 
         return new ReplaySweep(options, TextWriter.Null).RunAsync(CancellationToken.None);
+    }
+
+    private static IReadOnlyList<string> FeeBearingRequests(int count)
+    {
+        string[] records = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            records[i] = $"{{\"method\":\"eth_call\",\"params\":[{{\"from\":\"0x{i:x2}\",\"gasPrice\":\"0x71afd498d0\",\"gas\":\"0x77359400\",\"data\":\"0xabcdef\"}},\"0x{i:x}\",{{}}],\"id\":{i},\"jsonrpc\":\"2.0\"}}";
+        }
+
+        return records;
     }
 
     private static IReadOnlyList<string> Requests(int count, Func<int, string> blockTag)

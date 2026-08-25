@@ -104,6 +104,11 @@ public static class ReplayCommand
         DefaultValueFactory = _ => DefaultMaxFailurePercent,
     };
 
+    private static readonly Option<bool> KeepFees = new("--keep-fees")
+    {
+        Description = "Replay captured gasPrice/maxFeePerGas fields instead of stripping them",
+    };
+
     private static readonly Option<bool> DryRun = new("--dry-run")
     {
         Description = "Stream and rewrite the trace without sending anything, verifying every block parameter",
@@ -132,6 +137,7 @@ public static class ReplayCommand
             Output,
             OutputFile,
             MaxFailurePercent,
+            KeepFees,
             DryRun,
             Progress,
         };
@@ -186,6 +192,7 @@ public static class ReplayCommand
             Address = new Uri(parseResult.GetValue(Address)!),
             Concurrencies = ConcurrencySpec.Parse(parseResult.GetValue(Concurrency)!),
             BlockTag = string.Equals(blockTag, "keep", StringComparison.OrdinalIgnoreCase) ? null : blockTag,
+            StripFeeFields = !parseResult.GetValue(KeepFees),
             MeasuredRequests = parseResult.GetValue(Requests),
             WarmupRequests = parseResult.GetValue(Warmup),
             Skip = parseResult.GetValue(Skip),

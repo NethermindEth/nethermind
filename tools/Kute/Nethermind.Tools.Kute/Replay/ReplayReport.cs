@@ -57,7 +57,7 @@ public static class ReplayReport
     public static string Csv(IReadOnlyList<LevelResult> results)
     {
         StringBuilder builder = new();
-        builder.AppendLine("concurrency,requests,succeeded,rpc_errors,http_errors,transport_errors,elapsed_s,rps,request_mib,rewritten,mean_ms,p50_ms,p90_ms,p99_ms,min_ms,max_ms");
+        builder.AppendLine("concurrency,requests,succeeded,rpc_errors,http_errors,transport_errors,elapsed_s,rps,request_mib,rewritten,fees_stripped,mean_ms,p50_ms,p90_ms,p99_ms,min_ms,max_ms");
 
         foreach (LevelResult result in results)
         {
@@ -72,6 +72,7 @@ public static class ReplayReport
                 result.RequestsPerSecond.ToString("F3", CultureInfo.InvariantCulture),
                 (result.RequestBytes / (double)(1 << 20)).ToString("F3", CultureInfo.InvariantCulture),
                 result.Rewritten.ToString(CultureInfo.InvariantCulture),
+                result.FeesStripped.ToString(CultureInfo.InvariantCulture),
                 result.Mean.TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture),
                 result.P50.TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture),
                 result.P90.TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture),
@@ -103,6 +104,7 @@ public static class ReplayReport
                 requestsPerSecond = result.RequestsPerSecond,
                 requestMib = result.RequestBytes / (double)(1 << 20),
                 rewritten = result.Rewritten,
+                feesStripped = result.FeesStripped,
                 latencyMs = new
                 {
                     mean = result.Mean.TotalMilliseconds,

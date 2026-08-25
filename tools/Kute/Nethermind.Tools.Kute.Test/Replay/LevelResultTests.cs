@@ -27,6 +27,7 @@ public class LevelResultTests
             RequestBytes = 0,
             Latencies = latencies,
             Rewritten = 0,
+            FeesStripped = 0,
         };
     }
 

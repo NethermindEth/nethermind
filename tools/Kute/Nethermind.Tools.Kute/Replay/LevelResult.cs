@@ -57,6 +57,9 @@ public sealed record LevelResult
     /// <summary>Requests whose block parameter was rewritten before being sent.</summary>
     public required int Rewritten { get; init; }
 
+    /// <summary>Requests that had at least one fee field removed before being sent.</summary>
+    public required int FeesStripped { get; init; }
+
     /// <summary>Requests that failed for any reason.</summary>
     public int Failed => RpcErrors + HttpErrors + TransportErrors;
 

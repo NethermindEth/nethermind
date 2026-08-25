@@ -20,6 +20,17 @@ public sealed record ReplayOptions
     /// </summary>
     public string? BlockTag { get; init; } = "latest";
 
+    /// <summary>
+    /// Removes <c>gasPrice</c>, <c>maxFeePerGas</c> and <c>maxPriorityFeePerGas</c> from each call object.
+    /// </summary>
+    /// <remarks>
+    /// A capture's fee fields were priced against the base fee at capture time, so replaying them at a
+    /// later head rejects any call whose fee has since fallen below the base fee. The rejected share
+    /// drifts with the network, and a rejected call returns without executing, which silently flatters
+    /// throughput. Removing the fields drops the fee precondition and leaves the EVM work unchanged.
+    /// </remarks>
+    public bool StripFeeFields { get; init; } = true;
+
     /// <summary>Requests measured per level; <c>0</c> replays the whole trace.</summary>
     public int MeasuredRequests { get; init; } = 2000;
 

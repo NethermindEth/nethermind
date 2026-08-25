@@ -92,6 +92,20 @@ and the load stepped through a range of concurrency levels.
 It exists because a trace recorded days ago names blocks a parked node no longer has. Rewriting every
 request's block parameter to `latest` makes the trace replayable against any head.
 
+Two things in a capture go stale at a different height, and both are fixed by default:
+
+- **The block parameter** names a block the node may have pruned.
+- **Fee fields** (`gasPrice`, `maxFeePerGas`, `maxPriorityFeePerGas`) were priced against the base fee
+  at capture time. Nethermind enforces the base fee on a priced `eth_call`, so once the network's base
+  fee rises above a captured fee, that call is rejected before it executes. The rejected share drifts
+  with the network, and a rejected call returns in microseconds, so the run silently gets *faster* as
+  the base fee climbs. Stripping the fields removes the precondition and leaves the EVM work unchanged.
+  Pass `--keep-fees` to replay them as captured.
+
+Note that stripping is not the same transformation as repricing. If a corpus has to execute identically
+on a client that skips fee checks, replay the same pre-transformed file on both rather than relying on
+either client's default handling.
+
 ```bash
 kute replay -i capture.jsonl.zst -a http://localhost:8545 -c 1-32 -n 2000 -w 200 -p
 ```
@@ -122,13 +136,15 @@ a whole 50k-record trace takes a long time: `-n 0` replays all of it.
 | `--skip` | Records skipped at the start of the trace |
 | `-o, --output` | `Pretty`, `Json` or `Csv`; `--output-file` writes it to disk |
 | `--max-failure-rate` | Percentage of failed requests above which the run exits non-zero (default 1) |
-| `--dry-run` | Stream and rewrite without sending, verifying every block parameter |
+| `--keep-fees` | Replay captured fee fields instead of stripping them |
+| `--dry-run` | Stream and rewrite without sending, verifying every edit was applied |
 
 ### Validate a capture before using it
 
-`--dry-run` decompresses the whole trace, rewrites each block parameter and fails loudly on any record
-it cannot rewrite. It needs no node, and it reports how fast the harness alone can push the trace,
-which is the ceiling any measurement sits under.
+`--dry-run` decompresses the whole trace, applies every edit and fails loudly on any record left
+needing one -- a missing block parameter, or a fee field that survived. It needs no node, and it
+reports how fast the harness alone can push the trace, which is the ceiling any measurement sits
+under. The `retagged` and `de-feed` counts say how many records each edit touched.
 
 ```bash
 kute replay -i capture.jsonl.zst --dry-run -n 0 -p

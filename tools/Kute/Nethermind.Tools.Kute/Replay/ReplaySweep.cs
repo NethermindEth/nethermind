@@ -119,21 +119,22 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 CancellationToken.None);
         }
 
-        int rewritten = 0;
+        (int Rewritten, int FeesStripped) edited = default;
         tasks[0] = Task.Run(
-            async () => rewritten = await ReadAsync(channel.Writer, requestLimit, measure, passToken),
+            async () => edited = await ReadAsync(channel.Writer, requestLimit, measure, passToken),
             CancellationToken.None);
 
         await Task.WhenAll(tasks);
 
-        return Aggregate(concurrency, rewritten, tallies);
+        return Aggregate(concurrency, edited, tallies);
     }
 
-    /// <summary>Decompresses the trace, rewrites block parameters and feeds the workers.</summary>
-    /// <returns>Number of records whose block parameter was rewritten.</returns>
-    private async Task<int> ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, bool enforceDuration, CancellationToken token)
+    /// <summary>Decompresses the trace, applies the replay edits and feeds the workers.</summary>
+    /// <returns>How many records had their block parameter rewritten, and how many lost a fee field.</returns>
+    private async Task<(int Rewritten, int FeesStripped)> ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, bool enforceDuration, CancellationToken token)
     {
         int rewritten = 0;
+        int feesStripped = 0;
         try
         {
             using TraceLineReader reader = new(_options.InputPath);
@@ -146,7 +147,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             int sent = 0;
             while (sent < requestLimit && Stopwatch.GetTimestamp() < deadline && reader.TryReadRecord(out ReadOnlySpan<byte> record))
             {
-                PendingRequest request = Materialize(record, ref rewritten);
+                PendingRequest request = Materialize(record, ref rewritten, ref feesStripped);
                 await writer.WriteAsync(request, token);
                 sent++;
             }
@@ -156,7 +157,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             writer.Complete();
         }
 
-        return rewritten;
+        return (rewritten, feesStripped);
     }
 
     private void SkipLeadingRecords(TraceLineReader reader)
@@ -170,25 +171,77 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         }
     }
 
-    /// <summary>Copies a record into a pooled buffer, forcing the configured block parameter.</summary>
-    private PendingRequest Materialize(ReadOnlySpan<byte> record, ref int rewritten)
+    /// <summary>
+    /// Copies a record into a pooled buffer, forcing the configured block parameter and dropping fee
+    /// fields.
+    /// </summary>
+    /// <remarks>
+    /// A block parameter that already matches the target is not an edit, so a record needing no change
+    /// is copied straight through rather than rebuilt.
+    /// </remarks>
+    private PendingRequest Materialize(ReadOnlySpan<byte> record, ref int rewritten, ref int feesStripped)
     {
-        if (_quotedTag.Length > 0
-            && BlockTagRewriter.TryLocateBlockParameter(record, out int start, out int length)
-            && !record.Slice(start, length).SequenceEqual(_quotedTag))
+        bool forceBlock = _quotedTag.Length > 0;
+        if (forceBlock || _options.StripFeeFields)
         {
-            int size = record.Length - length + _quotedTag.Length;
-            byte[] patched = ArrayPool<byte>.Shared.Rent(size);
-            int written = BlockTagRewriter.Rewrite(record, start, length, _quotedTag, patched);
-            rewritten++;
+            Span<RequestEdit> planned = stackalloc RequestEdit[RequestRewriter.MaxEdits];
+            int count = RequestRewriter.Plan(record, forceBlock, _options.StripFeeFields, planned);
+            ReadOnlySpan<RequestEdit> edits = Keep(record, planned[..count], out bool rewroteBlock, out bool droppedFees);
 
-            return new PendingRequest(patched, written);
+            if (!edits.IsEmpty)
+            {
+                int size = RequestRewriter.RewrittenLength(record, edits, _quotedTag);
+                byte[] patched = ArrayPool<byte>.Shared.Rent(size);
+                int written = RequestRewriter.Apply(record, edits, _quotedTag, patched);
+
+                if (rewroteBlock)
+                {
+                    rewritten++;
+                }
+
+                if (droppedFees)
+                {
+                    feesStripped++;
+                }
+
+                return new PendingRequest(patched, written);
+            }
         }
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(record.Length);
         record.CopyTo(buffer);
 
         return new PendingRequest(buffer, record.Length);
+    }
+
+    /// <summary>Drops a block-parameter edit that would rewrite the tag to what it already says.</summary>
+    private ReadOnlySpan<RequestEdit> Keep(ReadOnlySpan<byte> record, Span<RequestEdit> planned, out bool rewroteBlock, out bool droppedFees)
+    {
+        rewroteBlock = false;
+        droppedFees = false;
+
+        int kept = 0;
+        for (int i = 0; i < planned.Length; i++)
+        {
+            RequestEdit edit = planned[i];
+            if (edit.IsBlockParameter)
+            {
+                if (record.Slice(edit.Start, edit.Length).SequenceEqual(_quotedTag))
+                {
+                    continue;
+                }
+
+                rewroteBlock = true;
+            }
+            else
+            {
+                droppedFees = true;
+            }
+
+            planned[kept++] = edit;
+        }
+
+        return planned[..kept];
     }
 
     private static async Task WorkerAsync(
@@ -227,6 +280,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     {
         long startTimestamp = Stopwatch.GetTimestamp();
         int rewritten = 0;
+        int feesStripped = 0;
         int records = 0;
         long bytes = 0;
 
@@ -238,11 +292,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             token.ThrowIfCancellationRequested();
 
-            PendingRequest request = Materialize(record, ref rewritten);
-            if (_quotedTag.Length > 0)
-            {
-                VerifyBlockParameter(request, reader.RecordsRead);
-            }
+            PendingRequest request = Materialize(record, ref rewritten, ref feesStripped);
+            Verify(request, reader.RecordsRead);
 
             ArrayPool<byte>.Shared.Return(request.Buffer);
             bytes += request.Length;
@@ -251,8 +302,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(startTimestamp);
         double seconds = Math.Max(elapsed.TotalSeconds, 1e-9);
-        Report($"dry run: {records} records, {bytes / (double)(1L << 30):F2} GiB, {rewritten} rewritten, "
-            + $"{elapsed.TotalSeconds:F2}s, {bytes / (1L << 20) / seconds:F0} MiB/s");
+        Report($"dry run: {records} records, {bytes / (double)(1L << 30):F2} GiB, {rewritten} retagged, "
+            + $"{feesStripped} de-feed, {elapsed.TotalSeconds:F2}s, {bytes / (1L << 20) / seconds:F0} MiB/s");
 
         return new LevelResult
         {
@@ -265,26 +316,36 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             RequestBytes = bytes,
             Latencies = [],
             Rewritten = rewritten,
+            FeesStripped = feesStripped,
         };
     }
 
-    /// <summary>Fails the dry run if a record left the rewriter without the requested block parameter.</summary>
-    private void VerifyBlockParameter(PendingRequest request, long recordNumber)
+    /// <summary>Fails the dry run if a record left the rewriter still needing an edit.</summary>
+    private void Verify(PendingRequest request, long recordNumber)
     {
         ReadOnlySpan<byte> body = request.Buffer.AsSpan(0, request.Length);
-        if (!BlockTagRewriter.TryLocateBlockParameter(body, out int start, out int length))
+
+        if (_quotedTag.Length > 0)
         {
-            throw new InvalidDataException($"Record {recordNumber} has no block parameter to rewrite.");
+            if (!RequestRewriter.TryLocateBlockParameter(body, out int start, out int length))
+            {
+                throw new InvalidDataException($"Record {recordNumber} has no block parameter to rewrite.");
+            }
+
+            if (!body.Slice(start, length).SequenceEqual(_quotedTag))
+            {
+                string actual = Encoding.UTF8.GetString(body.Slice(start, length));
+                throw new InvalidDataException($"Record {recordNumber} still carries block parameter {actual}.");
+            }
         }
 
-        if (!body.Slice(start, length).SequenceEqual(_quotedTag))
+        if (_options.StripFeeFields && RequestRewriter.HasFeeField(body))
         {
-            string actual = Encoding.UTF8.GetString(body.Slice(start, length));
-            throw new InvalidDataException($"Record {recordNumber} still carries block parameter {actual}.");
+            throw new InvalidDataException($"Record {recordNumber} still carries a fee field.");
         }
     }
 
-    private static LevelResult Aggregate(int concurrency, int rewritten, WorkerTally[] tallies)
+    private static LevelResult Aggregate(int concurrency, (int Rewritten, int FeesStripped) edited, WorkerTally[] tallies)
     {
         int total = 0;
         long firstStart = long.MaxValue;
@@ -338,7 +399,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             Elapsed = elapsed,
             RequestBytes = requestBytes,
             Latencies = latencies,
-            Rewritten = rewritten,
+            Rewritten = edited.Rewritten,
+            FeesStripped = edited.FeesStripped,
         };
     }
 
