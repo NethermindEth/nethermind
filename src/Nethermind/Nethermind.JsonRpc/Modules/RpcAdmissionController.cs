@@ -21,8 +21,8 @@ namespace Nethermind.JsonRpc.Modules;
 /// rejected up front when <c>queued x EWMA(service time) / permits x weight</c> exceeds
 /// <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that
 /// long. <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
-/// Admitted invocations run on the request thread: the permit count alone bounds how much of a class's work is
-/// in flight, so no extra scheduling hop stands between admission and execution.
+/// Admitted invocations run inline on whichever thread the permit is granted on (the request thread when one is
+/// free, a thread-pool continuation otherwise); the permit count alone bounds how much of a class's work is in flight.
 /// </remarks>
 public sealed class RpcAdmissionController
 {

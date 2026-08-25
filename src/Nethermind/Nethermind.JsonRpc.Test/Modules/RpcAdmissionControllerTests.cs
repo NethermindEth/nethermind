@@ -284,10 +284,11 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    [TestCase(RpcMethodCostClass.EvmExecution)]
-    [TestCase(RpcMethodCostClass.Tracing)]
-    [TestCase(RpcMethodCostClass.Proof)]
-    public async Task Every_gated_class_hands_out_a_permit(RpcMethodCostClass costClass)
+    // Proves each gated class is wired to its own gate sized from its own config knob; the permit mechanics are covered above.
+    [TestCase(RpcMethodCostClass.EvmExecution, EvmPermits)]
+    [TestCase(RpcMethodCostClass.Tracing, 1)]
+    [TestCase(RpcMethodCostClass.Proof, 1)]
+    public async Task Every_gated_class_hands_out_a_permit(RpcMethodCostClass costClass, int expectedPermits)
     {
         ResolvedMethodInfo method = costClass switch
         {
@@ -301,6 +302,7 @@ public class RpcAdmissionControllerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(lease.IsGated, Is.True);
+                Assert.That(_controller.GetPermits(costClass), Is.EqualTo(expectedPermits));
                 Assert.That(_controller.GetInFlight(costClass), Is.EqualTo(1));
             }
         }

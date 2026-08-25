@@ -719,7 +719,7 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_blockNumber().Returns(Task.FromResult(ResultWrapper<ulong?>.Success(7)));
         IJsonRpcService service = CreateService(ethRpcModule);
 
-        // The gated invocation runs inline on the requesting thread, so the blocking call must not be issued from this one.
+        // A free permit lets the invocation run synchronously on the caller, so the substitute's Wait() would block this test thread; issue it from the pool.
         Task<JsonRpcResponse> blocked = Task.Run(() => service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).AsTask());
         await WaitUntil(() => _admissionController.GetInFlight(RpcMethodCostClass.EvmExecution) == 1);
 
