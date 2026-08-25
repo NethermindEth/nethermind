@@ -192,6 +192,7 @@ from `Dockerfile` on the runner.
   "health_timeout_minutes": 30,
   "cpuset": "",                    // e.g. "2-7,10-15" to pin the node like expb does
   "memory": "",                    // e.g. "64g"
+  "cpu_max_freq_khz": "",          // scaling_max_freq cap for the whole job; empty = 3800000 on amd64, none on arm64; 0 = no cap
   "reference_db_source": "",       // reference-node keys: unreachable while reference_client is pinned to `none`
   "reference_image": "",
   "reference_flags": "",
@@ -301,26 +302,43 @@ in the tool repo → fresh evolution from scratch.
 ## Fixed corpus A/B against master
 
 The canonical branch-vs-master check is a fixed `eth_call` corpus A/B — the 497-record
-corpus, 100 rps for 120s, the branch build against `nethermind:master` as the parity
-baseline. Dispatch it with `benchmark_tool: jsonbench-sweep` and:
+corpus, 20k requests at 100 rps per arm, two rounds in ABBA order, plus a closed-loop
+per-record replay, the branch build against `nethermind:master` as the parity baseline.
+Dispatch it with `benchmark_tool: jsonbench-sweep` and:
 
 ```json
 {"eth_call_corpus": true,
  "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
- "rps_list": "100", "duration": "120s",
+ "rps_list": "100", "corpus_requests": 20000, "rounds": 2, "timings_passes": 40,
  "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
 ```
 
 Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
-runner, which serializes every other job behind it. Holding the rest fixed is what keeps results
-comparable across branches and over time.
-`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders the
-per-metric latency deltas and the response-parity verdict from the **staged** tree, not the
-raw output, so its rendering has already passed the aggregate-only validator.
+runner, which serializes every other job behind it. What makes the number trustworthy:
 
-Read it correctly: a parity divergence is a correctness regression regardless of the
-latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
-this corpus.
+- **Request count, not wall time** (`corpus_requests`): every cell has the same sample size
+  whatever the rate, so percentiles resolve equally at 50, 100 or 300 rps.
+- **Seeded request sequence** (`seed`, default 1): json-bench draws corpus records with a fixed
+  generator, so both arms replay byte-identical request sequences at every rate instead of two
+  different random mixes of a heavy-tailed corpus.
+- **Rounds** (`rounds: 2`): the client list runs again in reverse order (A B B A). Each node is
+  restarted and re-warmed per round, position bias cancels, and the two master runs give an
+  A/A control the comment prints next to every delta.
+- **Paired per-record replay** (`timings_passes`, unpaced by default): each record is hit exactly
+  N times per arm; the comment reports the median per-record delta with a bootstrap CI, how many
+  records moved by more than 5%, and the closed-loop throughput at `timings_concurrency`
+  (default 16) — the capacity signal an unsaturated 100 rps cell cannot show.
+- **CPU-ms/request** from the node's cgroup, printed first: rate-independent and more sensitive to
+  compute changes than p50 at an unsaturated rate.
+- **Selector classes**: the corpus is split by 4-byte selector into `class_1..N` (ranked by record
+  count) and the comment breaks p50/p99 down per class, so "p99 moved" becomes "class 2 moved".
+- **CPU frequency cap** (`node_config.cpu_max_freq_khz`, default 3.8 GHz on amd64): turbo boost is
+  off and the governor is `performance` for the whole job, restored afterwards.
+
+`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders all of
+that from the **staged** tree, pooling `_rN` repeats into one arm per side. Read it correctly:
+a parity divergence is a correctness regression regardless of latency; a delta inside the A/A
+spread (or under ~2.5% when no repeat ran) is noise.
 
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 
@@ -358,13 +376,20 @@ single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
 corpus's record count) instead size the cell by how many requests it should issue: the
 rate is unchanged and the length is derived as `ceil(count / rps)`, since k6's
 constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpus at
-`rps_list: "500"` is 250,000 requests over 500s. Note this is *draws with replacement*,
-not a guarantee every record is visited — coverage is `N x (1 - (1 - 1/N)^requests)`.
+`rps_list: "500"` is 250,000 requests over 500s. Draws are *with replacement* from a
+seeded generator (`seed`, default 1): every arm and every rate replays the same sequence,
+but coverage is still `N x (1 - (1 - 1/N)^requests)`, not a guarantee every record is visited.
 
-**Per-record timings.** The k6 cells cannot attribute a latency to a corpus record: every
-corpus request carries the same `req_name` tag, and json-bench samples the corpus
-uniformly *with replacement* without recording which record it drew. To get a
-record-by-record profile, replay the corpus directly against a running node:
+**Selector classes.** `prepare-eth-call-corpus.py` splits the corpus by the 4-byte selector of
+`params[0].data` into `class_1..N` fixtures (ranked by record count; records without calldata
+form their own class) and renders one weighted json-bench call per class, so k6 emits a
+per-class sub-metric. The published `summary.json` carries them under `metrics.classes`; the
+selector-to-class mapping exists only in the fixture files on the runner.
+
+**Per-record timings.** The k6 cells cannot attribute a latency to a corpus record. The sweep's
+`timings_passes` replay (`corpus_parity.py timings`) walks the corpus in order N times per arm
+— unpaced by default, i.e. a closed loop at `timings_concurrency` — and the PR comment pairs
+the two arms record by record. To get the same matrix by hand against a running node:
 
 ```bash
 python3 scripts/rpc-bench/corpus_parity.py timings \
@@ -465,7 +490,7 @@ one dispatch:
 ```json
 {"eth_call_corpus": true,
  "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:some-pr-branch nethermind@nethermindeth/nethermind:paprika nethermind@nethermindeth/nethermind:performance",
- "rps_list": "1 10 100", "duration": "120s"}
+ "rps_list": "50 100 300", "corpus_requests": 20000, "rounds": 2}
 ```
 
 ## dotTrace flow (goal #3)
@@ -537,7 +562,11 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
-| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema and stage only validated aggregate files for the corpus artifact. |
-| `prepare-eth-call-corpus.py` | Convert a JSONL(.gz) corpus into the JSON-array fixture json-bench consumes. |
-| `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
+| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema, stage only validated aggregate files, render the PR comment (pooled repeats, A/A spread, paired timings, classes). |
+| `prepare-eth-call-corpus.py` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
+| `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
+| `run-rpc-sweep.sh` | One node per `clients` entry (times `rounds`, ABBA), cells per rps, corpus warm-up/parity/timings, step summary. |
+| `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
+| `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI). |
+| `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |

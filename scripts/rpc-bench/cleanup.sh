@@ -2,8 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Defensive cleanup: reap benchmark containers (any run), unmount under scratch, wipe
-# only scratch subtrees — path-guarded (like start-node.sh) so a typo can't rm -rf the snapshot.
+# Defensive cleanup: reap benchmark containers from any run, unmount under scratch, wipe scratch subtrees only.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,19 +16,11 @@ reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "js
 
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { log "cannot canonicalize SCRATCH_ROOT — skipping scratch wipe"; exit 0; }
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
-if [[ -n "$DB_SOURCE" && -d "$DB_SOURCE" ]]; then
-  DB_SOURCE="$(realpath -e -- "$DB_SOURCE")" || DB_SOURCE=""
-  if [[ -n "$DB_SOURCE" ]]; then
-    case "$SCRATCH_ROOT/" in
-      "$DB_SOURCE"/*) die "SCRATCH_ROOT resolves inside DB_SOURCE — refusing to clean" ;;
-    esac
-    case "$DB_SOURCE/" in
-      "$SCRATCH_ROOT"/*) die "DB_SOURCE resolves inside SCRATCH_ROOT — refusing to clean" ;;
-    esac
-  fi
+if [[ -n "$DB_SOURCE" && -d "$DB_SOURCE" ]] && DB_SOURCE="$(realpath -e -- "$DB_SOURCE")"; then
+  case "$SCRATCH_ROOT/" in "$DB_SOURCE"/*) die "SCRATCH_ROOT resolves inside DB_SOURCE — refusing to clean" ;; esac
+  case "$DB_SOURCE/" in "$SCRATCH_ROOT"/*) die "DB_SOURCE resolves inside SCRATCH_ROOT — refusing to clean" ;; esac
 fi
 
-# Unmount anything still mounted under scratch (overlay merged, ro binds, ...).
 while IFS= read -r m; do
   log "Unmounting leftover mount: $m"
   as_root umount "$m" 2>/dev/null || as_root umount -l "$m" 2>/dev/null || true

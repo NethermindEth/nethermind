@@ -5,6 +5,7 @@
 import contextlib
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,11 +16,12 @@ import corpus_parity  # noqa: E402
 import corpus_results  # noqa: E402
 
 SENTINEL = "SENTINEL_PRIVATE_DATA"
+DURATION = {"avg": 1.0, "med": 1.0, "p(90)": 2.0, "p(95)": 3.0, "p(99)": 4.0, "max": 5.0}
 
 
 def raw_summary(**overrides):
     metrics = {
-        "http_req_duration": {"values": {"avg": 1.0, "med": 1.0, "p(90)": 2.0, "p(95)": 3.0, "p(99)": 4.0, "max": 5.0}},
+        "http_req_duration": {"values": dict(DURATION)},
         "http_reqs": {"values": {"count": 90, "rate": 3.0}},
         "http_req_failed": {"values": {"rate": 0.0}},
         "checks": {"values": {"passes": 180, "fails": 0}},
@@ -60,6 +62,23 @@ class CorpusResultsTests(unittest.TestCase):
         self.assertEqual(set(data["metrics"]), set(corpus_results.METRIC_FIELDS))
         self.assertNotIn(SENTINEL, out.read_text(encoding="utf-8"))
 
+    def test_sanitize_keeps_selector_class_submetrics_only(self):
+        raw = raw_summary(**{
+            "http_req_duration{req_name:class_1,scenario:nm}": {"values": dict(DURATION)},
+            "http_reqs{req_name:class_1,scenario:nm}": {"values": {"count": 30, "rate": 1.0}},
+            "http_req_duration{req_name:'class_2'}": {"values": dict(DURATION)},
+            f"http_req_duration{{req_name:{SENTINEL}}}": {"values": dict(DURATION)},
+        })
+        data = corpus_results.sanitize_data(raw)
+        self.assertEqual(list(data["metrics"]["classes"]), ["class_1", "class_2"])
+        self.assertEqual(data["metrics"]["classes"]["class_1"]["values"]["count"], 30)
+        self.assertEqual(data["metrics"]["classes"]["class_2"]["values"]["count"], 0)
+        self.assertNotIn(SENTINEL, json.dumps(data))
+        corpus_results._validate_summary(self.write_json(self.dir / "classes" / "summary.json", data))
+        data["metrics"]["classes"][SENTINEL] = data["metrics"]["classes"].pop("class_2")
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results._validate_summary(self.write_json(self.dir / "bad" / "summary.json", data))
+
     def test_sanitize_accepts_k6_rate_layout_variants(self):
         for metric in ({"rate": 0.25}, {"value": 0.25}, {"values": {"rate": 0.25}}, {"values": {"value": 0.25}}):
             with self.subTest(metric=metric):
@@ -67,8 +86,6 @@ class CorpusResultsTests(unittest.TestCase):
                 self.assertEqual(data["metrics"]["http_req_failed"]["values"]["rate"], 0.25)
 
     def test_sanitize_defaults_missing_optional_metrics_to_zero(self):
-        # k6 omits checks (no check() calls in the workload), http_req_failed, and
-        # dropped_iterations when nothing triggered them — absence means zero.
         raw = raw_summary()
         for metric in ("dropped_iterations", "checks", "http_req_failed"):
             del raw["metrics"][metric]
@@ -91,12 +108,10 @@ class CorpusResultsTests(unittest.TestCase):
                     corpus_results.sanitize_data(raw)
 
     def test_sanitize_cli_reports_content_free_error_for_missing_raw(self):
-        import subprocess
         result = subprocess.run(
             [sys.executable, str(Path(__file__).with_name("corpus_results.py")),
              "sanitize", str(self.dir / f"{SENTINEL}.json"), str(self.dir / "out.json")],
-            check=False, text=True, capture_output=True,
-        )
+            check=False, text=True, capture_output=True)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(SENTINEL, result.stderr)
 
@@ -109,83 +124,49 @@ class CorpusResultsTests(unittest.TestCase):
         (out_root / "raw-responses.jsonl").write_text(SENTINEL, encoding="utf-8")
         (out_root / "jsonbench.log").write_text(SENTINEL, encoding="utf-8")
         self.write_json(out_root / "results.json", {"request": SENTINEL})
-
         stage_root = self.dir / "stage"
         corpus_results.stage(str(out_root), str(stage_root))
-
         staged = sorted(p.relative_to(stage_root).as_posix() for p in stage_root.rglob("*") if p.is_file())
-        self.assertEqual(staged, [
-            "corpus/a/nm/10/jsonbench-summary.md",
-            "corpus/a/nm/10/summary.json",
-            "corpus/a/reth/parity.json",
-        ])
+        self.assertEqual(staged, ["corpus/a/nm/10/jsonbench-summary.md", "corpus/a/nm/10/summary.json", "corpus/a/reth/parity.json"])
         blob = "\n".join(p.read_text(encoding="utf-8") for p in stage_root.rglob("*") if p.is_file())
         self.assertNotIn(SENTINEL, blob)
 
     def test_stage_excludes_warmup_cells(self):
-        """A staged warmup/summary.json would displace the measured cell in the PR comment:
-        comment() keys cells by directory position, and 'warmup' sorts after '100'."""
         out_root = self.dir / "out"
         sanitized = corpus_results.sanitize_data(raw_summary())
         self.write_json(out_root / "corpus" / "a" / "nm" / "100" / "summary.json", sanitized)
         self.write_json(out_root / "corpus" / "a" / "nm" / "warmup" / "summary.json", sanitized)
-        # the sweep's actual scratch layout uses a 'warmup-cell' segment - the guard must match it
         self.write_json(out_root / "warmup-cell" / "a" / "nm" / "summary.json", sanitized)
-        # ...but a corpus LABEL containing 'warmup' is a legitimate scenario and must survive
         self.write_json(out_root / "corpus" / "warmup-heavy" / "nm" / "100" / "summary.json", sanitized)
-
         stage_root = self.dir / "stage-warm"
         corpus_results.stage(str(out_root), str(stage_root))
-
         staged = sorted(p.relative_to(stage_root).as_posix() for p in stage_root.rglob("*") if p.is_file())
-        self.assertEqual(staged, ["corpus/a/nm/100/summary.json",
-                                  "corpus/warmup-heavy/nm/100/summary.json"])
+        self.assertEqual(staged, ["corpus/a/nm/100/summary.json", "corpus/warmup-heavy/nm/100/summary.json"])
 
     def test_timings_meta_schema_requires_warmup_fields(self):
-        """The matrix must say whether it was measured warm, and at what rate — cold p99 runs ~60%
-        high, and the same seconds at a different rate is a different warm state. The key set is
-        compared exactly, so a writer that adds a field without the schema fails staging and drops
-        the whole corpus artifact."""
-        meta = {"head": 100, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": 3,
-                "passes": 2, "requests": 6, "target_rps": 50.0, "achieved_rps": 49.9,
-                "concurrency": 4, "warmup_seconds": 60, "warmup_rps": 383.5,
+        meta = {"head": 100, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": 3, "passes": 2, "requests": 6,
+                "target_rps": 50.0, "achieved_rps": 49.9, "concurrency": 4, "warmup_seconds": 60, "warmup_rps": 383.5,
                 "outcomes": {"ok": 6}}
-        path = self.write_json(self.dir / "timings.meta.json", meta)
-        corpus_results._validate_timings_meta(path)  # complete schema passes
-
+        corpus_results._validate_timings_meta(self.write_json(self.dir / "timings.meta.json", meta))
         for missing in ("warmup_seconds", "warmup_rps"):
             legacy = {k: v for k, v in meta.items() if k != missing}
-            path2 = self.write_json(self.dir / missing / "timings.meta.json", legacy)
             with self.assertRaises(corpus_results.CorpusResultsError):
-                corpus_results._validate_timings_meta(path2)
-
-        # A float rate must pass; a negative one must not.
-        bad = dict(meta, warmup_rps=-1.0)
-        path3 = self.write_json(self.dir / "negative" / "timings.meta.json", bad)
+                corpus_results._validate_timings_meta(self.write_json(self.dir / missing / "timings.meta.json", legacy))
         with self.assertRaises(corpus_results.CorpusResultsError):
-            corpus_results._validate_timings_meta(path3)
+            corpus_results._validate_timings_meta(self.write_json(self.dir / "negative" / "timings.meta.json", dict(meta, warmup_rps=-1.0)))
 
     def test_manifest_is_validated_and_relativized(self):
-        """The staged manifest must not leak runner-absolute paths, and garbage must not stage."""
         out_root = self.dir / "out"
         sanitized = corpus_results.sanitize_data(raw_summary())
         self.write_json(out_root / "corpus" / "a" / "nm" / "100" / "summary.json", sanitized)
         cell = out_root / "corpus" / "a" / "nm" / "100"
-        (out_root / "summaries.manifest").write_text(
-            f"iso|a|nm|100={cell / 'jsonbench-summary.md'}\n", encoding="utf-8")
-
+        (out_root / "summaries.manifest").write_text(f"iso|a|nm|100={cell / 'jsonbench-summary.md'}\n", encoding="utf-8")
         stage_root = self.dir / "stage-manifest"
         corpus_results.stage(str(out_root), str(stage_root))
         staged = (stage_root / "summaries.manifest").read_text(encoding="utf-8")
         self.assertEqual(staged, "iso|a|nm|100=corpus/a/nm/100/jsonbench-summary.md\n")
         self.assertNotIn(str(out_root), staged)
-
-        (out_root / "summaries.manifest").write_text(
-            "iso|a|nm|100=/etc/passwd\n", encoding="utf-8")
-        # A malformed INDEX drops only itself: content files still stage, because failing the
-        # whole artifact over an index nothing downstream reads would discard a multi-hour sweep.
-        for tag, bad in (("escape", "iso|a|nm|100=/etc/passwd"),
-                         ("shapeless", "not a manifest line"),
+        for tag, bad in (("escape", "iso|a|nm|100=/etc/passwd"), ("shapeless", "not a manifest line"),
                          ("arity", "iso|a|b|c|d|e=x/jsonbench-summary.md")):
             (out_root / "summaries.manifest").write_text(bad + "\n", encoding="utf-8")
             stage2 = self.dir / f"stage-manifest-{tag}"
@@ -217,7 +198,7 @@ class CorpusResultsTests(unittest.TestCase):
 
 
 class CommentRenderingTests(unittest.TestCase):
-    """The PR comment is public, so it must be built from staged data and stay content-free."""
+    """The PR comment is public: built from staged data only, content-free."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -226,29 +207,44 @@ class CommentRenderingTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _cell(self, label, avg, p99, fail=0.0, slot="100"):
+    def _cell(self, label, avg, p99, fail=0.0, slot="100", cpu=None, classes=None):
         cell = self.root / "corpus" / "corpus-a" / label / slot
         cell.mkdir(parents=True)
-        (cell / "summary.json").write_text(json.dumps({"metrics": {
-            "http_req_duration": {"values": {"avg": avg, "med": avg, "p(90)": avg * 2,
-                                             "p(95)": avg * 2.2, "p(99)": p99, "max": p99 * 3}},
+        metrics = {
+            "http_req_duration": {"values": {"avg": avg, "med": avg, "p(90)": avg * 2, "p(95)": avg * 2.2, "p(99)": p99, "max": p99 * 3}},
             "http_reqs": {"values": {"count": 12000}},
-            "http_req_failed": {"values": {"rate": fail}}}}), encoding="utf-8")
+            "http_req_failed": {"values": {"rate": fail}}}
+        if classes:
+            metrics["classes"] = {name: {"values": {"avg": v, "med": v, "p(90)": v, "p(95)": v, "p(99)": v * 2, "max": v * 3, "count": 100}}
+                                  for name, v in classes.items()}
+        (cell / "summary.json").write_text(json.dumps({"metrics": metrics}), encoding="utf-8")
+        if cpu is not None:
+            (cell / "resources.json").write_text(json.dumps({"cpu_ms_per_request": cpu, "requests": 12000}), encoding="utf-8")
+
+    def _timings(self, label, latencies, achieved):
+        d = self.root / "corpus" / "corpus-a" / label
+        d.mkdir(parents=True, exist_ok=True)
+        rows = ["record_index,pass_1_ms,pass_1_status,pass_2_ms,pass_2_status"]
+        rows += [f"{i},{ms:.3f},ok,{ms * 1.02:.3f},ok" for i, ms in enumerate(latencies, start=1)]
+        (d / "timings.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+        (d / "timings.meta.json").write_text(json.dumps({
+            "head": 1, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": len(latencies), "passes": 2,
+            "requests": 2 * len(latencies), "target_rps": 0, "achieved_rps": achieved, "concurrency": 16,
+            "warmup_seconds": 60, "warmup_rps": 400, "outcomes": {"ok": 2 * len(latencies)}}), encoding="utf-8")
 
     def test_reports_regression_and_improvement_directions(self):
         self._cell("nethermind_master", 20.0, 100.0)
-        self._cell("nethermind", 22.0, 90.0)          # avg worse, p99 better
+        self._cell("nethermind", 22.0, 90.0)
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
-        self.assertIn("+10.0%", body)                  # avg regression
-        self.assertIn("-10.0%", body)                  # p99 improvement
+        self.assertIn("+10.0%", body)
+        self.assertIn("-10.0%", body)
         self.assertIn("master", body)
 
     def test_flags_a_parity_divergence(self):
         self._cell("nethermind_master", 20.0, 100.0)
         self._cell("nethermind", 20.0, 100.0)
         report = self.root / "corpus" / "corpus-a" / "nethermind" / "parity.json"
-        report.write_text(json.dumps({"total": 497, "matched": 490, "both_rpc_errors": 0,
-                                      "content_mismatches": 7}), encoding="utf-8")
+        report.write_text(json.dumps({"total": 497, "matched": 490, "both_rpc_errors": 0, "content_mismatches": 7}), encoding="utf-8")
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
         self.assertIn("DIVERGES", body)
         self.assertIn("content_mismatches=7", body)
@@ -257,24 +253,36 @@ class CommentRenderingTests(unittest.TestCase):
         self._cell("nethermind_master", 20.0, 100.0)
         self._cell("nethermind", 20.0, 100.0)
         report = self.root / "corpus" / "corpus-a" / "nethermind" / "parity.json"
-        report.write_text(json.dumps({"total": 497, "matched": 497, "both_rpc_errors": 0}),
-                          encoding="utf-8")
+        report.write_text(json.dumps({"total": 497, "matched": 497, "both_rpc_errors": 0}), encoding="utf-8")
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
         self.assertIn("497/497 identical to master", body)
         self.assertNotIn("DIVERGES", body)
 
-    def test_repeated_rate_slots_render_as_separate_rows(self):
-        """A repeated rate is the drift control; keying on (corpus, label) alone kept only the
-        slot that sorted last, silently discarding it."""
-        self._cell("nethermind_master", 20.0, 100.0, slot="100")
-        self._cell("nethermind", 19.0, 90.0, slot="100")
-        self._cell("nethermind_master", 21.0, 110.0, slot="100_r2")
-        self._cell("nethermind", 20.0, 95.0, slot="100_r2")
+    def test_repeats_pool_into_one_arm_with_aa_spread(self):
+        """ABBA repeats (label _r2) and repeated rate slots (100_r2) pool per arm; the master pair is the A/A control."""
+        self._cell("nethermind_master", 20.0, 100.0, cpu=19.0)
+        self._cell("nethermind", 19.0, 90.0, cpu=18.0)
+        self._cell("nethermind_r2", 19.0, 90.0, cpu=18.0)
+        self._cell("nethermind_master_r2", 22.0, 110.0, cpu=21.0)
+        self._cell("nethermind_master_r2", 21.0, 105.0, slot="100_r2", cpu=20.0)
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
-        self.assertIn("@ `100` rps", body)
-        self.assertIn("@ `100_r2` rps", body)
-        self.assertIn("| avg | 20.00 ms | 19.00 ms |", body)
-        self.assertIn("| avg | 21.00 ms | 20.00 ms |", body)
+        self.assertIn("n=3/2 runs", body)
+        self.assertNotIn("100_r2", body)
+        self.assertIn("| avg | 21.00 ms | 19.00 ms |", body)
+        self.assertIn("| CPU-ms/request | 20.00 | 18.00 |", body)
+        self.assertRegex(body, r"\| avg \|.*\| 9\.5% \|")
+
+    def test_per_class_table_and_paired_timings(self):
+        self._cell("nethermind_master", 20.0, 100.0, classes={"class_1": 10.0, "class_2": 50.0})
+        self._cell("nethermind", 20.0, 100.0, classes={"class_1": 10.0, "class_2": 40.0})
+        self._timings("nethermind_master", [10.0] * 10 + [100.0] * 10, achieved=800.0)
+        self._timings("nethermind", [10.0] * 10 + [80.0] * 10, achieved=880.0)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("| class_2 | 100 | 50.00 | 40.00 |", body)
+        self.assertIn("-20.0%", body)
+        self.assertIn("Paired per-record replay (20 records", body)
+        self.assertIn("10 faster", body)
+        self.assertIn("Closed-loop throughput (concurrency 16): master 800.0 req/s, PR 880.0 req/s", body)
 
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)
@@ -282,11 +290,9 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("missing a client", body)
 
     def test_comment_cli_matches_the_workflow_invocation(self):
-        """Every subcommand must dispatch to itself — `comment` once fell through to `stage`."""
         self._cell("nethermind_master", 20.0, 100.0)
         self._cell("nethermind", 19.0, 90.0)
-        argv = ["comment", str(self.root), "--baseline", "nethermind_master",
-                "--candidate", "nethermind"]
+        argv = ["comment", str(self.root), "--baseline", "nethermind_master", "--candidate", "nethermind"]
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(corpus_results.main(argv), 0)
         body = out.getvalue()
@@ -294,13 +300,10 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("| metric | master | PR | delta |", body)
 
     def test_stage_cli_still_dispatches_to_stage(self):
-        """Dispatching to the wrong handler raises AttributeError; reaching stage returns 1."""
         with contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertEqual(corpus_results.main(
-                ["stage", str(self.root / "absent"), str(self.root / "staged-cli")]), 1)
+            self.assertEqual(corpus_results.main(["stage", str(self.root / "absent"), str(self.root / "staged-cli")]), 1)
         self.assertIn("output root does not exist", err.getvalue())
 
 
 if __name__ == "__main__":
     unittest.main()
-
