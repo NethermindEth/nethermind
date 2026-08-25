@@ -137,5 +137,6 @@ public sealed class V2ConfigParams
     [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; init; }
     public ulong MinimumMinerBlockPerEpoch { get; init; }
+    public ulong LimitPenaltyEpoch { get; init; }
     public ulong MinimumSigningTx { get; init; }
 }

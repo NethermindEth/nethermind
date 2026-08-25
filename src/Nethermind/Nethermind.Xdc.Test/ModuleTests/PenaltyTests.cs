@@ -104,35 +104,35 @@ internal class PenaltyTests
     [Test]
     public void TestHookPenaltyParolee()
     {
-        // The parole window is XdcConstants.LimitPenaltyEpoch epochs, so the first epoch that can parole is the one after it
-        ulong paroleEpoch = EpochLength * (XdcConstants.LimitPenaltyEpoch + 1UL);
         MockedPenaltyContext context = CreateMockedPenaltyContext(
-            targetEpoch: paroleEpoch,
+            targetEpoch: EpochLength * 3UL,
+            limitPenaltyEpoch: 2,
             shouldPenalizeAtSwitch: _ => true);
-        ulong earlyEpoch = EpochLength * 2UL;
+        ulong secondEpoch = EpochLength * 2UL;
+        ulong thirdEpoch = EpochLength * 3UL;
 
         // Parole logic is not yet active, only the "not mining enough" penalty applies
-        Address[] penaltiesAtEarlyEpoch = context.PenaltyHandler.HandlePenalties(earlyEpoch, context.BlockHeaders[(int)(earlyEpoch - 1)].Hash!, context.MasternodesAddress);
-        Assert.That(penaltiesAtEarlyEpoch, Has.Length.EqualTo(1));
-        Assert.That(penaltiesAtEarlyEpoch[0], Is.EqualTo(context.MasternodesAddress.Last()));
+        Address[] penaltiesAtSecondEpoch = context.PenaltyHandler.HandlePenalties(secondEpoch, context.BlockHeaders[(int)(secondEpoch - 1)].Hash!, context.MasternodesAddress);
+        Assert.That(penaltiesAtSecondEpoch, Has.Length.EqualTo(1));
+        Assert.That(penaltiesAtSecondEpoch[0], Is.EqualTo(context.MasternodesAddress.Last()));
 
-        // Parole logic runs: `signer` has been penalized for the whole window but has 0 signing txs
+        // Parole logic runs: `signer` has been penalized for 2 epochs but has 0 signing txs
         // Fails parole, so signer stays penalized
-        Address[] penaltiesAtParoleEpoch = context.PenaltyHandler.HandlePenalties(paroleEpoch, context.BlockHeaders[(int)(paroleEpoch - 1)].Hash!, context.MasternodesAddress);
-        Assert.That(penaltiesAtParoleEpoch, Has.Length.EqualTo(2));
+        Address[] penaltiesAtThirdEpoch = context.PenaltyHandler.HandlePenalties(thirdEpoch, context.BlockHeaders[(int)(thirdEpoch - 1)].Hash!, context.MasternodesAddress);
+        Assert.That(penaltiesAtThirdEpoch, Has.Length.EqualTo(2));
 
         // Insert signing tx into cache
         // Signer still has only 1 signing tx, so still fails parole
-        CacheSigningTxAt(context, paroleEpoch - MergeSignRange);
-        penaltiesAtParoleEpoch = context.PenaltyHandler.HandlePenalties(paroleEpoch, context.BlockHeaders[(int)(paroleEpoch - 1)].Hash!, context.MasternodesAddress);
-        Assert.That(penaltiesAtParoleEpoch, Has.Length.EqualTo(2));
+        CacheSigningTxAt(context, thirdEpoch - MergeSignRange);
+        penaltiesAtThirdEpoch = context.PenaltyHandler.HandlePenalties(thirdEpoch, context.BlockHeaders[(int)(thirdEpoch - 1)].Hash!, context.MasternodesAddress);
+        Assert.That(penaltiesAtThirdEpoch, Has.Length.EqualTo(2));
 
         // Insert another signing transaction
-        // Signer now has 2 signing txs and has been penalized for the whole window
+        // Signer now has 2 signing txs and has been penalized for 2 epochs
         // Parole conditions are met; signer is removed from penalties
-        CacheSigningTxAt(context, paroleEpoch - MergeSignRange * 2, nonce: 1);
-        penaltiesAtParoleEpoch = context.PenaltyHandler.HandlePenalties(paroleEpoch, context.BlockHeaders[(int)(paroleEpoch - 1)].Hash!, context.MasternodesAddress);
-        Assert.That(penaltiesAtParoleEpoch, Has.Length.EqualTo(1));
+        CacheSigningTxAt(context, thirdEpoch - MergeSignRange * 2, nonce: 1);
+        penaltiesAtThirdEpoch = context.PenaltyHandler.HandlePenalties(thirdEpoch, context.BlockHeaders[(int)(thirdEpoch - 1)].Hash!, context.MasternodesAddress);
+        Assert.That(penaltiesAtThirdEpoch, Has.Length.EqualTo(1));
     }
 
     [Test]
@@ -140,6 +140,7 @@ internal class PenaltyTests
     {
         MockedPenaltyContext context = CreateMockedPenaltyContext(
             targetEpoch: EpochLength * 7UL,
+            limitPenaltyEpoch: 4,
             shouldPenalizeAtSwitch: switchBlock => switchBlock != EpochLength * 4UL);
         ulong targetEpoch = EpochLength * 7UL;
 
@@ -163,6 +164,7 @@ internal class PenaltyTests
             spec.EpochLength = EpochLength;
             spec.IsTipUpgradePenaltyEnabled = activatePenaltyUpgrade;
             spec.RangeReturnSigner = 150;
+            spec.LimitPenaltyEpoch = 2;
         });
 
     private static PrivateKey GetPenaltyHistorySigner(XdcTestBlockchain chain, Address penaltyAddress) =>
@@ -180,6 +182,7 @@ internal class PenaltyTests
 
     private static MockedPenaltyContext CreateMockedPenaltyContext(
         ulong targetEpoch,
+        int limitPenaltyEpoch,
         System.Func<ulong, bool> shouldPenalizeAtSwitch)
     {
         PrivateKey[] masternodes = XdcTestHelper.GeneratePrivateKeys(TestMasternodeCount);
@@ -224,6 +227,7 @@ internal class PenaltyTests
         xdcSpec.SwitchBlock.Returns(0UL);
         xdcSpec.MergeSignRange.Returns((ulong)MergeSignRange);
         xdcSpec.IsTipUpgradePenaltyEnabled.Returns(true);
+        xdcSpec.LimitPenaltyEpoch.Returns((ulong)limitPenaltyEpoch);
         xdcSpec.MinimumSigningTx.Returns(2UL);
         xdcSpec.MinimumMinerBlockPerEpoch.Returns(1UL);
 

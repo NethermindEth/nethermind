@@ -275,7 +275,7 @@ comeback paths exist, selected by the same flag:
 
 | | Pre-`TIPUpgradePenalty` | Post-`TIPUpgradePenalty` |
 | --- | --- | --- |
-| Penalty window | `XdcConstants.LimitPenaltyEpochV2` epochs | `XdcConstants.LimitPenaltyEpoch` epochs |
+| Penalty window | `XdcConstants.LimitPenaltyEpochV2` epochs | `LimitPenaltyEpoch` epochs |
 | Comeback scan | last `RangeReturnSigner` blocks | last `EpochLength` blocks |
 | Comeback condition | one signing tx for a block at a `MergeSignRange` multiple | `MinimumSigningTx` such signing txs |
 
@@ -542,7 +542,7 @@ on the block number *and* the consensus round.
 | `TIPXDCXMinerDisable` / `TIPXDCXReceiverDisable` | End of the miner-side / receiver-side XDCX handling |
 | `BlackListHFNumber` | Blacklist enforcement |
 | `TIPUpgradeReward` | Fixed-rate masternode/protector/observer rewards and minted-record accounting |
-| `TIPUpgradePenalty` | New penalty comeback rules (`XdcConstants.LimitPenaltyEpoch`, `MinimumSigningTx`) |
+| `TIPUpgradePenalty` | New penalty comeback rules (`LimitPenaltyEpoch`, `MinimumSigningTx`) |
 | `DynamicGasLimitBlock` | Target-adjusted gas limit instead of the fixed target |
 
 ### `v2Configs` — round-scoped parameters
@@ -562,6 +562,7 @@ either fails to load.
 | `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
 | `MasternodeReward` / `ProtectorReward` / `ObserverReward` | XDC | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`). Stated in XDC, as in the reference client, and scaled to wei on load. `63.42` on Apothem |
 | `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
+| `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty`. `5` on Apothem; a chainspec that omits it falls back to `1` |
 | `MinimumSigningTx` | count | Signing transactions needed to leave penalty |
 
 Example — mainnet's current entry:

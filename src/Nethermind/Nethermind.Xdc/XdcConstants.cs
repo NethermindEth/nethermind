@@ -48,12 +48,9 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
 
-    // Epochs in a row a node must stay penalized before it may be paroled by signing MinimumSigningTx transactions.
-    // Matches LimitPenaltyEpoch in the XDPoSChain reference client, which does not make it configurable either.
-    public const ulong LimitPenaltyEpoch = 4;
-    // Window used by the pre-TIPUpgradePenalty branch of PenaltyHandler, not by the XDPoS v2 engine the upstream name
-    // refers to. Zero disables its previous-epoch lookback, matching the reference client leaving it unset.
-    public const ulong LimitPenaltyEpochV2 = 0;
+    // Penalty window of the pre-TIPUpgradePenalty rules, in epochs. Unlike the post-upgrade LimitPenaltyEpoch it is
+    // not chainspec configurable, matching the reference client.
+    public const ulong LimitPenaltyEpochV2 = 1;
 
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
