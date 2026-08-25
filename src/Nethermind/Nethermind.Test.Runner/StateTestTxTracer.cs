@@ -179,6 +179,7 @@ public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
+        // Action tracing enables this callback, but EIP-3155 emits no SELFDESTRUCT record.
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
@@ -201,6 +202,7 @@ public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
 
+    // An exceptional halt consumes all gas assigned to the frame.
     public void ReportActionError(EvmExceptionType exceptionType) => CompleteAction(0);
 
     public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
@@ -209,7 +211,7 @@ public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
 
     private void CompleteAction(ulong gas)
     {
-        if (--_actionDepth == 0)
+        if (_actionDepth > 0 && --_actionDepth == 0)
         {
             _trace.Result.GasUsed = _topLevelActionGas.SaturatingSub(gas);
             _hasTopLevelActionResult = true;

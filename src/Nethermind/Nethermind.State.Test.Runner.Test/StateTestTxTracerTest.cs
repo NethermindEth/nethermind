@@ -68,20 +68,40 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     [TestCase(true)]
     public void Reports_zero_for_stop_call_with_calldata_floor(bool amsterdam)
     {
-        Hash256 postHash = new(amsterdam
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        Hash256 stopCallPostHash = new(amsterdam
             ? "0x53a1c1658d4a73b0b3696812f30e2b247e3bd3fd289c9436979f14e3c23810be"
             : "0x9efbc3518d97c09664295c8fcf82ddc73ea94a770bfbd59bb98f4c2c6c8219a4");
-        GeneralStateTest test = CreateStateTest(amsterdam ? Amsterdam.Instance : Osaka.Instance, [0], [0], 5_000_000, postHash);
+        GeneralStateTest test = CreateStateTest(
+            amsterdam ? Amsterdam.Instance : Osaka.Instance,
+            code,
+            input: [0],
+            gasLimit: 5_000_000,
+            postHash: stopCallPostHash);
 
         AssertTraceGas(test, 0);
     }
 
-    [TestCase(20_000_000UL, 0x2f49UL)]
-    [TestCase(200_000UL, 0x1adc9UL)]
+    // PUSH1 + PUSH0 + SSTORE consumes 12,105 execution gas; constrained gas adds a 97,920 state-gas spill.
+    [TestCase(20_000_000UL, 12_105UL)]
+    [TestCase(200_000UL, 12_105UL + 97_920UL)]
     public void Reports_state_gas_only_when_it_spills_into_execution(ulong gasLimit, ulong expectedGasUsed)
     {
-        Hash256 postHash = new("0xacd480565b8de9ee8f4c137da3d5d6ca7fdd70808d65abb33609a907c3339e41");
-        GeneralStateTest test = CreateStateTest(Amsterdam.Instance, [0x60, 0x01, 0x5f, 0x55, 0x00], [], gasLimit, postHash);
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        Hash256 stateGasSpillPostHash = new("0xacd480565b8de9ee8f4c137da3d5d6ca7fdd70808d65abb33609a907c3339e41");
+        GeneralStateTest test = CreateStateTest(
+            Amsterdam.Instance,
+            code,
+            input: [],
+            gasLimit: gasLimit,
+            postHash: stateGasSpillPostHash);
 
         AssertTraceGas(test, expectedGasUsed);
     }
@@ -89,29 +109,81 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     [Test]
     public void Reports_refunded_state_gas_on_revert()
     {
-        Hash256 postHash = new("0x0cdcee5f7be607fbf231de46ab3788ca0204fb402880036d85c2a1f7cf85cc84");
-        GeneralStateTest test = CreateStateTest(Amsterdam.Instance, [0x60, 0x01, 0x5f, 0x55, 0x60, 0x00, 0x60, 0x00, 0xfd], [], 200_000, postHash);
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .PushData((byte)0)
+            .PushData((byte)0)
+            .Op(Instruction.REVERT)
+            .Done;
+        Hash256 revertedStateGasPostHash = new("0x0cdcee5f7be607fbf231de46ab3788ca0204fb402880036d85c2a1f7cf85cc84");
+        GeneralStateTest test = CreateStateTest(
+            Amsterdam.Instance,
+            code,
+            input: [],
+            gasLimit: 200_000,
+            postHash: revertedStateGasPostHash);
 
-        AssertTraceGas(test, 0x2f4f);
+        AssertTraceGas(test, 12_111);
     }
 
     [Test]
     public void Does_not_charge_code_deposit_for_revert_data()
     {
-        Hash256 postHash = new("0x157a9a369824ebd3e66e2658150f54254bcaf26e23e11163b6a1f39cd1e8b046");
-        GeneralStateTest test = CreateStateTest(Osaka.Instance, [], [0x60, 0x01, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xfd], 100_000, postHash, contractCreation: true);
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData((byte)0)
+            .Op(Instruction.MSTORE)
+            .PushData((byte)32)
+            .PushData((byte)0)
+            .Op(Instruction.REVERT)
+            .Done;
+        Hash256 createRevertPostHash = new("0x157a9a369824ebd3e66e2658150f54254bcaf26e23e11163b6a1f39cd1e8b046");
+        GeneralStateTest test = CreateStateTest(
+            Osaka.Instance,
+            code: [],
+            input: initCode,
+            gasLimit: 100_000,
+            postHash: createRevertPostHash,
+            contractCreation: true);
 
-        AssertTraceGas(test, 0x12);
+        AssertTraceGas(test, 18);
     }
 
     [Test]
     public void Falls_back_to_receipt_gas_for_create_collision()
     {
-        Hash256 postHash = new("0x23f9dffa595df45c4c8bed92dfb495e14ebbc4ca6bcd3d1e63983da7ef1c4306");
-        GeneralStateTest test = CreateStateTest(Osaka.Instance, [], [0x60, 0x00, 0x60, 0x00, 0xf3], 100_000, postHash, contractCreation: true, collision: true);
+        byte[] initCode = Prepare.EvmCode
+            .PushData((byte)0)
+            .PushData((byte)0)
+            .Op(Instruction.RETURN)
+            .Done;
+        Hash256 createCollisionPostHash = new("0x23f9dffa595df45c4c8bed92dfb495e14ebbc4ca6bcd3d1e63983da7ef1c4306");
+        GeneralStateTest test = CreateStateTest(
+            Osaka.Instance,
+            code: [],
+            input: initCode,
+            gasLimit: 100_000,
+            postHash: createCollisionPostHash,
+            contractCreation: true,
+            collision: true);
+        tracer.Dispose();
         tracer = new StateTestTxTracer(IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard);
 
-        AssertTraceGas(test, 0xb75e);
+        // 100,000 gas limit minus the 53,058 creation intrinsic gas.
+        AssertTraceGas(test, 46_942);
+    }
+
+    [Test]
+    public void Receipt_gas_fallback_saturates_below_intrinsic_gas()
+    {
+        using StateTestTxTracer fallbackTracer = new(intrinsicGas: 100);
+        GasConsumed settledGas = new(SpentGas: 90, OperationGas: 90);
+
+        fallbackTracer.MarkAsSuccess(Address.Zero, in settledGas, [], []);
+
+        Assert.That(fallbackTracer.BuildResult().Result.GasUsed, Is.Zero);
     }
 
     private void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed)
@@ -128,7 +200,7 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     private static GeneralStateTest CreateStateTest(
         IReleaseSpec fork,
         byte[] code,
-        byte[] data,
+        byte[] input,
         ulong gasLimit,
         Hash256 postHash,
         bool contractCreation = false,
@@ -139,16 +211,15 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
             .WithType(TxType.AccessList)
             .WithChainId(1)
             .WithAccessList(AccessList.Empty)
-            .WithData(data)
             .WithGasLimit(gasLimit)
             .WithGasPrice(7)
             .WithNonce(0)
             .WithValue(0);
 
         if (contractCreation)
-            transactionBuilder.WithCode(data);
+            transactionBuilder.WithCode(input);
         else
-            transactionBuilder.To(recipient);
+            transactionBuilder.WithData(input).To(recipient);
 
         Transaction transaction = transactionBuilder
             .SignedAndResolved(TestItem.PrivateKeyA)

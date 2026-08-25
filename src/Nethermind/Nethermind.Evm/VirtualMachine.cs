@@ -239,6 +239,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
+                    // Restore reverted EIP-8037 state gas before the tracer observes the final gas remaining.
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     if (_isTracingActionsCached)
                     {
@@ -999,7 +1000,7 @@ public partial class VirtualMachine<TGasPolicy>(
         long stateDepositCost = 0;
         ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
-        if (currentState.ExecutionType.IsAnyCreate())
+        if (currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert)
         {
             if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out executionDepositCost, out stateDepositCost))
             {
