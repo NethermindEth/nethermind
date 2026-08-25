@@ -33,8 +33,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="GetEpochSwitchInfo(XdcBlockHeader)"/> this needs no snapshot, so it still resolves epochs
-    /// whose gap block snapshot is unavailable — the case for epochs below a fast sync pivot, where no block is ever
-    /// processed. Use it wherever only the epoch switch block itself is needed, not the master node set.
+    /// whose gap block snapshot is unavailable. Use it wherever only the epoch switch block itself is needed, not the master node set.
     /// </remarks>
     /// <returns>
     /// The epoch switch header, or <c>null</c> when an ancestor is missing from the block tree or the epoch predates
