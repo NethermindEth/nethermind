@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -28,7 +29,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed class WorldState : IWorldState
+    public sealed class WorldState : IWorldState, IStorageOverrideSink
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -234,6 +235,13 @@ namespace Nethermind.State
         }
 
         public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
+
+        public bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.SetStorageOverrides(address, slots, replaceAll);
+            return true;
+        }
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 

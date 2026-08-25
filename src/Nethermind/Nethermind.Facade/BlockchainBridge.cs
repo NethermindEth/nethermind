@@ -677,7 +677,8 @@ namespace Nethermind.Facade
             /// and rehash per overridden account is pure cost. The header therefore does not receive a
             /// post-state-override root (a <paramref name="blockOverride"/> is still applied and committed by the
             /// inner env), and nonces on these paths must be read from the world state rather than through an
-            /// <see cref="IStateReader"/>.
+            /// <see cref="IStateReader"/>. For the same reason storage overrides are served lazily
+            /// (<see cref="IStorageOverrideSink"/>): only the slots the call reads are materialized.
             /// </remarks>
             public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
                 BlockHeader? header,
@@ -698,7 +699,7 @@ namespace Nethermind.Facade
                     // storage remains, or the EIP-7610 collision check would stop seeing that storage.
                     IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
                     IWorldState worldState = scope.Component.WorldState;
-                    worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);
+                    worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec, lazyStorage: true);
                     worldState.Commit(spec, commitRoots: false);
                 }
                 catch

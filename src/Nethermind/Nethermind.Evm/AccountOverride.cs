@@ -18,12 +18,12 @@ public class AccountOverride
     /// <summary>
     ///     Storage for AccountOverrideState
     /// </summary>
-    public Dictionary<UInt256, Hash256>? State { get; set; }
+    public Dictionary<UInt256, ValueHash256>? State { get; set; }
 
     /// <summary>
     ///     Storage difference for AccountOverrideStateDiff
     /// </summary>
-    public Dictionary<UInt256, Hash256>? StateDiff { get; set; }
+    public Dictionary<UInt256, ValueHash256>? StateDiff { get; set; }
 
     /// <summary>
     /// Returns <see langword="true"/> if any account-state field is set (balance, nonce, code, state, or stateDiff).

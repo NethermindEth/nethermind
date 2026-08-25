@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -16,7 +17,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public abstract class WorldStateDecorator(IWorldState state) : IWorldState
+public abstract class WorldStateDecorator(IWorldState state) : IWorldState, IStorageOverrideSink
 {
     protected readonly IWorldState State = state;
 
@@ -41,6 +42,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual bool IsStorageEmpty(Address address)
         => State.IsStorageEmpty(address);
+
+    public virtual bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+        => State is IStorageOverrideSink sink && sink.TrySetStorageOverrides(address, slots, replaceAll);
 
     public virtual ref readonly UInt256 GetBalance(Address address)
         => ref State.GetBalance(address);
