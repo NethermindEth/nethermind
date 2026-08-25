@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -19,7 +20,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_have_expected_file_tracing_flags()
     {
-        GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default);
+        GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default, destroyRefund: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -44,7 +45,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     {
         const long initialRefund = 12_500;
         List<GethTxFileTraceEntry> entries = [];
-        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default);
+        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default, destroyRefund: 0);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
 
@@ -60,7 +61,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     {
         const long initialRefund = 12_500;
         List<GethTxFileTraceEntry> entries = [];
-        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default);
+        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default, destroyRefund: 0);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
 
@@ -74,6 +75,27 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         tracer.BuildResult();
 
         Assert.That(entries.Single().Refund, Is.EqualTo(initialRefund));
+    }
+
+    [Test]
+    public void Should_report_and_deduplicate_legacy_self_destruct_refund_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        List<GethTxFileTraceEntry> entries = [];
+        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+        tracer.BuildResult();
+
+        Assert.That(entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test]

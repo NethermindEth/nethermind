@@ -243,6 +243,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         }
     }
 
+    [TestCase(Instruction.KECCAK256, "SHA3")]
     [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
     [TestCase((Instruction)0xd0, "DATALOAD")]
     [TestCase((Instruction)0xd1, "DATALOADN")]

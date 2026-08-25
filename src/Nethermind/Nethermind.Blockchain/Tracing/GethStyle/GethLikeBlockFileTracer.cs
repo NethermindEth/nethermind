@@ -24,13 +24,15 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private readonly IFileSystem _fileSystem;
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
+    private readonly long _destroyRefund;
     private readonly JsonSerializerOptions _serializerOptions = new();
 
-    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem) : base(options?.TxHash)
+    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem, long destroyRefund) : base(options?.TxHash)
     {
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _destroyRefund = destroyRefund;
 
         string hash = _block.Hash.Bytes[..4].ToHexString(true);
 
@@ -77,7 +79,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _file = _fileSystem.File.OpenWrite(_fileNames.Last());
         _jsonWriter = new(_file);
 
-        return new(DumpTraceEntry, _options);
+        return new(DumpTraceEntry, _options, _destroyRefund);
     }
 
     private void DisposeFileStreamIfAny()

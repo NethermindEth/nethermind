@@ -100,7 +100,13 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             // Intentionally created per test: each test emits an independent JSONL trace,
             // so the tracer's block counter resetting between tests is by design.
             using BlockchainTestStreamingTracer? tracer = _trace
-                ? new BlockchainTestStreamingTracer(new() { EnableMemory = _traceMemory, DisableStack = _excludeStack })
+                ? new BlockchainTestStreamingTracer(
+                    new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
+                    destroyRefund: (long)test.Network!.GasCosts.DestroyRefund,
+                    afterTransitionDestroyRefund: test.NetworkAfterTransition is null
+                        ? null
+                        : (long)test.NetworkAfterTransition.GasCosts.DestroyRefund,
+                    transitionForkActivation: test.TransitionForkActivation)
                 : null;
 
             return await RunTest(test, tracer: tracer);

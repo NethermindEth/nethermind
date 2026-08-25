@@ -29,7 +29,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem);
+        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem, destroyRefund: 0);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -61,7 +61,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
 
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = true }, fileSystem);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { EnableMemory = true }, fileSystem, destroyRefund: 0);
         ExecuteBlock(tracer, code);
 
         string fileName = tracer.FileNames.Single();

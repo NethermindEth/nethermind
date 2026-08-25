@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,11 +23,20 @@ namespace Nethermind.Test.Runner;
 /// Compatible with go-ethereum's block test tracing output format.
 /// Outputs consolidated traces across all blocks and transactions in a single stream.
 /// </summary>
-public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? output = null) : ITestBlockTracer, IDisposable
+public class BlockchainTestStreamingTracer(
+    GethTraceOptions options,
+    Stream? output = null,
+    long destroyRefund = 0,
+    long? afterTransitionDestroyRefund = null,
+    ForkActivation? transitionForkActivation = null) : ITestBlockTracer, IDisposable
 {
     private static readonly byte[] _newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
     private readonly Stream _output = output ?? Console.OpenStandardError();
     private readonly GethTraceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly long _destroyRefund = destroyRefund;
+    private readonly long? _afterTransitionDestroyRefund = afterTransitionDestroyRefund;
+    private readonly ForkActivation? _transitionForkActivation = transitionForkActivation;
+    private long _currentDestroyRefund = destroyRefund;
     private GethLikeTxFileTracer? _currentTxTracer;
 
     // Track metrics for test end marker
@@ -42,14 +51,16 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         // Not tracing rewards in block test mode
     }
 
-    public void StartNewBlockTrace(Block block)
-    {
-        // No-op: we write continuously to the same stream across all blocks
-    }
+    public void StartNewBlockTrace(Block block) =>
+        _currentDestroyRefund = _afterTransitionDestroyRefund is not null
+            && _transitionForkActivation is not null
+            && _transitionForkActivation.Value <= new ForkActivation(block.Number, block.Timestamp)
+                ? _afterTransitionDestroyRefund.Value
+                : _destroyRefund;
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options);
+        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options, _currentDestroyRefund);
         return _currentTxTracer;
     }
 

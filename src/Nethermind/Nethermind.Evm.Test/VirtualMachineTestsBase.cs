@@ -117,7 +117,7 @@ public abstract class VirtualMachineTestsBase
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
-        GethLikeTxFileTracer tracer = new(dumpCallback, options);
+        GethLikeTxFileTracer tracer = new(dumpCallback, options, (long)SpecProvider.GetSpec(block.Header).GasCosts.DestroyRefund);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
