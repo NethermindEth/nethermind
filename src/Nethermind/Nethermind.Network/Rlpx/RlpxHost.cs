@@ -197,6 +197,30 @@ namespace Nethermind.Network.Rlpx
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
+            IPEndPoint endpoint = node.Address;
+            ConnectOutcome outcome = await TryConnect(node, endpoint);
+            if (outcome != ConnectOutcome.Connected && node.V6Address is { } alternate && !alternate.Equals(endpoint))
+            {
+                if (!ShouldContact(alternate.Address, node.IsStatic || node.IsBootnode))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - filtered");
+                }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s} on {endpoint} ({outcome}), retrying on {alternate}");
+                    outcome = await TryConnect(node, alternate);
+                    if (outcome == ConnectOutcome.Connected)
+                    {
+                        node.PromoteAlternateEndpoint(alternate);
+                    }
+                }
+            }
+
+            return outcome == ConnectOutcome.Connected;
+        }
+
+        private async Task<ConnectOutcome> TryConnect(Node node, IPEndPoint endpoint)
+        {
             Bootstrap clientBootstrap = new();
             clientBootstrap
                 .Group(_workerGroup)
@@ -206,9 +230,9 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
-            clientBootstrap.Handler(new OutboundChannelInitializer(this, node));
+            clientBootstrap.Handler(new OutboundChannelInitializer(this, node, endpoint));
 
-            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
+            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(endpoint);
             using CancellationTokenSource delayCancellation = new();
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
@@ -223,7 +247,7 @@ namespace Nethermind.Network.Rlpx
                     TaskScheduler.Default);
 
                 if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s} (timeout)");
-                return false;
+                return ConnectOutcome.TimedOut;
             }
 
             delayCancellation.Cancel();
@@ -234,12 +258,24 @@ namespace Nethermind.Network.Rlpx
                     _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception.Message}");
-                return false;
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception!.Message}");
+
+                // DotNetty enforces the configured connect timeout itself, so a peer dropping SYN
+                // packets faults the task with ConnectTimeoutException before our outer delay fires.
+                return connectTask.Exception.Flatten().InnerException is ConnectTimeoutException
+                    ? ConnectOutcome.TimedOut
+                    : ConnectOutcome.Failed;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
-            return true;
+            return ConnectOutcome.Connected;
+        }
+
+        private enum ConnectOutcome
+        {
+            Connected,
+            TimedOut,
+            Failed
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated;
@@ -535,14 +571,21 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node) : ChannelInitializer<IChannel>
+        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node, IPEndPoint remoteEndpoint) : ChannelInitializer<IChannel>
         {
             private readonly RlpxHost _rlpxHost = rlpxHost;
             private readonly Node _node = node;
+            private readonly IPEndPoint _remoteEndpoint = remoteEndpoint;
 
             protected override void InitChannel(IChannel channel)
             {
                 Session session = new(_rlpxHost.LocalPort, _node, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
+                if (!_remoteEndpoint.Equals(_node.Address))
+                {
+                    // The session was established over the other address family; report that endpoint.
+                    session.RemoteHost = _remoteEndpoint.Address.ToString();
+                    session.RemotePort = _remoteEndpoint.Port;
+                }
                 _rlpxHost.InitializeChannel(channel, session);
             }
         }

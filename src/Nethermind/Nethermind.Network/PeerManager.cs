@@ -1195,13 +1195,14 @@ namespace Nethermind.Network
 
                 if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
                 {
-                    //we want to update reputation always
-                    _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
                     if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
                     {
                         if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
                         return;
                     }
+
+                    //we want to update reputation always for the active session
+                    _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
 
                     DeactivatePeerIfDisconnected(activePeer, "session disconnected");
                     SignalPeerUpdateNeeded();

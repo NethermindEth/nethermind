@@ -639,6 +639,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
         }
 
+        [Test]
+        public async Task OnIncomingMsg_drops_messages_with_unverifiable_sender_without_error()
+        {
+            TestErrorLogManager logManager = new();
+            await _adapter.DisposeAsync();
+            _logManager = logManager;
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
+
+            // A null FarPublicKey means the signature check failed during deserialization.
+            PongMsg pong = new(farPublicKey: null!, _timestamper.UnixTime.SecondsLong + 20, new ValueHash256(new byte[32]));
+
+            await _adapter.OnIncomingMsg(pong);
+
+            Assert.That(logManager.Errors, Is.Empty);
+        }
+
         [TestCase(NoResponseRequest.Ping)]
         [TestCase(NoResponseRequest.FindNeighbours)]
         [TestCase(NoResponseRequest.SendEnrRequest)]

@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable annotations
+
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using FastEnumUtility;
@@ -57,6 +60,15 @@ namespace Nethermind.Stats.Model
         /// TCP network address of the node.
         /// </summary>
         public IPEndPoint Address { get; private set; }
+
+        /// <summary>
+        /// The alternate TCP endpoint of the other address family when the node advertises dual-stack
+        /// endpoints, e.g. via the <c>ip6</c>/<c>tcp6</c> ENR entries; otherwise <see langword="null"/>.
+        /// When <see cref="Address"/> is the IPv6 endpoint this is <see langword="null"/>.
+        /// After a successful fallback dial this holds the previously tried primary endpoint so the
+        /// next dial can retry the other family.
+        /// </summary>
+        public IPEndPoint? V6Address { get; private set; }
 
         /// <summary>
         /// UDP discovery port part of the network node.
@@ -123,6 +135,7 @@ namespace Nethermind.Stats.Model
                 if (value is not null)
                 {
                     TryClearEnrRequest(value.EnrSequence);
+                    TrySetIpv6Endpoint(value);
                 }
             }
         }
@@ -352,6 +365,35 @@ namespace Nethermind.Stats.Model
             {
                 node.ClearDiscoveryEndpoint();
             }
+        }
+
+        private void TrySetIpv6Endpoint(NodeRecord enr)
+        {
+            IPAddress address = Address.Address;
+            V6Address = null;
+            if ((address.AddressFamily != AddressFamily.InterNetworkV6 || address.IsIPv4MappedToIPv6) &&
+                enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
+                // A 4-in-6 mapped value repeats the primary dial target, so it is no fallback.
+                !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+            {
+                V6Address = ipv6Endpoint;
+            }
+        }
+
+        /// <summary>
+        /// Makes the alternate endpoint the primary after a successful fallback dial so future
+        /// dials start with the reachable family and persistence stores the reachable endpoint.
+        /// </summary>
+        public void PromoteAlternateEndpoint(IPEndPoint successfulEndpoint)
+        {
+            if (successfulEndpoint.Equals(Address))
+            {
+                return;
+            }
+
+            IPEndPoint oldPrimary = Address;
+            SetIPEndPoint(successfulEndpoint);
+            V6Address = oldPrimary;
         }
 
         private static string FormatHost(IPAddress address)

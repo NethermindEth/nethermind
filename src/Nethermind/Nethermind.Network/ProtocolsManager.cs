@@ -118,7 +118,20 @@ namespace Nethermind.Network
             PublicKey sessionKey = session.Node?.Id;
             if (sessionKey is not null && sessionKey != handlerKey)
             {
-                _txPool.RemovePeer(session.Node.Id);
+                bool hasActiveSyncPeer = false;
+                foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
+                {
+                    if (pair.Value.Node?.Id == sessionKey)
+                    {
+                        hasActiveSyncPeer = true;
+                        break;
+                    }
+                }
+
+                if (!hasActiveSyncPeer)
+                {
+                    _txPool.RemovePeer(session.Node.Id);
+                }
             }
         }
 
