@@ -109,6 +109,16 @@ public sealed class NodeRecordProvider(
         IPAddress? externalIpV4 = ListensOnIPv4(ip.LocalIp) ? ip.ExternalIpV4 : null;
         IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? ip.ExternalIpV6 : null;
 
+        if (ip.ExternalIpV6 is not null && externalIpV6 is null)
+        {
+            if (_logger.IsWarn) _logger.Warn("External IPv6 address is configured but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+        }
+
+        if (externalIpV4 is null && externalIpV6 is null)
+        {
+            if (_logger.IsWarn) _logger.Warn("No external IP address is advertised; the node will not be discoverable by peers.");
+        }
+
         return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
 

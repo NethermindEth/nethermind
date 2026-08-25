@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -68,19 +69,25 @@ public class IPResolverTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ip.ExternalIpV6, Is.EqualTo(IPAddress.Parse("2001:db8::1")));
-            Assert.That(ip.ExternalIp, Is.Not.EqualTo(IPAddress.Parse("2001:db8::1")));
+            Assert.That(ip.ExternalIp.AddressFamily, Is.EqualTo(AddressFamily.InterNetwork));
         }
     }
 
     [Test]
     public async Task Mapped_unspecified_ipv4_override_does_not_suppress_resolution()
     {
-        INetworkConfig networkConfig = new NetworkConfig { ExternalIpV4 = "::ffff:0.0.0.0" };
+        INetworkConfig networkConfig = new NetworkConfig
+        {
+            ExternalIp = "192.0.2.1",
+            ExternalIpV4 = "::ffff:0.0.0.0"
+        };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
 
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
 
-        Assert.That(ip.ExternalIp, Is.Not.EqualTo(IPAddress.Any));
+        // The mapped-unspecified override must be discarded, falling back to ExternalIp rather than
+        // becoming IPAddress.Any.
+        Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
     }
 
     [Test]

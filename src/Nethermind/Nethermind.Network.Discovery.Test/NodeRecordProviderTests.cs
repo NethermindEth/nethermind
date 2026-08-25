@@ -110,6 +110,7 @@ public class NodeRecordProviderTests
 
     [TestCase("192.0.2.1", "192.0.2.1", null)]
     [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
+    [TestCase("2001:db8::1", null, null)] // IPv6 external with an IPv4 listener: endpoint suppressed
     [TestCase("255.255.255.255", null, null)] // IPAddress.None: unresolved external IP
     public async Task GetCurrentAsync_PublishesEndpointEntriesMatchingExternalIpFamily(
         string externalIp, string? expectedIp, string? expectedIp6)

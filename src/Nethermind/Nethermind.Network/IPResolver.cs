@@ -157,6 +157,11 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             return null;
         }
 
+        if (normalizedIp.IsLoopbackOrPrivateOrLinkLocal || normalizedIp.IsMulticast || normalizedIp.IsSpecialUseAddress)
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} is not a routable public address and may be discarded by peers.");
+        }
+
         if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
         return normalizedIp;
     }

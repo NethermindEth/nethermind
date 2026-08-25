@@ -912,26 +912,10 @@ public sealed class KademliaAdapter(
         }
 
         IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
-        return GetIpV4Address(record)?.Equals(endpointIpV4) == true &&
-               HasPort(record, EnrContentKey.Udp, endpoint.Port);
-    }
-
-    private static IPAddress? GetIpV4Address(NodeRecord record)
-    {
-        IPAddress? ip = record.GetObj<IPAddress>(EnrContentKey.Ip);
-        if (ip is null)
-        {
-            return null;
-        }
-
-        return ip.AddressFamily switch
-        {
-            AddressFamily.InterNetwork => ip,
-            // A peer-controlled `ip` entry can hold a 16-byte native IPv6 address; only map
-            // IPv4-mapped values, and reject the rest instead of letting MapToIPv4 throw.
-            AddressFamily.InterNetworkV6 when ip.IsIPv4MappedToIPv6 => ip.MapToIPv4(),
-            _ => null
-        };
+        return record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) &&
+               discoveryEndpoint.Address.AddressFamily == AddressFamily.InterNetwork &&
+               discoveryEndpoint.Address.Equals(endpointIpV4) &&
+               discoveryEndpoint.Port == endpoint.Port;
     }
 
     private static bool HasIPv6Port(NodeRecord record, int expectedPort)
@@ -947,6 +931,8 @@ public sealed class KademliaAdapter(
 
     private static int? GetValidPort(NodeRecord record, string portKey)
     {
+        // Mirrors NodeRecord.TryGetPort (the canonical EIP-778 port validity rule); kept local to
+        // avoid widening NodeRecord's surface for the udp6-then-udp fallback in HasIPv6Port.
         int? port = record.GetValue<int>(portKey);
         return port is > 0 && (uint)port.Value <= ushort.MaxValue ? port.Value : null;
     }
