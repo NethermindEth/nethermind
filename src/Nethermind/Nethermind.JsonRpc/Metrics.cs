@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
@@ -27,6 +29,31 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
+
+        [CounterMetric]
+        [Description("Number of gated JSON RPC requests shed up front because the predicted queue wait exceeded JsonRpc.MaxQueueWaitMs, per cost class.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionPredictedWaitRejections { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of gated JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without an execution slot freeing up, per cost class.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionWaitTimeoutRejections { get; } = new();
+
+        [GaugeMetric]
+        [Description("Number of gated JSON RPC requests currently waiting for an execution slot, per cost class.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionQueued { get; } = new();
+
+        [GaugeMetric]
+        [Description("Number of gated JSON RPC requests currently executing, per cost class.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionInFlight { get; } = new();
+
+        [GaugeMetric]
+        [Description("Exponentially weighted moving average of the per-unit-weight service time of gated JSON RPC requests, in milliseconds, per cost class.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, double> RpcAdmissionServiceTimeMs { get; } = new();
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]

@@ -27,12 +27,13 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, RpcAdmissionController admissionController) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
 
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly RpcAdmissionController _admissionController = admissionController;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
@@ -107,6 +108,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return value;
         }
 
+        // Disposed on every exit path below, i.e. once the invocation and any task it returned have completed.
+        using RpcAdmissionController.Lease lease = await AdmitAsync(method, parameters, parameterCount, returnParametersToPool);
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
@@ -117,12 +120,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            object? invocationResult = parameterCount switch
-            {
-                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-            };
+            object? invocationResult = lease.WorkerPool is { } workerPool
+                ? await InvokeOnWorker(workerPool, method, rpcModule, parameters, parameterCount)
+                : method.Invoke(rpcModule, parameters, parameterCount);
             ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
@@ -186,6 +186,33 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ArrayPool<object?>.Shared.Return(parameters, clearArray: true);
         }
     }
+
+    private async ValueTask<RpcAdmissionController.Lease> AdmitAsync(
+        ResolvedMethodInfo method,
+        object?[]? parameters,
+        int parameterCount,
+        bool returnParametersToPool)
+    {
+        try
+        {
+            return await _admissionController.AdmitAsync(method, parameters, parameterCount);
+        }
+        catch (LimitExceededException)
+        {
+            // Shedding is an expected outcome, so the pooled array goes back before the error surfaces.
+            ReturnParameters(parameters, returnParametersToPool);
+            throw;
+        }
+    }
+
+    // Kept out of ExecuteAsync so the closure is only allocated for invocations that actually leave the request thread.
+    private static Task<object?> InvokeOnWorker(
+        RpcWorkerPool workerPool,
+        ResolvedMethodInfo method,
+        IRpcModule rpcModule,
+        object?[]? parameters,
+        int parameterCount) =>
+        workerPool.RunAsync(() => method.Invoke(rpcModule, parameters, parameterCount));
 
     private JsonRpcErrorResponse? PrepareParameters(
         JsonRpcRequest request,

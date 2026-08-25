@@ -161,6 +161,53 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    [ConfigItem(
+        Description = """
+            The number of EVM-executing JSON-RPC requests (`eth_call`, `eth_estimateGas`,
+            `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) allowed to execute at once; further
+            requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503) beyond
+            that. Defaults to `EthModuleConcurrentInstances`, so EVM traffic can never exceed the override-environment
+            pool and never hits its instant rejection. Throughput plateaus at roughly one execution per logical
+            processor: raising this past that converts the excess into queueing delay, not throughput.
+            """)]
+    int? EvmExecutionConcurrency { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The number of tracing JSON-RPC requests (`debug_trace*`, `trace_*`) allowed to execute at once;
+            further requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503)
+            beyond that. Defaults to the number of logical processors minus two, but not less than two, leaving
+            headroom for block processing.
+            """)]
+    int? TracingConcurrency { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The number of proof-generating JSON-RPC requests (`proof_*`, `eth_getProof`) allowed to execute at
+            once; further requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded`
+            (HTTP 503) beyond that. Defaults to half the number of logical processors, but not less than two.
+            """)]
+    int? ProofConcurrency { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max time, in milliseconds, a gated JSON-RPC request (see `EvmExecutionConcurrency`,
+            `TracingConcurrency`, `ProofConcurrency`) may wait for an execution slot. Requests whose predicted wait
+            already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. At
+            ~30 CPU-ms per request and 16 slots the default absorbs a burst of roughly a thousand requests while
+            still answering callers well before the request `Timeout`.
+            """,
+        DefaultValue = "5000")]
+    int MaxQueueWaitMs { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_*`). Instances are created on first use. Defaults to `TracingConcurrency`.")]
+    int? TraceModuleConcurrentInstances { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Proof RPC module (`proof_*`). Instances are created on first use. Defaults to `ProofConcurrency`.")]
+    int? ProofModuleConcurrentInstances { get; set; }
+
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 

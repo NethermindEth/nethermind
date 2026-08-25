@@ -440,6 +440,7 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                CostClass = RpcMethodCostClassifier.Classify(methodInfo.Name);
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
                 if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
@@ -475,6 +476,7 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            public RpcMethodCostClass CostClass { get; }
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }
@@ -487,6 +489,14 @@ namespace Nethermind.JsonRpc.Modules
             internal IRpcModulePool? ModulePool { get; private set; }
 
             public override string ToString() => MethodInfo.Name;
+
+            /// <summary>Invokes the method on <paramref name="rpcModule"/> through the fastest available invoker.</summary>
+            internal object? Invoke(IRpcModule rpcModule, object?[]? parameters, int parameterCount) => parameterCount switch
+            {
+                0 when DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                > 0 when DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                _ => Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+            };
 
             internal void SetPool(
                 Func<bool, ValueTask<IRpcModule>> rentModule,
