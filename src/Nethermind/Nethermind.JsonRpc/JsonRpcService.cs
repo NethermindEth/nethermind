@@ -124,9 +124,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             IResultWrapper? resultWrapper = null;
             try
             {
-                object? invocationResult = lease.WorkerPool is { } workerPool
-                    ? await InvokeOnWorker(workerPool, method, rpcModule, parameters, parameterCount)
-                    : method.Invoke(rpcModule, parameters, parameterCount);
+                object? invocationResult = method.Invoke(rpcModule, parameters, parameterCount);
                 ReturnParameters(parameters, returnParametersToPool);
 
                 switch (invocationResult)
@@ -222,15 +220,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             throw;
         }
     }
-
-    // Kept out of ExecuteAsync so the closure is only allocated for invocations that actually leave the request thread.
-    private static Task<object?> InvokeOnWorker(
-        RpcWorkerPool workerPool,
-        ResolvedMethodInfo method,
-        IRpcModule rpcModule,
-        object?[]? parameters,
-        int parameterCount) =>
-        workerPool.RunAsync(() => method.Invoke(rpcModule, parameters, parameterCount));
 
     private JsonRpcErrorResponse? PrepareParameters(
         JsonRpcRequest request,

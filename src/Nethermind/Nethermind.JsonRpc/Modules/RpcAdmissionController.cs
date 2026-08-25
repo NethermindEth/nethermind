@@ -21,11 +21,10 @@ namespace Nethermind.JsonRpc.Modules;
 /// rejected up front when <c>queued x EWMA(service time) / permits x weight</c> exceeds
 /// <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that
 /// long. <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
-/// EVM-execution and tracing invocations additionally run on a dedicated <see cref="RpcWorkerPool"/> sized to
-/// the class's permit count, so the permit queue is the scheduler queue and there is a single source of truth
-/// for how much of that work is in flight.
+/// Admitted invocations run on the request thread: the permit count alone bounds how much of a class's work is
+/// in flight, so no extra scheduling hop stands between admission and execution.
 /// </remarks>
-public sealed class RpcAdmissionController : IDisposable
+public sealed class RpcAdmissionController
 {
     private readonly Gate?[] _gates = new Gate?[Enum.GetValues<RpcMethodCostClass>().Length];
 
@@ -33,9 +32,9 @@ public sealed class RpcAdmissionController : IDisposable
     public RpcAdmissionController(IJsonRpcConfig config)
     {
         int maxQueueWaitMs = Math.Max(0, config.MaxQueueWaitMs);
-        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), maxQueueWaitMs, "RpcEvm");
-        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), maxQueueWaitMs, "RpcTrace");
-        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), maxQueueWaitMs, workerThreadNamePrefix: null);
+        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), maxQueueWaitMs);
+        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), maxQueueWaitMs);
+        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), maxQueueWaitMs);
     }
 
     /// <summary>
@@ -59,50 +58,39 @@ public sealed class RpcAdmissionController : IDisposable
     internal double GetServiceTimeMs(RpcMethodCostClass costClass) => _gates[(int)costClass]?.ServiceTimeMs ?? 0;
     internal void SetServiceTimeMs(RpcMethodCostClass costClass, double serviceTimeMs) => _gates[(int)costClass]?.SetServiceTimeMs(serviceTimeMs);
 
-    public void Dispose()
-    {
-        foreach (Gate? gate in _gates)
-        {
-            gate?.Dispose();
-        }
-    }
-
     /// <summary>Holds one admission permit; disposing releases it and folds the observed service time into the class EWMA.</summary>
     internal readonly struct Lease(Gate? gate, int weight, long startTimestamp) : IDisposable
     {
         /// <summary>Whether this lease holds a permit; the default lease of an ungated class holds none and disposing it is a no-op.</summary>
         public bool IsGated => gate is not null;
 
-        /// <summary>The worker pool the invocation must run on, or <see langword="null"/> to run it inline.</summary>
-        public RpcWorkerPool? WorkerPool => gate?.WorkerPool;
-
         public void Dispose() => gate?.Release(weight, startTimestamp);
     }
 
-    internal sealed class Gate : IDisposable
+    internal sealed class Gate
     {
         // ~10 requests of memory: fast enough to follow a shift in traffic mix, slow enough to ignore one outlier.
         private const double EwmaAlpha = 0.1;
 
         private readonly RpcMethodCostClass _costClass;
         private readonly int _maxQueueWaitMs;
+        // Never disposed: it allocates no kernel handle here, and in-flight requests still release their permits
+        // while the node shuts down.
         private readonly SemaphoreSlim _permits;
         private readonly Lock _ewmaLock = new();
         private int _queued;
         private int _inFlight;
         private double _serviceTimeMs;
 
-        public Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs, string? workerThreadNamePrefix)
+        public Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs)
         {
             _costClass = costClass;
             Permits = Math.Max(1, permits);
             _maxQueueWaitMs = maxQueueWaitMs;
             _permits = new SemaphoreSlim(Permits);
-            WorkerPool = workerThreadNamePrefix is null ? null : new RpcWorkerPool(workerThreadNamePrefix, Permits);
         }
 
         public int Permits { get; }
-        public RpcWorkerPool? WorkerPool { get; }
         public int Queued => Volatile.Read(ref _queued);
         public int InFlight => Volatile.Read(ref _inFlight);
         public double ServiceTimeMs => Volatile.Read(ref _serviceTimeMs);
@@ -162,9 +150,5 @@ public sealed class RpcAdmissionController : IDisposable
             Volatile.Write(ref _serviceTimeMs, serviceTimeMs);
             Metrics.RpcAdmissionServiceTimeMs[_costClass] = serviceTimeMs;
         }
-
-        // The semaphore is intentionally not disposed: it never allocates a kernel handle here, and in-flight
-        // requests still release their permits while the node shuts down.
-        public void Dispose() => WorkerPool?.Dispose();
     }
 }

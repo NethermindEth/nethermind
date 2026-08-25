@@ -60,7 +60,6 @@ public class JsonRpcServiceTests
     {
         EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
         _context?.Dispose();
-        _admissionController?.Dispose();
     }
 
     private bool _previousStrictHexFormat;
@@ -224,11 +223,7 @@ public class JsonRpcServiceTests
     private IJsonRpcService CreateService<T>(T module) where T : IRpcModule =>
         CreateService(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
 
-    private void UseAdmissionController(JsonRpcConfig config)
-    {
-        _admissionController.Dispose();
-        _admissionController = new RpcAdmissionController(config);
-    }
+    private void UseAdmissionController(JsonRpcConfig config) => _admissionController = new RpcAdmissionController(config);
 
     [TestCase(false, 2UL, TestName = "Number")]
     [TestCase(true, 513UL, TestName = "Size")]
@@ -690,13 +685,13 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Eth_call_is_admitted_and_runs_on_the_evm_worker_pool()
+    public void Eth_call_holds_an_evm_permit_for_the_duration_of_the_invocation()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        string? invocationThread = null;
+        int inFlightDuringInvocation = 0;
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
         {
-            invocationThread = Thread.CurrentThread.Name;
+            inFlightDuringInvocation = _admissionController.GetInFlight(RpcMethodCostClass.EvmExecution);
             return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
         });
 
@@ -704,7 +699,7 @@ public class JsonRpcServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(invocationThread, Does.StartWith("RpcEvm-"));
+            Assert.That(inFlightDuringInvocation, Is.EqualTo(1), "the permit must be held while the method runs");
             Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.EvmExecution), Is.GreaterThan(0), "admission did not observe the call");
             Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0), "permit was not released");
         }
@@ -724,7 +719,8 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_blockNumber().Returns(Task.FromResult(ResultWrapper<ulong?>.Success(7)));
         IJsonRpcService service = CreateService(ethRpcModule);
 
-        Task<JsonRpcResponse> blocked = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).AsTask();
+        // The gated invocation runs inline on the requesting thread, so the blocking call must not be issued from this one.
+        Task<JsonRpcResponse> blocked = Task.Run(() => service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).AsTask());
         await WaitUntil(() => _admissionController.GetInFlight(RpcMethodCostClass.EvmExecution) == 1);
 
         long rejectionsBefore = Metrics.JsonRpcOverloadRejections;

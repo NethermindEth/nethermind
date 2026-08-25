@@ -40,9 +40,6 @@ public class RpcAdmissionControllerTests
         MaxQueueWaitMs = MaxQueueWaitMs,
     });
 
-    [TearDown]
-    public void TearDown() => _controller.Dispose();
-
     [TestCase("eth_call", RpcMethodCostClass.EvmExecution)]
     [TestCase("eth_estimateGas", RpcMethodCostClass.EvmExecution)]
     [TestCase("eth_createAccessList", RpcMethodCostClass.EvmExecution)]
@@ -220,7 +217,7 @@ public class RpcAdmissionControllerTests
     [Test]
     public async Task Rejects_after_wait_timeout_when_permits_never_free()
     {
-        using RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
         long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
         using RpcAdmissionController.Lease held = await controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), null, 0);
 
@@ -276,7 +273,7 @@ public class RpcAdmissionControllerTests
         {
             ValueTask<RpcAdmissionController.Lease> admission = _controller.AdmitAsync(blockNumber, null, 0);
             Assert.That(admission.IsCompletedSuccessfully, Is.True);
-            Assert.That(admission.Result.WorkerPool, Is.Null);
+            Assert.That(admission.Result.IsGated, Is.False);
         }
 
         using (Assert.EnterMultipleScope())
@@ -287,10 +284,10 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    [TestCase(RpcMethodCostClass.EvmExecution, true)]
-    [TestCase(RpcMethodCostClass.Tracing, true)]
-    [TestCase(RpcMethodCostClass.Proof, false)]
-    public async Task Only_evm_and_tracing_classes_dispatch_to_a_worker_pool(RpcMethodCostClass costClass, bool expectsPool)
+    [TestCase(RpcMethodCostClass.EvmExecution)]
+    [TestCase(RpcMethodCostClass.Tracing)]
+    [TestCase(RpcMethodCostClass.Proof)]
+    public async Task Every_gated_class_hands_out_a_permit(RpcMethodCostClass costClass)
     {
         ResolvedMethodInfo method = costClass switch
         {
@@ -299,13 +296,16 @@ public class RpcAdmissionControllerTests
             _ => Resolve<IEthRpcModule>("eth_getProof"),
         };
 
-        using RpcAdmissionController.Lease lease = await _controller.AdmitAsync(method, null, 0);
-
-        Assert.That(lease.WorkerPool, expectsPool ? Is.Not.Null : Is.Null);
-        if (expectsPool)
+        using (RpcAdmissionController.Lease lease = await _controller.AdmitAsync(method, null, 0))
         {
-            Assert.That(lease.WorkerPool!.WorkerCount, Is.EqualTo(_controller.GetPermits(costClass)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lease.IsGated, Is.True);
+                Assert.That(_controller.GetInFlight(costClass), Is.EqualTo(1));
+            }
         }
+
+        Assert.That(_controller.GetInFlight(costClass), Is.EqualTo(0));
     }
 
     [Test]
