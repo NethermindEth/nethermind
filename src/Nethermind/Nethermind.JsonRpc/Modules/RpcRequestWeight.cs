@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules;
 /// multicall simulations otherwise get admitted as if they were an <c>eth_getBalance</c>. The weight is clamped to
 /// <see cref="MaxWeight"/> so a single pathological request cannot starve the queue for everybody else.
 /// </remarks>
-public static class RpcRequestWeight
+internal static class RpcRequestWeight
 {
     public const int MinWeight = 1;
     public const int MaxWeight = 8;

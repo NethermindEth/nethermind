@@ -108,59 +108,77 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return value;
         }
 
-        // Disposed on every exit path below, i.e. once the invocation and any task it returned have completed.
-        using RpcAdmissionController.Lease lease = await AdmitAsync(method, parameters, parameterCount, returnParametersToPool);
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
-        if (rpcModule is IContextAwareRpcModule contextAwareModule)
-        {
-            contextAwareModule.Context = context;
-        }
-        bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
-        IResultWrapper? resultWrapper = null;
+        // Released once the invocation and any task it returned have completed — except for a streamed result, whose
+        // re-execution only runs while the response is written, so its permit travels with the response instead.
+        RpcAdmissionController.Lease lease = await AdmitAsync(method, parameters, parameterCount, returnParametersToPool);
+        bool leaseTransferred = false;
         try
         {
-            object? invocationResult = lease.WorkerPool is { } workerPool
-                ? await InvokeOnWorker(workerPool, method, rpcModule, parameters, parameterCount)
-                : method.Invoke(rpcModule, parameters, parameterCount);
-            ReturnParameters(parameters, returnParametersToPool);
-
-            switch (invocationResult)
+            IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+            if (rpcModule is IContextAwareRpcModule contextAwareModule)
             {
-                case IResultWrapper wrapper:
-                    resultWrapper = wrapper;
-                    break;
-                case Task task:
-                    await task;
-                    resultWrapper = method.ReadTaskResult(task);
-                    break;
-                default:
-                    break;
+                contextAwareModule.Context = context;
             }
-        }
-        catch (Exception ex)
-        {
-            return HandleInvocationException(ex, methodName, request, returnAction);
+            bool returnImmediately = methodName != GetLogsMethodName;
+            Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
+            IResultWrapper? resultWrapper = null;
+            try
+            {
+                object? invocationResult = lease.WorkerPool is { } workerPool
+                    ? await InvokeOnWorker(workerPool, method, rpcModule, parameters, parameterCount)
+                    : method.Invoke(rpcModule, parameters, parameterCount);
+                ReturnParameters(parameters, returnParametersToPool);
+
+                switch (invocationResult)
+                {
+                    case IResultWrapper wrapper:
+                        resultWrapper = wrapper;
+                        break;
+                    case Task task:
+                        await task;
+                        resultWrapper = method.ReadTaskResult(task);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                return HandleInvocationException(ex, methodName, request, returnAction);
+            }
+            finally
+            {
+                if (returnImmediately)
+                {
+                    _rpcModuleProvider.Return(method, rpcModule);
+                }
+            }
+
+            if (resultWrapper is null)
+            {
+                return HandleMissingResultWrapper(request, methodName, returnAction);
+            }
+
+            if (resultWrapper is JsonRpcResponse response)
+            {
+                if (lease.IsGated && response.TryGetStreamableResult(out _))
+                {
+                    returnAction += lease.Dispose;
+                    leaseTransferred = true;
+                }
+
+                return response.WithResponseContext(in request.IdRef, returnAction);
+            }
+
+            return HandleUnsupportedResultWrapper(request, methodName, returnAction);
         }
         finally
         {
-            if (returnImmediately)
+            if (!leaseTransferred)
             {
-                _rpcModuleProvider.Return(method, rpcModule);
+                lease.Dispose();
             }
         }
-
-        if (resultWrapper is null)
-        {
-            return HandleMissingResultWrapper(request, methodName, returnAction);
-        }
-
-        if (resultWrapper is JsonRpcResponse response)
-        {
-            return response.WithResponseContext(in request.IdRef, returnAction);
-        }
-
-        return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

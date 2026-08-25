@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -198,6 +199,24 @@ public class BoundedModulePoolTests
         pool.Preload();
 
         factory.Received(capacity + 1).Create();
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Factory_failure_during_lazy_rent_does_not_consume_capacity(bool canBeShared)
+    {
+        const int capacity = 2;
+        BoundedModulePool<IEthRpcModule> pool = CreateCountingPool(capacity, out IRpcModuleFactory<IEthRpcModule> factory);
+        factory.Create().Returns(static _ => throw new InvalidOperationException("boom"), static _ => Substitute.For<IEthRpcModule>());
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => pool.GetModule(canBeShared));
+
+        pool.ReturnModule(await pool.GetModule(canBeShared));
+        for (int i = 0; i < capacity; i++)
+        {
+            await pool.GetModule(false);
+        }
+        Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => pool.GetModule(false), "the failed instance must not count towards the capacity");
     }
 
     private static BoundedModulePool<IEthRpcModule> CreateCountingPool(int capacity, out IRpcModuleFactory<IEthRpcModule> factory)

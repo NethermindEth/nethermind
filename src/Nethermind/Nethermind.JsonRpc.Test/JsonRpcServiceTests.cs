@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -759,6 +762,49 @@ public class JsonRpcServiceTests
 
         // The single permit must be free again, otherwise this waits out MaxQueueWaitMs and is shed.
         RpcTest.AssertSuccess<HexBytes>(service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).Result);
+    }
+
+    [Test]
+    public async Task Streamed_trace_result_keeps_its_permit_until_the_response_is_disposed()
+    {
+        const int holdMs = 40;
+        UseAdmissionController(new JsonRpcConfig { TracingConcurrency = 1, MaxQueueWaitMs = 100 });
+        int executions = 0;
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>()).ReturnsForAnyArgs(_ =>
+            ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+                (writer, _, _) =>
+                {
+                    Interlocked.Increment(ref executions);
+                    Thread.Sleep(holdMs);
+                    writer.WriteStartObject();
+                    writer.WriteEndObject();
+                },
+                new CancellationTokenSource(),
+                LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        IJsonRpcService service = CreateService(traceRpcModule);
+
+        JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("trace_replayTransaction", TestItem.KeccakA, new[] { "trace" }), _context);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executions, Is.EqualTo(0), "a streamed result re-executes while being written, not while being invoked");
+            Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.Tracing), Is.EqualTo(1), "the permit must outlive the invocation");
+        }
+
+        Pipe pipe = new();
+        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executions, Is.EqualTo(1));
+            Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.Tracing), Is.EqualTo(1), "the permit must be held while the trace is streamed");
+        }
+
+        response.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.Tracing), Is.EqualTo(0));
+            Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.Tracing), Is.GreaterThanOrEqualTo(holdMs * 0.9), "service time must cover the streamed re-execution");
+        }
     }
 
     private static IEnumerable<TestCaseData> FailingEvmInvocations()

@@ -54,6 +54,11 @@ public class RpcAdmissionControllerTests
     [TestCase("trace_call", RpcMethodCostClass.Tracing)]
     [TestCase("trace_replayBlockTransactions", RpcMethodCostClass.Tracing)]
     [TestCase("trace_filter", RpcMethodCostClass.Tracing)]
+    [TestCase("debug_simulateV1", RpcMethodCostClass.EvmExecution)]
+    [TestCase("debug_intermediateRoots", RpcMethodCostClass.Tracing)]
+    [TestCase("debug_standardTraceBlockToFile", RpcMethodCostClass.Tracing)]
+    [TestCase("debug_standardTraceBadBlockToFile", RpcMethodCostClass.Tracing)]
+    [TestCase("debug_executionWitness", RpcMethodCostClass.Tracing)]
     [TestCase("proof_call", RpcMethodCostClass.Proof)]
     [TestCase("proof_getTransactionReceipt", RpcMethodCostClass.Proof)]
     [TestCase("eth_getProof", RpcMethodCostClass.Proof)]
@@ -66,6 +71,59 @@ public class RpcAdmissionControllerTests
     [TestCase("net_version", RpcMethodCostClass.Default)]
     public void Classifies_methods_by_cost(string methodName, RpcMethodCostClass expected) =>
         Assert.That(RpcMethodCostClassifier.Classify(methodName), Is.EqualTo(expected));
+
+    // A null expectation stands for Environment.ProcessorCount, which is not a compile-time constant.
+    [TestCase(null, null, null, TestName = "Evm: processor count")]
+    [TestCase(null, 6, 6, TestName = "Evm: falls back to EthModuleConcurrentInstances")]
+    [TestCase(4, 6, 4, TestName = "Evm: explicit value wins")]
+    [TestCase(0, 6, 1, TestName = "Evm: zero is clamped to one")]
+    [TestCase(-3, null, 1, TestName = "Evm: negative is clamped to one")]
+    public void Evm_execution_concurrency_default_chain(int? evmExecutionConcurrency, int? ethModuleConcurrentInstances, int? expected)
+    {
+        JsonRpcConfig config = new() { EvmExecutionConcurrency = evmExecutionConcurrency, EthModuleConcurrentInstances = ethModuleConcurrentInstances };
+
+        Assert.That(config.GetEvmExecutionConcurrency(), Is.EqualTo(expected ?? Environment.ProcessorCount));
+    }
+
+    [TestCase(null, null, TestName = "Tracing: processor count minus two, at least two")]
+    [TestCase(5, 5, TestName = "Tracing: explicit value wins")]
+    [TestCase(0, 1, TestName = "Tracing: zero is clamped to one")]
+    public void Tracing_concurrency_default_chain(int? tracingConcurrency, int? expected)
+    {
+        JsonRpcConfig config = new() { TracingConcurrency = tracingConcurrency };
+
+        Assert.That(config.GetTracingConcurrency(), Is.EqualTo(expected ?? Math.Max(2, Environment.ProcessorCount - 2)));
+    }
+
+    [TestCase(null, null, TestName = "Proof: half the processor count, at least two")]
+    [TestCase(3, 3, TestName = "Proof: explicit value wins")]
+    [TestCase(-1, 1, TestName = "Proof: negative is clamped to one")]
+    public void Proof_concurrency_default_chain(int? proofConcurrency, int? expected)
+    {
+        JsonRpcConfig config = new() { ProofConcurrency = proofConcurrency };
+
+        Assert.That(config.GetProofConcurrency(), Is.EqualTo(expected ?? Math.Max(2, Environment.ProcessorCount / 2)));
+    }
+
+    [TestCase(null, 7, 7, TestName = "Trace module instances follow TracingConcurrency")]
+    [TestCase(3, 7, 3, TestName = "Trace module instances: explicit value wins")]
+    [TestCase(0, 7, 1, TestName = "Trace module instances: zero is clamped to one")]
+    public void Trace_module_instances_default_to_tracing_concurrency(int? traceModuleConcurrentInstances, int tracingConcurrency, int expected)
+    {
+        JsonRpcConfig config = new() { TraceModuleConcurrentInstances = traceModuleConcurrentInstances, TracingConcurrency = tracingConcurrency };
+
+        Assert.That(config.GetTraceModuleConcurrentInstances(), Is.EqualTo(expected));
+    }
+
+    [TestCase(null, 5, 5, TestName = "Proof module instances follow ProofConcurrency")]
+    [TestCase(2, 5, 2, TestName = "Proof module instances: explicit value wins")]
+    [TestCase(-2, 5, 1, TestName = "Proof module instances: negative is clamped to one")]
+    public void Proof_module_instances_default_to_proof_concurrency(int? proofModuleConcurrentInstances, int proofConcurrency, int expected)
+    {
+        JsonRpcConfig config = new() { ProofModuleConcurrentInstances = proofModuleConcurrentInstances, ProofConcurrency = proofConcurrency };
+
+        Assert.That(config.GetProofModuleConcurrentInstances(), Is.EqualTo(expected));
+    }
 
     [TestCase(0, 0, 1, TestName = "No overrides")]
     [TestCase(64 * 1024 - 1, 0, 1, TestName = "Just below one unit of code")]

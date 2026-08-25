@@ -29,6 +29,7 @@ public sealed class RpcAdmissionController : IDisposable
 {
     private readonly Gate?[] _gates = new Gate?[Enum.GetValues<RpcMethodCostClass>().Length];
 
+    /// <summary>Creates one gate per gated cost class, sized by the concurrency limits resolved from <paramref name="config"/>.</summary>
     public RpcAdmissionController(IJsonRpcConfig config)
     {
         int maxQueueWaitMs = Math.Max(0, config.MaxQueueWaitMs);
@@ -69,6 +70,9 @@ public sealed class RpcAdmissionController : IDisposable
     /// <summary>Holds one admission permit; disposing releases it and folds the observed service time into the class EWMA.</summary>
     internal readonly struct Lease(Gate? gate, int weight, long startTimestamp) : IDisposable
     {
+        /// <summary>Whether this lease holds a permit; the default lease of an ungated class holds none and disposing it is a no-op.</summary>
+        public bool IsGated => gate is not null;
+
         /// <summary>The worker pool the invocation must run on, or <see langword="null"/> to run it inline.</summary>
         public RpcWorkerPool? WorkerPool => gate?.WorkerPool;
 

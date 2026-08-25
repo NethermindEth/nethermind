@@ -107,6 +107,60 @@ public class RpcWorkerPoolTests
         Assert.That(worker!.IsAlive, Is.False);
     }
 
+    [Test]
+    public async Task Failed_thread_start_leaves_the_slot_for_the_next_call()
+    {
+        int startAttempts = 0;
+        using RpcWorkerPool pool = new(Prefix, 1, thread =>
+        {
+            if (Interlocked.Increment(ref startAttempts) == 1)
+            {
+                throw new InvalidOperationException("Thread creation failed.");
+            }
+
+            thread.Start();
+        });
+
+        Assert.Throws<InvalidOperationException>(() => pool.RunAsync(static () => null), "the failed start must surface to the caller, not queue an item nobody consumes");
+
+        object? result = await pool.RunAsync(static () => 7).WaitAsync(WaitBudget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(7));
+            Assert.That(startAttempts, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Dispose_racing_work_submission_completes_or_refuses_every_item()
+    {
+        const int iterations = 100;
+        const int workers = 4;
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            RpcWorkerPool pool = new(Prefix, workers);
+            Task<object?>[] submissions = new Task<object?>[workers * 2];
+            for (int i = 0; i < submissions.Length; i++)
+            {
+                submissions[i] = Task.Run(() => pool.RunAsync(static () => null));
+            }
+            Task disposing = Task.Run(pool.Dispose);
+
+            await disposing.WaitAsync(WaitBudget);
+            foreach (Task<object?> submission in submissions)
+            {
+                // Each item either ran or was refused; an unhandled exception on a worker thread would have crashed the process.
+                try
+                {
+                    await submission.WaitAsync(WaitBudget);
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+        }
+    }
+
     private static async Task WaitUntil(Func<bool> condition)
     {
         long deadline = Environment.TickCount64 + (long)WaitBudget.TotalMilliseconds;

@@ -177,7 +177,8 @@ public interface IJsonRpcConfig : IConfig
             The number of tracing JSON-RPC requests (`debug_trace*`, `trace_*`) allowed to execute at once;
             further requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503)
             beyond that. Defaults to the number of logical processors minus two, but not less than two, leaving
-            headroom for block processing.
+            headroom for block processing. Keep `DebugModuleConcurrentInstances` at or above this value, otherwise
+            admitted `debug_trace*` requests wait for a module instance while holding their slot.
             """)]
     int? TracingConcurrency { get; set; }
 
@@ -193,19 +194,20 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             The max time, in milliseconds, a gated JSON-RPC request (see `EvmExecutionConcurrency`,
             `TracingConcurrency`, `ProofConcurrency`) may wait for an execution slot. Requests whose predicted wait
-            already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. At
-            ~30 CPU-ms per request and 16 slots the default absorbs a burst of roughly a thousand requests while
-            still answering callers well before the request `Timeout`.
+            already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. The
+            predicted wait is `queued requests x mean service time / slots`: at ~30 CPU-ms per request and 16 slots
+            the default absorbs a burst of roughly 2,500 requests while still answering callers well before the
+            request `Timeout`.
             """,
         DefaultValue = "5000")]
     int MaxQueueWaitMs { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Trace RPC module (`trace_*`). Instances are created on first use. Defaults to `TracingConcurrency`.")]
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_*`). Instances are created on first use and kept for the lifetime of the process. Defaults to `TracingConcurrency`.")]
     int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Proof RPC module (`proof_*`). Instances are created on first use. Defaults to `ProofConcurrency`.")]
+        Description = "The number of concurrent instances of the Proof RPC module (`proof_*`). Instances are created on first use and kept for the lifetime of the process. Defaults to `ProofConcurrency`.")]
     int? ProofModuleConcurrentInstances { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]

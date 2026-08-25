@@ -29,16 +29,20 @@ public enum RpcMethodCostClass
 /// Classification is by name so that plugin-provided modules fall into the right class without registering
 /// anything: a <c>trace_</c> or <c>debug_trace</c> prefix re-executes blocks with a tracer regardless of who
 /// implements it. The EVM-execution list is explicit because the <c>eth_</c> namespace mixes sub-millisecond
-/// reads with multi-second simulations and only the latter must be bounded.
+/// reads with multi-second simulations and only the latter must be bounded; the <c>debug_</c> namespace likewise
+/// hides block re-executions behind names without the <c>trace</c> prefix, so those are listed too.
 /// </remarks>
-public static class RpcMethodCostClassifier
+internal static class RpcMethodCostClassifier
 {
     public static RpcMethodCostClass Classify(string methodName) => methodName switch
     {
         "eth_call" or "eth_estimateGas" or "eth_createAccessList" or "eth_simulateV1" or "eth_fillTransaction"
+            or "debug_simulateV1"
             => RpcMethodCostClass.EvmExecution,
         "eth_getProof" => RpcMethodCostClass.Proof,
+        "debug_intermediateRoots" or "debug_executionWitness" => RpcMethodCostClass.Tracing,
         _ when methodName.StartsWith("debug_trace", StringComparison.Ordinal)
+            || methodName.StartsWith("debug_standardTrace", StringComparison.Ordinal)
             || methodName.StartsWith("trace_", StringComparison.Ordinal)
             => RpcMethodCostClass.Tracing,
         _ when methodName.StartsWith("proof_", StringComparison.Ordinal) => RpcMethodCostClass.Proof,

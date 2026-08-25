@@ -105,8 +105,10 @@ namespace Nethermind.JsonRpc.Modules
 
         private Task<T> SharedPath()
         {
+            // Created before the slot is taken: a failing factory must not consume a slot that is never returned.
+            Task<T> shared = _sharedAsTask ?? GetOrCreateShared();
             RpcLimits.AcquireSharedSlot();
-            return _sharedAsTask ?? GetOrCreateShared();
+            return shared;
         }
 
         private Task<T> GetOrCreateShared()
