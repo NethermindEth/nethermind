@@ -525,8 +525,7 @@ namespace Nethermind.Trie
             [DoesNotReturn, StackTraceHidden]
             void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
 
-            // A path-keyed persistence read can legitimately answer with another version of the node at that path,
-            // so this is the same expected staleness as a missing node rather than a corrupted trie.
+            // A path-keyed store serving another version of the node is staleness, not corruption.
             [DoesNotReturn, StackTraceHidden]
             void ThrowInvalidKeccak(in TreePath nodePath) => throw new TrieNodeException(
                 $"Trie returned RLP with an unexpected Keccak for node {Keccak}", nodePath,

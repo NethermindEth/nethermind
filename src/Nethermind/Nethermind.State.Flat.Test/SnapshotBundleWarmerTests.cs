@@ -103,25 +103,6 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [Test]
-    public void Unresolved_warmer_miss_is_not_promoted()
-    {
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
-
-        TreePath path = TreePath.FromHexString("12");
-        Hash256 hash = TestItem.KeccakA;
-
-        TrieNode warmed = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
-
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
-        cache.Add(retired!);
-        retired!.ReleaseLease();
-
-        Assert.That(cache.TryGet(null, in path, hash, out _), Is.False);
-    }
-
     [TestCase(false)]
     [TestCase(true)]
     public void Unresolved_warmer_miss_does_not_reach_trie_node_cache(bool storage)
@@ -153,8 +134,7 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // A second warmer visit to the same missing path must reuse the owned transient placeholder and avoid another
-    // persistence-backed lookup.
+    // A repeated warmer miss is served by the owned placeholder, not by another persistence lookup.
     [TestCase(false)]
     [TestCase(true)]
     public void Repeated_warmer_miss_is_served_from_the_negative_cache(bool storage)
@@ -221,8 +201,7 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // An owned warmer miss is inserted into the normal transient cache. The shared instance becomes visible to live
-    // readers only through its resolution protocol, then retirement independently materializes a cacheable copy.
+    // Live reads see the warmer's instance only once resolved; retirement promotes a detached copy of it.
     [TestCase(false)]
     [TestCase(true)]
     public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached(bool storage)
@@ -244,8 +223,7 @@ public class SnapshotBundleWarmerTests
             ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
             : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
 
-        // Resolving the warmer's placeholder through its own adapter is what issues the persistence read,
-        // so this drives the call path the change actually touches.
+        // Resolving through the warmer adapter is what issues the persistence read.
         TreePath resolvePath = path;
         Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.True);
 
@@ -324,11 +302,19 @@ public class SnapshotBundleWarmerTests
 
         start.Set();
         bool firstLoadStarted = loadStarted.Wait(BailOutTimeout);
+
+        // The shared instance is mid-resolution here and must stay invisible to live reads.
+        TrieNode midResolution = storage
+            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
+            : bundle.FindStateNodeOrUnknown(path, hash);
+
         allowLoad.Set();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(firstLoadStarted, Is.True, "no resolver reached persistence");
+            Assert.That(midResolution, Is.Not.SameAs(warmed));
+            Assert.That(midResolution.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(Task.WaitAll(resolvers, BailOutTimeout), Is.True, "owned resolvers did not complete");
             Assert.That(Volatile.Read(ref loads), Is.EqualTo(1));
         }
@@ -380,10 +366,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // The persistence read behind the warmer is keyed by path alone, so it can return a different node than the
-    // one the warmer asked for. Publishing those bytes under the requested hash would satisfy every reader-side
-    // guard by construction (they all compare the node's own claimed Keccak), poisoning live reads and the shared
-    // cache. Nothing matching the requested hash may be published unless the RLP actually hashes to it.
+    // The warmer's persistence read is path-keyed, so it can return another node; reader guards compare the node's
+    // own claimed Keccak, so publishing those bytes under the requested hash would poison live reads and the cache.
     [TestCase(false)]
     [TestCase(true)]
     public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads(bool storage)

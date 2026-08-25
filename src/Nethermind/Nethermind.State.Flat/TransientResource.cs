@@ -44,12 +44,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
     /// <summary>
-    /// Waits until this retired resource is held only by its owner.
+    /// Waits until this retired resource is held only by its owner, so in-flight warmer reads have drained before
+    /// retirement scans its caches.
     /// </summary>
-    /// <remarks>
-    /// The owner calls this only after swapping the resource out, so no new warmer can reach its caches. Existing
-    /// warmer reads may still hold leases while writing a cache entry and must drain before retirement scans it.
-    /// </remarks>
     internal void WaitForExclusiveLease()
     {
         SpinWait spinWait = default;
