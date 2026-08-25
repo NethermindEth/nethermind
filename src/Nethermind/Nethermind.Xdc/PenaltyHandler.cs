@@ -87,7 +87,6 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             ulong comebackHeight = XdcConstants.LimitPenaltyEpochV2 * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                // A one epoch window, so the comeback set is the penalties of the epoch switch that opens it
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, 0);
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
