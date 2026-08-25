@@ -23,9 +23,10 @@ namespace Nethermind.Tools.Kute.Replay;
 /// rather than one task per request, so the number in flight is the number asked for and the harness
 /// adds no scheduling noise of its own.
 /// <para>
-/// Each level gets a fresh connection pool, opens every connection with a burst of simultaneous
-/// priming requests, and runs its warm-up pass on that pool, so the measured window never pays
-/// connection setup.
+/// Each level gets a fresh connection pool and, unless warm-up is disabled, opens every connection
+/// with a burst of simultaneous priming requests and then warms up on the records immediately before
+/// the measured window. The measured window therefore neither pays connection setup nor replays
+/// requests its own warm-up just answered.
 /// </para>
 /// </remarks>
 /// <param name="options">Settings for the run.</param>
@@ -37,6 +38,10 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     private readonly byte[] _quotedTag = options.BlockTag is null
         ? []
         : Encoding.UTF8.GetBytes(JsonQuote(options.BlockTag));
+
+    // "latest" is what the node substitutes for an omitted block parameter, so only then is a record
+    // without the slot already at the requested block.
+    private readonly bool _targetIsNodeDefault = string.Equals(options.BlockTag, "latest", StringComparison.Ordinal);
 
     /// <summary>Runs every configured concurrency level in order.</summary>
     /// <param name="token">Cancels the run.</param>
@@ -61,7 +66,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 await PrimeConnectionsAsync(concurrency, httpClient, auth, token);
 
                 Report($"concurrency {concurrency}: warm-up, {_options.WarmupRequests} requests");
-                LevelResult warmup = await RunPassAsync(concurrency, _options.WarmupRequests, httpClient, auth, measure: false, token);
+                LevelResult warmup = await RunPassAsync(concurrency, _options.WarmupRequests, _options.Skip, httpClient, auth, measure: false, token);
                 if (warmup.Failed > 0)
                 {
                     Warn($"concurrency {concurrency}: warm-up had {warmup.Failed}/{warmup.Total} failures; the measured window may be cold");
@@ -69,8 +74,13 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             }
 
             Report($"concurrency {concurrency}: measuring");
-            LevelResult result = await RunPassAsync(concurrency, RequestLimit, httpClient, auth, measure: true, token);
+            LevelResult result = await RunPassAsync(concurrency, RequestLimit, MeasuredSkip, httpClient, auth, measure: true, token);
             results.Add(result);
+
+            if (result.Untagged > 0)
+            {
+                Warn($"concurrency {concurrency}: {result.Untagged}/{result.Total} requests were sent without the forced block tag (unknown method or absent block slot)");
+            }
 
             Report($"concurrency {concurrency}: {result.Total} requests in {result.Elapsed.TotalSeconds:F1}s, "
                 + $"{result.RequestsPerSecond:F1} rps, p50 {result.P50.TotalMilliseconds:F1}ms, "
@@ -81,6 +91,9 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     }
 
     private int RequestLimit => _options.MeasuredRequests <= 0 ? int.MaxValue : _options.MeasuredRequests;
+
+    /// <summary>First record of the measured window; the warm-up consumes the records before it.</summary>
+    private int MeasuredSkip => _options.Skip + (_options.WarmupRequests > 0 ? _options.WarmupRequests : 0);
 
     private HttpClient CreateHttpClient(int concurrency)
     {
@@ -99,6 +112,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     private async Task<LevelResult> RunPassAsync(
         int concurrency,
         int requestLimit,
+        int skip,
         HttpClient httpClient,
         IAuth? auth,
         bool measure,
@@ -131,7 +145,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         }
 
         tasks[0] = Task.Run(
-            () => ReadAsync(channel.Writer, requestLimit, deadline, passToken),
+            () => ReadAsync(channel.Writer, requestLimit, skip, deadline, passToken),
             CancellationToken.None);
 
         await Task.WhenAll(tasks);
@@ -140,12 +154,12 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     }
 
     /// <summary>Decompresses the trace, applies the replay edits and feeds the workers.</summary>
-    private async Task ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, PassDeadline deadline, CancellationToken token)
+    private async Task ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, int skip, PassDeadline deadline, CancellationToken token)
     {
         try
         {
             using TraceLineReader reader = new(_options.InputPath);
-            SkipLeadingRecords(reader);
+            SkipLeadingRecords(reader, skip);
 
             int sent = 0;
             while (sent < requestLimit && !deadline.HasExpired && reader.TryReadRecord(out ReadOnlySpan<byte> record))
@@ -160,9 +174,9 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         }
     }
 
-    private void SkipLeadingRecords(TraceLineReader reader)
+    private static void SkipLeadingRecords(TraceLineReader reader, int count)
     {
-        for (int skipped = 0; skipped < _options.Skip; skipped++)
+        for (int skipped = 0; skipped < count; skipped++)
         {
             if (!reader.TryReadRecord(out _))
             {
@@ -182,7 +196,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     private async Task PrimeConnectionsAsync(int concurrency, HttpClient httpClient, IAuth? auth, CancellationToken token)
     {
         using TraceLineReader reader = new(_options.InputPath);
-        SkipLeadingRecords(reader);
+        SkipLeadingRecords(reader, _options.Skip);
         if (!reader.TryReadRecord(out ReadOnlySpan<byte> record))
         {
             return;
@@ -253,6 +267,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     private PendingRequest Materialize(ReadOnlySpan<byte> record, long recordNumber)
     {
         bool forceBlock = _quotedTag.Length > 0;
+        bool untagged = false;
         if (forceBlock || _options.StripFeeFields)
         {
             if (RequestRewriter.IsBatch(record))
@@ -263,9 +278,9 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                     $"Record {recordNumber} is a batch, whose entries cannot be retagged or stripped. Replay batches with '-b keep --keep-fees'.");
             }
 
-
             Span<RequestEdit> planned = stackalloc RequestEdit[RequestRewriter.MaxEdits];
             int count = RequestRewriter.Plan(record, forceBlock, _options.StripFeeFields, planned);
+            untagged = forceBlock && IsUntagged(record, planned[..count]);
             ReadOnlySpan<RequestEdit> edits = Keep(record, planned[..count], out bool rewroteBlock, out bool droppedFees);
 
             if (!edits.IsEmpty)
@@ -274,14 +289,34 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 byte[] patched = ArrayPool<byte>.Shared.Rent(size);
                 int written = RequestRewriter.Apply(record, edits, _quotedTag, patched);
 
-                return new PendingRequest(patched, written, rewroteBlock, droppedFees);
+                return new PendingRequest(patched, written, rewroteBlock, droppedFees, untagged);
             }
         }
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(record.Length);
         record.CopyTo(buffer);
 
-        return new PendingRequest(buffer, record.Length, RewroteBlock: false, StrippedFees: false);
+        return new PendingRequest(buffer, record.Length, RewroteBlock: false, StrippedFees: false, untagged);
+    }
+
+    /// <summary>Whether the forced tag failed to apply because no block edit could be planned.</summary>
+    /// <remarks>
+    /// No planned edit means the slot was never reached: the method's position is unknown, or
+    /// <c>params</c> stops before it. The latter is clean only when the forced tag is the node's own
+    /// default for an omitted parameter.
+    /// </remarks>
+    private bool IsUntagged(ReadOnlySpan<byte> record, ReadOnlySpan<RequestEdit> planned)
+    {
+        foreach (RequestEdit edit in planned)
+        {
+            if (edit.IsBlockParameter)
+            {
+                return false;
+            }
+        }
+
+        return !_targetIsNodeDefault
+            || RequestRewriter.LocateBlockParameter(record, out _, out _) == BlockParameterPresence.UnknownMethod;
     }
 
     /// <summary>Drops a block-parameter edit that would rewrite the tag to what it already says.</summary>
@@ -341,7 +376,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
                 ArrayPool<byte>.Shared.Return(request.Buffer);
 
-                tally.Add(start, end, request.Length, outcome, request.RewroteBlock, request.StrippedFees);
+                tally.Add(start, end, request.Length, outcome, request.RewroteBlock, request.StrippedFees, request.Untagged);
             }
         }
         catch
@@ -361,7 +396,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         long bytes = 0;
 
         using TraceLineReader reader = new(_options.InputPath);
-        SkipLeadingRecords(reader);
+        SkipLeadingRecords(reader, _options.Skip);
 
         int limit = RequestLimit;
         while (records < limit && reader.TryReadRecord(out ReadOnlySpan<byte> record))
@@ -409,6 +444,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             Latencies = [],
             Rewritten = rewritten,
             FeesStripped = feesStripped,
+            Untagged = 0,
         };
     }
 
@@ -419,15 +455,17 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
         if (_quotedTag.Length > 0)
         {
-            if (!RequestRewriter.TryLocateBlockParameter(body, out int start, out int length))
+            switch (RequestRewriter.LocateBlockParameter(body, out int start, out int length))
             {
-                return $"Record {recordNumber} has no block parameter to rewrite.";
-            }
-
-            if (!body.Slice(start, length).SequenceEqual(_quotedTag))
-            {
-                string actual = Encoding.UTF8.GetString(body.Slice(start, length));
-                return $"Record {recordNumber} still carries block parameter {actual}.";
+                case BlockParameterPresence.UnknownMethod:
+                    return $"Record {recordNumber} cannot be retagged: its method has no known block position, or the record is malformed.";
+                case BlockParameterPresence.Absent when !_targetIsNodeDefault:
+                    return $"Record {recordNumber} omits its block parameter, which the node defaults to latest rather than {_options.BlockTag}.";
+                case BlockParameterPresence.Present when !body.Slice(start, length).SequenceEqual(_quotedTag):
+                    {
+                        string actual = Encoding.UTF8.GetString(body.Slice(start, length));
+                        return $"Record {recordNumber} still carries block parameter {actual}.";
+                    }
             }
         }
 
@@ -441,34 +479,36 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
     private static LevelResult Aggregate(int concurrency, WorkerTally[] tallies)
     {
-        int total = 0;
+        int samples = 0;
         long firstStart = long.MaxValue;
         long lastEnd = long.MinValue;
         foreach (WorkerTally tally in tallies)
         {
-            total += tally.LatencyTimestamps.Count;
+            samples += tally.LatencyTimestamps.Count;
             firstStart = Math.Min(firstStart, tally.FirstStart);
             lastEnd = Math.Max(lastEnd, tally.LastEnd);
         }
 
-        TimeSpan elapsed = total > 0 ? Stopwatch.GetElapsedTime(firstStart, lastEnd) : TimeSpan.Zero;
+        // The window covers every request, including transport errors that produced no latency sample.
+        TimeSpan elapsed = lastEnd != long.MinValue ? Stopwatch.GetElapsedTime(firstStart, lastEnd) : TimeSpan.Zero;
 
-        long[] timestamps = new long[total];
+        long[] timestamps = new long[samples];
         int succeeded = 0;
         int rpcErrors = 0;
         int httpErrors = 0;
         int transportErrors = 0;
         int rewritten = 0;
         int feesStripped = 0;
+        int untagged = 0;
         long requestBytes = 0;
         int offset = 0;
 
         foreach (WorkerTally tally in tallies)
         {
-            IReadOnlyList<long> samples = tally.LatencyTimestamps;
-            for (int i = 0; i < samples.Count; i++)
+            IReadOnlyList<long> workerLatencies = tally.LatencyTimestamps;
+            for (int i = 0; i < workerLatencies.Count; i++)
             {
-                timestamps[offset++] = samples[i];
+                timestamps[offset++] = workerLatencies[i];
             }
 
             succeeded += tally.Succeeded;
@@ -477,12 +517,13 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             transportErrors += tally.TransportErrors;
             rewritten += tally.Rewritten;
             feesStripped += tally.FeesStripped;
+            untagged += tally.Untagged;
             requestBytes += tally.RequestBytes;
         }
 
         Array.Sort(timestamps);
-        TimeSpan[] latencies = new TimeSpan[total];
-        for (int i = 0; i < total; i++)
+        TimeSpan[] latencies = new TimeSpan[samples];
+        for (int i = 0; i < samples; i++)
         {
             latencies[i] = Stopwatch.GetElapsedTime(0, timestamps[i]);
         }
@@ -499,6 +540,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             Latencies = latencies,
             Rewritten = rewritten,
             FeesStripped = feesStripped,
+            Untagged = untagged,
         };
     }
 
@@ -524,7 +566,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     /// Carries its edit flags so they are tallied only when it is actually sent: a request dropped at
     /// the deadline must not be reported as an edited request.
     /// </remarks>
-    private readonly record struct PendingRequest(byte[] Buffer, int Length, bool RewroteBlock, bool StrippedFees);
+    private readonly record struct PendingRequest(byte[] Buffer, int Length, bool RewroteBlock, bool StrippedFees, bool Untagged);
 
     /// <summary>A priming request body that starts writing only once the whole burst holds connections.</summary>
     /// <remarks>

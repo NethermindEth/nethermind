@@ -59,9 +59,6 @@ public sealed class TraceLineReader : IDisposable
     /// <summary>Number of records returned so far.</summary>
     public long RecordsRead { get; private set; }
 
-    /// <summary>Compressed bytes consumed so far, for progress reporting.</summary>
-    public long CompressedBytesRead => _file.Position;
-
     /// <summary>
     /// Reads the next record, excluding its line terminator.
     /// </summary>

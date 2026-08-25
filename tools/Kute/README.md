@@ -121,6 +121,10 @@ The block parameter's position is per-method, so only methods with a known posit
 `eth_getCode` and `eth_getTransactionCount` (second parameter); `eth_getStorageAt`, `eth_getProof` and
 `trace_call` (third); `eth_getBlockByNumber` (first). Any other method is replayed untouched rather
 than guessed at, since rewriting the wrong slot would corrupt the request and leave the stale block.
+A measured run reports how many requests went out without the forced tag, and `--dry-run` fails on
+them. `eth_getLogs` can never be retagged: its range lives as `fromBlock`/`toBlock` inside its filter
+object, which a positional rewrite cannot reach. A block parameter that is simply omitted counts as
+already at `latest`, since that is what the node substitutes for it.
 
 A record that is itself a JSON-RPC batch cannot be retagged or stripped, so a run that would have to
 edit one fails on it instead of silently sending it as captured; `-b keep --keep-fees` replays
@@ -128,10 +132,11 @@ batches verbatim.
 
 ### How a level is measured
 
-Each concurrency level runs twice over the same prefix of the trace: a warm-up pass whose latencies
-are discarded, then the measured pass. Both share one connection pool, so the measured window never
-pays connection setup. Exactly `-c` requests are kept in flight by that many persistent workers, so
-the level label is the load actually offered.
+Each concurrency level runs a warm-up pass whose latencies are discarded, then the measured pass,
+which starts at the record after the warm-up's last: a warm-up that replayed the measured window
+itself would serve that window from caches its own requests just warmed. Both passes share one
+connection pool, so the measured window never pays connection setup. Exactly `-c` requests are kept
+in flight by that many persistent workers, so the level label is the load actually offered.
 
 Connections are opened by a priming burst before the warm-up pass: one request per connection, each
 held until the whole burst is serializing, because the pool only opens a fresh connection while every
@@ -179,7 +184,9 @@ kute replay -i capture.jsonl.zst --dry-run -n 0 -p
 
 `rps` counts completed requests, failures included, since a failed request still consumed node time.
 `failed` is split by kind in a line under the table: a JSON-RPC `error` member, a non-success HTTP
-status, and a transport error or timeout are three different problems. Percentiles are nearest-rank;
+status, and a transport error or timeout are three different problems. Transport errors carry no
+response, so they are excluded from the latency distribution - their duration is the `--timeout`
+setting, not the node - while still counting toward `failed` and `rps`. Percentiles are nearest-rank;
 `p99` needs a few thousand samples before it means anything.
 
 ### Why this path avoids the parsed-document pipeline

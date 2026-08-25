@@ -126,6 +126,13 @@ public static class ReplayCommand
         RequireMinimum(Skip, 0);
         RequireMinimum(Duration, 0);
         RequireMinimum(Timeout, 1);
+        BlockTag.Validators.Add(static result =>
+        {
+            if (!IsBlockTag(result.GetValueOrDefault<string>() ?? string.Empty))
+            {
+                result.AddError("--block must be 'keep', a block tag (latest, earliest, pending, safe, finalized) or a 0x-prefixed hex value.");
+            }
+        });
         MaxFailurePercent.Validators.Add(static result =>
         {
             double value = result.GetValueOrDefault<double>();
@@ -135,6 +142,35 @@ public static class ReplayCommand
                 result.AddError("--max-failure-rate must be a percentage between 0 and 100.");
             }
         });
+    }
+
+    /// <summary>Accepts <c>keep</c>, a named tag, or a 0x-prefixed hex quantity or hash.</summary>
+    /// <remarks>
+    /// The tag is spliced into each request's JSON unescaped, so this also keeps quotes and
+    /// backslashes out; a typo like <c>lastest</c> would otherwise fail every request at the node.
+    /// </remarks>
+    private static bool IsBlockTag(string value)
+    {
+        if (string.Equals(value, "keep", StringComparison.OrdinalIgnoreCase)
+            || value is "latest" or "earliest" or "pending" or "safe" or "finalized")
+        {
+            return true;
+        }
+
+        if (value.Length < 3 || !value.StartsWith("0x", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        for (int i = 2; i < value.Length; i++)
+        {
+            if (!Uri.IsHexDigit(value[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Rejects values below <paramref name="minimum"/> at parse time, before they reach a loop bound or HttpClient.</summary>
@@ -218,7 +254,7 @@ public static class ReplayCommand
                 // an empty trace as a passing benchmark.
                 if (result.Total == 0)
                 {
-                    await Console.Error.WriteLineAsync("No requests were replayed: the trace has no records past --skip.");
+                    await Console.Error.WriteLineAsync("No requests were replayed: the trace has no records past --skip and the warm-up window.");
                     return 2;
                 }
             }

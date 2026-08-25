@@ -8,6 +8,23 @@ namespace Nethermind.Tools.Kute.Test.Replay;
 
 public class LevelResultTests
 {
+    [Test]
+    public void Excludes_transport_errors_from_the_latency_distribution()
+    {
+        // A transport error has no response, so its duration is the client's timeout cap rather than
+        // a node latency; letting it in would make p99 describe the --timeout setting.
+        WorkerTally tally = new(4);
+        tally.Add(0, 100, 10, RequestOutcome.Success, false, false, false);
+        tally.Add(0, 120_000, 10, RequestOutcome.TransportError, false, false, false);
+        tally.Add(0, 200, 10, RequestOutcome.RpcError, false, false, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tally.LatencyTimestamps, Is.EqualTo(new long[] { 100, 200 }));
+            Assert.That(tally.TransportErrors, Is.EqualTo(1));
+        }
+    }
+
     private static LevelResult WithLatencies(int count, int failed = 0)
     {
         TimeSpan[] latencies = new TimeSpan[count];
@@ -28,6 +45,7 @@ public class LevelResultTests
             Latencies = latencies,
             Rewritten = 0,
             FeesStripped = 0,
+            Untagged = 0,
         };
     }
 

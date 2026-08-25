@@ -51,7 +51,11 @@ public sealed record LevelResult
     /// <summary>Total bytes of request bodies sent during the measured window.</summary>
     public required long RequestBytes { get; init; }
 
-    /// <summary>Per-request latencies, sorted ascending.</summary>
+    /// <summary>Latencies of requests that received a response, sorted ascending.</summary>
+    /// <remarks>
+    /// A transport error or timeout has no response, so its duration is the client's timeout setting
+    /// rather than a node latency; those requests count as failures but not as samples.
+    /// </remarks>
     public required IReadOnlyList<TimeSpan> Latencies { get; init; }
 
     /// <summary>Measured requests sent with a rewritten block parameter.</summary>
@@ -59,6 +63,14 @@ public sealed record LevelResult
 
     /// <summary>Measured requests sent with at least one fee field removed.</summary>
     public required int FeesStripped { get; init; }
+
+    /// <summary>Measured requests sent without the forced block tag applied.</summary>
+    /// <remarks>
+    /// A request is counted here when its method's block position is unknown, or when the slot is
+    /// absent and the forced tag is not the node's default; either way it did not execute at the
+    /// requested block.
+    /// </remarks>
+    public required int Untagged { get; init; }
 
     /// <summary>Requests that failed for any reason.</summary>
     public int Failed => RpcErrors + HttpErrors + TransportErrors;
@@ -152,6 +164,9 @@ public sealed class WorkerTally(int expectedRequests)
     /// <summary>Requests this worker sent with at least one fee field removed.</summary>
     public int FeesStripped { get; private set; }
 
+    /// <summary>Requests this worker sent without the forced block tag applied.</summary>
+    public int Untagged { get; private set; }
+
     /// <summary>Timestamp at which this worker sent its first measured request.</summary>
     public long FirstStart { get; private set; } = long.MaxValue;
 
@@ -168,9 +183,16 @@ public sealed class WorkerTally(int expectedRequests)
     /// <param name="outcome">How the request ended.</param>
     /// <param name="rewroteBlock">Whether the request's block parameter was rewritten.</param>
     /// <param name="strippedFees">Whether the request had a fee field removed.</param>
-    public void Add(long start, long end, int requestBytes, RequestOutcome outcome, bool rewroteBlock, bool strippedFees)
+    /// <param name="untagged">Whether the request went out without the forced block tag applied.</param>
+    public void Add(long start, long end, int requestBytes, RequestOutcome outcome, bool rewroteBlock, bool strippedFees, bool untagged)
     {
-        _latencyTimestamps.Add(end - start);
+        // A transport error has no response: its duration reflects the client's timeout rather than
+        // the node, so it stays out of the latency distribution while still counting as a failure.
+        if (outcome != RequestOutcome.TransportError)
+        {
+            _latencyTimestamps.Add(end - start);
+        }
+
         RequestBytes += requestBytes;
 
         if (rewroteBlock)
@@ -181,6 +203,11 @@ public sealed class WorkerTally(int expectedRequests)
         if (strippedFees)
         {
             FeesStripped++;
+        }
+
+        if (untagged)
+        {
+            Untagged++;
         }
 
         if (start < FirstStart)

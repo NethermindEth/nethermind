@@ -182,6 +182,93 @@ public class ReplaySweepTests
     }
 
     [Test]
+    public async Task Measures_records_the_warm_up_did_not_touch()
+    {
+        // A warm-up that replays the same records the measured window then replays would serve that
+        // window from caches those exact requests just warmed, flattering p50.
+        string path = WriteTrace(".jsonl", Requests(30, index => $"0x{index:x}"));
+        await using StubJsonRpcServer server = new();
+
+        await Run(server, path, options => options with
+        {
+            BlockTag = null,
+            Concurrencies = [1],
+            MeasuredRequests = 5,
+            WarmupRequests = 3,
+            Skip = 2,
+        });
+
+        // One priming request and a three-record warm-up, all drawn from records 2-4, then the
+        // measured window starting at record 5.
+        IReadOnlyList<string> bodies = server.Bodies;
+        Assert.That(bodies, Has.Count.EqualTo(1 + 3 + 5));
+
+        for (int i = 0; i < 5; i++)
+        {
+            using JsonDocument document = JsonDocument.Parse(bodies[4 + i]);
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo($"0x{5 + i:x}"));
+        }
+    }
+
+    [Test]
+    public async Task Warns_when_requests_cannot_carry_the_forced_tag()
+    {
+        // eth_getLogs keeps its range inside a filter object the rewriter cannot reach, so those
+        // requests replay at their captured range; the run must say so rather than look retagged.
+        string[] records = new string[4];
+        for (int i = 0; i < records.Length; i++)
+        {
+            records[i] = $"{{\"method\":\"eth_getLogs\",\"params\":[{{\"fromBlock\":\"0x{i:x}\"}}],\"id\":{i},\"jsonrpc\":\"2.0\"}}";
+        }
+
+        string path = WriteTrace(".jsonl", records);
+        await using StubJsonRpcServer server = new();
+        StringWriter log = new();
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = server.Address,
+            Concurrencies = [2],
+            MeasuredRequests = 4,
+            WarmupRequests = 0,
+            StripFeeFields = false,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+
+        IReadOnlyList<LevelResult> results = await new ReplaySweep(options, log).RunAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Untagged, Is.EqualTo(4));
+            Assert.That(log.ToString(), Does.Contain("without the forced block tag"));
+        }
+    }
+
+    [Test]
+    public async Task Treats_an_omitted_block_parameter_as_latest()
+    {
+        // eth_call's block parameter is optional and defaults to latest, so a record without it is
+        // already at the forced tag and must not be counted or warned as untagged.
+        const string record = """{"method":"eth_call","params":[{"to":"0x01"}],"id":1,"jsonrpc":"2.0"}""";
+        string path = WriteTrace(".jsonl", [record]);
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [1],
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Untagged, Is.Zero);
+            Assert.That(server.Bodies[0], Is.EqualTo(record), "nothing to edit, so the record is byte-identical");
+        }
+    }
+
+    [Test]
     public async Task Stops_a_level_once_its_duration_cap_expires()
     {
         // The cap has to gate sending, not just enqueueing. The channel holds twice the concurrency, so
@@ -592,6 +679,44 @@ public class ReplaySweepTests
             Assert.That(results[0].Rewritten, Is.EqualTo(20));
             Assert.That(results[0].Succeeded, Is.EqualTo(25));
         }
+    }
+
+    [Test]
+    public async Task Dry_run_accepts_an_omitted_optional_block_parameter()
+    {
+        // The node defaults an omitted block parameter to latest, so a single-parameter eth_call is
+        // already at a "latest" target; failing it would reject a perfectly usable corpus.
+        string path = WriteTrace(".jsonl", ["""{"method":"eth_call","params":[{"to":"0x01"}],"id":1,"jsonrpc":"2.0"}"""]);
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            DryRun = true,
+            MeasuredRequests = 0,
+        });
+
+        Assert.That(results[0].Succeeded, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Dry_run_rejects_an_omitted_block_parameter_for_a_non_default_tag()
+    {
+        // With no slot to rewrite the node uses latest, so forcing any other tag cannot be honoured.
+        string path = WriteTrace(".jsonl", ["""{"method":"eth_call","params":[{"to":"0x01"}],"id":1,"jsonrpc":"2.0"}"""]);
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = new Uri("http://127.0.0.1:1/"),
+            BlockTag = "0x10",
+            Concurrencies = [1],
+            DryRun = true,
+            MeasuredRequests = 0,
+        };
+
+        Assert.That(
+            async () => await new ReplaySweep(options, TextWriter.Null).RunAsync(CancellationToken.None),
+            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("omits"));
     }
 
     [Test]

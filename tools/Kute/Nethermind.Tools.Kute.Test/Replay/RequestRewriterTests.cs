@@ -114,8 +114,9 @@ public class RequestRewriterTests
     }
 
     [Test]
-    public void Apply_reports_a_destination_that_is_too_small()
+    public void Apply_rejects_a_destination_that_is_too_small()
     {
+        // An undersized destination is a caller bug; a sentinel nobody checks would surface far away.
         const string request = """{"method":"eth_call","params":[{},"0x1",{}],"id":1}""";
         byte[] utf8 = Encoding.UTF8.GetBytes(request);
 
@@ -123,8 +124,30 @@ public class RequestRewriterTests
         int count = RequestRewriter.Plan(utf8, forceBlockParameter: true, stripFeeFields: false, edits);
 
         Assert.That(count, Is.EqualTo(1));
-        Assert.That(RequestRewriter.Apply(utf8, edits.AsSpan(0, count), QuotedLatest, new byte[4]), Is.EqualTo(-1));
+        Assert.That(() => RequestRewriter.Apply(utf8, edits.AsSpan(0, count), QuotedLatest, new byte[4]), Throws.ArgumentException);
     }
+
+    [Test]
+    public void Caps_fee_removals_when_duplicate_keys_exceed_the_budget()
+    {
+        // Duplicate keys are legal JSON, so five fee-named properties must not overflow the edit span
+        // that also has to hold the block replacement.
+        const string request = """{"method":"eth_call","params":[{"gasPrice":"0x1","gasPrice":"0x2","gasPrice":"0x3","gasPrice":"0x4","gasPrice":"0x5"},"0x10",{}],"id":1}""";
+
+        string rewritten = Rewrite(request, stripFees: true);
+
+        using JsonDocument document = JsonDocument.Parse(rewritten);
+        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+    }
+
+    [TestCase("""{"method":"eth_call","params":[{"to":"0x01"},"0x10"],"id":1}""", BlockParameterPresence.Present, TestName = "Block present")]
+    [TestCase("""{"method":"eth_call","params":[{"to":"0x01"}],"id":1}""", BlockParameterPresence.Absent, TestName = "Optional block omitted")]
+    [TestCase("""{"method":"eth_getLogs","params":[{"fromBlock":"0x1"}],"id":1}""", BlockParameterPresence.UnknownMethod, TestName = "Unmapped method")]
+    [TestCase("""{"method":"eth_call","params":[{"to":"0x01"}""", BlockParameterPresence.UnknownMethod, TestName = "Truncated record")]
+    public void Distinguishes_an_absent_block_parameter_from_an_unknown_method(string request, BlockParameterPresence expected) =>
+        // An absent slot means the node substitutes latest, so the record is already at a "latest"
+        // target; an unknown method replays at whatever block it was captured against.
+        Assert.That(RequestRewriter.LocateBlockParameter(Encoding.UTF8.GetBytes(request), out _, out _), Is.EqualTo(expected));
 
     [Test]
     public void Plan_rejects_a_buffer_too_small_for_the_worst_case()

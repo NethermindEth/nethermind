@@ -14,6 +14,19 @@ namespace Nethermind.Tools.Kute.Replay;
 /// </param>
 public readonly record struct RequestEdit(int Start, int Length, bool IsBlockParameter);
 
+/// <summary>Where a request stands relative to its method's known block-parameter position.</summary>
+public enum BlockParameterPresence
+{
+    /// <summary>The method has no known block position, or the record is malformed; it replays as captured.</summary>
+    UnknownMethod,
+
+    /// <summary>The position is known but <c>params</c> stops before it; the node substitutes its default.</summary>
+    Absent,
+
+    /// <summary>The block parameter is present at the method's position.</summary>
+    Present,
+}
+
 /// <summary>
 /// Adjusts a captured JSON-RPC request so it can be replayed against a node's current head.
 /// </summary>
@@ -179,7 +192,9 @@ public static class RequestRewriter
 
                 if (index == 0 && stripFeeFields && reader.TokenType == JsonTokenType.StartObject)
                 {
-                    count += PlanFeeRemovals(ref reader, edits[count..]);
+                    // Duplicate keys are legal JSON, so fee removals could otherwise fill the whole
+                    // span and leave no room for the block edit still to come.
+                    count += PlanFeeRemovals(ref reader, blockIndex >= 0 ? edits[count..^1] : edits[count..]);
                 }
                 else
                 {
@@ -283,12 +298,13 @@ public static class RequestRewriter
     /// <param name="edits">Edits from <see cref="Plan"/>, ascending and non-overlapping.</param>
     /// <param name="quotedTag">Replacement block parameter, including its JSON quoting.</param>
     /// <param name="destination">Buffer receiving the rewritten request.</param>
-    /// <returns>Bytes written, or <c>-1</c> if <paramref name="destination"/> is too small.</returns>
+    /// <returns>Bytes written.</returns>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is smaller than the rewritten request.</exception>
     public static int Apply(ReadOnlySpan<byte> request, ReadOnlySpan<RequestEdit> edits, ReadOnlySpan<byte> quotedTag, Span<byte> destination)
     {
         if (destination.Length < RewrittenLength(request, edits, quotedTag))
         {
-            return -1;
+            throw new ArgumentException("Destination is smaller than the rewritten request.", nameof(destination));
         }
 
         int read = 0;
@@ -327,24 +343,53 @@ public static class RequestRewriter
     /// <see langword="true"/> if the method's block position is known and <c>params</c> reaches it;
     /// otherwise <see langword="false"/>.
     /// </returns>
-    public static bool TryLocateBlockParameter(ReadOnlySpan<byte> request, out int start, out int length)
+    public static bool TryLocateBlockParameter(ReadOnlySpan<byte> request, out int start, out int length) =>
+        LocateBlockParameter(request, out start, out length) == BlockParameterPresence.Present;
+
+    /// <summary>
+    /// Locates the block parameter, distinguishing a method with no known position from a request
+    /// whose <c>params</c> stops before the slot it would occupy.
+    /// </summary>
+    /// <remarks>
+    /// The distinction matters because the node substitutes <c>latest</c> for an omitted parameter,
+    /// so an absent slot is already at the target when the target is <c>latest</c>, while an unknown
+    /// method replays at whatever block it was captured against.
+    /// </remarks>
+    /// <param name="request">A single JSON-RPC request, as UTF-8 bytes.</param>
+    /// <param name="start">Index of the first byte of the block parameter, when present.</param>
+    /// <param name="length">Length of the block parameter in bytes, when present.</param>
+    public static BlockParameterPresence LocateBlockParameter(ReadOnlySpan<byte> request, out int start, out int length)
     {
-        Span<RequestEdit> edits = stackalloc RequestEdit[MaxEdits];
-        int count = Plan(request, forceBlockParameter: true, stripFeeFields: false, edits);
-
-        for (int i = 0; i < count; i++)
-        {
-            if (edits[i].IsBlockParameter)
-            {
-                start = edits[i].Start;
-                length = edits[i].Length;
-                return true;
-            }
-        }
-
         start = 0;
         length = 0;
-        return false;
+
+        try
+        {
+            int blockIndex = FindBlockParameterIndex(request);
+            if (blockIndex < 0)
+            {
+                return BlockParameterPresence.UnknownMethod;
+            }
+
+            Span<RequestEdit> edits = stackalloc RequestEdit[MaxEdits];
+            int count = PlanParams(request, blockIndex, stripFeeFields: false, edits);
+            for (int i = 0; i < count; i++)
+            {
+                if (edits[i].IsBlockParameter)
+                {
+                    start = edits[i].Start;
+                    length = edits[i].Length;
+                    return BlockParameterPresence.Present;
+                }
+            }
+
+            return BlockParameterPresence.Absent;
+        }
+        catch (JsonException)
+        {
+            // A malformed record replays as captured, the same as an unknown method.
+            return BlockParameterPresence.UnknownMethod;
+        }
     }
 
     /// <summary>Reports whether the record is a JSON-RPC batch, whose entries this rewriter cannot reach.</summary>

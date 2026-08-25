@@ -55,6 +55,9 @@ public class ReplayCommandTests
     [TestCase("--duration=-1")]
     [TestCase("--timeout=0")]
     [TestCase("--max-failure-rate=NaN")]
+    [TestCase("--block=lastest")]
+    [TestCase("--block=0x")]
+    [TestCase("--block=late\"st")]
     public void Rejects_an_out_of_range_option(string option)
     {
         // -1 requests would silently mean the whole trace, a zero timeout throws from inside
@@ -67,9 +70,20 @@ public class ReplayCommandTests
     }
 
     [Test]
+    public void Rejects_an_empty_block_tag()
+    {
+        // An empty tag is not 'keep', so every request would be rewritten to "" and fail at the node.
+        string[] args = ["-i", "trace.jsonl", "-b", ""];
+
+        ParseResult result = ReplayCommand.Create().Parse(args);
+
+        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error.Message.Contains("must be")));
+    }
+
+    [Test]
     public void Accepts_the_documented_zero_values()
     {
-        string[] args = ["-i", "trace.jsonl", "-n", "0", "-w", "0", "--skip", "0", "-d", "0"];
+        string[] args = ["-i", "trace.jsonl", "-n", "0", "-w", "0", "--skip", "0", "-d", "0", "-b", "finalized"];
 
         Assert.That(ReplayCommand.Create().Parse(args).Errors, Is.Empty);
     }
