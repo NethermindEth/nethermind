@@ -53,12 +53,15 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             {
                 if (header is not null)
                 {
+                    ulong baseNumber = header.Number;
                     blockOverride?.ApplyOverrides(header);
 
                     // Commit the override on top of the base state, tagged at the (possibly overridden) block number,
                     // so downstream reads and the EVM block context resolve it there. A block override with no state
-                    // override still commits the unchanged state at the overridden number.
-                    if (stateOverride is not null || blockOverride is not null)
+                    // override still commits the unchanged state at the overridden number; at an unchanged number the
+                    // base state already resolves, and the no-op commit is not free (it swaps the flat snapshot's
+                    // pooled resources and drops the resolved trie root).
+                    if (stateOverride is not null || header.Number != baseNumber)
                     {
                         _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
                         header.StateRoot = _worldState.StateRoot;
