@@ -9,6 +9,7 @@ using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
@@ -176,6 +177,45 @@ public class SnapProviderTests
         Assert.That(retryBatch!.StorageRangeRequest!.Accounts.AsSpan()[0].Path, Is.EqualTo(account.Path));
 
         progressTracker.ReportFullStorageRequestFinished(retryBatch.StorageRangeRequest.Accounts.Count);
+        retryBatch.Dispose();
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    [Test]
+    public void AddAccountRange_ProcessingThrows_KeepsRangePhaseCompletable()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(
+                new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 },
+                (_, _) => new TestSnapTrieFactory(static () => throw new IOException("state backend unavailable"))))
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+        ValueHash256 partitionLimit = batch!.AccountRangeRequest!.LimitHash!.Value;
+
+        using (AccountsAndProofs response = new()
+        {
+            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+            Proofs = EmptyByteArrayList.Instance
+        })
+        {
+            Assert.That(() => snapProvider.AddAccountRange(batch.AccountRangeRequest, response), Throws.InstanceOf<IOException>());
+        }
+        batch.Dispose();
+
+        // The partition has to be offered again, from the same point, rather than being consumed by the
+        // failed attempt.
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? retryBatch), Is.False);
+        Assert.That(retryBatch, Is.Not.Null, "the partition was not offered again");
+        Assert.That(retryBatch.AccountRangeRequest!.LimitHash!.Value, Is.EqualTo(partitionLimit));
+
+        progressTracker.UpdateAccountRangePartitionProgress(partitionLimit, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(partitionLimit);
         retryBatch.Dispose();
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);

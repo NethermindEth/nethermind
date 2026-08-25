@@ -38,29 +38,37 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result;
 
-            if (response.PathAndAccounts.Count == 0)
+            try
             {
-                _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
-
-                result = AddRangeResult.ExpiredRootHash;
-            }
-            else
-            {
-                result = AddAccountRange(
-                    request.BlockNumber.Value,
-                    request.RootHash,
-                    request.StartingHash,
-                    response.PathAndAccounts,
-                    response.Proofs,
-                    hashLimit: request.LimitHash);
-
-                if (result == AddRangeResult.OK)
+                if (response.PathAndAccounts.Count == 0)
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                    _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
+
+                    result = AddRangeResult.ExpiredRootHash;
+                }
+                else
+                {
+                    result = AddAccountRange(
+                        request.BlockNumber.Value,
+                        request.RootHash,
+                        request.StartingHash,
+                        response.PathAndAccounts,
+                        response.Proofs,
+                        hashLimit: request.LimitHash);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                    }
                 }
             }
+            finally
+            {
+                // Runs on failure too: this is the only place the partition is re-queued and the
+                // active-request count released.
+                _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
+            }
 
-            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
             response.Dispose();
 
             Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
