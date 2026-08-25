@@ -1,12 +1,25 @@
 name: Run RPC Benchmarks
 
-# Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks-arm` runner, reusing its DB snapshots.
+# Benchmark a client's JSON-RPC on a self-hosted benchmark runner, reusing its DB snapshots.
+# The `arch` input picks the box: amd64 -> `reproducible-benchmarks`, arm64 -> `reproducible-benchmarks-arm`.
 # Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state); each snapshot is fingerprinted before/after. Under overlay/copy the snapshot is never mounted writable, so any change FAILS the job.
 # reth's 'direct' mode mounts the snapshot read-write, where the node's DB-engine startup writes are expected — there the tripwire warns instead of failing. See scripts/rpc-bench/README.md.
 
 on:
   workflow_dispatch:
     inputs:
+      arch:
+        description: >-
+          Which self-hosted benchmark runner to use, and with it every path that differs between the
+          boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda, all clients
+          and both layouts); arm64 = `reproducible-benchmarks-arm` (Axion, snapshots under /data,
+          Nethermind + flat only, prebuilt images only). Timings from the two boxes are NOT comparable.
+        required: false
+        type: choice
+        options:
+          - amd64
+          - arm64
+        default: amd64
       benchmark_tool:
         description: Load-testing tool to use (with reference_client, flood runs --equality and jsonbench runs compare)
         required: true
@@ -23,6 +36,8 @@ on:
         type: choice
         options:
           - nethermind
+          - geth
+          - reth
         default: nethermind
       reference_client:
         description: Start a second client from its same-block snapshot and compare responses (flood/jsonbench only)
@@ -30,10 +45,13 @@ on:
         type: choice
         options:
           - none
+          - geth
+          - nethermind
+          - reth
         default: none
       snapshot_block:
         description: >-
-          Snapshot set tag: picks /data/nethermind/<client>-<tag> (nethermind resolves to
+          Snapshot set tag: picks <snapshot root>/<client>-<tag> on the selected runner (nethermind resolves to
           nethermind-flat-<tag>). Empty = the expb snapshot for
           nethermind, and 25490000 for geth/reth or whenever reference_client is set
           (a comparison needs both nodes at the same head).
@@ -66,6 +84,7 @@ on:
         required: true
         type: choice
         options:
+          - halfpath
           - flat
         default: flat
       additional_nethermind_flags:
@@ -83,14 +102,14 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
       node_config:
         description: >-
           Advanced node/runner overrides as JSON:
-          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/data/expb-data/rpc-bench-scratch",
+          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"<defaults to the runner's expb data dir>",
           "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
           "reference_db_source":"","reference_image":"","reference_flags":"","reference_db_isolation":""}.
           Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block; db_isolation defaults to 'direct' for reth — RW mount, no overlay copy-up — else 'overlay').
@@ -103,12 +122,11 @@ on:
 # The self-hosted runner serializes benchmark jobs naturally.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: ${{ !startsWith(inputs.docker_image, 'build-arm-pr-') && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -128,6 +146,9 @@ jobs:
       db_isolation: ${{ steps.resolve.outputs.db_isolation }}
       ref_db_isolation: ${{ steps.resolve.outputs.ref_db_isolation }}
       scratch_root: ${{ steps.resolve.outputs.scratch_root }}
+      runner_label: ${{ steps.resolve.outputs.runner_label }}
+      corpus_dir: ${{ steps.resolve.outputs.corpus_dir }}
+      snapshot_root: ${{ steps.resolve.outputs.snapshot_root }}
       network: ${{ steps.resolve.outputs.network }}
       jsonrpc_modules: ${{ steps.resolve.outputs.jsonrpc_modules }}
       layout_flags: ${{ steps.resolve.outputs.layout_flags }}
@@ -146,7 +167,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_LABEL: ${{ github.event.label.name }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
           IN_CLIENT: ${{ inputs.client }}
@@ -155,6 +175,7 @@ jobs:
           IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
           IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
+          IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
           IN_TOOL_CONFIG: ${{ inputs.tool_config }}
           IN_NODE_CONFIG: ${{ inputs.node_config }}
@@ -173,21 +194,6 @@ jobs:
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
-          elif [[ "${PR_LABEL}" == "performance is good" ]]; then
-            # PR labeled 'performance is good': fixed eth_call corpus A/B against master. The
-            # config is hard-coded rather than read from an input so every PR is measured
-            # identically and results stay comparable across PRs and over time.
-            branch="${PR_HEAD_BRANCH}"
-            benchmark_tool="jsonbench-sweep"
-            client="nethermind"
-            reference_client="none"
-            snapshot_block="25490000"
-            docker_image=""
-            dottrace="false"
-            state_layout="flat"
-            additional_flags=""
-            tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master nethermind","rps_list":"100","duration":"120s","corpus_glob":"eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
-            node_config=""
           else
             # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
@@ -211,8 +217,31 @@ jobs:
             none|nethermind|geth|reth) ;;
             *) echo "Unknown reference_client '${reference_client}'."; exit 1;;
           esac
-          if [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
-            echo "The reproducible-benchmarks-arm runner only supports a single Nethermind client."
+
+          # One switch drives the runner label and every path that differs between the two boxes, so a
+          # dispatch can never land on one runner carrying the other's snapshot paths.
+          arch="${IN_ARCH:-amd64}"
+          case "${arch}" in
+            arm64)
+              runner_label="reproducible-benchmarks-arm"
+              snapshot_root="/data/nethermind"
+              bench_data_dir="/data/expb-data"
+              ;;
+            amd64)
+              runner_label="reproducible-benchmarks"
+              snapshot_root="/mnt/sda"
+              bench_data_dir="/mnt/sda/expb-data"
+              ;;
+            *)
+              echo "::error::Unsupported arch '${arch}' (expected amd64 or arm64)."
+              exit 1
+              ;;
+          esac
+
+          # The ARM box stocks Nethermind flat snapshots only, so its narrower capabilities are checked
+          # against the selected runner instead of being removed from the inputs for everyone.
+          if [[ "${arch}" == "arm64" ]] && [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only supports a single Nethermind client - dispatch with arch=amd64 for geth/reth or a reference client."
             exit 1
           fi
           comparison="false"
@@ -281,12 +310,12 @@ jobs:
 
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
-          if [[ "${state_layout}" != "flat" ]]; then
-            echo "The reproducible-benchmarks-arm runner only supports the flat state layout."
+          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only supports the flat state layout - dispatch with arch=amd64 for halfpath."
             exit 1
           fi
 
-          # Named snapshot sets follow /data/nethermind/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
+          # Named snapshot sets follow <snapshot_root>/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
           # geth/reth and comparison runs need same-head sets, so they default to the standing 25490000 tag.
           DEFAULT_SNAPSHOT_BLOCK="25490000"
           if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
@@ -299,19 +328,19 @@ jobs:
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "${c}" == "nethermind" ]]; then
                 if [[ "${state_layout}" == "flat" ]]; then
-                  echo "/data/nethermind/nethermind-flat-${snapshot_block}"
+                  echo "${snapshot_root}/nethermind-flat-${snapshot_block}"
                 else
-                  echo "/data/nethermind/nethermind-${snapshot_block}"
+                  echo "${snapshot_root}/nethermind-${snapshot_block}"
                 fi
               else
-                echo "/data/nethermind/${c}-${snapshot_block}"
+                echo "${snapshot_root}/${c}-${snapshot_block}"
               fi
             else
               # Legacy expb snapshots exist for nethermind only (guarded above).
               if [[ "${state_layout}" == "flat" ]]; then
-                echo "/data/nethermind/nethermind-flat-snapshot"
+                echo "${snapshot_root}/nethermind-flat-snapshot"
               else
-                echo "/data/nethermind/nethermind-snapshot"
+                echo "${snapshot_root}/nethermind-snapshot"
               fi
             fi
           }
@@ -340,7 +369,7 @@ jobs:
           if [[ -z "${db_isolation}" ]]; then
             if [[ "${client}" == "reth" ]]; then db_isolation="direct"; else db_isolation="overlay"; fi
           fi
-          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/data/expb-data/rpc-bench-scratch"
+          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="${bench_data_dir}/rpc-bench-scratch"
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
@@ -438,8 +467,8 @@ jobs:
           # Building Nethermind on this box fills its ~19G root disk, which kills the runner daemon and
           # takes the runner offline until someone restarts it over SSH (2026-08-18, 2026-08-19 twice).
           # Fail in seconds instead: images belong on Docker Hub, built by publish-docker.
-          if [[ "${image_mode}" == "build" ]]; then
-            echo "The reproducible-benchmarks-arm runner does not support building images (branch '${branch}' has no prebuilt image)."
+          if [[ "${arch}" == "arm64" && "${image_mode}" == "build" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner does not support building images (branch '${branch}' has no prebuilt image)."
             echo "Build one first, then pass it explicitly:"
             echo "  gh workflow run publish-docker.yml --ref ${branch} -f image-name=nethermind -f tag=<tag> -f dockerfile=Dockerfile -f build-config=release"
             echo "  gh workflow run run-rpc-benchmarks.yml --ref ${branch} -f docker_image=nethermindeth/nethermind:<tag> ..."
@@ -471,6 +500,9 @@ jobs:
             echo "db_isolation=${db_isolation}"
             echo "ref_db_isolation=${ref_db_isolation}"
             echo "scratch_root=${scratch_root}"
+            echo "runner_label=${runner_label}"
+            echo "corpus_dir=${bench_data_dir}/rpc-bench"
+            echo "snapshot_root=${snapshot_root}"
             echo "network=${network}"
             echo "jsonrpc_modules=${jsonrpc_modules}"
             echo "layout_flags=${layout_flags}"
@@ -492,7 +524,7 @@ jobs:
   benchmark:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true'
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
     env:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /
@@ -527,6 +559,7 @@ jobs:
 
       - name: Print resolved configuration
         run: |
+          echo "Runner:      ${{ needs.resolve.outputs.runner_label }}"
           echo "Tool:        ${{ needs.resolve.outputs.benchmark_tool }}"
           echo "Client:      ${{ needs.resolve.outputs.client }}"
           echo "Reference:   ${{ needs.resolve.outputs.reference_client }} (comparison: ${{ needs.resolve.outputs.comparison }})"
@@ -539,6 +572,7 @@ jobs:
           echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
           echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
           echo "Scratch:     ${{ needs.resolve.outputs.scratch_root }}"
+          echo "Corpus dir:  ${{ needs.resolve.outputs.corpus_dir }}"
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
 
       - name: Prepare scratch and output dirs
@@ -548,30 +582,69 @@ jobs:
         run: chmod +x scripts/rpc-bench/*.sh
 
       - name: Reclaim root disk before pulling
+        # Only the ARM box has the ~19G root disk this protects; see its rationale below.
+        if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
         # The box has a ~19G root disk. A pull that runs it out of space kills the docker daemon and the
-        # runner with it, so reclaim what is safely reclaimable first and refuse to start if still tight.
-        # Tagged benchmark images are never touched — pinned A/B images must survive between runs.
+        # runner with it, so reclaim first and only refuse to start if the disk is still tight afterwards.
+        env:
+          KEEP_IMAGES: |
+            ${{ needs.resolve.outputs.image_ref }}
+            ${{ needs.resolve.outputs.ref_image_ref }}
+          KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
           set -uo pipefail
           MIN_FREE_GB=6
-          df -h / || true
           avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
+          report() { df -h /; du -xsh /var/lib/containerd /var/lib/docker 2>/dev/null || true; }
+
+          echo "== before =="; report
           echo "Free before reclaim: $(avail_gb)G"
+
+          # Cheap, always-safe garbage first.
           docker container prune -f || true
           docker network prune -f || true
           docker builder prune -af || true
           docker image prune -f || true
+          # 'volume prune' only removes anonymous volumes; named expb volumes outlive their output dirs
+          # and later fail mounts with a 500.
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
+          apt-get clean 2>/dev/null || true
+          journalctl --vacuum-size=200M 2>/dev/null || true
+
+          # Stale benchmark images are the monotonic consumer: every campaign pushes multi-GB tags and
+          # nothing retires them. Docker here uses the CONTAINERD image store, so that content lands in
+          # /var/lib/containerd and `docker image prune -a --filter until=<age>` reports 0B against it
+          # (`docker system df` even reports a negative reclaimable) — an explicit `docker rmi` is the
+          # only thing that frees it. Drop unused tags oldest-first, and only as many as needed, so
+          # pinned A/B images survive whenever there is already room.
+          if (( $(avail_gb) < MIN_FREE_GB )); then
+            # Sweep arms come from tool_config.clients as `ctype@image`, and run-rpc-sweep.sh treats a
+            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix
+            # rather than an error. Keep them too.
+            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null \
+              | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
+            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
+            echo "Reclaiming stale images (keeping: ${keep_re:-none})"
+            while IFS= read -r img; do
+              (( $(avail_gb) >= MIN_FREE_GB )) && break
+              [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
+              [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
+              # Never touch an image a container still references (another queued job may be mid-run).
+              [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
+              if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi
+            done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
+          fi
+
           free="$(avail_gb)"
+          echo "== after =="; report
           echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          docker system df || true
           if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / — refusing to start rather than risk killing the runner daemon."
-            echo "Dispatch 'ARM Runner Maintenance' with prune_unused_images=true to drop stale tagged images."
-            docker images --format '{{.Size}}\t{{.Repository}}:{{.Tag}}' | sort -rh | head -20 || true
+            echo "::error::Only ${free}G free on / after reclaim — refusing to start rather than risk killing the runner daemon."
+            echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
+            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
             exit 1
           fi
 
@@ -692,6 +765,7 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
@@ -719,7 +793,10 @@ jobs:
           # Which corpus to replay. The sweep picks one with corpus_glob; this path had no
           # equivalent and always replayed the default file, so a profile taken here could not be
           # compared against a sweep measured on a different corpus.
-          jb_corpus="$(get '.corpus_file')";             [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
+          # Default to the selected runner's corpus dir; only an explicit corpus_file overrides it.
+          jb_corpus="$(get '.corpus_file')"
+          [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
+          [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
@@ -779,6 +856,8 @@ jobs:
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
+          SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
         shell: bash
         run: |
           set -euo pipefail
@@ -787,9 +866,12 @@ jobs:
           # For booleans '// empty' would swallow an explicit false — test null instead.
           getb() { echo "${cfg}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
           export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"   # resolved once in `resolve`
-          corpus_dir="$(get '.corpus_dir')";               [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
+          corpus_dir="$(get '.corpus_dir')";               [[ -z "${corpus_dir}" ]] && corpus_dir="${RESOLVED_CORPUS_DIR}"
+          [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
-          export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
+          # Sweep mode resolves one Nethermind flat snapshot, so the geth/reth default it used to carry
+          # made a bare dispatch fail its own guard. Cross-client work belongs in single-node mode.
+          export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind"
           # An ABSENT rps_list means "use the default"; an explicitly EMPTY one means "no k6 cells"
           # (corpus runs that only want parity/timings). `// empty` cannot tell those apart.
           if [[ "$(echo "${cfg}" | jq -r 'has("rps_list")')" == "true" ]]; then
@@ -815,6 +897,8 @@ jobs:
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"
           # 0 measures a cold node deliberately — the cold/warm gap is itself a result worth having.
           corpus_warmup="$(get '.corpus_warmup_duration')"; [[ -n "${corpus_warmup}" ]] && export CORPUS_WARMUP_DURATION="${corpus_warmup}"
+          # Warming faster than the cells are measured at keeps the window short at a fixed request count.
+          corpus_warmup_rps="$(get '.corpus_warmup_rps')"; [[ -n "${corpus_warmup_rps}" ]] && export CORPUS_WARMUP_RPS="${corpus_warmup_rps}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
@@ -972,24 +1056,6 @@ jobs:
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
 
-      # Built from the STAGED tree, so everything in a public PR comment has already passed the
-      # aggregate-only validator. Never posts raw output.
-      - name: Comment corpus comparison on the PR
-        if: always() && github.event_name == 'pull_request' && github.event.label.name == 'performance is good' && steps.stage-corpus-results.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          python3 scripts/rpc-bench/corpus_results.py comment \
-            "${RUNNER_TEMP}/rpcbench-corpus-results" \
-            --baseline nethermind_master --candidate nethermind > comment.md
-          {
-            echo
-            echo "<sub>[workflow run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})</sub>"
-          } >> comment.md
-          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file comment.md
-
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
         uses: actions/upload-artifact@v7
@@ -1019,7 +1085,7 @@ jobs:
         run: ./scripts/rpc-bench/cleanup.sh || true
 
       - name: Reclaim root disk after the run
-        if: always()
+        if: always() && needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
         # Leave / no fuller than we found it, so disk pressure cannot accumulate run over run into the
         # daemon death this workflow used to cause. Tagged images survive; only garbage is dropped.
@@ -1186,108 +1252,3 @@ jobs:
               echo ""
             } >> "${GITHUB_STEP_SUMMARY}"
           done
-
-  # Temporary side-branch entry point for building pinned comparison images on the ARM runner.
-  build-arm-pr-comparison:
-    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.docker_image, 'build-arm-pr-') }}
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
-    timeout-minutes: 180
-    strategy:
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        include:
-          - label: master
-            ref: d1342e127f238db332c133dad2b28f02b21934cb
-          - label: pr12798
-            ref: 2d0a843c35d5e6ed11a1bc1a386bfdf64d4d7f7b
-          - label: pr12801
-            ref: e39ececb4b7a5221e68a65e7f5458a841b26d245
-          - label: pr12843
-            ref: 6a78ef9c2c03f7608c080b70ac83e5ab18720974
-    steps:
-      - name: Check out pinned source
-        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ matrix.ref }}
-          persist-credentials: false
-
-      - name: Ensure Docker is installed
-        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v docker >/dev/null 2>&1; then
-            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
-            run_as_root apt-get update
-            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
-            run_as_root systemctl start docker || run_as_root service docker start
-          fi
-          docker version
-
-      - name: Set up Docker Buildx
-        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-
-      - name: Record ARM host details
-        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "## ARM benchmark image build"
-            echo
-            echo '```text'
-            uname -a
-            lscpu
-            echo '```'
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Build pinned image
-        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
-        shell: bash
-        env:
-          LABEL: ${{ matrix.label }}
-          EXPECTED_REF: ${{ matrix.ref }}
-        run: |
-          set -euo pipefail
-
-          echo '| Variant | Commit | Local image | Architecture |' >> "${GITHUB_STEP_SUMMARY}"
-          echo '|---|---|---|---|' >> "${GITHUB_STEP_SUMMARY}"
-
-          actual_ref="$(git rev-parse HEAD)"
-          if [[ "${actual_ref}" != "${EXPECTED_REF}" ]]; then
-            echo "Expected ${EXPECTED_REF} for ${LABEL}, got ${actual_ref}."
-            exit 1
-          fi
-
-          short_ref="${actual_ref:0:12}"
-          image="nethermindeth/nethermind:armbench-${LABEL}-${short_ref}"
-          source_date_epoch="$(git log -1 --format=%ct)"
-          pull_arg=()
-          if [[ "${LABEL}" == "master" ]]; then
-            pull_arg=(--pull)
-          fi
-
-          docker buildx build "${pull_arg[@]}" \
-            --load \
-            --progress plain \
-            --platform linux/arm64 \
-            --file Dockerfile \
-            --tag "${image}" \
-            --build-arg BUILD_CONFIG=release \
-            --build-arg CI=true \
-            --build-arg COMMIT_HASH="${actual_ref}" \
-            --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
-            .
-
-          architecture="$(docker image inspect "${image}" --format '{{.Architecture}}')"
-          if [[ "${architecture}" != "arm64" ]]; then
-            echo "Image ${image} has unexpected architecture ${architecture}."
-            exit 1
-          fi
-          echo "| ${LABEL} | \`${actual_ref}\` | \`${image}\` | ${architecture} |" >> "${GITHUB_STEP_SUMMARY}"
-          docker image inspect "${image}" --format '{{.RepoTags}} {{.Id}} {{.Architecture}} {{.Size}}'

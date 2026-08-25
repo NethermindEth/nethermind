@@ -130,6 +130,12 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
 
+        // Bogota
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV6), SszRestPaths.PostPayloads, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getInclusionListV1), SszRestPaths.GetInclusionList, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
+
         json = jsonLocal;
         ssz = sszLocal;
     }
