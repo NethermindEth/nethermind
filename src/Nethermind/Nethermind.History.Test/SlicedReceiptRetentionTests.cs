@@ -125,6 +125,63 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
+    public async Task Keeps_the_bodies_of_a_densely_retained_span_and_drops_the_gaps_between_them()
+    {
+        Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+
+        List<int> indexedHits = [];
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.MaxBlockNumber.Returns(int.MaxValue - 1);
+        logIndexStorage.GetEnumerator(slicedAddress, Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+        {
+            int from = call.ArgAt<int>(1);
+            int to = call.ArgAt<int>(2);
+            return indexedHits.Where(h => h >= from && h <= to).ToList().GetEnumerator();
+        });
+
+        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig, logIndexStorage);
+
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+
+        // Every other height, so the retention is dense enough that the walk goes one height at a time and the
+        // gaps between kept heights are a single block - the shape a slice over a busy address produces.
+        for (int height = 2; height <= 60; height += 2)
+        {
+            indexedHits.Add(height);
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(10, BlockTreeLookupOptions.None), Is.Not.Null,
+                "a retained height keeps its body");
+            Assert.That(testBlockchain.BlockTree.FindBlock(12, BlockTreeLookupOptions.None), Is.Not.Null,
+                "so does the next one, so the walk is not off by a height");
+            Assert.That(testBlockchain.BlockTree.FindBlock(11, BlockTreeLookupOptions.None), Is.Null,
+                "the single-block gap between them still loses its body");
+            Assert.That(testBlockchain.BlockTree.FindBlock(13, BlockTreeLookupOptions.None), Is.Null,
+                "and so does the next gap");
+        }
+    }
+
+    [Test]
     public async Task Reports_unavailable_for_a_block_pruned_before_its_address_was_sliced()
     {
         Address address = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);

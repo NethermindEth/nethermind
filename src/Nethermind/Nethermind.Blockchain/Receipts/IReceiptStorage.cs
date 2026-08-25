@@ -32,10 +32,6 @@ namespace Nethermind.Blockchain.Receipts
         void EnsureCanonical(Block block);
         void RemoveReceipts(Block block);
 
-        /// <summary>Re-encodes the block's receipts as a standalone self-describing record before the block's body
-        /// is pruned, so they stay readable without it. False when the implementation does not support it.</summary>
-        bool TryRetainSelfDescribing(Block block) => false;
-
         /// <summary>Drops one block's receipts named by hash, so the caller does not have to load its body. Leaves the
         /// transaction index to <see cref="SweepTransactionIndex"/>, exactly as <see cref="RemoveReceiptsRange"/> does.
         /// Required rather than defaulted: a throwing default would let a pruning node fail its first pass.</summary>

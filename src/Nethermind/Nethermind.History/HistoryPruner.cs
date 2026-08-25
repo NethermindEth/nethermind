@@ -385,6 +385,10 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong MinimumReclaimChunkBlocks = 100_000;
 
+    /// <summary>Density above which the gaps are too narrow for a range to pay for itself, so the heights go one
+    /// at a time instead. Below it a range covers many heights at once and lets whole files be unlinked.</summary>
+    private const int DenseRetentionDivisor = 8;
+
     /// <summary>How far the receipt walk goes before it looks at the deadline again. A chunk is sized for range
     /// operations; deciding retention can cost a header read per height, so it needs its own, narrower step.</summary>
     private const ulong ReceiptRetentionSlice = 10_000;
@@ -512,30 +516,93 @@ public class HistoryPruner : IHistoryPruner
     /// <summary><paramref name="answered"/> is null where the headers have to be read instead.</summary>
     private void ReclaimReceiptSlice(ulong fromInclusive, ulong toExclusive, IReadOnlySet<ulong>? answered)
     {
-        List<ulong> candidates = answered is null
-            ? CandidatesFromHeaders(fromInclusive, toExclusive)
-            : CandidatesFromAnswer(answered, fromInclusive, toExclusive);
-
-        if (candidates.Count == 0)
+        IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
+        try
         {
-            _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
-            _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
-            return;
+            List<ulong> candidates;
+            if (answered is null)
+            {
+                levels = LoadLevels(fromInclusive, toExclusive);
+                candidates = CandidatesFromLevels(fromInclusive, toExclusive, levels);
+            }
+            else
+            {
+                candidates = CandidatesFromAnswer(answered, fromInclusive, toExclusive);
+            }
+
+            if (candidates.Count == 0)
+            {
+                ReclaimBoth(fromInclusive, toExclusive);
+                return;
+            }
+
+            Metrics.SlicedReceiptsRetained += candidates.Count;
+
+            if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
+            {
+                levels ??= LoadLevels(fromInclusive, toExclusive);
+                HashSet<ulong> keep = [.. candidates];
+                for (ulong number = fromInclusive; number < toExclusive; number++)
+                {
+                    if (keep.Contains(number)) continue;
+
+                    int index = (int)(number - fromInclusive);
+                    ChainLevelInfo? level = index < levels.Count ? levels[index] : null;
+
+                    // A height whose level will not load has to lose both whatever its hashes are.
+                    if (!RemoveBothAt(number, level)) ReclaimBoth(number, number + 1);
+                }
+
+                return;
+            }
+
+            // Sparse: the gaps between retained heights are wide, so one range each beats walking them, and a
+            // range is what lets whole files be unlinked instead of waiting for compaction.
+            candidates.Sort();
+
+            ulong gapStart = fromInclusive;
+            foreach (ulong height in candidates)
+            {
+                if (height > gapStart) ReclaimBoth(gapStart, height);
+                gapStart = height + 1;
+            }
+
+            if (gapStart < toExclusive) ReclaimBoth(gapStart, toExclusive);
+        }
+        finally
+        {
+            levels?.Dispose();
+        }
+    }
+
+    /// <summary>A retained height keeps its body, so its receipts resolve through it and need no re-encoding - which
+    /// is what was paying a signature recovery per transaction on most heights of a busily sliced span.</summary>
+    private void ReclaimBoth(ulong fromInclusive, ulong toExclusive)
+    {
+        _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
+        _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
+    }
+
+    /// <summary>False when the level names nothing, so the caller ranges the height instead.</summary>
+    private bool RemoveBothAt(ulong number, ChainLevelInfo? level)
+    {
+        if (level is null || level.BlockInfos.Length == 0) return false;
+
+        foreach (BlockInfo info in level.BlockInfos)
+        {
+            _receiptStorage.RemoveReceipts(number, info.BlockHash);
+            _blockTree.DeleteOldBlock(number, info.BlockHash);
         }
 
-        // A retained height keeps its body, so its receipts resolve through it and need no re-encoding - which is
-        // what was paying a signature recovery per transaction, on most heights of a span sliced by busy addresses.
-        HashSet<ulong> keep = [.. candidates];
-        Metrics.SlicedReceiptsRetained += keep.Count;
+        return true;
+    }
 
-        for (ulong number = fromInclusive; number < toExclusive; number++)
-        {
-            if (keep.Contains(number) || TryRemoveReceiptsAt(number)) continue;
+    private IOwnedReadOnlyList<ChainLevelInfo?> LoadLevels(ulong fromInclusive, ulong toExclusive)
+    {
+        using ArrayPoolListRef<ulong> numbers = new((int)(toExclusive - fromInclusive));
+        for (ulong number = fromInclusive; number < toExclusive; number++) numbers.Add(number);
 
-            // A height whose level will not load has to lose both whatever its hashes are.
-            _receiptStorage.RemoveReceiptsRange(number, number + 1);
-            _blockTree.DeleteOldBlockRange(number, number + 1);
-        }
+        return _chainLevelInfoRepository.MultiLoadLevel(numbers);
     }
 
     private static List<ulong> CandidatesFromAnswer(IReadOnlySet<ulong> answered, ulong fromInclusive, ulong toExclusive)
@@ -549,17 +616,12 @@ public class HistoryPruner : IHistoryPruner
         return candidates;
     }
 
-    /// <summary>Heights whose bloom says their receipts might be worth keeping, over one bulk level read and one
-    /// sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
-    private List<ulong> CandidatesFromHeaders(ulong fromInclusive, ulong toExclusive)
+    /// <summary>Heights whose bloom says their receipts might be worth keeping, over the levels already read in bulk
+    /// and one sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
+    private List<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
     {
         List<ulong> candidates = [];
-
-        using ArrayPoolListRef<ulong> numbers = new((int)(toExclusive - fromInclusive));
-        for (ulong number = fromInclusive; number < toExclusive; number++) numbers.Add(number);
-
         Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
-        using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(numbers);
 
         for (int i = 0; i < levels.Count; i++)
         {
@@ -583,23 +645,6 @@ public class HistoryPruner : IHistoryPruner
         }
 
         return candidates;
-    }
-
-    /// <summary>Removes by the hashes the level already names, so no body is read - a body here costs milliseconds
-    /// and buys nothing, since the receipt row is keyed by height and hash. False when the height has no level, so
-    /// the caller falls back to a range that covers it whatever its hashes are.</summary>
-    private bool TryRemoveReceiptsAt(ulong number)
-    {
-        ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
-        if (level is null || level.BlockInfos.Length == 0) return false;
-
-        foreach (BlockInfo info in level.BlockInfos)
-        {
-            _receiptStorage.RemoveReceipts(number, info.BlockHash);
-            _blockTree.DeleteOldBlock(number, info.BlockHash);
-        }
-
-        return true;
     }
 
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
