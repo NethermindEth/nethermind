@@ -161,4 +161,49 @@ public class BoundedModulePoolTests
             _modulePool.ReturnModule(ethRpcModule);
         }
     }
+
+    [Test]
+    public async Task Creates_instances_lazily_up_to_capacity_and_never_beyond()
+    {
+        const int capacity = 2;
+        BoundedModulePool<IEthRpcModule> pool = CreateCountingPool(capacity, out IRpcModuleFactory<IEthRpcModule> factory);
+        factory.DidNotReceive().Create();
+
+        IEthRpcModule first = await pool.GetModule(false);
+        factory.Received(1).Create();
+        IEthRpcModule second = await pool.GetModule(false);
+        factory.Received(2).Create();
+
+        pool.ReturnModule(first);
+        pool.ReturnModule(second);
+        pool.ReturnModule(await pool.GetModule(false));
+        factory.Received(2).Create();
+
+        await pool.GetModule(false);
+        await pool.GetModule(false);
+        Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => pool.GetModule(false));
+        factory.Received(2).Create();
+
+        pool.ReturnModule(await pool.GetModule(true));
+        factory.Received(3).Create();
+    }
+
+    [Test]
+    public void Preload_creates_every_instance_once()
+    {
+        const int capacity = 3;
+        BoundedModulePool<IEthRpcModule> pool = CreateCountingPool(capacity, out IRpcModuleFactory<IEthRpcModule> factory);
+
+        pool.Preload();
+        pool.Preload();
+
+        factory.Received(capacity + 1).Create();
+    }
+
+    private static BoundedModulePool<IEthRpcModule> CreateCountingPool(int capacity, out IRpcModuleFactory<IEthRpcModule> factory)
+    {
+        factory = Substitute.For<IRpcModuleFactory<IEthRpcModule>>();
+        factory.Create().Returns(static _ => Substitute.For<IEthRpcModule>());
+        return new BoundedModulePool<IEthRpcModule>(factory, capacity, 50);
+    }
 }
