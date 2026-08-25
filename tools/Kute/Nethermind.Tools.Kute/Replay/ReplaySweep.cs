@@ -533,7 +533,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     /// few seconds, degrading to a plain burst, so an endpoint that caps connections below the level
     /// stalls priming instead of hanging it.
     /// </remarks>
-    private sealed class GatedContent : HttpContent
+    // Internal rather than private so the gate's cancellation contract stays regression-tested.
+    internal sealed class GatedContent : HttpContent
     {
         private readonly ReadOnlyMemory<byte> _body;
         private readonly Gate _gate;

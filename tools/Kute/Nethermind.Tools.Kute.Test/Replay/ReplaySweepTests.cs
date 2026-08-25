@@ -531,6 +531,19 @@ public class ReplaySweepTests
     }
 
     [Test]
+    public void Priming_gate_honours_cancellation_immediately()
+    {
+        // Ctrl+C during a starved priming burst must not ride out the gate's release timeout.
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+        ReplaySweep.GatedContent.Gate gate = new(participants: 2);
+
+        Assert.That(
+            async () => await gate.WaitForBurstAsync(cts.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
     public async Task Warns_when_priming_or_warm_up_fails()
     {
         // Warm-up traffic is not reported in the results, so a node that failed it silently would
