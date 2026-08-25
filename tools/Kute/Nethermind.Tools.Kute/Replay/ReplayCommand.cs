@@ -144,15 +144,14 @@ public static class ReplayCommand
         });
     }
 
-    /// <summary>Accepts <c>keep</c>, a named tag, or a 0x-prefixed hex quantity or hash.</summary>
+    /// <summary>Accepts <c>keep</c>, a named tag, or a 0x-prefixed hex quantity or hash, in any casing.</summary>
     /// <remarks>
     /// The tag is spliced into each request's JSON unescaped, so this also keeps quotes and
     /// backslashes out; a typo like <c>lastest</c> would otherwise fail every request at the node.
     /// </remarks>
     private static bool IsBlockTag(string value)
     {
-        if (string.Equals(value, "keep", StringComparison.OrdinalIgnoreCase)
-            || value is "latest" or "earliest" or "pending" or "safe" or "finalized")
+        if (value.ToLowerInvariant() is "keep" or "latest" or "earliest" or "pending" or "safe" or "finalized")
         {
             return true;
         }
@@ -267,7 +266,8 @@ public static class ReplayCommand
 
     private static ReplayOptions BuildOptions(ParseResult parseResult)
     {
-        string blockTag = parseResult.GetValue(BlockTag)!;
+        // ReplaySweep matches the node-default tag ordinally, so every accepted casing must reach it lowercased.
+        string blockTag = parseResult.GetValue(BlockTag)!.ToLowerInvariant();
         int duration = parseResult.GetValue(Duration);
 
         return new ReplayOptions
@@ -275,7 +275,7 @@ public static class ReplayCommand
             InputPath = parseResult.GetValue(Input)!,
             Address = new Uri(parseResult.GetValue(Address)!),
             Concurrencies = ConcurrencySpec.Parse(parseResult.GetValue(Concurrency)!),
-            BlockTag = string.Equals(blockTag, "keep", StringComparison.OrdinalIgnoreCase) ? null : blockTag,
+            BlockTag = blockTag == "keep" ? null : blockTag,
             StripFeeFields = !parseResult.GetValue(KeepFees),
             MeasuredRequests = parseResult.GetValue(Requests),
             WarmupRequests = parseResult.GetValue(Warmup),

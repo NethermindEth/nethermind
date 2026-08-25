@@ -92,8 +92,10 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
     private int RequestLimit => _options.MeasuredRequests <= 0 ? int.MaxValue : _options.MeasuredRequests;
 
+    private int WarmupCount => _options.WarmupRequests > 0 ? _options.WarmupRequests : 0;
+
     /// <summary>First record of the measured window; the warm-up consumes the records before it.</summary>
-    private int MeasuredSkip => _options.Skip + (_options.WarmupRequests > 0 ? _options.WarmupRequests : 0);
+    private int MeasuredSkip => _options.Skip + WarmupCount;
 
     private HttpClient CreateHttpClient(int concurrency)
     {
@@ -398,7 +400,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         using TraceLineReader reader = new(_options.InputPath);
         SkipLeadingRecords(reader, _options.Skip);
 
-        int limit = RequestLimit;
+        // The sweep sends the warm-up window and the measured window behind it; validate that union.
+        long limit = (long)RequestLimit + WarmupCount;
         while (records < limit && reader.TryReadRecord(out ReadOnlySpan<byte> record))
         {
             token.ThrowIfCancellationRequested();

@@ -740,6 +740,38 @@ public class ReplaySweepTests
         Assert.That(async () => await sweep.RunAsync(CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
     }
 
+    [TestCase(4, true)]
+    [TestCase(5, false)]
+    public void Dry_run_validates_exactly_the_records_the_sweep_would_send(int badIndex, bool fails)
+    {
+        // The sweep sends records [skip, skip + warmup + measured); a bounded dry run must check that
+        // same union - stopping at the measured count alone ships the tail of the run unvalidated.
+        string[] records = [.. Requests(6, _ => "latest")];
+        records[badIndex] = """{"method":"eth_chainId","params":[],"id":9,"jsonrpc":"2.0"}""";
+        string path = WriteTrace(".jsonl", records);
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = new Uri("http://127.0.0.1:1/"),
+            Concurrencies = [1],
+            DryRun = true,
+            WarmupRequests = 3,
+            MeasuredRequests = 2,
+        };
+
+        ReplaySweep sweep = new(options, TextWriter.Null);
+
+        if (fails)
+        {
+            Assert.That(async () => await sweep.RunAsync(CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
+        }
+        else
+        {
+            Assert.That(async () => await sweep.RunAsync(CancellationToken.None), Throws.Nothing);
+        }
+    }
+
     private static Task<IReadOnlyList<LevelResult>> Run(
         StubJsonRpcServer server,
         string path,

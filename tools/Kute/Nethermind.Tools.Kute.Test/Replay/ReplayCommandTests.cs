@@ -88,6 +88,30 @@ public class ReplayCommandTests
         Assert.That(ReplayCommand.Create().Parse(args).Errors, Is.Empty);
     }
 
+    [TestCase("LATEST")]
+    [TestCase("Finalized")]
+    [TestCase("KEEP")]
+    [TestCase("0xAB12")]
+    public void Accepts_a_block_tag_in_any_casing(string tag)
+    {
+        string[] args = ["-i", "trace.jsonl", "-b", tag];
+
+        Assert.That(ReplayCommand.Create().Parse(args).Errors, Is.Empty);
+    }
+
+    [Test]
+    public async Task Treats_an_upper_case_latest_as_the_node_default()
+    {
+        // The tag is lowercased at parse time; if 'LATEST' reached the sweep verbatim, a record with
+        // an omitted block parameter would read as a mismatch and fail this dry run.
+        string path = WriteTrace("""{"method":"eth_call","params":[{"to":"0x01"}],"id":1,"jsonrpc":"2.0"}""" + '\n');
+        string[] args = ["-i", path, "-b", "LATEST", "--dry-run"];
+
+        int exitCode = await ReplayCommand.Create().Parse(args).InvokeAsync();
+
+        Assert.That(exitCode, Is.Zero);
+    }
+
     private string WriteTrace(string content)
     {
         string path = Path.Combine(_directory, "trace.jsonl");
