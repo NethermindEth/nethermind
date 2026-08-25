@@ -317,11 +317,14 @@ public class EthSimulateTestsBlocksAndTransactions
 
         public void Drain()
         {
+            Action[] pending;
             lock (_queued)
             {
-                foreach (Action work in _queued) work();
+                pending = [.. _queued];
                 _queued.Clear();
             }
+
+            foreach (Action work in pending) work();
         }
 
         public ValueTask DisposeAsync()
