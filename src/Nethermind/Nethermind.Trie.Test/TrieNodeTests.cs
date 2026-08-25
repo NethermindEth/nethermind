@@ -212,6 +212,71 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Warmer_owned_undecodable_rlp_is_kept_and_loaded_once()
+    {
+        byte[] invalidRlp = [0xc2, 0x80, 0x01];
+        Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        trieNode.MarkWarmerOwned();
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(invalidRlp);
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.FullRlp.IsNotNull, Is.True);
+            Assert.That(trieNode.IsWarmerResolved, Is.False);
+        }
+
+        resolver.Received(1).TryLoadRlp(TreePath.Empty, hash, ReadFlags.None);
+    }
+
+    [Test]
+    public void Warmer_owned_child_is_memoized_in_the_parent_only_once_resolved()
+    {
+        (byte[] childRlp, Hash256 childHash) = EncodedLeaf();
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, new TrieNode(NodeType.Unknown, childHash));
+        TreePath path = TreePath.Empty;
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        Assert.That(parent.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+
+        TrieNode placeholder = new(NodeType.Unknown, childHash);
+        placeholder.MarkWarmerOwned();
+        int lookups = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(Arg.Any<TreePath>(), childHash).Returns(_ =>
+        {
+            lookups++;
+            return placeholder;
+        });
+        resolver.TryLoadRlp(Arg.Any<TreePath>(), childHash, ReadFlags.None).Returns(childRlp);
+
+        TreePath childPath = TreePath.Empty;
+        parent.AppendChildPath(ref childPath, 0);
+        TrieNode first = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        int lookupsWhileUnresolved = lookups;
+
+        Assert.That(placeholder.TryResolveNode(resolver, ref childPath), Is.True);
+        TrieNode third = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode fourth = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(placeholder));
+            Assert.That(second, Is.SameAs(placeholder));
+            Assert.That(lookupsWhileUnresolved, Is.EqualTo(2), "an unresolved placeholder was memoized into the parent");
+            Assert.That(third, Is.SameAs(placeholder));
+            Assert.That(fourth, Is.SameAs(placeholder));
+            Assert.That(lookups, Is.EqualTo(3), "the resolved node was not memoized into the parent");
+        }
+    }
+
+    [Test]
     public void Encoding_leaf_without_key_throws_trie_exception()
     {
         TrieNode trieNode = new(NodeType.Leaf);

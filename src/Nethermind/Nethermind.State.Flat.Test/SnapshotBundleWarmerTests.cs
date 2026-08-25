@@ -333,6 +333,21 @@ public class SnapshotBundleWarmerTests
         else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
+    [Test]
+    public void Hash_only_unknown_node_is_not_promoted()
+    {
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakC;
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
+
+        TransientResource rented = _pool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        rented.UpdateStateNode(in path, new TrieNode(NodeType.Unknown, hash));
+        cache.Add(rented);
+        rented.ReleaseLease();
+
+        Assert.That(cache.TryGet(null, in path, hash, out _), Is.False);
+    }
+
     // Retirement must not scan the transient while a warmer read that passed the lease check is still writing to it.
     [Test]
     public void Retirement_waits_for_an_in_flight_warmer_read()

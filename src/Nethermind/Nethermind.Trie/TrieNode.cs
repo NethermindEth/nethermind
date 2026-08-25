@@ -474,6 +474,7 @@ namespace Nethermind.Trie
             if (!TryAcquireWarmerResolution()) return;
 
             bool resolved = false;
+            bool loaded = false;
             try
             {
                 CappedArray<byte> rlp = ReadRlp();
@@ -492,7 +493,7 @@ namespace Nethermind.Trie
                     }
 
                     rlp = new CappedArray<byte>(fullRlp);
-                    IsPersisted = true;
+                    loaded = true;
                 }
 
                 if (!VerifyWarmerOwnedRlp(rlp))
@@ -500,14 +501,15 @@ namespace Nethermind.Trie
                     ThrowInvalidKeccak(path);
                 }
 
+                if (loaded)
+                {
+                    WriteRlp(rlp);
+                    IsPersisted = true;
+                }
+
                 if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems, rlp, path);
-                }
-
-                if (!HasRlp)
-                {
-                    WriteRlp(rlp);
                 }
 
                 resolved = true;
@@ -597,6 +599,7 @@ namespace Nethermind.Trie
             if (!TryAcquireWarmerResolution()) return true;
 
             bool resolved = false;
+            bool loaded = false;
             try
             {
                 CappedArray<byte> rlp = ReadRlp();
@@ -615,16 +618,18 @@ namespace Nethermind.Trie
                     }
 
                     rlp = new CappedArray<byte>(fullRlp);
-                    IsPersisted = true;
+                    loaded = true;
                 }
 
                 if (!VerifyWarmerOwnedRlp(rlp)) return false;
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
 
-                if (!HasRlp)
+                if (loaded)
                 {
                     WriteRlp(rlp);
+                    IsPersisted = true;
                 }
+
+                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
 
                 resolved = true;
                 return true;
@@ -1521,7 +1526,9 @@ namespace Nethermind.Trie
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                data = childOrRef = child;
+                                childOrRef = child;
+                                // An unresolved warmer placeholder is not authoritative, so it stays out of the shared node graph.
+                                if (!child.IsWarmerOwned || child.IsWarmerResolved) data = child;
 
                                 break;
                             }
@@ -1701,7 +1708,9 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    data = childOrRef = child;
+                                    childOrRef = child;
+                                    // An unresolved warmer placeholder is not authoritative, so it stays out of the shared node graph.
+                                    if (!child.IsWarmerOwned || child.IsWarmerResolved) data = child;
 
                                     break;
                                 }

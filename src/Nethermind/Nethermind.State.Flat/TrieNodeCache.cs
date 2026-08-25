@@ -166,7 +166,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is not { } source) continue;
+                if (shard[j].node is not { } source || (!source.IsWarmerOwned && IsPlaceholder(source))) continue;
 
                 TrieNode? newNode = source.IsWarmerOwned
                     ? TryMaterializeResolvedWarmerNode(source)
@@ -209,6 +209,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }
+
+    // A hash-only Unknown node is not authoritative; the persistence writers skip the same shape.
+    private static bool IsPlaceholder(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     /// <summary>
     /// Clears all cached trie nodes.
