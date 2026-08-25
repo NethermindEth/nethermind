@@ -240,7 +240,10 @@ Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T10
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
 rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
 
-The canonical cell is **100 rps for 120 s after a discarded 60 s warm-up at 400 rps**. Rates are
+The canonical cell is **20,000 requests at 100 rps per arm, two rounds in ABBA order (`rounds: 2`), after a
+discarded 60 s warm-up at 400 rps**, plus a 40-pass closed-loop per-record replay (`timings_passes: 40`); the
+request sequence is seeded so both arms replay identical requests, and the PR comment prints the master-vs-master
+A/A spread next to every delta (see `scripts/rpc-bench/README.md`, "Fixed corpus A/B"). Rates are
 the thing to get right:
 
 | rate | usable? |
@@ -266,5 +269,5 @@ its own stale timings — use the json-bench per-category config for an A/B inst
 gh workflow run run-rpc-benchmarks.yml --ref <branch> \
   -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
   -f docker_image=nethermindeth/nethermind:master-<sha> \
-  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","duration":"120s"}'
+  -f tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","corpus_requests":20000,"rounds":2,"timings_passes":40}'
 ```
