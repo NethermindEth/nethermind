@@ -86,6 +86,8 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     }
 
     // PUSH1 + PUSH0 + SSTORE consumes 12,105 execution gas; constrained gas adds a 97,920 state-gas spill.
+    // Both cases settle to the same 131,025 receipt gas and post-state root; only the EIP-3155 frame delta differs,
+    // which is why it cannot be derived from the receipt.
     [TestCase(20_000_000UL, 12_105UL)]
     [TestCase(200_000UL, 12_105UL + 97_920UL)]
     public void Reports_state_gas_only_when_it_spills_into_execution(ulong gasLimit, ulong expectedGasUsed)
