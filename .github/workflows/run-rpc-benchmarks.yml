@@ -715,7 +715,7 @@ jobs:
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
-          for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS; do
+          for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \n                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
             v="$(getb ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           # An absent rps_list means the default; an explicitly empty one means no k6 cells.
