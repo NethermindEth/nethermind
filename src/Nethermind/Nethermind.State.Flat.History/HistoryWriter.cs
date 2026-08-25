@@ -173,6 +173,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (connected)
         {
+            // The rows are visible from the dispose above; readers must learn that before the caller supersedes the
+            // live column, so this stays ahead of everything else here.
+            _availability.MarkCapturePublished();
+
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target, _formatVersion);
             _history.SyncWal();

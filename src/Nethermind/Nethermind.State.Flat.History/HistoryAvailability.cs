@@ -49,9 +49,25 @@ public sealed class HistoryAvailability
     // Refusing early is safe because the floor only moves up; an accept always re-reads the DB.
     private long _observedFloor = -1;
 
+    // Bumped once a capture batch is durable and always before the persist that supersedes the live column, so a
+    // reader that sees it unchanged across its live read knows no row can have appeared under it.
+    private long _captureGeneration;
+
     // Generation-guarded: a scan only publishes if its generation is still current, so a racing write wins.
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
+
+    internal long CaptureGeneration => Volatile.Read(ref _captureGeneration);
+
+    internal void MarkCapturePublished() => Interlocked.Increment(ref _captureGeneration);
+
+    /// <summary>Orders the caller's preceding reads before the generation load, so a live value read earlier cannot
+    /// be judged against a generation sampled before it.</summary>
+    internal bool HasCapturedSince(long generation)
+    {
+        Interlocked.MemoryBarrier();
+        return Volatile.Read(ref _captureGeneration) != generation;
+    }
 
     static HistoryAvailability() => Debug.Assert(ScopeRecordPrefix.Length == ScopeRecordPrefixLength);
 

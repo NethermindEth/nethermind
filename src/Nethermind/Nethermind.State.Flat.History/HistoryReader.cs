@@ -105,18 +105,24 @@ public sealed class HistoryReader
     }
 
     /// <remarks>A found row is always the answer. A miss falls through to the live column, and a capture round can
-    /// commit in between; the second seek settles that, since a row commits before the persist superseding it.</remarks>
+    /// commit in between; the second seek settles that, since a row commits before the persist superseding it. It is
+    /// worth only when a capture actually landed, so the generation sampled before the first seek gates it.</remarks>
     [SkipLocalsInit]
     private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
     {
+        long generation = _availability.CaptureGeneration;
+
         int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
         if (written >= 0) return written;
 
         Span<byte> liveBuffer = stackalloc byte[AccountValueBufferSize];
         int live = _persistedAccounts!.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), liveBuffer);
 
-        written = _accountHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
-        if (written >= 0) return written;
+        if (_availability.HasCapturedSince(generation))
+        {
+            written = _accountHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+            if (written >= 0) return written;
+        }
 
         if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
         return live;
@@ -149,14 +155,19 @@ public sealed class HistoryReader
                     $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
                     "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
 
-            // Seek, live only on a miss, then seek again - see TryGetAccountV3's remarks.
+            // Seek, live only on a miss, then seek again only if a capture landed - see TryGetAccountV3's remarks.
+            long generation = _availability.CaptureGeneration;
             int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
             if (written < 0)
             {
                 Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
                 int live = _persistedStorage!.Get(flatKey, liveBuffer);
 
-                written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+                if (_availability.HasCapturedSince(generation))
+                {
+                    written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+                }
+
                 if (written < 0)
                 {
                     if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
