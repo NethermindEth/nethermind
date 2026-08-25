@@ -27,6 +27,9 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
+      - name: Run zkVM unit tests
+        run: dotnet test --project src/Nethermind/Nethermind.Core.ZkEvm.Test/Nethermind.Core.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
+
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make build

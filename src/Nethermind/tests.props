@@ -6,9 +6,13 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- Roslyn test analyzers are outside the zkVM-compatible build graph. -->
+  <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Test.Analyzers\Nethermind.Test.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Test.Analyzers.CodeFixes\Nethermind.Test.Analyzers.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers">
