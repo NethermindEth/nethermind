@@ -2900,7 +2900,8 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null)
+            bool? useFlatDb = null,
+            int estimateErrorMargin = 0)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2912,7 +2913,7 @@ public partial class EthRpcModuleTests
             {
                 TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0, Timeout = -1 })
+                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
                     .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
