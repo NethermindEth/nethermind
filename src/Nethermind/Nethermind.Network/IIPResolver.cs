@@ -34,8 +34,8 @@ namespace Nethermind.Network
             private readonly IPAddress? _externalIpV4Override;
             private readonly IPAddress? _externalIpV6Override;
 
-            public NethermindIp(IPAddress localIp, IPAddress externalIp)
-                : this(localIp, externalIp, null, null)
+            public NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
+                : this(LocalIp, ExternalIp, null, null)
             {
             }
 
@@ -67,10 +67,10 @@ namespace Nethermind.Network
             /// Preserves the deconstruction contract of the previous positional record so plugins that
             /// deconstruct the resolver result keep compiling and running.
             /// </summary>
-            public void Deconstruct(out IPAddress localIp, out IPAddress externalIp)
+            public void Deconstruct(out IPAddress LocalIp, out IPAddress ExternalIp)
             {
-                localIp = LocalIp;
-                externalIp = ExternalIp;
+                LocalIp = this.LocalIp;
+                ExternalIp = this.ExternalIp;
             }
 
             internal static IPAddress? GetExternalIpV4(IPAddress? ipAddress)

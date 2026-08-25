@@ -107,6 +107,20 @@ public class IPResolverTests
         }
     }
 
+    [Test]
+    public void NethermindIp_supports_named_constructor_arguments()
+    {
+        IIPResolver.NethermindIp ip = new(
+            LocalIp: IPAddress.Loopback,
+            ExternalIp: IPAddress.Parse("192.0.2.1"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.LocalIp, Is.EqualTo(IPAddress.Loopback));
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+        }
+    }
+
     [TestCase("192.0.2.1", null, null, "192.0.2.1", null)]
     [TestCase("2001:db8::1", null, null, null, "2001:db8::1")]
     [TestCase("::ffff:198.51.100.2", null, null, "198.51.100.2", null)]

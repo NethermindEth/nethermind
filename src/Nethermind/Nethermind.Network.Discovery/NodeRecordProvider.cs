@@ -104,13 +104,16 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        // Advertise an IPv6 endpoint only when the node actually listens on IPv6 (RLPx and discovery
-        // bind a single socket to LocalIp, default IPv4 Any); otherwise peers would dial an endpoint
-        // nothing is listening on.
+        // RLPx and discovery each bind a single socket to LocalIp, so advertise an address family only
+        // when that socket can receive it; otherwise peers would dial an endpoint nothing is listening on.
+        IPAddress? externalIpV4 = ListensOnIPv4(ip.LocalIp) ? ip.ExternalIpV4 : null;
         IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? ip.ExternalIpV6 : null;
 
-        return new LocalNodeRecordState(ip.ExternalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
+
+    private static bool ListensOnIPv4(IPAddress localIp)
+        => localIp.AddressFamily == AddressFamily.InterNetwork || localIp.Equals(IPAddress.IPv6Any);
 
     private static bool ListensOnIPv6(IPAddress localIp)
         => localIp.AddressFamily == AddressFamily.InterNetworkV6 && !localIp.IsIPv4MappedToIPv6;

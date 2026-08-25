@@ -131,7 +131,7 @@ public class NodeRecordProviderTests
             head,
             new NetworkForkId(0x01020304, 20),
             new IIPResolver.NethermindIp(
-                IPAddress.IPv6Loopback,
+                IPAddress.IPv6Any,
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("2001:db8::1")));
@@ -174,6 +174,27 @@ public class NodeRecordProviderTests
         NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
 
         AssertEndpointEntries(decoded, "192.0.2.1", null);
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_DoesNotPublishIpv4WhenBoundToSpecificIpv6()
+    {
+        // A socket bound to a specific native IPv6 address cannot accept IPv4, so the IPv4 family must
+        // not be advertised even when an IPv4 external address is configured.
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        NodeRecordProvider provider = CreateProvider(
+            head,
+            new NetworkForkId(0x01020304, 20),
+            new IIPResolver.NethermindIp(
+                IPAddress.Parse("2001:db8::5"),
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("2001:db8::5")));
+
+        NodeRecord record = await provider.GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        AssertEndpointEntries(decoded, null, "2001:db8::5");
     }
 
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
