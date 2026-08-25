@@ -117,7 +117,7 @@ public class NettyDiscoveryHandler(
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
-        Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", discoveryMsg.MsgType.ToString()));
+        Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", FastEnum.GetName(discoveryMsg.MsgType)!));
     }
 
     private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)

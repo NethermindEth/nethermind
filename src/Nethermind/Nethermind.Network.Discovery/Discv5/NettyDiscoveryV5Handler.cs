@@ -13,7 +13,6 @@ using DotNetty.Transport.Channels.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
-using Nethermind.Network;
 
 namespace Nethermind.Network.Discovery.Discv5;
 

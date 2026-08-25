@@ -39,24 +39,24 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
         int initialNodes = 0;
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken discoveryToken = disposeCts.Token;
-
-        foreach (Node node in kademlia.IterateNodes())
-        {
-            if (!IsExcluded(node) &&
-                TryCreateDiscoveryCandidate(node, out Node? discoveryCandidate) &&
-                recentlyWrittenNodes.TryReserve(discoveryCandidate.IdHash))
-            {
-                initialNodes++;
-                yield return discoveryCandidate;
-            }
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"Bootnode discv5 node source emitted {initialNodes} initial nodes from the routing table.");
-
-        Task discoverTask = DiscoverAsync();
+        Task discoverTask = Task.CompletedTask;
         kademlia.OnNodeAdded += Handler;
         try
         {
+            foreach (Node node in kademlia.IterateNodes())
+            {
+                if (!IsExcluded(node) &&
+                    TryCreateDiscoveryCandidate(node, out Node? discoveryCandidate) &&
+                    recentlyWrittenNodes.TryReserve(discoveryCandidate.IdHash))
+                {
+                    initialNodes++;
+                    yield return discoveryCandidate;
+                }
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Bootnode discv5 node source emitted {initialNodes} initial nodes from the routing table.");
+
+            discoverTask = DiscoverAsync();
             await foreach (Node node in channel.Reader.ReadAllAsync(token))
             {
                 yield return node;
@@ -150,6 +150,7 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
         NodeRecord? record = discoveryNode.Enr;
         if (record is null)
         {
+            if (_logger.IsTrace) _logger.Trace($"Ignoring bootnode discv5 discovered node without an ENR: {discoveryNode:s}.");
             return false;
         }
 

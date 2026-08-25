@@ -60,7 +60,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             ?? configuredExternalIpV6
             ?? await ResolveExternalIp(cancellationToken);
 
-        if (!IsUnspecified(externalIp))
+        if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
         {
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }
@@ -117,7 +117,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
                 (bool success, IPAddress ip) = await s.TryGetIP();
                 if (success)
                 {
-                    ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                     return ip;
                 }
             }
@@ -143,7 +142,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             return null;
         }
 
-        IPAddress? normalizedIp = NormalizeExternalIpOverride(ipAddress, expectedFamily);
+        IPAddress? normalizedIp = IIPResolver.NethermindIp.NormalizeExternalIp(ipAddress, expectedFamily);
         if (normalizedIp is null)
         {
             if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
@@ -153,34 +152,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
         return normalizedIp;
     }
-
-    private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
-    {
-        if (IsUnspecified(ipAddress))
-        {
-            return null;
-        }
-
-        return expectedFamily switch
-        {
-            AddressFamily.InterNetwork => ipAddress.AddressFamily switch
-            {
-                AddressFamily.InterNetwork => ipAddress,
-                AddressFamily.InterNetworkV6 when ipAddress.IsIPv4MappedToIPv6 => ipAddress.MapToIPv4(),
-                _ => null
-            },
-            AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 && !ipAddress.IsIPv4MappedToIPv6
-                ? ipAddress
-                : null,
-            _ => ipAddress
-        };
-    }
-
-    private static bool IsUnspecified(IPAddress ipAddress)
-        => ipAddress.Equals(IPAddress.Any)
-           || ipAddress.Equals(IPAddress.IPv6Any)
-           || ipAddress.Equals(IPAddress.None)
-           || ipAddress.Equals(IPAddress.IPv6None);
 
     private async Task<IPAddress> InitializeLocalIp()
     {

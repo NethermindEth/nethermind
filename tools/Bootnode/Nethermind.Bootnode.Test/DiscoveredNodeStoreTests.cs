@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Stats.Model;
@@ -38,7 +39,26 @@ public class DiscoveredNodeStoreTests
     }
 
     [Test]
-    public void Retention_limit_prunes_oldest_current_node_and_updates_snapshot_counts()
+    public void Node_dto_reports_tcp_and_discovery_ports()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        Node node = Node.FromDiscoveryEndpoint(privateKey.PublicKey, new IPEndPoint(IPAddress.Loopback, 30303));
+        DiscoveredNodeStore store = new();
+
+        store.AddOrUpdate(node, "discv4", isActive: true);
+        NodeDto result = store.GetActiveNodes().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TcpPort, Is.Zero);
+            Assert.That(result.DiscoveryPort, Is.EqualTo(30303));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Retention_limit_prunes_inactive_nodes_before_active_nodes(bool deactivateAfterAdd)
     {
         using PrivateKeyGenerator generator = new();
         using PrivateKey firstKey = generator.Generate();
@@ -50,25 +70,31 @@ public class DiscoveredNodeStoreTests
         DiscoveredNodeStore store = new(maxRetainedNodes: 2);
 
         store.AddOrUpdate(firstNode, "discv4", isActive: true);
-        store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        store.AddOrUpdate(secondNode, "discv5", isActive: deactivateAfterAdd);
+        if (deactivateAfterAdd)
+        {
+            store.Remove(secondNode, "discv5");
+        }
+
         DiscoverySnapshot snapshot = store.AddOrUpdate(thirdNode, "discv4", isActive: true);
         NodeDto[] retainedNodes = store.GetAllNodes();
         NodeDto[] activeRetainedNodes = store.GetActiveNodes();
         string[] retainedNodeIds = retainedNodes.Select(static node => node.NodeId).ToArray();
+        string[] activeRetainedNodeIds = activeRetainedNodes.Select(static node => node.NodeId).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(retainedNodes, Has.Length.EqualTo(2));
-            Assert.That(retainedNodeIds, Does.Not.Contain(firstNode.Id.ToString(false)));
-            Assert.That(retainedNodeIds, Does.Contain(secondNode.Id.ToString(false)));
+            Assert.That(retainedNodeIds, Does.Contain(firstNode.Id.ToString(false)));
+            Assert.That(retainedNodeIds, Does.Not.Contain(secondNode.Id.ToString(false)));
             Assert.That(retainedNodeIds, Does.Contain(thirdNode.Id.ToString(false)));
-            Assert.That(activeRetainedNodes, Has.Length.EqualTo(1));
-            Assert.That(activeRetainedNodes[0].NodeId, Is.EqualTo(thirdNode.Id.ToString(false)));
+            Assert.That(activeRetainedNodeIds, Does.Contain(firstNode.Id.ToString(false)));
+            Assert.That(activeRetainedNodeIds, Does.Contain(thirdNode.Id.ToString(false)));
             Assert.That(snapshot.AllCount, Is.EqualTo(2));
-            Assert.That(snapshot.ActiveCount, Is.EqualTo(1));
-            Assert.That(snapshot.AllDiscv4Count, Is.EqualTo(1));
-            Assert.That(snapshot.ActiveDiscv4Count, Is.EqualTo(1));
-            Assert.That(snapshot.AllDiscv5Count, Is.EqualTo(1));
+            Assert.That(snapshot.ActiveCount, Is.EqualTo(2));
+            Assert.That(snapshot.AllDiscv4Count, Is.EqualTo(2));
+            Assert.That(snapshot.ActiveDiscv4Count, Is.EqualTo(2));
+            Assert.That(snapshot.AllDiscv5Count, Is.Zero);
             Assert.That(snapshot.ActiveDiscv5Count, Is.Zero);
         }
     }

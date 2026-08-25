@@ -38,8 +38,10 @@ namespace Nethermind.Network
             {
                 LocalIp = localIp;
                 ExternalIp = externalIp;
-                ExternalIpV4 = GetExternalIpV4(externalIpV4) ?? GetExternalIpV4(externalIp);
-                ExternalIpV6 = GetExternalIpV6(externalIpV6) ?? GetExternalIpV6(externalIp);
+                ExternalIpV4 = NormalizeExternalIp(externalIpV4, AddressFamily.InterNetwork)
+                    ?? NormalizeExternalIp(externalIp, AddressFamily.InterNetwork);
+                ExternalIpV6 = NormalizeExternalIp(externalIpV6, AddressFamily.InterNetworkV6)
+                    ?? NormalizeExternalIp(externalIp, AddressFamily.InterNetworkV6);
             }
 
             public IPAddress LocalIp { get; init; }
@@ -47,25 +49,30 @@ namespace Nethermind.Network
             public IPAddress? ExternalIpV4 { get; init; }
             public IPAddress? ExternalIpV6 { get; init; }
 
-            private static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
-                => ipAddress is null || IsUnspecified(ipAddress)
-                    ? null
-                    : ipAddress.AddressFamily switch
+            internal static IPAddress? NormalizeExternalIp(IPAddress? ipAddress, AddressFamily? expectedFamily)
+            {
+                if (ipAddress is null || IsUnspecified(ipAddress))
+                {
+                    return null;
+                }
+
+                return expectedFamily switch
+                {
+                    AddressFamily.InterNetwork => ipAddress.AddressFamily switch
                     {
                         AddressFamily.InterNetwork => ipAddress,
                         AddressFamily.InterNetworkV6 when ipAddress.IsIPv4MappedToIPv6 => ipAddress.MapToIPv4(),
                         _ => null
-                    };
+                    },
+                    AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 && !ipAddress.IsIPv4MappedToIPv6
+                        ? ipAddress
+                        : null,
+                    null => ipAddress,
+                    _ => null
+                };
+            }
 
-            private static IPAddress? GetExternalIpV6(IPAddress? ipAddress)
-                => ipAddress is not null
-                   && !IsUnspecified(ipAddress)
-                   && ipAddress.AddressFamily == AddressFamily.InterNetworkV6
-                   && !ipAddress.IsIPv4MappedToIPv6
-                    ? ipAddress
-                    : null;
-
-            private static bool IsUnspecified(IPAddress ipAddress)
+            internal static bool IsUnspecified(IPAddress ipAddress)
                 => ipAddress.Equals(IPAddress.Any)
                    || ipAddress.Equals(IPAddress.IPv6Any)
                    || ipAddress.Equals(IPAddress.None)

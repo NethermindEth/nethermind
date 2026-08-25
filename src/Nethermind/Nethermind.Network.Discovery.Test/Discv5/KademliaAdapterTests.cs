@@ -140,9 +140,22 @@ public class KademliaAdapterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, endpoint), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(endpoint.Address.MapToIPv6(), endpoint.Port)), Is.True);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.17.0.1:30304")), Is.False);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.19.0.2:30305")), Is.False);
         }
+    }
+
+    [Test]
+    public void HasDiscoveryEndpoint_ShouldRejectNonIpv4IpEntry()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new NonIpv4IpEntry(IPAddress.Parse("2001:db8::c000:201")));
+        record.SetEntry(new UdpEntry(30304));
+
+        Assert.That(
+            KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("192.0.2.1:30304")),
+            Is.False);
     }
 
     [Test]
@@ -262,4 +275,9 @@ public class KademliaAdapterTests
         bool AllowNonRoutable,
         bool IncludeEth2,
         bool ExpectedResult);
+
+    private sealed class NonIpv4IpEntry(IPAddress ipAddress) : Ip6Entry(ipAddress)
+    {
+        public override string Key => EnrContentKey.Ip;
+    }
 }

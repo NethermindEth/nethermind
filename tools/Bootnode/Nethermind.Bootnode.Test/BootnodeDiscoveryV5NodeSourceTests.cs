@@ -24,26 +24,7 @@ public class BootnodeDiscoveryV5NodeSourceTests
         using PrivateKeyGenerator generator = new();
         using PrivateKey privateKey = generator.Generate();
         using PrivateKey currentPrivateKey = generator.Generate();
-        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, TestContext.CurrentContext.WorkDirectory);
-        NetworkConfig networkConfig = new()
-        {
-            DiscoveryPort = 30303,
-            P2PPort = 0
-        };
-        BootnodeNodeRecordProvider provider = new(
-            protectedPrivateKey,
-            new StaticIpResolver(System.Net.IPAddress.Loopback),
-            new EthereumEcdsa(1),
-            networkConfig,
-            LimboLogs.Instance,
-            new BootnodeExternalIps(System.Net.IPAddress.Loopback, System.Net.IPAddress.Loopback, null),
-            TestContext.CurrentContext.WorkDirectory);
-        NodeRecord nodeRecord = await provider.GetCurrentAsync();
-        Node discoveryNode = new(privateKey.PublicKey, "127.0.0.1", 30303)
-        {
-            Enr = nodeRecord,
-            IsBootnode = true
-        };
+        (Node discoveryNode, NodeRecord nodeRecord) = await CreateDiscoveryNode(privateKey, "127.0.0.1", 30303);
         Node currentNode = new(currentPrivateKey.PublicKey, "127.0.0.2", 30303);
         BootnodeDiscoveryV5NodeSource nodeSource = new(
             new StaticKademlia([discoveryNode]),
@@ -70,25 +51,78 @@ public class BootnodeDiscoveryV5NodeSourceTests
         }
     }
 
-    private sealed class StaticIpResolver(System.Net.IPAddress address) : IIPResolver
+    [Test]
+    public async Task Node_added_during_initial_snapshot_is_emitted()
     {
-        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
-            new(new IIPResolver.NethermindIp(address, address));
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey initialKey = generator.Generate();
+        using PrivateKey addedKey = generator.Generate();
+        using PrivateKey currentKey = generator.Generate();
+        (Node initialNode, _) = await CreateDiscoveryNode(initialKey, "127.0.0.1", 30303);
+        (Node addedNode, _) = await CreateDiscoveryNode(addedKey, "127.0.0.2", 30304);
+        Node currentNode = new(currentKey.PublicKey, "127.0.0.3", 30303);
+        StaticKademlia kademlia = new([initialNode], addedNode);
+        BootnodeDiscoveryV5NodeSource nodeSource = new(
+            kademlia,
+            EmptyDiscovery.Instance,
+            new DiscoveryConfig(),
+            new KademliaConfig<Node> { CurrentNodeId = currentNode },
+            LimboLogs.Instance);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        List<Node> emittedNodes = [];
+
+        await foreach (Node node in nodeSource.DiscoverNodes(timeout.Token))
+        {
+            emittedNodes.Add(node);
+            if (emittedNodes.Count == 2)
+            {
+                break;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emittedNodes, Has.Count.EqualTo(2));
+            Assert.That(emittedNodes, Has.Some.Property(nameof(Node.Id)).EqualTo(initialKey.PublicKey));
+            Assert.That(emittedNodes, Has.Some.Property(nameof(Node.Id)).EqualTo(addedKey.PublicKey));
+        }
     }
 
-    private sealed class StaticKademlia(IReadOnlyList<Node> nodes) : IKademlia<PublicKey, Node>
+    private static async Task<(Node Node, NodeRecord NodeRecord)> CreateDiscoveryNode(
+        PrivateKey privateKey,
+        string host,
+        int discoveryPort)
     {
-        public event EventHandler<Node> OnNodeAdded
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new()
         {
-            add { }
-            remove { }
-        }
+            DiscoveryPort = discoveryPort,
+            P2PPort = 0
+        };
+        BootnodeNodeRecordProvider provider = new(
+            protectedPrivateKey,
+            new EthereumEcdsa(1),
+            networkConfig,
+            LimboLogs.Instance,
+            new IIPResolver.NethermindIp(System.Net.IPAddress.Loopback, System.Net.IPAddress.Loopback),
+            dataDir);
+        NodeRecord nodeRecord = await provider.GetCurrentAsync();
+        Node discoveryNode = new(privateKey.PublicKey, host, discoveryPort)
+        {
+            Enr = nodeRecord,
+            IsBootnode = true
+        };
 
-        public event EventHandler<Node> OnNodeRemoved
-        {
-            add { }
-            remove { }
-        }
+        return (discoveryNode, nodeRecord);
+    }
+
+    private sealed class StaticKademlia(IReadOnlyList<Node> nodes, Node? nodeAddedAfterIteration = null) : IKademlia<PublicKey, Node>
+    {
+        public event EventHandler<Node> OnNodeAdded = delegate { };
+
+        public event EventHandler<Node> OnNodeRemoved = delegate { };
 
         public void AddOrRefresh(Node node) => throw new NotSupportedException();
 
@@ -109,7 +143,18 @@ public class BootnodeDiscoveryV5NodeSourceTests
 
         public Node[] GetAllAtDistance(int distance) => throw new NotSupportedException();
 
-        public IEnumerable<Node> IterateNodes() => nodes;
+        public IEnumerable<Node> IterateNodes()
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                yield return nodes[i];
+            }
+
+            if (nodeAddedAfterIteration is not null)
+            {
+                OnNodeAdded(this, nodeAddedAfterIteration);
+            }
+        }
     }
 
     private sealed class EmptyDiscovery : IKademliaDiscovery<PublicKey, Node>

@@ -23,6 +23,7 @@ public class IPResolverTests
 
     [TestCase("99.99.99.99", "99.99.99.99", null)]
     [TestCase("10.50.50.50", "10.50.50.50", null)]
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
     [TestCase("2001:db8::1", null, "2001:db8::1")]
     public async Task Can_resolve_external_ip_with_override(string ipOverride, string? expectedExternalIpV4, string? expectedExternalIpV6)
     {

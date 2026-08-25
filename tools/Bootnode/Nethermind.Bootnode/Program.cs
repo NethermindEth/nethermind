@@ -16,13 +16,16 @@ using Nethermind.Network.Enr;
 using NLog;
 using Prometheus;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using NethermindLogger = Nethermind.Logging.ILogger;
+
+bool isRunningInContainer = BootnodeOptionDefaults.IsRunningInContainer;
 
 Option<string> dataDirOption = new("--data-dir")
 {
     Description = "Directory for the bootnode key and discovered-node persistence.",
-    DefaultValueFactory = _ => Path.Combine(Environment.CurrentDirectory, "bootnode-data")
+    DefaultValueFactory = _ => BootnodeOptionDefaults.DataDir(isRunningInContainer)
 };
 
 Option<int> discoveryPortOption = new("--discovery-port")
@@ -45,7 +48,7 @@ Option<int> httpPortOption = new("--http-port")
 Option<string> httpHostOption = new("--http-host")
 {
     Description = "HTTP REST/JSON-RPC listen host.",
-    DefaultValueFactory = _ => "127.0.0.1"
+    DefaultValueFactory = _ => BootnodeOptionDefaults.ServiceHost(isRunningInContainer)
 };
 
 Option<int> metricsPortOption = new("--metrics-port")
@@ -57,7 +60,7 @@ Option<int> metricsPortOption = new("--metrics-port")
 Option<string> metricsHostOption = new("--metrics-host")
 {
     Description = "Prometheus metrics listen host.",
-    DefaultValueFactory = _ => "127.0.0.1"
+    DefaultValueFactory = _ => BootnodeOptionDefaults.ServiceHost(isRunningInContainer)
 };
 
 Option<string> protocolsOption = new("--protocols")
@@ -98,7 +101,8 @@ Option<int> discoveryIntervalOption = new("--discovery-interval-ms")
 
 Option<string?> localIpOption = new("--local-ip")
 {
-    Description = "Local IP address to bind the UDP discovery socket."
+    Description = "Local IP address to bind the UDP discovery socket.",
+    DefaultValueFactory = _ => BootnodeOptionDefaults.LocalIp(isRunningInContainer)
 };
 
 Option<string?> externalIpOption = new("--external-ip")
@@ -306,12 +310,19 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
     string? externalIpV6 = parseResult.GetValue(externalIpV6Option);
     int discoveryPort = parseResult.GetRequiredValue(discoveryPortOption);
     ApplyAddr(parseResult.GetValue(addrOption), ref localIp, ref discoveryPort);
+    string httpHost = parseResult.GetRequiredValue(httpHostOption);
     int httpPort = parseResult.GetRequiredValue(httpPortOption);
+    string metricsHost = parseResult.GetRequiredValue(metricsHostOption);
     int metricsPort = parseResult.GetRequiredValue(metricsPortOption);
     BootnodeOptionValidation.ValidatePort("--discovery-port", discoveryPort);
     BootnodeOptionValidation.ValidatePort("--http-port", httpPort);
     BootnodeOptionValidation.ValidatePort("--metrics-port", metricsPort);
     BootnodeOptionValidation.ValidateLogLevel("--log-level", parseResult.GetRequiredValue(logLevelOption));
+    BootnodeOptionValidation.ValidateExternalIp("--external-ip", externalIp, expectedFamily: null);
+    BootnodeOptionValidation.ValidateExternalIp("--external-ip-v4", externalIpV4, AddressFamily.InterNetwork);
+    BootnodeOptionValidation.ValidateExternalIp("--external-ip-v6", externalIpV6, AddressFamily.InterNetworkV6);
+    BootnodeOptionValidation.ValidateHost("--http-host", httpHost);
+    BootnodeOptionValidation.ValidateHost("--metrics-host", metricsHost);
     if (httpPort == metricsPort)
     {
         throw new ArgumentException("--http-port and --metrics-port must be different.");
@@ -336,9 +347,9 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
     {
         DataDir = dataDir,
         DiscoveryPort = discoveryPort,
-        HttpHost = parseResult.GetRequiredValue(httpHostOption),
+        HttpHost = httpHost,
         HttpPort = httpPort,
-        MetricsHost = parseResult.GetRequiredValue(metricsHostOption),
+        MetricsHost = metricsHost,
         MetricsPort = metricsPort,
         DiscoveryVersion = ParseDiscoveryVersion(parseResult.GetRequiredValue(protocolsOption)),
         ActiveDiscovery = parseResult.GetRequiredValue(activeDiscoveryOption),

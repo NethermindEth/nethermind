@@ -14,7 +14,6 @@ using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;

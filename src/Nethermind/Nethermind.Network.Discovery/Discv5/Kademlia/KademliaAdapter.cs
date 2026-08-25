@@ -917,12 +917,15 @@ public sealed class KademliaAdapter(
         IPAddress endpointAddress = endpoint.Address;
         if (endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6)
         {
-            return record.GetObj<IPAddress>(EnrContentKey.Ip6)?.Equals(endpointAddress) == true &&
+            IPAddress? recordIpV6 = record.GetObj<IPAddress>(EnrContentKey.Ip6);
+            return recordIpV6 is { AddressFamily: AddressFamily.InterNetworkV6 } &&
+                   recordIpV6.Equals(endpointAddress) &&
                    HasIPv6Port(record, endpoint.Port);
         }
 
-        IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
-        return record.GetObj<IPAddress>(EnrContentKey.Ip)?.MapToIPv4().Equals(endpointIpV4) == true &&
+        IPAddress? recordIpV4 = record.GetObj<IPAddress>(EnrContentKey.Ip);
+        return recordIpV4 is { AddressFamily: AddressFamily.InterNetwork } &&
+               NormalizingIpAddressComparer.Instance.Equals(recordIpV4, endpointAddress) &&
                HasPort(record, EnrContentKey.Udp, endpoint.Port);
     }
 

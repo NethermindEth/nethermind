@@ -27,11 +27,10 @@ public class BootnodeNodeRecordProviderTests
         };
         BootnodeNodeRecordProvider provider = new(
             protectedPrivateKey,
-            new StaticIpResolver(IPAddress.Loopback),
             new EthereumEcdsa(1),
             networkConfig,
             LimboLogs.Instance,
-            new BootnodeExternalIps(IPAddress.Loopback, IPAddress.Loopback, null),
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback),
             TestContext.CurrentContext.WorkDirectory);
 
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
@@ -85,12 +84,11 @@ public class BootnodeNodeRecordProviderTests
             P2PPort = 0
         };
 
-        BootnodeExternalIps externalIps = new(
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("192.0.2.1"),
-            IPAddress.Parse("2001:db8::1"));
+        IPAddress ipV4 = IPAddress.Parse("192.0.2.1");
+        IPAddress ipV6 = IPAddress.Parse("2001:db8::1");
+        IIPResolver.NethermindIp resolvedIp = new(IPAddress.Loopback, ipV4, ipV4, ipV6);
 
-        NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.None, externalIps).GetCurrentAsync();
+        NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, resolvedIp).GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
         AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
@@ -166,46 +164,23 @@ public class BootnodeNodeRecordProviderTests
         IProtectedPrivateKey protectedPrivateKey,
         string dataDir,
         INetworkConfig networkConfig,
-        IPAddress ipAddress,
-        BootnodeExternalIps? externalIps = null) =>
+        IPAddress externalIp) =>
+        CreateProvider(
+            protectedPrivateKey,
+            dataDir,
+            networkConfig,
+            new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp));
+
+    private static BootnodeNodeRecordProvider CreateProvider(
+        IProtectedPrivateKey protectedPrivateKey,
+        string dataDir,
+        INetworkConfig networkConfig,
+        IIPResolver.NethermindIp resolvedIp) =>
         new(
             protectedPrivateKey,
-            new StaticIpResolver(ipAddress),
             new EthereumEcdsa(1),
             networkConfig,
             LimboLogs.Instance,
-            externalIps ?? BootnodeExternalIps.Create(new BootnodeOptions
-            {
-                DataDir = dataDir,
-                DiscoveryPort = networkConfig.DiscoveryPort,
-                HttpHost = "127.0.0.1",
-                HttpPort = 8546,
-                MetricsHost = "127.0.0.1",
-                MetricsPort = 6060,
-                DiscoveryVersion = Nethermind.Network.Discovery.DiscoveryVersion.All,
-                ActiveDiscovery = false,
-                ActiveDiscoveryJobs = 0,
-                BucketSize = 16,
-                Concurrency = 3,
-                DiscoveryIntervalMs = 30000,
-                LocalIp = null,
-                ExternalIp = null,
-                ExternalIpV4 = null,
-                ExternalIpV6 = null,
-                Bootnodes = [],
-                UseDefaultDiscv5Bootnodes = false,
-                LogLevel = "Error",
-                LogFile = null,
-                PrivateKey = null,
-                PrivateKeyFile = null,
-                GenKey = false,
-                WriteAddress = false
-            }, ipAddress),
+            resolvedIp,
             dataDir);
-
-    private sealed class StaticIpResolver(IPAddress address) : IIPResolver
-    {
-        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
-            new(new IIPResolver.NethermindIp(address, address));
-    }
 }

@@ -13,6 +13,7 @@ Standalone discovery bootnode for discv4 and discv5.
   - `GET /identity`
   - `GET /nodes/active?offset=0&limit=1000`
   - `GET /nodes/all?offset=0&limit=1000`
+  - Node entries report `tcpPort` and `discoveryPort` separately.
 - Exposes JSON-RPC over `POST /rpc`:
   - `bootnode_status`
   - `bootnode_nodeInfo`
@@ -49,8 +50,8 @@ The default container command stores state in `/nethermind-bootnode/data` and bi
 ```powershell
 docker run --rm -it `
   -p 30303:30303/udp `
-  -p 8546:8546 `
-  -p 6060:6060 `
+  -p 127.0.0.1:8546:8546 `
+  -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
   nethermind/nethermind-bootnode:bootnode-r1
 ```
@@ -60,15 +61,13 @@ Pass CLI options after the image name to override the defaults, for example:
 ```powershell
 docker run --rm -it `
   -p 30303:30303/udp `
-  -p 8546:8546 `
-  -p 6060:6060 `
+  -p 127.0.0.1:8546:8546 `
+  -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
   nethermind/nethermind-bootnode:bootnode-r1 `
   --local-ip :: `
   --external-ip-v4 203.0.113.10 `
-  --external-ip-v6 2001:db8::10 `
-  --http-host 0.0.0.0 `
-  --metrics-host 0.0.0.0
+  --external-ip-v6 2001:db8::10
 ```
 
 ## Advertised IPs
@@ -98,10 +97,10 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--data-dir` | `./bootnode-data` | Directory for the node key, discovered-node persistence, and ENR sequence state. |
+| `--data-dir` | `./bootnode-data` (`./data` in Docker) | Directory for the node key, discovered-node persistence, and ENR sequence state. |
 | `--discovery-port` | `30303` | UDP discovery port. |
 | `--addr` | unset | Bootnode-compatible UDP listen address such as `:30303`, `0.0.0.0:30303`, or `[::]:30303`; overrides `--local-ip` and `--discovery-port` parts that are present. |
-| `--local-ip` | auto-detected | Local IP address to bind the UDP discovery socket. |
+| `--local-ip` | auto-detected (`0.0.0.0` in Docker) | Local IP address to bind the UDP discovery socket. |
 | `--external-ip` | auto-detected | Single advertised external IP address. |
 | `--external-ip-v4` | unset | Advertised external IPv4 address for ENR `ip`/`udp`. |
 | `--external-ip-v6` | unset | Advertised external IPv6 address for ENR `ip6`/`udp6`. |
@@ -113,9 +112,9 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 | `--bucket-size` | `16` | Kademlia bucket size. |
 | `--concurrency` | `3` | Kademlia lookup concurrency. |
 | `--discovery-interval-ms` | `30000` | Interval between Kademlia bootstrap and bucket refresh passes, in milliseconds. |
-| `--http-host` | `127.0.0.1` | HTTP REST/JSON-RPC listen host. |
+| `--http-host` | `127.0.0.1` (`0.0.0.0` in Docker) | HTTP REST/JSON-RPC listen host. |
 | `--http-port` | `8546` | HTTP REST/JSON-RPC port. |
-| `--metrics-host` | `127.0.0.1` | Prometheus metrics listen host. |
+| `--metrics-host` | `127.0.0.1` (`0.0.0.0` in Docker) | Prometheus metrics listen host. |
 | `--metrics-port` | `6060` | Prometheus metrics port. |
 | `--log-level`, `-l` | `Info` | Log level: `Trace`, `Debug`, `Info`, `Warn`, or `Error`. |
 | `--log-file` | unset | Optional log file path. |
@@ -123,6 +122,8 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 | `--private-key-file`, `--nodekey` | `<data-dir>/bootnode.key` | Path to a hex-encoded secp256k1 node private key file. |
 | `--genkey` | `false` | Generate the node key file and exit. |
 | `--write-address` | `true` | Print the local enode and ENR at startup. |
+
+Container images bind the REST/JSON-RPC and metrics listeners to all interfaces, and neither listener authenticates clients. The examples publish those ports on host loopback only; keep that restriction or protect remote access with a firewall or authenticated reverse proxy.
 
 For a passive bootnode that only maintains the table through bootstrap and bucket refresh:
 
@@ -141,6 +142,6 @@ $env:GRAFANA_ADMIN_PASSWORD = "choose-a-local-password"
 docker compose -f tools/Bootnode/observability/docker-compose.yml up -d
 ```
 
-When using the Docker Compose observability stack on Linux, start the bootnode with `--metrics-host 0.0.0.0` so Prometheus can reach the host metrics endpoint through `host.docker.internal`.
+A containerized Bootnode uses a Prometheus-compatible bind by default. When the Docker Compose stack scrapes a native Bootnode on Linux, start it with `--metrics-host 0.0.0.0` so Prometheus can reach the host endpoint through `host.docker.internal`.
 
 Grafana listens on `http://localhost:3000` and Prometheus listens on `http://localhost:9090`; both are bound to loopback. Prometheus scrapes `http://host.docker.internal:6060/metrics`.

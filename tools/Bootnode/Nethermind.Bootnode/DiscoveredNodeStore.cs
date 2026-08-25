@@ -15,8 +15,9 @@ internal sealed class DiscoveredNodeStore
     internal const int MaxNodePageSize = 1_000;
 
     private readonly ConcurrentDictionary<Hash256, TrackedNode> _nodes = new();
-    private readonly LinkedList<Hash256> _retentionOrder = new();
-    private readonly Dictionary<Hash256, LinkedListNode<Hash256>> _retentionEntries = [];
+    private readonly LinkedList<Hash256> _activeRetentionOrder = new();
+    private readonly LinkedList<Hash256> _inactiveRetentionOrder = new();
+    private readonly Dictionary<Hash256, RetentionEntry> _retentionEntries = [];
     private readonly SortedSet<Hash256> _orderedNodes = [];
     private readonly SortedSet<Hash256> _orderedActiveNodes = [];
     private readonly Lock _lock = new();
@@ -44,11 +45,12 @@ internal sealed class DiscoveredNodeStore
 
         lock (_lock)
         {
+            TrackedNodeSnapshot after;
             if (_nodes.TryGetValue(node.IdHash, out TrackedNode? existing))
             {
                 TrackedNodeSnapshot before = existing.CreateSnapshot();
                 existing.Update(node, protocol, now, isActive);
-                TrackedNodeSnapshot after = existing.CreateSnapshot();
+                after = existing.CreateSnapshot();
                 ApplyTransition(before, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
             }
@@ -57,12 +59,12 @@ internal sealed class DiscoveredNodeStore
                 TrackedNode trackedNode = TrackedNode.Create(node, protocol, now, isActive);
                 _nodes[node.IdHash] = trackedNode;
                 _orderedNodes.Add(node.IdHash);
-                TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
+                after = trackedNode.CreateSnapshot();
                 ApplyTransition(null, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
             }
 
-            TouchRetentionOrder(node.IdHash);
+            TouchRetentionOrder(node.IdHash, after.Active);
             PruneRetainedNodes();
             return CreateSnapshotCore();
         }
@@ -93,7 +95,7 @@ internal sealed class DiscoveredNodeStore
                 TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
                 ApplyTransition(before, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
-                TouchRetentionOrder(node.IdHash);
+                TouchRetentionOrder(node.IdHash, after.Active);
                 PruneRetainedNodes();
             }
 
@@ -121,7 +123,7 @@ internal sealed class DiscoveredNodeStore
         {
             lock (_lock)
             {
-                return _retentionOrder.Count;
+                return _retentionEntries.Count;
             }
         }
     }
@@ -208,10 +210,15 @@ internal sealed class DiscoveredNodeStore
 
     private void PruneRetainedNodes()
     {
-        while (_allCount > _maxRetainedNodes && _retentionOrder.First is { } oldestNode)
+        while (_allCount > _maxRetainedNodes)
         {
-            _retentionOrder.RemoveFirst();
-            _retentionEntries.Remove(oldestNode.Value);
+            LinkedListNode<Hash256>? oldestNode = _inactiveRetentionOrder.First ?? _activeRetentionOrder.First;
+            if (oldestNode is null)
+            {
+                return;
+            }
+
+            RemoveRetentionEntry(oldestNode.Value);
             _orderedNodes.Remove(oldestNode.Value);
             _orderedActiveNodes.Remove(oldestNode.Value);
             if (_nodes.TryRemove(oldestNode.Value, out TrackedNode? trackedNode))
@@ -221,16 +228,32 @@ internal sealed class DiscoveredNodeStore
         }
     }
 
-    private void TouchRetentionOrder(Hash256 idHash)
+    private void TouchRetentionOrder(Hash256 idHash, bool active)
     {
-        if (_retentionEntries.TryGetValue(idHash, out LinkedListNode<Hash256>? existingEntry))
+        LinkedListNode<Hash256> node;
+        if (_retentionEntries.TryGetValue(idHash, out RetentionEntry existingEntry))
         {
-            _retentionOrder.Remove(existingEntry);
-            _retentionOrder.AddLast(existingEntry);
-            return;
+            GetRetentionOrder(existingEntry.Active).Remove(existingEntry.Node);
+            node = existingEntry.Node;
+        }
+        else
+        {
+            node = new LinkedListNode<Hash256>(idHash);
         }
 
-        _retentionEntries.Add(idHash, _retentionOrder.AddLast(idHash));
+        GetRetentionOrder(active).AddLast(node);
+        _retentionEntries[idHash] = new RetentionEntry(node, active);
+    }
+
+    private LinkedList<Hash256> GetRetentionOrder(bool active) =>
+        active ? _activeRetentionOrder : _inactiveRetentionOrder;
+
+    private void RemoveRetentionEntry(Hash256 idHash)
+    {
+        if (_retentionEntries.Remove(idHash, out RetentionEntry entry))
+        {
+            GetRetentionOrder(entry.Active).Remove(entry.Node);
+        }
     }
 
     private NodeDto[] GetNodes(bool activeOnly, int offset, int limit)
@@ -440,6 +463,8 @@ internal sealed class DiscoveredNodeStore
     }
 
     private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active);
+
+    private readonly record struct RetentionEntry(LinkedListNode<Hash256> Node, bool Active);
 }
 
 internal readonly record struct DiscoverySnapshot(

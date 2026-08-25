@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
-using System.Net;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,13 +35,14 @@ internal static class DiscoveryContainer
         BootnodeKademliaBucketRegistry bucketRegistry,
         CancellationToken cancellationToken)
     {
-        BootnodeExternalIps configuredExternalIps = BootnodeExternalIps.Create(options, IPAddress.None);
         NetworkConfig networkConfig = new()
         {
             DiscoveryPort = options.DiscoveryPort,
             P2PPort = 0,
             LocalIp = options.LocalIp,
-            ExternalIp = options.ExternalIp ?? configuredExternalIps.IpV4?.ToString() ?? configuredExternalIps.IpV6?.ToString(),
+            ExternalIp = options.ExternalIp,
+            ExternalIpV4 = options.ExternalIpV4,
+            ExternalIpV6 = options.ExternalIpV6,
             Bootnodes = NetworkNode.ParseNodes(options.Bootnodes, logManager.GetLogger("Nethermind.Bootnode.DiscoveryContainer")),
             MaxCandidatePeerCount = 10000
         };
@@ -59,7 +59,6 @@ internal static class DiscoveryContainer
 
         IPResolver ipResolver = new(networkConfig, logManager);
         IIPResolver.NethermindIp resolvedIp = await ipResolver.Resolve(cancellationToken);
-        BootnodeExternalIps externalIps = configuredExternalIps.WithFallback(resolvedIp.ExternalIp);
 
         ContainerBuilder builder = new();
         builder.RegisterInstance(logManager).As<ILogManager>().SingleInstance();
@@ -92,16 +91,16 @@ internal static class DiscoveryContainer
             .AddMessageSerializer<EnrResponseMsg, EnrResponseMsgSerializer>();
 
         builder.RegisterInstance(ipResolver).As<IIPResolver>().SingleInstance();
-        builder.RegisterInstance(externalIps).SingleInstance();
 
         builder.Register(context =>
-            CreateEnode(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey), networkConfig, externalIps))
+            CreateEnode(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey), networkConfig, resolvedIp))
             .As<IEnode>()
             .SingleInstance();
 
         builder.RegisterType<BootnodeNodeRecordProvider>()
             .As<INodeRecordProvider>()
             .WithParameter(ResolvedParameter.ForKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey))
+            .WithParameter(new TypedParameter(typeof(IIPResolver.NethermindIp), resolvedIp))
             .WithParameter(new NamedParameter("dataDir", options.DataDir))
             .SingleInstance();
 
@@ -128,7 +127,7 @@ internal static class DiscoveryContainer
             .SingleInstance()
             .ExternallyOwned();
         builder.RegisterType<DiscoveryApp>()
-            .As<DiscoveryApp>()
+            .AsSelf()
             .WithParameter(new TypedParameter(
                 typeof(Action<ContainerBuilder>),
                 (Action<ContainerBuilder>)(discv4Builder => RegisterBucketStats(discv4Builder, "discv4", bucketRegistry))))
@@ -150,8 +149,8 @@ internal static class DiscoveryContainer
             registry.Register(scope.Resolve<IBootnodeKademliaBucketSource>()));
     }
 
-    private static IEnode CreateEnode(IProtectedPrivateKey nodeKey, INetworkConfig networkConfig, BootnodeExternalIps externalIps) =>
-        new Enode(nodeKey.PublicKey, externalIps.PrimaryIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
+    private static IEnode CreateEnode(IProtectedPrivateKey nodeKey, INetworkConfig networkConfig, IIPResolver.NethermindIp resolvedIp) =>
+        new Enode(nodeKey.PublicKey, resolvedIp.ExternalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
 
     private sealed class BootnodeForkInfo : IForkInfo
     {

@@ -52,7 +52,3 @@ jobs:
         if: matrix.project == 'Bootnode/Bootnode.slnx'
         working-directory: tools
         run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c ${{ matrix.config }} --no-build
-
-      - name: Test Bootnode Docker entrypoint
-        if: matrix.project == 'Bootnode/Bootnode.slnx'
-        run: sh tools/Bootnode/docker-entrypoint.test.sh

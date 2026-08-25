@@ -5,21 +5,18 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
 using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 
 namespace Nethermind.Bootnode;
 
 internal sealed class BootnodeNodeRecordProvider(
     IProtectedPrivateKey nodeKey,
-    IIPResolver ipResolver,
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig,
     ILogManager logManager,
-    BootnodeExternalIps externalIps,
+    IIPResolver.NethermindIp resolvedIp,
     string dataDir) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -45,8 +42,7 @@ internal sealed class BootnodeNodeRecordProvider(
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
-        SetEndpointEntries(selfNodeRecord, externalIps.WithFallback(ip.ExternalIp));
+        SetEndpointEntries(selfNodeRecord, resolvedIp.ExternalIpV4, resolvedIp.ExternalIpV6);
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 0;
         string contentHash = selfNodeRecord.ContentHash.ToString();
@@ -63,11 +59,11 @@ internal sealed class BootnodeNodeRecordProvider(
         return selfNodeRecord;
     }
 
-    private void SetEndpointEntries(NodeRecord selfNodeRecord, BootnodeExternalIps endpointIps)
+    private void SetEndpointEntries(NodeRecord selfNodeRecord, IPAddress? externalIpV4, IPAddress? externalIpV6)
     {
-        if (endpointIps.IpV4 is not null)
+        if (externalIpV4 is not null)
         {
-            selfNodeRecord.SetEntry(new IpEntry(endpointIps.IpV4));
+            selfNodeRecord.SetEntry(new IpEntry(externalIpV4));
             if (networkConfig.P2PPort > 0)
             {
                 selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
@@ -76,9 +72,9 @@ internal sealed class BootnodeNodeRecordProvider(
             selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
         }
 
-        if (endpointIps.IpV6 is not null)
+        if (externalIpV6 is not null)
         {
-            selfNodeRecord.SetEntry(new Ip6Entry(endpointIps.IpV6));
+            selfNodeRecord.SetEntry(new Ip6Entry(externalIpV6));
             if (networkConfig.P2PPort > 0)
             {
                 selfNodeRecord.SetEntry(new Tcp6Entry(networkConfig.P2PPort));

@@ -5,7 +5,6 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using DotNetty.Transport.Bootstrapping;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
