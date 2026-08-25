@@ -12,15 +12,21 @@ namespace Nethermind.JsonRpc.Modules;
 
 /// <summary>
 /// Admits JSON-RPC invocations per <see cref="RpcMethodCostClass"/>: a fixed number of permits per gated class,
-/// a bounded FIFO wait for the rest, and immediate load shedding once the predicted wait exceeds the budget.
+/// a bounded shortest-job-first wait for the rest, and immediate load shedding once the predicted wait exceeds the budget.
 /// </summary>
 /// <remarks>
 /// Throughput of EVM-bound methods plateaus at roughly one execution per hardware thread; admitting more only
 /// converts throughput into queueing delay and, past saturation, into request timeouts. This controller keeps
 /// concurrency at the plateau and turns the excess into fast "Too many requests" answers instead: a request is
-/// rejected up front when <c>queued x EWMA(service time) / permits x weight</c> exceeds
-/// <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that
+/// rejected up front when <c>(queued weight no heavier than it + its own weight) x EWMA(service time per unit) / permits</c>
+/// exceeds <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that
 /// long. <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
+/// <para>
+/// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish
+/// soonest, which maximises the number of requests served per second of execution time and keeps a sub-millisecond
+/// <c>eth_call</c> from waiting behind a batch of heavy simulations. The flip side is deliberate: under sustained
+/// overload heavy requests are the ones overtaken until their wait budget runs out, so the gate sheds heavy work first.
+/// </para>
 /// Admitted invocations run inline on whichever thread the permit is granted on (the request thread when one is
 /// free, a thread-pool continuation otherwise); the permit count alone bounds how much of a class's work is in flight.
 /// </remarks>
@@ -72,93 +78,215 @@ public sealed class RpcAdmissionController
         public void ReleaseWithoutSampling() => gate?.Release();
     }
 
-    internal sealed class Gate
+    internal sealed class Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs)
     {
         // ~10 requests of memory: fast enough to follow a shift in traffic mix, slow enough to ignore one outlier.
         private const double EwmaAlpha = 0.1;
 
-        private readonly RpcMethodCostClass _costClass;
-        private readonly int _maxQueueWaitMs;
-        // Never disposed: it allocates no kernel handle here, and in-flight requests still release their permits
-        // while the node shuts down.
-        private readonly SemaphoreSlim _permits;
-        private readonly Lock _ewmaLock = new();
+        private readonly RpcMethodCostClass _costClass = costClass;
+        private readonly int _maxQueueWaitMs = maxQueueWaitMs;
+        // One lock guards the permit count, the wait queue and the EWMA. Admission is one short critical section per
+        // gated call against executions lasting tens of milliseconds, so it is effectively uncontended, and serialising
+        // grant and timeout through it is what keeps the two from ever settling the same waiter.
+        private readonly Lock _lock = new();
+        // One FIFO per weight (indices RpcRequestWeight.MinWeight..MaxWeight); the lowest non-empty one is served first.
+        private readonly Waiter?[] _heads = new Waiter?[RpcRequestWeight.MaxWeight + 1];
+        private readonly Waiter?[] _tails = new Waiter?[RpcRequestWeight.MaxWeight + 1];
+        private readonly int[] _queuedByWeight = new int[RpcRequestWeight.MaxWeight + 1];
         private int _queued;
         private int _inFlight;
         private double _serviceTimeMs;
 
-        public Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs)
-        {
-            _costClass = costClass;
-            Permits = Math.Max(1, permits);
-            _maxQueueWaitMs = maxQueueWaitMs;
-            _permits = new SemaphoreSlim(Permits);
-        }
-
-        public int Permits { get; }
+        public int Permits { get; } = Math.Max(1, permits);
         public int Queued => Volatile.Read(ref _queued);
         public int InFlight => Volatile.Read(ref _inFlight);
         public double ServiceTimeMs => Volatile.Read(ref _serviceTimeMs);
 
         public ValueTask<Lease> AdmitAsync(int weight)
         {
-            double predictedWaitMs = Queued * ServiceTimeMs * weight / Permits;
-            if (predictedWaitMs > _maxQueueWaitMs)
+            Waiter waiter;
+            lock (_lock)
             {
-                Metrics.RpcAdmissionPredictedWaitRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
-                throw new LimitExceededException(
-                    $"Unable to start new {_costClass} request. Predicted queue wait {predictedWaitMs:F0} ms exceeds {_maxQueueWaitMs} ms.");
+                // A freed permit is handed straight to a waiter, so a free permit means nobody is waiting to be overtaken.
+                if (_inFlight < Permits)
+                {
+                    Metrics.RpcAdmissionInFlight[_costClass] = ++_inFlight;
+                    return ValueTask.FromResult(new Lease(this, weight, Stopwatch.GetTimestamp()));
+                }
+
+                double predictedWaitMs = (QueuedWeightNoHeavierThan(weight) + weight) * _serviceTimeMs / Permits;
+                if (predictedWaitMs > _maxQueueWaitMs)
+                {
+                    Metrics.RpcAdmissionPredictedWaitRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
+                    throw new LimitExceededException(
+                        $"Unable to start new {_costClass} request. Predicted queue wait {predictedWaitMs:F0} ms exceeds {_maxQueueWaitMs} ms.");
+                }
+
+                waiter = new Waiter(this, weight);
+                Enqueue(waiter);
+                Metrics.RpcAdmissionQueued[_costClass] = ++_queued;
+                // Armed inside the lock so that a grant always finds the timer to dispose, and a firing that races the
+                // enqueue blocks until the waiter is fully linked.
+                waiter.Timer = new Timer(static state => ((Waiter)state!).OnTimeout(), waiter, _maxQueueWaitMs, Timeout.Infinite);
             }
 
-            Metrics.RpcAdmissionQueued[_costClass] = Interlocked.Increment(ref _queued);
-            Task<bool> wait = _permits.WaitAsync(_maxQueueWaitMs);
-            return wait.IsCompletedSuccessfully
-                ? ValueTask.FromResult(Admitted(wait.Result, weight))
-                : new ValueTask<Lease>(AwaitPermitAsync(wait, weight));
+            return new ValueTask<Lease>(waiter.Task);
         }
 
-        private async Task<Lease> AwaitPermitAsync(Task<bool> wait, int weight) => Admitted(await wait, weight);
+        public void Release(int weight, long startTimestamp) =>
+            Release(sampled: true, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds / weight);
 
-        private Lease Admitted(bool acquired, int weight)
+        public void Release() => Release(sampled: false, 0);
+
+        private void Release(bool sampled, double observedMsPerUnit)
         {
-            Metrics.RpcAdmissionQueued[_costClass] = Interlocked.Decrement(ref _queued);
-            if (!acquired)
+            Waiter? next;
+            lock (_lock)
             {
+                if (sampled)
+                {
+                    double current = _serviceTimeMs;
+                    SetServiceTimeMsLocked(current == 0 ? observedMsPerUnit : current + EwmaAlpha * (observedMsPerUnit - current));
+                }
+
+                next = DequeueLightest();
+                if (next is null)
+                {
+                    Metrics.RpcAdmissionInFlight[_costClass] = --_inFlight;
+                }
+                else
+                {
+                    // The permit passes straight on, so in-flight is unchanged.
+                    Metrics.RpcAdmissionQueued[_costClass] = --_queued;
+                }
+            }
+
+            if (next is not null)
+            {
+                next.Timer!.Dispose();
+                // Completes on the pool: the releasing request's thread never runs the next request's continuation.
+                next.TrySetResult(new Lease(this, next.Weight, Stopwatch.GetTimestamp()));
+            }
+        }
+
+        private void OnTimeout(Waiter waiter)
+        {
+            lock (_lock)
+            {
+                // Lost the race to a grant: the request owns the permit and proceeds, so there is nothing to give back.
+                if (!waiter.IsQueued)
+                {
+                    return;
+                }
+
+                Unlink(waiter);
+                Metrics.RpcAdmissionQueued[_costClass] = --_queued;
                 Metrics.RpcAdmissionWaitTimeoutRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
-                throw new LimitExceededException(
-                    $"Unable to start new {_costClass} request. No execution slot freed up within {_maxQueueWaitMs} ms.");
             }
 
-            Metrics.RpcAdmissionInFlight[_costClass] = Interlocked.Increment(ref _inFlight);
-            return new Lease(this, weight, Stopwatch.GetTimestamp());
+            waiter.Timer!.Dispose();
+            waiter.TrySetException(new LimitExceededException(
+                $"Unable to start new {_costClass} request. No execution slot freed up within {_maxQueueWaitMs} ms."));
         }
 
-        public void Release(int weight, long startTimestamp)
+        private int QueuedWeightNoHeavierThan(int weight)
         {
-            double observedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
-            Release();
-            UpdateServiceTime(observedMs / weight);
-        }
-
-        public void Release()
-        {
-            Metrics.RpcAdmissionInFlight[_costClass] = Interlocked.Decrement(ref _inFlight);
-            _permits.Release();
-        }
-
-        private void UpdateServiceTime(double observedMsPerUnit)
-        {
-            lock (_ewmaLock)
+            int queuedWeight = 0;
+            for (int w = RpcRequestWeight.MinWeight; w <= weight; w++)
             {
-                double current = _serviceTimeMs;
-                SetServiceTimeMs(current == 0 ? observedMsPerUnit : current + EwmaAlpha * (observedMsPerUnit - current));
+                queuedWeight += _queuedByWeight[w] * w;
             }
+
+            return queuedWeight;
+        }
+
+        private void Enqueue(Waiter waiter)
+        {
+            int weight = waiter.Weight;
+            Waiter? tail = _tails[weight];
+            waiter.Previous = tail;
+            if (tail is null)
+            {
+                _heads[weight] = waiter;
+            }
+            else
+            {
+                tail.Next = waiter;
+            }
+
+            _tails[weight] = waiter;
+            _queuedByWeight[weight]++;
+            waiter.IsQueued = true;
+        }
+
+        private Waiter? DequeueLightest()
+        {
+            for (int w = RpcRequestWeight.MinWeight; w <= RpcRequestWeight.MaxWeight; w++)
+            {
+                Waiter? head = _heads[w];
+                if (head is not null)
+                {
+                    Unlink(head);
+                    return head;
+                }
+            }
+
+            return null;
+        }
+
+        private void Unlink(Waiter waiter)
+        {
+            int weight = waiter.Weight;
+            if (waiter.Previous is null)
+            {
+                _heads[weight] = waiter.Next;
+            }
+            else
+            {
+                waiter.Previous.Next = waiter.Next;
+            }
+
+            if (waiter.Next is null)
+            {
+                _tails[weight] = waiter.Previous;
+            }
+            else
+            {
+                waiter.Next.Previous = waiter.Previous;
+            }
+
+            waiter.Previous = waiter.Next = null;
+            _queuedByWeight[weight]--;
+            waiter.IsQueued = false;
         }
 
         public void SetServiceTimeMs(double serviceTimeMs)
         {
+            lock (_lock)
+            {
+                SetServiceTimeMsLocked(serviceTimeMs);
+            }
+        }
+
+        private void SetServiceTimeMsLocked(double serviceTimeMs)
+        {
             Volatile.Write(ref _serviceTimeMs, serviceTimeMs);
             Metrics.RpcAdmissionServiceTimeMs[_costClass] = serviceTimeMs;
+        }
+
+        /// <summary>
+        /// A queued admission: a node in its weight's FIFO whose task is settled exactly once, by a grant or by its
+        /// timeout, whichever unlinks it first under the gate lock.
+        /// </summary>
+        private sealed class Waiter(Gate gate, int weight) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
+        {
+            public int Weight { get; } = weight;
+            public Waiter? Previous;
+            public Waiter? Next;
+            public Timer? Timer;
+            public bool IsQueued;
+
+            public void OnTimeout() => gate.OnTimeout(this);
         }
     }
 }

@@ -165,8 +165,9 @@ public class RpcAdmissionControllerTests
     public async Task Rejects_immediately_when_predicted_wait_exceeds_budget()
     {
         long rejectionsBefore = Metrics.RpcAdmissionPredictedWaitRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
-        // Two permits: one queued request predicts a wait of EWMA / 2, so this makes it 2x the budget.
-        _controller.SetServiceTimeMs(RpcMethodCostClass.EvmExecution, 4.0 * MaxQueueWaitMs);
+        // Two permits: the first waiter predicts its own unit at EWMA / 2 = 0.75x the budget, the second one queued
+        // behind it predicts (1 + 1) x EWMA / 2 = 1.5x the budget.
+        _controller.SetServiceTimeMs(RpcMethodCostClass.EvmExecution, 1.5 * MaxQueueWaitMs);
         RpcAdmissionController.Lease[] held = [await AdmitEthCall(), await AdmitEthCall()];
         ValueTask<RpcAdmissionController.Lease> queued = AdmitEthCall();
 
@@ -206,7 +207,7 @@ public class RpcAdmissionControllerTests
         const int holdMs = 40;
 
         Stopwatch outer = Stopwatch.StartNew();
-        using (await _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), (weight - 1) * RpcRequestWeight.BytesPerWeightUnit))
+        using (await AdmitEthCall(weight))
         {
             Thread.Sleep(holdMs);
         }
@@ -312,7 +313,168 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    private ValueTask<RpcAdmissionController.Lease> AdmitEthCall() => _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0);
+    [Test]
+    public async Task Lighter_waiters_are_served_first_and_fifo_within_a_weight()
+    {
+        RpcAdmissionController.Lease[] held = [await AdmitEthCall(RpcRequestWeight.MaxWeight), await AdmitEthCall(RpcRequestWeight.MaxWeight)];
+        ValueTask<RpcAdmissionController.Lease> heavyFirst = AdmitEthCall(RpcRequestWeight.MaxWeight);
+        ValueTask<RpcAdmissionController.Lease> heavySecond = AdmitEthCall(RpcRequestWeight.MaxWeight);
+        ValueTask<RpcAdmissionController.Lease> lightFirst = AdmitEthCall(1);
+        ValueTask<RpcAdmissionController.Lease> lightSecond = AdmitEthCall(1);
+        ValueTask<RpcAdmissionController.Lease>[] expectedOrder = [lightFirst, lightSecond, heavyFirst, heavySecond];
+        Assert.That(_controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(expectedOrder.Length));
+
+        RpcAdmissionController.Lease releasing = held[0];
+        for (int i = 0; i < expectedOrder.Length; i++)
+        {
+            releasing.Dispose();
+            releasing = await expectedOrder[i].AsTask().WaitAsync(WaitBudget);
+            for (int later = i + 1; later < expectedOrder.Length; later++)
+            {
+                Assert.That(expectedOrder[later].IsCompleted, Is.False, $"waiter {later} must not be admitted before waiter {i}");
+            }
+        }
+
+        releasing.Dispose();
+        held[1].Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+        }
+    }
+
+    // EWMA = budget / 4 per unit with two permits; one weight-8 waiter is queued when the request under test arrives.
+    [TestCase(1, false, TestName = "Weight 1 overtakes the heavy waiter: (0 + 1) x budget / 8 is admitted")]
+    [TestCase(4, false, TestName = "Weight 4 overtakes the heavy waiter: (0 + 4) x budget / 8 is admitted")]
+    [TestCase(8, true, TestName = "Weight 8 queues behind it: (8 + 8) x budget / 8 is shed")]
+    public async Task Predicted_wait_counts_only_the_queued_work_a_request_cannot_overtake(int weight, bool shed)
+    {
+        _controller.SetServiceTimeMs(RpcMethodCostClass.EvmExecution, MaxQueueWaitMs / 4.0);
+        RpcAdmissionController.Lease[] held = [await AdmitEthCall(), await AdmitEthCall()];
+        List<ValueTask<RpcAdmissionController.Lease>> waiting = [AdmitEthCall(RpcRequestWeight.MaxWeight)];
+
+        if (shed)
+        {
+            Assert.Throws<LimitExceededException>(() => AdmitEthCall(weight));
+        }
+        else
+        {
+            waiting.Add(AdmitEthCall(weight));
+            Assert.That(waiting[^1].IsCompleted, Is.False, "an admitted request waits for a permit");
+        }
+
+        Assert.That(_controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(waiting.Count));
+        held[0].Dispose();
+        held[1].Dispose();
+        foreach (ValueTask<RpcAdmissionController.Lease> admission in waiting)
+        {
+            (await admission.AsTask().WaitAsync(WaitBudget)).Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
+    {
+        const int budgetMs = 200;
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs });
+        ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
+        RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
+        Task<RpcAdmissionController.Lease> heavy = controller.AdmitAsync(ethCall, (RpcRequestWeight.MaxWeight - 1) * RpcRequestWeight.BytesPerWeightUnit).AsTask();
+
+        // A light request is queued before each release, so the single permit always has a lighter taker than the heavy waiter.
+        int lightServed = 0;
+        Stopwatch elapsed = Stopwatch.StartNew();
+        while (!heavy.IsCompleted && elapsed.Elapsed < WaitBudget)
+        {
+            ValueTask<RpcAdmissionController.Lease> light = controller.AdmitAsync(ethCall, 0);
+            holder.Dispose();
+            holder = await light.AsTask().WaitAsync(WaitBudget);
+            lightServed++;
+            await Task.Delay(5);
+        }
+        holder.Dispose();
+
+        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lightServed, Is.GreaterThan(1), "light requests must keep being served past the heavy waiter");
+            Assert.That(elapsed.ElapsedMilliseconds, Is.GreaterThanOrEqualTo(budgetMs * 0.9), "the heavy waiter must be shed no earlier than its budget");
+            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Timeouts_racing_grants_neither_leak_nor_double_release_permits()
+    {
+        const int requests = 2_000;
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, MaxQueueWaitMs = 1 });
+        ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
+        int admitted = 0;
+        int shed = 0;
+        Task[] callers = new Task[requests];
+        for (int i = 0; i < requests; i++)
+        {
+            int paramsUtf8Length = i % RpcRequestWeight.MaxWeight * RpcRequestWeight.BytesPerWeightUnit;
+            callers[i] = Task.Run(async () =>
+            {
+                try
+                {
+                    using (await controller.AdmitAsync(ethCall, paramsUtf8Length))
+                    {
+                        Interlocked.Increment(ref admitted);
+                        await Task.Yield();
+                    }
+                }
+                catch (LimitExceededException)
+                {
+                    Interlocked.Increment(ref shed);
+                }
+            });
+        }
+
+        await Task.WhenAll(callers).WaitAsync(WaitBudget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted + shed, Is.EqualTo(requests));
+            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+        }
+
+        for (int i = 0; i < EvmPermits; i++)
+        {
+            Assert.That(controller.AdmitAsync(ethCall, 0).IsCompletedSuccessfully, Is.True, $"permit {i} must be available again");
+        }
+    }
+
+    [Test]
+    public async Task Releasing_a_permit_never_runs_the_next_waiters_continuation_inline()
+    {
+        RpcAdmissionController.Lease[] held = [await AdmitEthCall(), await AdmitEthCall()];
+        bool? continuationRanOnReleaser = null;
+        Task<RpcAdmissionController.Lease> probe = AdmitEthCall().AsTask().ContinueWith(admission =>
+        {
+            continuationRanOnReleaser = t_releasingPermit;
+            return admission.Result;
+        }, TaskContinuationOptions.ExecuteSynchronously);
+
+        t_releasingPermit = true;
+        held[0].Dispose();
+        t_releasingPermit = false;
+
+        using (await probe.WaitAsync(WaitBudget))
+        {
+            Assert.That(continuationRanOnReleaser, Is.False);
+        }
+        held[1].Dispose();
+    }
+
+    [ThreadStatic]
+    private static bool t_releasingPermit;
+
+    private ValueTask<RpcAdmissionController.Lease> AdmitEthCall(int weight = 1) =>
+        _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), (weight - 1) * RpcRequestWeight.BytesPerWeightUnit);
 
     private static ResolvedMethodInfo Resolve<TModule>(string methodName) where TModule : IRpcModule =>
         new(typeof(TModule).Name, typeof(TModule).GetMethod(methodName)!, readOnly: true, RpcEndpoint.All);
