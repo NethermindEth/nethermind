@@ -49,7 +49,7 @@ internal static class XdcConstants
     public const int MinimumMinerBlockPerEpoch = 1;
 
     // Penalty window of the pre-TIPUpgradePenalty rules, in epochs. Unlike the post-upgrade LimitPenaltyEpoch it is
-    // not chainspec configurable, matching the reference client.
+    // not chainspec configurable.
     public const ulong LimitPenaltyEpochV2 = 1;
 
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
