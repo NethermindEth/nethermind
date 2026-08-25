@@ -29,7 +29,7 @@ as_root() {
 
 # Numeric field of a JSON file via jq path; prints the default when absent or non-numeric.
 json_number() {
-  local file="$1" path="$2" default="${3:-0}" value
+  local file="$1" path="$2" default="${3-0}" value
   [[ -s "$file" ]] || { printf '%s' "$default"; return 0; }
   value="$(jq -r "$path | if type == \"number\" then . else empty end" "$file" 2>/dev/null)"
   printf '%s' "${value:-$default}"
