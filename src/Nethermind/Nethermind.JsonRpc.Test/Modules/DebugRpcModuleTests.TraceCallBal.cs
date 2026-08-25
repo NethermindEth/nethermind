@@ -11,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
