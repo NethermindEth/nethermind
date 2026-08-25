@@ -55,9 +55,12 @@ public class TraceLineReaderTests
 
         IReadOnlyList<string> records = ReadAll(path);
 
-        Assert.That(records.Count, Is.EqualTo(3));
-        Assert.That(records[1], Has.Length.EqualTo(large.Length));
-        Assert.That(records[1], Is.EqualTo(large));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records, Has.Count.EqualTo(3));
+            Assert.That(records[1], Has.Length.EqualTo(large.Length));
+            Assert.That(records[1], Is.EqualTo(large));
+        }
     }
 
     [Test]
@@ -84,9 +87,13 @@ public class TraceLineReaderTests
         string path = Write(".jsonl", "a\n");
 
         using TraceLineReader reader = new(path);
-        Assert.That(reader.TryReadRecord(out _), Is.True);
-        Assert.That(reader.TryReadRecord(out _), Is.False);
-        Assert.That(reader.TryReadRecord(out _), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryReadRecord(out _), Is.True);
+            Assert.That(reader.TryReadRecord(out _), Is.False);
+            Assert.That(reader.TryReadRecord(out _), Is.False);
+        }
     }
 
     [Test]

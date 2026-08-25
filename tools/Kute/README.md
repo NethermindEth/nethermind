@@ -126,9 +126,17 @@ are discarded, then the measured pass. Both share one connection pool, so the me
 pays connection setup. Exactly `-c` requests are kept in flight by that many persistent workers, so
 the level label is the load actually offered.
 
+Each worker owns one connection, so a warm-up shorter than the level would leave some handshakes
+inside the measured window; `-w` is raised to the concurrency when it is smaller, and the run says so.
+`-w 0` opts out of warming altogether.
+
 Every level replays the same records, which is what makes levels comparable. Size a level with
 `-n <count>` (measured requests) or `-d <seconds>` (wall-clock cap), and note that at low concurrency
 a whole 50k-record trace takes a long time: `-n 0` replays all of it.
+
+The duration cap is timed from the level's first request, so decompressing a `--skip` prefix does not
+consume it, and it gates sending rather than reading: once it expires, requests the reader had already
+queued are dropped instead of sent.
 
 ### Options that matter
 
@@ -138,7 +146,7 @@ a whole 50k-record trace takes a long time: `-n 0` replays all of it.
 | `-b, --block` | Block parameter forced on every request; `keep` replays the captured one |
 | `-n, --requests` | Measured requests per level; `0` replays the whole trace |
 | `-w, --warmup` | Requests sent and discarded before each measured window |
-| `-d, --duration` | Stop a level once its measured window reaches this many seconds |
+| `-d, --duration` | Stop a level once its measured window reaches this many seconds, timed from its first request |
 | `--skip` | Records skipped at the start of the trace |
 | `-o, --output` | `Pretty`, `Json` or `Csv`; `--output-file` writes it to disk |
 | `--max-failure-rate` | Percentage of failed requests above which the run exits non-zero (default 1) |

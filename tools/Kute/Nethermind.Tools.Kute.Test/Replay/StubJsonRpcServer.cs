@@ -13,6 +13,11 @@ namespace Nethermind.Tools.Kute.Test.Replay;
 /// Written on raw sockets rather than <see cref="HttpListener"/> so the tests need no URL reservation,
 /// and so the requests the replay harness puts on the wire can be observed exactly as sent. Records
 /// the peak number of requests in flight, which is what a concurrency sweep claims to control.
+/// <para>
+/// <c>releaseAt</c> turns that observation into a barrier: no request is answered until that many are
+/// in flight at once. A harness holding fewer open can never satisfy it, so the assertion does not
+/// depend on a response delay outlasting the scheduler.
+/// </para>
 /// </remarks>
 public sealed class StubJsonRpcServer : IAsyncDisposable
 {
@@ -25,6 +30,8 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
     private readonly Lock _bodiesLock = new();
     private readonly Func<string, (HttpStatusCode Status, string Body)> _responder;
     private readonly TimeSpan _delay;
+    private readonly int _releaseAt;
+    private readonly TaskCompletionSource _barrier = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private int _inFlight;
     private int _peakInFlight;
@@ -33,10 +40,18 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
 
     /// <param name="responder">Maps a request body to the status and body of its response.</param>
     /// <param name="delay">Time each request is held before being answered.</param>
-    public StubJsonRpcServer(Func<string, (HttpStatusCode Status, string Body)>? responder = null, TimeSpan delay = default)
+    /// <param name="releaseAt">
+    /// Number of simultaneously in-flight requests that must accumulate before any is answered;
+    /// <c>0</c> answers immediately.
+    /// </param>
+    public StubJsonRpcServer(
+        Func<string, (HttpStatusCode Status, string Body)>? responder = null,
+        TimeSpan delay = default,
+        int releaseAt = 0)
     {
         _responder = responder ?? (_ => (HttpStatusCode.OK, """{"jsonrpc":"2.0","id":1,"result":"0x1"}"""));
         _delay = delay;
+        _releaseAt = releaseAt;
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         _acceptLoop = AcceptLoopAsync(_cts.Token);
@@ -109,6 +124,8 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
                     _bodies.Add(body);
                 }
 
+                await WaitForBarrierAsync(inFlight, token);
+
                 if (_delay > TimeSpan.Zero)
                 {
                     await Task.Delay(_delay, token);
@@ -122,6 +139,32 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
             }
         }
         catch (Exception e) when (e is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+        {
+        }
+    }
+
+    /// <summary>Holds a request until enough others join it, so peak concurrency is observed exactly.</summary>
+    /// <remarks>
+    /// Gives up after a few seconds rather than hanging: the waiting test then fails on its peak
+    /// assertion, which says what went wrong, instead of timing out with no diagnosis.
+    /// </remarks>
+    private async Task WaitForBarrierAsync(int inFlight, CancellationToken token)
+    {
+        if (_releaseAt <= 0)
+        {
+            return;
+        }
+
+        if (inFlight >= _releaseAt)
+        {
+            _barrier.TrySetResult();
+        }
+
+        try
+        {
+            await _barrier.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
+        }
+        catch (TimeoutException)
         {
         }
     }

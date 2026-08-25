@@ -48,9 +48,12 @@ public class LevelResultTests
     {
         LevelResult result = WithLatencies(1);
 
-        Assert.That(result.Min, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
-        Assert.That(result.P99, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
-        Assert.That(result.Max, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Min, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
+            Assert.That(result.P99, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
+            Assert.That(result.Max, Is.EqualTo(TimeSpan.FromMilliseconds(1)));
+        }
     }
 
     [Test]
@@ -59,10 +62,13 @@ public class LevelResultTests
         // A level that sent nothing must not divide by zero on its way to the report.
         LevelResult result = WithLatencies(0);
 
-        Assert.That(result.Mean, Is.EqualTo(TimeSpan.Zero));
-        Assert.That(result.P50, Is.EqualTo(TimeSpan.Zero));
-        Assert.That(result.RequestsPerSecond, Is.Zero);
-        Assert.That(result.FailureRate, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Mean, Is.EqualTo(TimeSpan.Zero));
+            Assert.That(result.P50, Is.EqualTo(TimeSpan.Zero));
+            Assert.That(result.RequestsPerSecond, Is.Zero);
+            Assert.That(result.FailureRate, Is.Zero);
+        }
     }
 
     [Test]
@@ -72,11 +78,14 @@ public class LevelResultTests
         // how much work the node actually turned away.
         LevelResult result = WithLatencies(100, failed: 25);
 
-        Assert.That(result.Total, Is.EqualTo(100));
-        Assert.That(result.Failed, Is.EqualTo(25));
-        Assert.That(result.Succeeded, Is.EqualTo(75));
-        Assert.That(result.FailureRate, Is.EqualTo(0.25d));
-        Assert.That(result.RequestsPerSecond, Is.EqualTo(50d));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Total, Is.EqualTo(100));
+            Assert.That(result.Failed, Is.EqualTo(25));
+            Assert.That(result.Succeeded, Is.EqualTo(75));
+            Assert.That(result.FailureRate, Is.EqualTo(0.25d));
+            Assert.That(result.RequestsPerSecond, Is.EqualTo(50d));
+        }
     }
 
     [Test]

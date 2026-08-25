@@ -36,8 +36,11 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(server.Requests, Is.EqualTo(20));
-        Assert.That(results[0].Rewritten, Is.EqualTo(10), "only the records that were not already 'latest' need rewriting");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.Requests, Is.EqualTo(20));
+            Assert.That(results[0].Rewritten, Is.EqualTo(10), "only the records that were not already 'latest' need rewriting");
+        }
 
         foreach (string body in server.Bodies)
         {
@@ -61,8 +64,11 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(results[0].Rewritten, Is.Zero);
-        Assert.That(server.Bodies.Count, Is.EqualTo(6));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Rewritten, Is.Zero);
+            Assert.That(server.Bodies, Has.Count.EqualTo(6));
+        }
 
         for (int i = 0; i < server.Bodies.Count; i++)
         {
@@ -76,10 +82,11 @@ public class ReplaySweepTests
     [TestCase(8)]
     public async Task Keeps_exactly_the_requested_number_of_requests_in_flight(int concurrency)
     {
-        // A sweep only means something if the level label is the load actually offered. The delay holds
-        // requests open long enough that a harness running fewer or more in parallel would show it.
+        // A sweep only means something if the level label is the load actually offered. The server
+        // answers nothing until exactly this many requests are open at once, so a harness holding
+        // fewer can never finish and one holding more is caught by the peak.
         string path = WriteTrace(".jsonl", Requests(concurrency * 6, _ => "latest"));
-        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(25));
+        await using StubJsonRpcServer server = new(releaseAt: concurrency);
 
         IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
         {
@@ -88,9 +95,13 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(results[0].Concurrency, Is.EqualTo(concurrency));
-        Assert.That(server.PeakInFlight, Is.EqualTo(concurrency));
-        Assert.That(server.Connections, Is.LessThanOrEqualTo(concurrency));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Concurrency, Is.EqualTo(concurrency));
+            Assert.That(results[0].Total, Is.EqualTo(concurrency * 6), "the barrier released, so every request completed");
+            Assert.That(server.PeakInFlight, Is.EqualTo(concurrency), "never more in flight than the level");
+            Assert.That(server.Connections, Is.LessThanOrEqualTo(concurrency));
+        }
     }
 
     [Test]
@@ -107,9 +118,12 @@ public class ReplaySweepTests
             WarmupRequests = 5,
         });
 
-        Assert.That(server.Requests, Is.EqualTo(15), "the node sees warm-up and measured traffic");
-        Assert.That(results[0].Total, Is.EqualTo(10), "only the measured window is reported");
-        Assert.That(results[0].Latencies.Count, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.Requests, Is.EqualTo(15), "the node sees warm-up and measured traffic");
+            Assert.That(results[0].Total, Is.EqualTo(10), "only the measured window is reported");
+            Assert.That(results[0].Latencies, Has.Count.EqualTo(10));
+        }
     }
 
     [Test]
@@ -134,9 +148,80 @@ public class ReplaySweepTests
             summedLatencies += latency.TotalMilliseconds;
         }
 
-        Assert.That(result.Elapsed, Is.GreaterThanOrEqualTo(result.Max), "the window contains every request");
-        Assert.That(result.Elapsed.TotalMilliseconds, Is.EqualTo(summedLatencies).Within(30d),
-            "one worker answers in series, so the window is the sum of its request latencies");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Elapsed, Is.GreaterThanOrEqualTo(result.Max), "the window contains every request");
+            Assert.That(result.Elapsed.TotalMilliseconds, Is.EqualTo(summedLatencies).Within(30d),
+                "one worker answers in series, so the window is the sum of its request latencies");
+        }
+    }
+
+    [Test]
+    public async Task Raises_warm_up_to_cover_every_connection()
+    {
+        // Each worker owns one connection, so a warm-up shorter than the level leaves some handshakes
+        // to happen inside the measured window - the one cost the warm-up exists to move out of it.
+        const int concurrency = 4;
+        string path = WriteTrace(".jsonl", Requests(40, _ => "latest"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [concurrency],
+            MeasuredRequests = 10,
+            WarmupRequests = 1,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Total, Is.EqualTo(10), "the measured window is untouched");
+            Assert.That(server.Requests, Is.EqualTo(concurrency + 10), "warm-up ran once per connection, not once overall");
+        }
+    }
+
+    [Test]
+    public async Task Stops_a_level_once_its_duration_cap_expires()
+    {
+        // The cap has to gate sending, not just enqueueing: the channel holds twice the concurrency, so
+        // gating only the reader would let that many requests through after the level should have ended.
+        TimeSpan cap = TimeSpan.FromMilliseconds(400);
+        string path = WriteTrace(".jsonl", Requests(4000, _ => "latest"));
+        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(20));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [8],
+            MeasuredRequests = 4000,
+            WarmupRequests = 0,
+            MaxDuration = cap,
+        });
+
+        LevelResult result = results[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Total, Is.GreaterThan(0), "the level ran");
+            Assert.That(result.Total, Is.LessThan(4000), "the cap stopped it early");
+            Assert.That(result.Elapsed, Is.LessThan(cap * 4), "the window tracks the cap");
+            Assert.That(server.Requests, Is.EqualTo(result.Total), "nothing was sent that was not measured");
+        }
+    }
+
+    [Test]
+    public async Task Ignores_the_duration_cap_when_none_is_set()
+    {
+        string path = WriteTrace(".jsonl", Requests(20, _ => "latest"));
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [4],
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+            MaxDuration = null,
+        });
+
+        Assert.That(results[0].Total, Is.EqualTo(20));
     }
 
     [Test]
@@ -153,17 +238,23 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(results.Count, Is.EqualTo(3));
-        Assert.That(results.Select(result => result.Concurrency), Is.EqualTo(new[] { 1, 2, 4 }));
-        Assert.That(server.Requests, Is.EqualTo(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results, Has.Count.EqualTo(3));
+            Assert.That(results.Select(result => result.Concurrency), Is.EqualTo(new[] { 1, 2, 4 }));
+            Assert.That(server.Requests, Is.EqualTo(15));
+        }
 
         // Concurrent levels may answer in any order, so compare the sets each level was given.
         string[] firstLevel = [.. server.Bodies.Take(5).Order()];
         string[] secondLevel = [.. server.Bodies.Skip(5).Take(5).Order()];
         string[] thirdLevel = [.. server.Bodies.Skip(10).Take(5).Order()];
 
-        Assert.That(secondLevel, Is.EqualTo(firstLevel));
-        Assert.That(thirdLevel, Is.EqualTo(firstLevel));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondLevel, Is.EqualTo(firstLevel));
+            Assert.That(thirdLevel, Is.EqualTo(firstLevel));
+        }
     }
 
     [Test]
@@ -181,9 +272,13 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(server.Bodies.Count, Is.EqualTo(3));
         using JsonDocument document = JsonDocument.Parse(server.Bodies[0]);
-        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("0x7"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.Bodies, Has.Count.EqualTo(3));
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("0x7"));
+        }
     }
 
     [Test]
@@ -216,17 +311,23 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(results[0].FeesStripped, Is.EqualTo(12));
-        Assert.That(server.Bodies.Count, Is.EqualTo(12));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].FeesStripped, Is.EqualTo(12));
+            Assert.That(server.Bodies, Has.Count.EqualTo(12));
+        }
 
         foreach (string body in server.Bodies)
         {
             using JsonDocument document = JsonDocument.Parse(body);
             JsonElement call = document.RootElement.GetProperty("params")[0];
 
-            Assert.That(call.TryGetProperty("gasPrice", out _), Is.False);
-            Assert.That(call.GetProperty("gas").GetString(), Is.EqualTo("0x77359400"), "only fee fields go");
-            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(call.TryGetProperty("gasPrice", out _), Is.False);
+                Assert.That(call.GetProperty("gas").GetString(), Is.EqualTo("0x77359400"), "only fee fields go");
+                Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+            }
         }
     }
 
@@ -278,17 +379,20 @@ public class ReplaySweepTests
         });
 
         LevelResult result = results[0];
-        Assert.That(result.Succeeded, Is.Zero);
-        Assert.That(result.Failed, Is.EqualTo(8));
-        Assert.That(result.FailureRate, Is.EqualTo(1d));
-
         int counted = expectedCounter switch
         {
             nameof(LevelResult.RpcErrors) => result.RpcErrors,
             nameof(LevelResult.HttpErrors) => result.HttpErrors,
             _ => result.TransportErrors,
         };
-        Assert.That(counted, Is.EqualTo(8));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Succeeded, Is.Zero);
+            Assert.That(result.Failed, Is.EqualTo(8));
+            Assert.That(result.FailureRate, Is.EqualTo(1d));
+            Assert.That(counted, Is.EqualTo(8));
+        }
     }
 
     [Test]
@@ -306,8 +410,11 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
-        Assert.That(results[0].Succeeded, Is.EqualTo(4));
-        Assert.That(results[0].Failed, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Succeeded, Is.EqualTo(4));
+            Assert.That(results[0].Failed, Is.Zero);
+        }
     }
 
     [Test]
@@ -322,9 +429,12 @@ public class ReplaySweepTests
             MeasuredRequests = 0,
         });
 
-        Assert.That(server.Requests, Is.Zero);
-        Assert.That(results[0].Rewritten, Is.EqualTo(20));
-        Assert.That(results[0].Succeeded, Is.EqualTo(25));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(server.Requests, Is.Zero);
+            Assert.That(results[0].Rewritten, Is.EqualTo(20));
+            Assert.That(results[0].Succeeded, Is.EqualTo(25));
+        }
     }
 
     [Test]

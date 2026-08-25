@@ -54,8 +54,16 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
             if (_options.WarmupRequests > 0)
             {
-                Report($"concurrency {concurrency}: warm-up, {_options.WarmupRequests} requests");
-                await RunPassAsync(concurrency, _options.WarmupRequests, httpClient, auth, measure: false, token);
+                // Every worker needs at least one request, or its connection opens inside the measured
+                // window and the level pays a handshake it is supposed to have already paid.
+                int warmup = Math.Max(_options.WarmupRequests, concurrency);
+                if (warmup != _options.WarmupRequests)
+                {
+                    Report($"concurrency {concurrency}: warm-up raised to {warmup} to cover every connection");
+                }
+
+                Report($"concurrency {concurrency}: warm-up, {warmup} requests");
+                await RunPassAsync(concurrency, warmup, httpClient, auth, measure: false, token);
             }
 
             Report($"concurrency {concurrency}: measuring");
@@ -108,6 +116,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         WorkerTally[] tallies = new WorkerTally[concurrency];
         Task[] tasks = new Task[concurrency + 1];
         int perWorkerHint = requestLimit == int.MaxValue ? 1024 : requestLimit / concurrency + 1;
+        PassDeadline deadline = new(measure ? _options.MaxDuration : null);
 
         for (int i = 0; i < concurrency; i++)
         {
@@ -115,13 +124,13 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             tallies[i] = tally;
             RawJsonRpcClient client = new(httpClient, _options.Address, auth);
             tasks[i + 1] = Task.Run(
-                () => WorkerAsync(channel.Reader, client, tally, measure, passCts, passToken),
+                () => WorkerAsync(channel.Reader, client, tally, measure, deadline, passCts, passToken),
                 CancellationToken.None);
         }
 
         (int Rewritten, int FeesStripped) edited = default;
         tasks[0] = Task.Run(
-            async () => edited = await ReadAsync(channel.Writer, requestLimit, measure, passToken),
+            async () => edited = await ReadAsync(channel.Writer, requestLimit, deadline, passToken),
             CancellationToken.None);
 
         await Task.WhenAll(tasks);
@@ -131,7 +140,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
     /// <summary>Decompresses the trace, applies the replay edits and feeds the workers.</summary>
     /// <returns>How many records had their block parameter rewritten, and how many lost a fee field.</returns>
-    private async Task<(int Rewritten, int FeesStripped)> ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, bool enforceDuration, CancellationToken token)
+    private async Task<(int Rewritten, int FeesStripped)> ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, PassDeadline deadline, CancellationToken token)
     {
         int rewritten = 0;
         int feesStripped = 0;
@@ -140,12 +149,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             using TraceLineReader reader = new(_options.InputPath);
             SkipLeadingRecords(reader);
 
-            long deadline = enforceDuration && _options.MaxDuration is { } cap
-                ? Stopwatch.GetTimestamp() + (long)(cap.TotalSeconds * Stopwatch.Frequency)
-                : long.MaxValue;
-
             int sent = 0;
-            while (sent < requestLimit && Stopwatch.GetTimestamp() < deadline && reader.TryReadRecord(out ReadOnlySpan<byte> record))
+            while (sent < requestLimit && !deadline.HasExpired && reader.TryReadRecord(out ReadOnlySpan<byte> record))
             {
                 PendingRequest request = Materialize(record, ref rewritten, ref feesStripped);
                 await writer.WriteAsync(request, token);
@@ -249,6 +254,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         RawJsonRpcClient client,
         WorkerTally tally,
         bool measure,
+        PassDeadline deadline,
         CancellationTokenSource passCts,
         CancellationToken token)
     {
@@ -256,6 +262,15 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             await foreach (PendingRequest request in reader.ReadAllAsync(token))
             {
+                if (deadline.HasExpired)
+                {
+                    // Past the cap: drain what the reader already queued instead of sending it.
+                    ArrayPool<byte>.Shared.Return(request.Buffer);
+                    continue;
+                }
+
+                deadline.Start();
+
                 long start = Stopwatch.GetTimestamp();
                 RequestOutcome outcome = await client.SendAsync(request.Buffer.AsMemory(0, request.Length), token);
                 long end = Stopwatch.GetTimestamp();
@@ -417,4 +432,43 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
     /// <summary>A request body waiting to be sent, in a pooled buffer owned by whichever worker takes it.</summary>
     private readonly record struct PendingRequest(byte[] Buffer, int Length);
+
+    /// <summary>Bounds how long a level spends sending, measured from its first request.</summary>
+    /// <remarks>
+    /// The clock starts on the first send rather than when the pass is set up, so decompressing a
+    /// <see cref="ReplayOptions.Skip"/> prefix does not consume the budget. Both the reader and the
+    /// workers consult it, so expiry stops sending straight away instead of only stopping enqueueing:
+    /// the channel holds twice the concurrency, which at high concurrency is a large overshoot.
+    /// </remarks>
+    /// <param name="limit">Wall-clock budget, or <see langword="null"/> for no cap.</param>
+    private sealed class PassDeadline(TimeSpan? limit)
+    {
+        private readonly long _budget = limit is { } cap ? (long)(cap.TotalSeconds * Stopwatch.Frequency) : 0L;
+        private long _expiresAt;
+
+        /// <summary>Starts the clock, if this is the first call and a cap was set.</summary>
+        public void Start()
+        {
+            if (_budget != 0L)
+            {
+                Interlocked.CompareExchange(ref _expiresAt, Stopwatch.GetTimestamp() + _budget, 0L);
+            }
+        }
+
+        /// <summary>Whether the budget is set, started, and used up.</summary>
+        public bool HasExpired
+        {
+            get
+            {
+                if (_budget == 0L)
+                {
+                    return false;
+                }
+
+                long expiresAt = Volatile.Read(ref _expiresAt);
+
+                return expiresAt != 0L && Stopwatch.GetTimestamp() >= expiresAt;
+            }
+        }
+    }
 }

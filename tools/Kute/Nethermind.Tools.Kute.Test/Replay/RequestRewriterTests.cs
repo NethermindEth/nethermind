@@ -43,6 +43,7 @@ public class RequestRewriterTests
 
         Assert.That(RequestRewriter.TryLocateBlockParameter(utf8, out int start, out int length), Is.True);
         Assert.That(Encoding.UTF8.GetString(utf8, start, length), Is.EqualTo(expected));
+
     }
 
     private static IEnumerable<TestCaseData> UnreadableRequests()
@@ -85,11 +86,14 @@ public class RequestRewriterTests
         JsonNode rewritten = JsonNode.Parse(Rewrite(request, stripFees: false))!;
         JsonNode original = JsonNode.Parse(request)!;
 
-        Assert.That((string?)rewritten["params"]![1], Is.EqualTo("latest"));
-        Assert.That(rewritten["params"]![0]!.ToJsonString(), Is.EqualTo(original["params"]![0]!.ToJsonString()));
-        Assert.That(rewritten["params"]![2]!.ToJsonString(), Is.EqualTo(original["params"]![2]!.ToJsonString()));
-        Assert.That(rewritten["id"]!.ToJsonString(), Is.EqualTo(original["id"]!.ToJsonString()));
-        Assert.That(rewritten["method"]!.ToJsonString(), Is.EqualTo(original["method"]!.ToJsonString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)rewritten["params"]![1], Is.EqualTo("latest"));
+            Assert.That(rewritten["params"]![0]!.ToJsonString(), Is.EqualTo(original["params"]![0]!.ToJsonString()));
+            Assert.That(rewritten["params"]![2]!.ToJsonString(), Is.EqualTo(original["params"]![2]!.ToJsonString()));
+            Assert.That(rewritten["id"]!.ToJsonString(), Is.EqualTo(original["id"]!.ToJsonString()));
+            Assert.That(rewritten["method"]!.ToJsonString(), Is.EqualTo(original["method"]!.ToJsonString()));
+        }
     }
 
     [Test]
@@ -100,9 +104,13 @@ public class RequestRewriterTests
 
         string rewritten = Rewrite(request, stripFees: false);
 
-        Assert.That(rewritten, Has.Length.LessThan(request.Length));
         using JsonDocument document = JsonDocument.Parse(rewritten);
-        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewritten, Has.Length.LessThan(request.Length));
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+        }
     }
 
     [Test]
@@ -254,9 +262,12 @@ public class RequestRewriterTests
             actual.Add(property.Name);
         }
 
-        Assert.That(actual, Is.EqualTo(expectedKeys));
-        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
-        Assert.That(RequestRewriter.HasFeeField(Encoding.UTF8.GetBytes(rewritten)), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expectedKeys));
+            Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+            Assert.That(RequestRewriter.HasFeeField(Encoding.UTF8.GetBytes(rewritten)), Is.False);
+        }
     }
 
     [Test]
@@ -279,8 +290,11 @@ public class RequestRewriterTests
         using JsonDocument document = JsonDocument.Parse(Rewrite(request, stripFees: true));
         JsonElement overrides = document.RootElement.GetProperty("params")[2];
 
-        Assert.That(overrides.GetProperty("0x02").TryGetProperty("gasPrice", out _), Is.True);
-        Assert.That(document.RootElement.GetProperty("params")[0].TryGetProperty("gasPrice", out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overrides.GetProperty("0x02").TryGetProperty("gasPrice", out _), Is.True);
+            Assert.That(document.RootElement.GetProperty("params")[0].TryGetProperty("gasPrice", out _), Is.False);
+        }
     }
 
     [TestCase("""{"method":"eth_call","params":[{"from":"0x01"},"latest",{}],"id":1}""", false, TestName = "No fee field")]
