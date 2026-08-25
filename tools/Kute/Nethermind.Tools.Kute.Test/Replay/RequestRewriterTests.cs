@@ -241,6 +241,14 @@ public class RequestRewriterTests
             new[] { "from" }).SetName("Fee fields either side of a kept property");
 
         yield return new TestCaseData(
+            """{"method":"eth_call","params":[{"from":"0x01","maxFeePerBlobGas":"0x1","data":"0xab"},"0x10",{}],"id":1}""",
+            new[] { "from", "data" }).SetName("Blob fee field");
+
+        yield return new TestCaseData(
+            """{"method":"eth_call","params":[{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x3","maxFeePerBlobGas":"0x4","gas":"0x5"},"0x10",{}],"id":1}""",
+            new[] { "gas" }).SetName("Every fee field at once");
+
+        yield return new TestCaseData(
             """{"method":"eth_call","params":[{"from":"0x01","gas":"0x2"},"0x10",{}],"id":1}""",
             new[] { "from", "gas" }).SetName("No fee field to strip");
     }

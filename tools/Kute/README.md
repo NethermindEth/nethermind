@@ -95,12 +95,15 @@ request's block parameter to `latest` makes the trace replayable against any hea
 Two things in a capture go stale at a different height, and both are fixed by default:
 
 - **The block parameter** names a block the node may have pruned.
-- **Fee fields** (`gasPrice`, `maxFeePerGas`, `maxPriorityFeePerGas`) were priced against the base fee
-  at capture time. Nethermind enforces the base fee on a priced `eth_call`, so once the network's base
-  fee rises above a captured fee, that call is rejected before it executes. The rejected share drifts
-  with the network, and a rejected call returns in microseconds, so the run silently gets *faster* as
-  the base fee climbs. Stripping the fields removes the precondition and leaves the EVM work unchanged.
-  Pass `--keep-fees` to replay them as captured.
+- **Fee fields** (`gasPrice`, `maxFeePerGas`, `maxPriorityFeePerGas`, `maxFeePerBlobGas`) were
+  priced against the base fee at capture time. Nethermind enforces the base fee on a priced
+  `eth_call`, so once the network's base fee rises above a captured fee, that call is rejected before
+  it executes. The rejected share drifts with the network, and a rejected call returns in
+  microseconds, so the run silently gets *faster* as the base fee climbs. Stripping trades that drift
+  for a fixed, smaller distortion: the call executes with an effective gas price of zero, so a
+  contract that branches on `GASPRICE` can take a different path (`BASEFEE` is unaffected). Only the
+  top-level call object is stripped; transactions nested inside an `eth_simulateV1` payload keep
+  their captured fees. Pass `--keep-fees` to replay them as captured.
 
 Note that stripping is not the same transformation as repricing. If a corpus has to execute identically
 on a client that skips fee checks, replay the same pre-transformed file on both rather than relying on
@@ -126,9 +129,9 @@ are discarded, then the measured pass. Both share one connection pool, so the me
 pays connection setup. Exactly `-c` requests are kept in flight by that many persistent workers, so
 the level label is the load actually offered.
 
-Each worker owns one connection, so a warm-up shorter than the level would leave some handshakes
-inside the measured window; `-w` is raised to the concurrency when it is smaller, and the run says so.
-`-w 0` opts out of warming altogether.
+Connections are opened by a priming burst before the warm-up pass: one request per connection, sent
+simultaneously, because the pool only opens as many connections as it sees concurrent requests. `-w 0`
+opts out of priming and warming altogether.
 
 Every level replays the same records, which is what makes levels comparable. Size a level with
 `-n <count>` (measured requests) or `-d <seconds>` (wall-clock cap), and note that at low concurrency
@@ -137,6 +140,9 @@ a whole 50k-record trace takes a long time: `-n 0` replays all of it.
 The duration cap is timed from the level's first request, so decompressing a `--skip` prefix does not
 consume it, and it gates sending rather than reading: once it expires, requests the reader had already
 queued are dropped instead of sent.
+
+A run that sends nothing - an empty trace, or `--skip` past its end - exits non-zero rather than
+reporting an empty success.
 
 ### Options that matter
 

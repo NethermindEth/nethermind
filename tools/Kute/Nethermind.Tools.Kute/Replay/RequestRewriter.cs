@@ -27,11 +27,16 @@ public readonly record struct RequestEdit(int Start, int Length, bool IsBlockPar
 /// parsing and writing back every record would cost more than the node spends answering it. The scan
 /// stops once the block parameter has been located, so the override map is never read.
 /// </para>
+/// <para>
+/// Fee stripping covers the top-level call object only: transactions nested inside an
+/// <c>eth_simulateV1</c> payload keep their captured fees, since their removals have no fixed upper
+/// count and would not fit the edit budget the replay path stack-allocates.
+/// </para>
 /// </remarks>
 public static class RequestRewriter
 {
-    /// <summary>Largest number of edits a single request can need: three fee fields and the block parameter.</summary>
-    public const int MaxEdits = 4;
+    /// <summary>Largest number of edits a single request can need: four fee fields and the block parameter.</summary>
+    public const int MaxEdits = 5;
 
     /// <summary>
     /// Zero-based index of the block parameter for each method whose block position is known.
@@ -214,7 +219,8 @@ public static class RequestRewriter
             int nameStart = (int)reader.TokenStartIndex;
             bool isFee = reader.ValueTextEquals("gasPrice"u8)
                 || reader.ValueTextEquals("maxFeePerGas"u8)
-                || reader.ValueTextEquals("maxPriorityFeePerGas"u8);
+                || reader.ValueTextEquals("maxPriorityFeePerGas"u8)
+                || reader.ValueTextEquals("maxFeePerBlobGas"u8);
 
             if (!reader.Read())
             {
@@ -310,15 +316,16 @@ public static class RequestRewriter
     }
 
     /// <summary>
-    /// Locates the second entry of the request's <c>params</c> array, which by convention carries the
-    /// block number, hash or tag for state-reading methods.
+    /// Locates the block parameter at the position the request's method keeps it, which differs per
+    /// method: first for <c>eth_getBlockByNumber</c>, second for <c>eth_call</c>, third for
+    /// <c>eth_getStorageAt</c>.
     /// </summary>
     /// <param name="request">A single JSON-RPC request, as UTF-8 bytes.</param>
     /// <param name="start">Index of the first byte of the block parameter.</param>
     /// <param name="length">Length of the block parameter in bytes.</param>
     /// <returns>
-    /// <see langword="true"/> if the request is an object with a <c>params</c> array holding at least
-    /// two entries; otherwise <see langword="false"/>.
+    /// <see langword="true"/> if the method's block position is known and <c>params</c> reaches it;
+    /// otherwise <see langword="false"/>.
     /// </returns>
     public static bool TryLocateBlockParameter(ReadOnlySpan<byte> request, out int start, out int length)
     {

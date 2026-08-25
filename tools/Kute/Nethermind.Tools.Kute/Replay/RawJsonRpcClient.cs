@@ -75,12 +75,17 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
     /// <c>error</c> member, and the rest is drained without being looked at. Buffering a fixed prefix
     /// instead would leave any response longer than that prefix unclassified, and on override-heavy
     /// captures most responses are longer than any sensible prefix.
+    /// <para>
+    /// A batch (root array) has no single decisive member, so it is walked to the end: it succeeds
+    /// only when every entry is an object carrying a <c>result</c>.
+    /// </para>
     /// </remarks>
     private async Task<RequestOutcome> ClassifyAsync(HttpResponseMessage response, CancellationToken token)
     {
         await using Stream stream = await response.Content.ReadAsStreamAsync(token);
 
         JsonReaderState state = new();
+        BatchProgress batch = default;
         int buffered = 0;
         bool endOfStream = false;
         RequestOutcome? verdict = null;
@@ -100,7 +105,7 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
             }
 
             buffered += read;
-            verdict = Scan(_buffer.AsSpan(0, buffered), endOfStream, ref state, out int consumed);
+            verdict = Scan(_buffer.AsSpan(0, buffered), endOfStream, ref state, ref batch, out int consumed);
 
             if (verdict is null && endOfStream)
             {
@@ -116,46 +121,27 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
 
         await DrainAsync(stream, endOfStream, token);
 
-        // No decisive member means the body was not a JSON-RPC response at all.
-        return verdict ?? RequestOutcome.RpcError;
+        // With no early verdict, a fully-walked batch of results is a success; anything else carried
+        // no decisive member and was not a JSON-RPC response.
+        return verdict ?? (batch.IsBatch && batch.Entries > 0 && batch.Results == batch.Entries
+            ? RequestOutcome.Success
+            : RequestOutcome.RpcError);
     }
 
     /// <summary>
-    /// Advances the reader over the buffered bytes, looking for a decisive top-level member.
+    /// Advances the reader over the buffered bytes, looking for a decisive member.
     /// </summary>
     /// <returns>The verdict once one is reachable, otherwise <see langword="null"/> to read more.</returns>
-    private static RequestOutcome? Scan(ReadOnlySpan<byte> buffered, bool isFinalBlock, ref JsonReaderState state, out int consumed)
+    private static RequestOutcome? Scan(ReadOnlySpan<byte> buffered, bool isFinalBlock, ref JsonReaderState state, ref BatchProgress batch, out int consumed)
     {
         Utf8JsonReader reader = new(buffered, isFinalBlock, state);
         RequestOutcome? verdict = null;
 
         try
         {
-            while (reader.Read())
+            while (verdict is null && reader.Read())
             {
-                if (reader.TokenType == JsonTokenType.StartArray && reader.CurrentDepth == 0)
-                {
-                    // A batch response: treat it as a result, since per-entry verdicts are not tracked.
-                    verdict = RequestOutcome.Success;
-                    break;
-                }
-
-                if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1)
-                {
-                    continue;
-                }
-
-                if (reader.ValueTextEquals("error"u8))
-                {
-                    verdict = RequestOutcome.RpcError;
-                    break;
-                }
-
-                if (reader.ValueTextEquals("result"u8))
-                {
-                    verdict = RequestOutcome.Success;
-                    break;
-                }
+                verdict = Inspect(ref reader, ref batch);
             }
         }
         catch (JsonException)
@@ -167,6 +153,59 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
         consumed = (int)reader.BytesConsumed;
 
         return verdict;
+    }
+
+    /// <summary>Classifies one token, tracking batch progress when the root is an array.</summary>
+    private static RequestOutcome? Inspect(ref Utf8JsonReader reader, ref BatchProgress batch)
+    {
+        JsonTokenType type = reader.TokenType;
+        if (type == JsonTokenType.StartArray && reader.CurrentDepth == 0)
+        {
+            batch.IsBatch = true;
+            return null;
+        }
+
+        if (batch.IsBatch && reader.CurrentDepth == 1)
+        {
+            if (type == JsonTokenType.StartObject)
+            {
+                batch.Entries++;
+                return null;
+            }
+
+            // An entry that is not an object cannot be a JSON-RPC response.
+            return type == JsonTokenType.EndObject ? null : RequestOutcome.RpcError;
+        }
+
+        if (type != JsonTokenType.PropertyName || reader.CurrentDepth != (batch.IsBatch ? 2 : 1))
+        {
+            return null;
+        }
+
+        if (reader.ValueTextEquals("error"u8))
+        {
+            return RequestOutcome.RpcError;
+        }
+
+        if (reader.ValueTextEquals("result"u8))
+        {
+            if (!batch.IsBatch)
+            {
+                return RequestOutcome.Success;
+            }
+
+            batch.Results++;
+        }
+
+        return null;
+    }
+
+    /// <summary>Progress through a batch response, carried across buffer refills.</summary>
+    private struct BatchProgress
+    {
+        public bool IsBatch;
+        public int Entries;
+        public int Results;
     }
 
     private bool Grow()

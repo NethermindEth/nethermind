@@ -88,12 +88,10 @@ public class TraceLineReaderTests
 
         using TraceLineReader reader = new(path);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.TryReadRecord(out _), Is.True);
-            Assert.That(reader.TryReadRecord(out _), Is.False);
-            Assert.That(reader.TryReadRecord(out _), Is.False);
-        }
+        // Sequential reads mutate the reader, so each assertion must stop the test when it fails.
+        Assert.That(reader.TryReadRecord(out _), Is.True);
+        Assert.That(reader.TryReadRecord(out _), Is.False);
+        Assert.That(reader.TryReadRecord(out _), Is.False);
     }
 
     [Test]

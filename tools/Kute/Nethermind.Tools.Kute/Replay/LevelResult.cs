@@ -54,10 +54,10 @@ public sealed record LevelResult
     /// <summary>Per-request latencies, sorted ascending.</summary>
     public required IReadOnlyList<TimeSpan> Latencies { get; init; }
 
-    /// <summary>Requests whose block parameter was rewritten before being sent.</summary>
+    /// <summary>Measured requests sent with a rewritten block parameter.</summary>
     public required int Rewritten { get; init; }
 
-    /// <summary>Requests that had at least one fee field removed before being sent.</summary>
+    /// <summary>Measured requests sent with at least one fee field removed.</summary>
     public required int FeesStripped { get; init; }
 
     /// <summary>Requests that failed for any reason.</summary>
@@ -146,6 +146,12 @@ public sealed class WorkerTally(int expectedRequests)
     /// <summary>Total bytes of request bodies this worker sent.</summary>
     public long RequestBytes { get; private set; }
 
+    /// <summary>Requests this worker sent with a rewritten block parameter.</summary>
+    public int Rewritten { get; private set; }
+
+    /// <summary>Requests this worker sent with at least one fee field removed.</summary>
+    public int FeesStripped { get; private set; }
+
     /// <summary>Timestamp at which this worker sent its first measured request.</summary>
     public long FirstStart { get; private set; } = long.MaxValue;
 
@@ -160,10 +166,22 @@ public sealed class WorkerTally(int expectedRequests)
     /// <param name="end">Raw <see cref="Stopwatch"/> timestamp taken once the response was read.</param>
     /// <param name="requestBytes">Size of the request body sent.</param>
     /// <param name="outcome">How the request ended.</param>
-    public void Add(long start, long end, int requestBytes, RequestOutcome outcome)
+    /// <param name="rewroteBlock">Whether the request's block parameter was rewritten.</param>
+    /// <param name="strippedFees">Whether the request had a fee field removed.</param>
+    public void Add(long start, long end, int requestBytes, RequestOutcome outcome, bool rewroteBlock, bool strippedFees)
     {
         _latencyTimestamps.Add(end - start);
         RequestBytes += requestBytes;
+
+        if (rewroteBlock)
+        {
+            Rewritten++;
+        }
+
+        if (strippedFees)
+        {
+            FeesStripped++;
+        }
 
         if (start < FirstStart)
         {

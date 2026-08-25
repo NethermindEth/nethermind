@@ -120,7 +120,7 @@ public class ReplaySweepTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(server.Requests, Is.EqualTo(15), "the node sees warm-up and measured traffic");
+            Assert.That(server.Requests, Is.EqualTo(2 + 5 + 10), "the node sees priming, warm-up and measured traffic");
             Assert.That(results[0].Total, Is.EqualTo(10), "only the measured window is reported");
             Assert.That(results[0].Latencies, Has.Count.EqualTo(10));
         }
@@ -129,53 +129,55 @@ public class ReplaySweepTests
     [Test]
     public async Task Measures_the_request_window_not_the_whole_pass()
     {
-        // Elapsed drives the reported throughput, so it has to span the requests themselves. Timing the
-        // whole pass instead would charge the node for the reader decompressing a skipped prefix.
-        string path = WriteTrace(".jsonl", Requests(20, _ => "latest"));
-        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(25));
+        // Elapsed drives the reported throughput, so it has to span the measured requests alone. The
+        // unmeasured prefix is sized to dwarf the measured window, so timing the whole pass instead
+        // cannot stay under the bound below, while a scheduler stall would have to reach seconds to
+        // push the correct window over it.
+        const int warmup = 40;
+        TimeSpan delay = TimeSpan.FromMilliseconds(25);
+
+        string path = WriteTrace(".jsonl", Requests(50, _ => "latest"));
+        await using StubJsonRpcServer server = new(delay: delay);
 
         IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
         {
             Concurrencies = [1],
             MeasuredRequests = 6,
-            WarmupRequests = 3,
+            WarmupRequests = warmup,
         });
 
         LevelResult result = results[0];
-        double summedLatencies = 0d;
-        foreach (TimeSpan latency in result.Latencies)
-        {
-            summedLatencies += latency.TotalMilliseconds;
-        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Elapsed, Is.GreaterThanOrEqualTo(result.Max), "the window contains every request");
-            Assert.That(result.Elapsed.TotalMilliseconds, Is.EqualTo(summedLatencies).Within(30d),
-                "one worker answers in series, so the window is the sum of its request latencies");
+            Assert.That(result.Elapsed, Is.LessThan(delay * warmup), "the unmeasured prefix stays outside the window");
         }
     }
 
     [Test]
-    public async Task Raises_warm_up_to_cover_every_connection()
+    public async Task Primes_every_connection_before_measuring()
     {
-        // Each worker owns one connection, so a warm-up shorter than the level leaves some handshakes
-        // to happen inside the measured window - the one cost the warm-up exists to move out of it.
+        // The pool opens a connection per concurrent request, so the level's connections only all open
+        // up front if the priming burst is genuinely simultaneous. Warm-up and measured passes are one
+        // request each, so the burst is the only phase that can put this many in flight at once - and
+        // the only way the run ends up with this many connections.
         const int concurrency = 4;
         string path = WriteTrace(".jsonl", Requests(40, _ => "latest"));
-        await using StubJsonRpcServer server = new();
+        await using StubJsonRpcServer server = new(releaseAt: concurrency);
 
         IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
         {
             Concurrencies = [concurrency],
-            MeasuredRequests = 10,
+            MeasuredRequests = 1,
             WarmupRequests = 1,
         });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(results[0].Total, Is.EqualTo(10), "the measured window is untouched");
-            Assert.That(server.Requests, Is.EqualTo(concurrency + 10), "warm-up ran once per connection, not once overall");
+            Assert.That(results[0].Total, Is.EqualTo(1), "the measured window is untouched");
+            Assert.That(server.Requests, Is.EqualTo(concurrency + 1 + 1), "the prime is one request per connection");
+            Assert.That(server.Connections, Is.EqualTo(concurrency), "the burst alone opened every connection");
         }
     }
 
@@ -190,7 +192,7 @@ public class ReplaySweepTests
         TimeSpan delay = TimeSpan.FromMilliseconds(150);
         TimeSpan cap = TimeSpan.FromMilliseconds(200);
 
-        string path = WriteTrace(".jsonl", Requests(concurrency * 20, _ => "latest"));
+        string path = WriteTrace(".jsonl", Requests(concurrency * 20, index => $"0x{index:x}"));
         await using StubJsonRpcServer server = new(delay: delay);
 
         IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
@@ -212,6 +214,8 @@ public class ReplaySweepTests
                 server.Requests,
                 Is.LessThanOrEqualTo(concurrency * 3),
                 "expiry dropped the queued backlog instead of sending it");
+            Assert.That(result.Rewritten, Is.EqualTo(result.Total),
+                "edits count when sent, so the dropped backlog reports none");
         }
     }
 
@@ -422,6 +426,30 @@ public class ReplaySweepTests
         {
             Assert.That(results[0].Succeeded, Is.EqualTo(4));
             Assert.That(results[0].Failed, Is.Zero);
+        }
+    }
+
+    [TestCase("""[{"jsonrpc":"2.0","id":1,"result":"0x1"},{"jsonrpc":"2.0","id":2,"result":"0x2"}]""", true, TestName = "Batch of results")]
+    [TestCase("""[{"jsonrpc":"2.0","id":1,"result":"0x1"},{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"boom"}}]""", false, TestName = "Batch containing an error")]
+    [TestCase("[]", false, TestName = "Empty batch")]
+    [TestCase("[42]", false, TestName = "Batch entry that is not a response")]
+    public async Task Classifies_batch_responses_by_their_entries(string responseBody, bool success)
+    {
+        // A batch has no single decisive member: an entry-blind classifier would call a batch of pure
+        // errors a success, and error rates are what the sweep's failure gate keys on.
+        string path = WriteTrace(".jsonl", Requests(3, _ => "latest"));
+        await using StubJsonRpcServer server = new(_ => (HttpStatusCode.OK, responseBody));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            MeasuredRequests = 3,
+            WarmupRequests = 0,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Succeeded, Is.EqualTo(success ? 3 : 0));
+            Assert.That(results[0].RpcErrors, Is.EqualTo(success ? 0 : 3));
         }
     }
 

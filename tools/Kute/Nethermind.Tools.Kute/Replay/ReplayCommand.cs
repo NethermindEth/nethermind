@@ -175,6 +175,17 @@ public static class ReplayCommand
                 await File.WriteAllTextAsync(outputFile, report, cancellationToken);
             }
 
+            foreach (LevelResult result in results)
+            {
+                // A level that sent nothing has a zero failure rate; exiting zero would let CI read
+                // an empty trace as a passing benchmark.
+                if (result.Total == 0)
+                {
+                    await Console.Error.WriteLineAsync("No requests were replayed: the trace has no records past --skip.");
+                    return 2;
+                }
+            }
+
             return ExceedsFailureBudget(results, parseResult.GetValue(MaxFailurePercent)) ? 1 : 0;
         });
 

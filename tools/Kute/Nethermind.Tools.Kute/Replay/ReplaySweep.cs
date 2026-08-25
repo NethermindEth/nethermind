@@ -21,8 +21,9 @@ namespace Nethermind.Tools.Kute.Replay;
 /// rather than one task per request, so the number in flight is the number asked for and the harness
 /// adds no scheduling noise of its own.
 /// <para>
-/// Each level gets a fresh connection pool and runs its warm-up pass on that pool, so the measured
-/// window never pays connection setup.
+/// Each level gets a fresh connection pool, opens every connection with a burst of simultaneous
+/// priming requests, and runs its warm-up pass on that pool, so the measured window never pays
+/// connection setup.
 /// </para>
 /// </remarks>
 /// <param name="options">Settings for the run.</param>
@@ -54,16 +55,11 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
             if (_options.WarmupRequests > 0)
             {
-                // Every worker needs at least one request, or its connection opens inside the measured
-                // window and the level pays a handshake it is supposed to have already paid.
-                int warmup = Math.Max(_options.WarmupRequests, concurrency);
-                if (warmup != _options.WarmupRequests)
-                {
-                    Report($"concurrency {concurrency}: warm-up raised to {warmup} to cover every connection");
-                }
+                Report($"concurrency {concurrency}: priming {concurrency} connections");
+                await PrimeConnectionsAsync(concurrency, httpClient, auth, token);
 
-                Report($"concurrency {concurrency}: warm-up, {warmup} requests");
-                await RunPassAsync(concurrency, warmup, httpClient, auth, measure: false, token);
+                Report($"concurrency {concurrency}: warm-up, {_options.WarmupRequests} requests");
+                await RunPassAsync(concurrency, _options.WarmupRequests, httpClient, auth, measure: false, token);
             }
 
             Report($"concurrency {concurrency}: measuring");
@@ -128,22 +124,18 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 CancellationToken.None);
         }
 
-        (int Rewritten, int FeesStripped) edited = default;
         tasks[0] = Task.Run(
-            async () => edited = await ReadAsync(channel.Writer, requestLimit, deadline, passToken),
+            () => ReadAsync(channel.Writer, requestLimit, deadline, passToken),
             CancellationToken.None);
 
         await Task.WhenAll(tasks);
 
-        return Aggregate(concurrency, edited, tallies);
+        return Aggregate(concurrency, tallies);
     }
 
     /// <summary>Decompresses the trace, applies the replay edits and feeds the workers.</summary>
-    /// <returns>How many records had their block parameter rewritten, and how many lost a fee field.</returns>
-    private async Task<(int Rewritten, int FeesStripped)> ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, PassDeadline deadline, CancellationToken token)
+    private async Task ReadAsync(ChannelWriter<PendingRequest> writer, int requestLimit, PassDeadline deadline, CancellationToken token)
     {
-        int rewritten = 0;
-        int feesStripped = 0;
         try
         {
             using TraceLineReader reader = new(_options.InputPath);
@@ -152,8 +144,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             int sent = 0;
             while (sent < requestLimit && !deadline.HasExpired && reader.TryReadRecord(out ReadOnlySpan<byte> record))
             {
-                PendingRequest request = Materialize(record, ref rewritten, ref feesStripped);
-                await writer.WriteAsync(request, token);
+                await writer.WriteAsync(Materialize(record), token);
                 sent++;
             }
         }
@@ -161,8 +152,6 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             writer.Complete();
         }
-
-        return (rewritten, feesStripped);
     }
 
     private void SkipLeadingRecords(TraceLineReader reader)
@@ -176,6 +165,35 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         }
     }
 
+    /// <summary>Opens every connection the level will use by sending one request per connection at once.</summary>
+    /// <remarks>
+    /// The pool opens a connection per concurrent request, so exactly <paramref name="concurrency"/>
+    /// simultaneous sends open them all. Feeding warm-up requests through the shared channel cannot
+    /// guarantee that: a fast worker can take two while another takes none, leaving a connection to
+    /// open inside the measured window.
+    /// </remarks>
+    private async Task PrimeConnectionsAsync(int concurrency, HttpClient httpClient, IAuth? auth, CancellationToken token)
+    {
+        using TraceLineReader reader = new(_options.InputPath);
+        SkipLeadingRecords(reader);
+        if (!reader.TryReadRecord(out ReadOnlySpan<byte> record))
+        {
+            return;
+        }
+
+        PendingRequest request = Materialize(record);
+        ReadOnlyMemory<byte> body = request.Buffer.AsMemory(0, request.Length);
+
+        Task<RequestOutcome>[] primes = new Task<RequestOutcome>[concurrency];
+        for (int i = 0; i < concurrency; i++)
+        {
+            primes[i] = new RawJsonRpcClient(httpClient, _options.Address, auth).SendAsync(body, token);
+        }
+
+        await Task.WhenAll(primes);
+        ArrayPool<byte>.Shared.Return(request.Buffer);
+    }
+
     /// <summary>
     /// Copies a record into a pooled buffer, forcing the configured block parameter and dropping fee
     /// fields.
@@ -184,7 +202,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     /// A block parameter that already matches the target is not an edit, so a record needing no change
     /// is copied straight through rather than rebuilt.
     /// </remarks>
-    private PendingRequest Materialize(ReadOnlySpan<byte> record, ref int rewritten, ref int feesStripped)
+    private PendingRequest Materialize(ReadOnlySpan<byte> record)
     {
         bool forceBlock = _quotedTag.Length > 0;
         if (forceBlock || _options.StripFeeFields)
@@ -199,24 +217,14 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 byte[] patched = ArrayPool<byte>.Shared.Rent(size);
                 int written = RequestRewriter.Apply(record, edits, _quotedTag, patched);
 
-                if (rewroteBlock)
-                {
-                    rewritten++;
-                }
-
-                if (droppedFees)
-                {
-                    feesStripped++;
-                }
-
-                return new PendingRequest(patched, written);
+                return new PendingRequest(patched, written, rewroteBlock, droppedFees);
             }
         }
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(record.Length);
         record.CopyTo(buffer);
 
-        return new PendingRequest(buffer, record.Length);
+        return new PendingRequest(buffer, record.Length, RewroteBlock: false, StrippedFees: false);
     }
 
     /// <summary>Drops a block-parameter edit that would rewrite the tag to what it already says.</summary>
@@ -279,7 +287,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
                 if (measure)
                 {
-                    tally.Add(start, end, request.Length, outcome);
+                    tally.Add(start, end, request.Length, outcome, request.RewroteBlock, request.StrippedFees);
                 }
             }
         }
@@ -307,10 +315,26 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             token.ThrowIfCancellationRequested();
 
-            PendingRequest request = Materialize(record, ref rewritten, ref feesStripped);
-            Verify(request, reader.RecordsRead);
+            PendingRequest request = Materialize(record);
+            string? failure = Validate(request, reader.RecordsRead);
 
+            // Returned before the deliberate throw below rather than abandoned to the GC.
             ArrayPool<byte>.Shared.Return(request.Buffer);
+            if (failure is not null)
+            {
+                throw new InvalidDataException(failure);
+            }
+
+            if (request.RewroteBlock)
+            {
+                rewritten++;
+            }
+
+            if (request.StrippedFees)
+            {
+                feesStripped++;
+            }
+
             bytes += request.Length;
             records++;
         }
@@ -335,8 +359,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         };
     }
 
-    /// <summary>Fails the dry run if a record left the rewriter still needing an edit.</summary>
-    private void Verify(PendingRequest request, long recordNumber)
+    /// <summary>Describes why a record left the rewriter still needing an edit; <see langword="null"/> when clean.</summary>
+    private string? Validate(PendingRequest request, long recordNumber)
     {
         ReadOnlySpan<byte> body = request.Buffer.AsSpan(0, request.Length);
 
@@ -344,23 +368,25 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             if (!RequestRewriter.TryLocateBlockParameter(body, out int start, out int length))
             {
-                throw new InvalidDataException($"Record {recordNumber} has no block parameter to rewrite.");
+                return $"Record {recordNumber} has no block parameter to rewrite.";
             }
 
             if (!body.Slice(start, length).SequenceEqual(_quotedTag))
             {
                 string actual = Encoding.UTF8.GetString(body.Slice(start, length));
-                throw new InvalidDataException($"Record {recordNumber} still carries block parameter {actual}.");
+                return $"Record {recordNumber} still carries block parameter {actual}.";
             }
         }
 
         if (_options.StripFeeFields && RequestRewriter.HasFeeField(body))
         {
-            throw new InvalidDataException($"Record {recordNumber} still carries a fee field.");
+            return $"Record {recordNumber} still carries a fee field.";
         }
+
+        return null;
     }
 
-    private static LevelResult Aggregate(int concurrency, (int Rewritten, int FeesStripped) edited, WorkerTally[] tallies)
+    private static LevelResult Aggregate(int concurrency, WorkerTally[] tallies)
     {
         int total = 0;
         long firstStart = long.MaxValue;
@@ -379,6 +405,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         int rpcErrors = 0;
         int httpErrors = 0;
         int transportErrors = 0;
+        int rewritten = 0;
+        int feesStripped = 0;
         long requestBytes = 0;
         int offset = 0;
 
@@ -394,6 +422,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             rpcErrors += tally.RpcErrors;
             httpErrors += tally.HttpErrors;
             transportErrors += tally.TransportErrors;
+            rewritten += tally.Rewritten;
+            feesStripped += tally.FeesStripped;
             requestBytes += tally.RequestBytes;
         }
 
@@ -414,8 +444,8 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             Elapsed = elapsed,
             RequestBytes = requestBytes,
             Latencies = latencies,
-            Rewritten = edited.Rewritten,
-            FeesStripped = edited.FeesStripped,
+            Rewritten = rewritten,
+            FeesStripped = feesStripped,
         };
     }
 
@@ -431,7 +461,11 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     private static string JsonQuote(string value) => string.Concat("\"", value, "\"");
 
     /// <summary>A request body waiting to be sent, in a pooled buffer owned by whichever worker takes it.</summary>
-    private readonly record struct PendingRequest(byte[] Buffer, int Length);
+    /// <remarks>
+    /// Carries its edit flags so they are tallied only when it is actually sent: a request dropped at
+    /// the deadline must not be reported as an edited request.
+    /// </remarks>
+    private readonly record struct PendingRequest(byte[] Buffer, int Length, bool RewroteBlock, bool StrippedFees);
 
     /// <summary>Bounds how long a level spends sending, measured from its first request.</summary>
     /// <remarks>

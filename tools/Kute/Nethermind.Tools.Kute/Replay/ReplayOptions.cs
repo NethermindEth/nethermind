@@ -21,13 +21,17 @@ public sealed record ReplayOptions
     public string? BlockTag { get; init; } = "latest";
 
     /// <summary>
-    /// Removes <c>gasPrice</c>, <c>maxFeePerGas</c> and <c>maxPriorityFeePerGas</c> from each call object.
+    /// Removes <c>gasPrice</c>, <c>maxFeePerGas</c>, <c>maxPriorityFeePerGas</c> and
+    /// <c>maxFeePerBlobGas</c> from each call object.
     /// </summary>
     /// <remarks>
     /// A capture's fee fields were priced against the base fee at capture time, so replaying them at a
     /// later head rejects any call whose fee has since fallen below the base fee. The rejected share
     /// drifts with the network, and a rejected call returns without executing, which silently flatters
-    /// throughput. Removing the fields drops the fee precondition and leaves the EVM work unchanged.
+    /// throughput. Stripping trades that drift for a fixed, smaller distortion: the call executes with
+    /// an effective gas price of zero, so a contract that branches on GASPRICE can take a different
+    /// path. BASEFEE is unaffected. Only the top-level call object is stripped; transactions nested
+    /// inside an <c>eth_simulateV1</c> payload keep their captured fees.
     /// </remarks>
     public bool StripFeeFields { get; init; } = true;
 
