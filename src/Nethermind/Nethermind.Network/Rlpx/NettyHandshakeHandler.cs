@@ -59,7 +59,7 @@ namespace Nethermind.Network.Rlpx
             else
             {
                 IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
-                _session.RemoteHost = ipEndPoint.Address.ToString();
+                _session.RemoteHost = NetworkHelper.NormalizeIpv4Mapped(ipEndPoint.Address).ToString();
                 _session.RemotePort = ipEndPoint.Port;
             }
 

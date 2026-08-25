@@ -329,6 +329,47 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task DualStackNativeIpv6Sender_IsAcceptedUnchanged()
+        {
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            TaskCompletionSource<DiscoveryMsg> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            DiscoveryMsg? received = null;
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
+            {
+                DiscoveryMsg msg = callInfo.Arg<DiscoveryMsg>();
+                received = msg;
+                tcs.TrySetResult(msg);
+                return Task.CompletedTask;
+            });
+
+            IPEndPoint ipv6Sender = new(IPAddress.Parse("2001:db8::2"), _address2.Port);
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, ipv6Sender, _address, new byte[32])
+            {
+                FarAddress = ipv6Sender
+            };
+            IByteBuffer serialized = service.ZeroSerialize(msg);
+            byte[] data;
+            try
+            {
+                data = serialized.ReadAllBytesAsArray();
+            }
+            finally
+            {
+                serialized.SafeRelease();
+            }
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), ipv6Sender, _address));
+
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+            await tcs.Task.WaitAsync(cts.Token);
+
+            await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
+            Assert.That(received?.FarAddress, Is.EqualTo(ipv6Sender));
+        }
+
+        [Test]
         public async Task GlobalInboundRateLimiter_Drops_Messages_AboveBurstLimit()
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(globalInboundMessageBurst: 2);

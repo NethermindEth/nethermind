@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
@@ -131,6 +132,56 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void PingMessage_Roundtrips_Ipv6_Endpoints()
+    {
+        IPEndPoint source = new(IPAddress.Parse("2001:db8::1"), 30303);
+        IPEndPoint destination = new(IPAddress.Parse("2001:db8::2"), 30306);
+        PingMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, source, destination,
+                new byte[32], sourceTcpPort: 30305, destinationTcpPort: 0)
+            { FarAddress = destination };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        Assert.That(ctx.DecodeInt(), Is.EqualTo(message.Version));
+
+        int sourceEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] sourceIp = ctx.DecodeByteArraySpan().ToArray();
+        int sourceUdpPort = ctx.DecodeInt();
+        int sourceTcpPort = ctx.DecodeInt();
+        ctx.Check(sourceEnd);
+
+        int destinationEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] destinationIp = ctx.DecodeByteArraySpan().ToArray();
+        int destinationUdpPort = ctx.DecodeInt();
+        int destinationTcpPort = ctx.DecodeInt();
+        ctx.Check(destinationEnd);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sourceIp, Has.Length.EqualTo(16));
+            Assert.That(new IPAddress(sourceIp), Is.EqualTo(source.Address));
+            Assert.That(sourceUdpPort, Is.EqualTo(source.Port));
+            Assert.That(sourceTcpPort, Is.EqualTo(30305));
+            Assert.That(destinationIp, Has.Length.EqualTo(16));
+            Assert.That(new IPAddress(destinationIp), Is.EqualTo(destination.Address));
+            Assert.That(destinationUdpPort, Is.EqualTo(destination.Port));
+            Assert.That(destinationTcpPort, Is.Zero);
+        }
+
+        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
+        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(copy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(source));
+            Assert.That(deserializedMessage.DestinationAddress, Is.EqualTo(destination));
+        }
+    }
+
+    [Test]
     public void PingMessage_UsesUdpPortWhenTcpPortIsZero()
     {
         string devp2pDiscoveryOnlyPing =
@@ -186,6 +237,35 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg).AsDisposable();
         pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
         Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void PongMessage_Serializes_Ipv6_Endpoint()
+    {
+        IPEndPoint ipv6Address = new(IPAddress.Parse("2001:db8::1"), 30303);
+        PongMsg message = new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, TestItem.KeccakA.ValueHash256, 3)
+        {
+            FarAddress = ipv6Address
+        };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
+        byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encodedIp, Has.Length.EqualTo(16));
+            Assert.That(new IPAddress(encodedIp), Is.EqualTo(ipv6Address.Address));
+        }
+
+        // The pong endpoint is not preserved on deserialize (taken from the datagram instead),
+        // so assert the rest of the payload survives the 16-byte address form.
+        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
+        PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(copy);
+        Assert.That(deserializedMessage.EnrSequence, Is.EqualTo(3));
     }
 
     [Test]
@@ -421,6 +501,61 @@ public class DiscoveryMessageSerializerTests
             Assert.That(deserializedMessage.Nodes[0].Port, Is.Zero);
             Assert.That(deserializedMessage.Nodes[0].DiscoveryPort, Is.EqualTo(30304));
         }
+    }
+
+    [Test]
+    public void NeighborsMessage_Roundtrips_Ipv6_Node()
+    {
+        Node node = new(TestItem.PublicKeyA, "2001:db8::1", 30303, 30304);
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[] { node })
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
+        ctx.ReadSequenceLength();
+        byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encodedIp, Has.Length.EqualTo(16));
+            Assert.That(new IPAddress(encodedIp), Is.EqualTo(IPAddress.Parse("2001:db8::1")));
+        }
+
+        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
+        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(copy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.Nodes, Has.Count.EqualTo(1));
+            Assert.That(deserializedMessage.Nodes[0].Host, Is.EqualTo(node.Host));
+            Assert.That(deserializedMessage.Nodes[0].Port, Is.EqualTo(node.Port));
+            Assert.That(deserializedMessage.Nodes[0].DiscoveryPort, Is.EqualTo(node.DiscoveryPort));
+            Assert.That(deserializedMessage.Nodes[0].IdHash, Is.EqualTo(node.IdHash));
+        }
+    }
+
+    [Test]
+    public void NeighborsMessage_MaxIpv6Batch_StaysWithinPacketSizeLimit()
+    {
+        // A full batch of the widest (IPv6) entries must still fit into a single discv4 datagram,
+        // otherwise the receiving side drops it as oversized.
+        Node[] nodes = Enumerable.Range(0, KademliaAdapter.MaxNodesPerNeighborsMsg)
+            .Select(i => new Node(TestItem.PublicKeys[i], $"2001:db8::{i + 1}", i + 1, i + 11))
+            .ToArray();
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, nodes)
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        Assert.That(data.ReadableBytes, Is.LessThanOrEqualTo(NettyDiscoveryBaseHandler.MaxPacketSize));
     }
 
     [Test]

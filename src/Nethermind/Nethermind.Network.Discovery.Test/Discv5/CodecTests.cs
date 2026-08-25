@@ -223,10 +223,11 @@ public class CodecTests
         Assert.That(value.GetRlpLength(), Is.EqualTo(expectedLength));
     }
 
-    [Test]
-    public void MessageCodec_Roundtrips_Pong()
+    [TestCase("192.0.2.1")]
+    [TestCase("2001:db8::1")]
+    public void MessageCodec_Roundtrips_Pong(string recipientIp)
     {
-        using PongMsg message = new([0, 0, 0, 2], 3, IPAddress.Parse("192.0.2.1"), 30303);
+        using PongMsg message = new([0, 0, 0, 2], 3, IPAddress.Parse(recipientIp), 30303);
 
         using ArrayPoolSpan<byte> encoded = MessageCodec.Encode(message);
         using Discv5Message decoded = MessageCodec.Decode(encoded);

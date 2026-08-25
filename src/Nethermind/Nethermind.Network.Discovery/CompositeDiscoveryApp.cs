@@ -40,7 +40,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     )
     {
         _networkConfig = networkConfig;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig, networkConfig);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 

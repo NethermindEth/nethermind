@@ -25,7 +25,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically. When unset, listeners accept both IPv4 and IPv6 where supported; set a specific address to restrict them to one address family.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]

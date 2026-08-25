@@ -5,6 +5,7 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Logging;
+using System.Net;
 
 namespace Nethermind.Network.Discovery;
 
@@ -15,11 +16,20 @@ public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager, IChanne
 
     // https://github.com/ethereum/devp2p/blob/master/discv4.md#wire-protocol
     // https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#udp-communication
-    protected const int MaxPacketSize = 1280;
+    protected internal const int MaxPacketSize = 1280;
 
     protected IChannel Channel => _channel ?? throw new InvalidOperationException("Discovery channel is not initialized.");
 
     public void InitializeChannel(IChannel channel) => _channel = channel;
+
+    /// <summary>
+    /// Reduces an IPv4-mapped IPv6 sender address (<c>::ffff:a.b.c.d</c>, reported by dual-stack sockets) to its plain IPv4 form.
+    /// </summary>
+    protected static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
+    {
+        IPAddress address = NetworkHelper.NormalizeIpv4Mapped(endpoint.Address);
+        return ReferenceEquals(address, endpoint.Address) ? endpoint : new IPEndPoint(address, endpoint.Port);
+    }
 
     public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
 

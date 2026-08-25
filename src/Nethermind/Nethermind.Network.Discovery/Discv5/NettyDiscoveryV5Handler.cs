@@ -121,11 +121,6 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
             => throw new InvalidOperationException("Pooled UDP receive buffer must be array-backed.");
     }
 
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-        => endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
-
     public void Close()
     {
         _inboundQueue.Writer.TryComplete();

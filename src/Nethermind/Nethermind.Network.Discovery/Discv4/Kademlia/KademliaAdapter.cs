@@ -33,8 +33,8 @@ public class KademliaAdapter(
     ILogManager logManager
 ) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
-    private const int MaxNodesPerNeighborsMsg = 12;
     private const int PeerCandidateChannelCapacity = 64;
+    internal const int MaxNodesPerNeighborsMsg = 12;
 
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);

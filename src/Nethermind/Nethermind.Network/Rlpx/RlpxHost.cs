@@ -36,6 +36,7 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public int LocalPort { get; }
         private readonly IPAddress _localIp;
+        private readonly INetworkConfig _networkConfig;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -91,6 +92,7 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
+            _networkConfig = networkConfig;
             LocalPort = networkConfig.P2PPort;
             // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
             // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
@@ -145,9 +147,7 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new InboundChannelInitializer(this));
 
-                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(
-                    () => bootstrap.BindAsync(_localIp, LocalPort),
-                    LocalPort);
+                Task<IChannel> openTask = BindListenerAsync(bootstrap);
 
                 _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
@@ -176,6 +176,20 @@ namespace Nethermind.Network.Rlpx
                     workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
                     _group.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout));
                 throw;
+            }
+        }
+
+        private async Task<IChannel> BindListenerAsync(ServerBootstrap bootstrap)
+        {
+            IPAddress bindAddress = NetworkHelper.GetInboundBindAddress(_localIp, _networkConfig.LocalIp);
+            try
+            {
+                return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(bindAddress, LocalPort), LocalPort);
+            }
+            catch (Exception e) when (!bindAddress.Equals(_localIp) && e is not PortInUseException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort} ({e.Message}). Retrying on {_localIp}:{LocalPort}.");
+                return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_localIp, LocalPort), LocalPort);
             }
         }
 
@@ -267,13 +281,15 @@ namespace Nethermind.Network.Rlpx
         private bool ShouldRejectInbound(ISession session, IChannel channel)
         {
             if (session.Direction == ConnectionDirection.In
-                && channel.RemoteAddress is IPEndPoint remoteEndpoint
-                && !_privilegedIpProvider.IsPrivileged(remoteEndpoint.Address)
-                && !_nodeFilter.TryAccept(remoteEndpoint.Address))
+                && channel.RemoteAddress is IPEndPoint remoteEndpoint)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
-                _ = channel.CloseAsync();
-                return true;
+                IPAddress remoteIp = NetworkHelper.NormalizeIpv4Mapped(remoteEndpoint.Address);
+                if (!_privilegedIpProvider.IsPrivileged(remoteIp) && !_nodeFilter.TryAccept(remoteIp))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteIp}");
+                    _ = channel.CloseAsync();
+                    return true;
+                }
             }
 
             return false;
@@ -529,7 +545,9 @@ namespace Nethermind.Network.Rlpx
             {
                 Session session = new(_rlpxHost.LocalPort, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 IPEndPoint? ipEndPoint = channel.RemoteAddress.ToIPEndpoint();
-                session.RemoteHost = ipEndPoint.Address.ToString();
+                // A dual-stack listener reports IPv4 peers as IPv4-mapped addresses; normalize them so the
+                // session host (and everything derived from it) stays in its plain form.
+                session.RemoteHost = NetworkHelper.NormalizeIpv4Mapped(ipEndPoint.Address).ToString();
                 session.RemotePort = ipEndPoint.Port;
                 _rlpxHost.InitializeChannel(channel, session);
             }

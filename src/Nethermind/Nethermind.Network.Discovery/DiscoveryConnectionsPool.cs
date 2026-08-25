@@ -5,6 +5,8 @@ using System.Net;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery;
 
@@ -12,11 +14,12 @@ namespace Nethermind.Network.Discovery;
 /// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResolver, IDiscoveryConfig discoveryConfig) : IConnectionsPool
+public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResolver, IDiscoveryConfig discoveryConfig, INetworkConfig networkConfig) : IConnectionsPool
 {
     private readonly ILogger _logger = logger;
     private readonly IIPResolver _ipResolver = ipResolver;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
+    private readonly INetworkConfig _networkConfig = networkConfig;
     private readonly Dictionary<int, Task<IChannel>> _byPort = [];
 
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
@@ -34,12 +37,26 @@ public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResol
     {
         try
         {
-            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(ip, port), port);
+            return await BindWithFallbackAsync(bootstrap, port, ip);
         }
         catch (Exception e)
         {
             _logger.Error($"Error when establishing discovery connection on Address: {ip}:{port}", e);
             throw;
+        }
+    }
+
+    private async Task<IChannel> BindWithFallbackAsync(Bootstrap bootstrap, int port, IPAddress fallbackIp)
+    {
+        IPAddress bindAddress = NetworkHelper.GetInboundBindAddress(fallbackIp, _networkConfig.LocalIp);
+        try
+        {
+            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(bindAddress, port), port);
+        }
+        catch (Exception e) when (!bindAddress.Equals(fallbackIp) && e is not PortInUseException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery udp channel on {bindAddress}:{port} ({e.Message}). Retrying on {fallbackIp}:{port}.");
+            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(fallbackIp, port), port);
         }
     }
 
