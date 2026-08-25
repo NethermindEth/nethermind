@@ -23,6 +23,8 @@ namespace Nethermind.JsonRpc.Modules;
 /// long. <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
 /// Admitted invocations run inline on whichever thread the permit is granted on (the request thread when one is
 /// free, a thread-pool continuation otherwise); the permit count alone bounds how much of a class's work is in flight.
+/// Admission precedes parameter binding, so under saturation a malformed request in a gated class is shed rather
+/// than answered with invalid params: the server does not spend CPU validating what it will not execute.
 /// </remarks>
 public sealed class RpcAdmissionController
 {
@@ -40,16 +42,18 @@ public sealed class RpcAdmissionController
     /// <summary>
     /// Acquires a permit for <paramref name="method"/>, waiting at most <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>.
     /// </summary>
+    /// <param name="method">The resolved method; its cost class selects the gate.</param>
+    /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c> element, or zero when unknown; drives the request weight.</param>
     /// <returns>A lease that must be disposed when the invocation, including any returned task, has completed.</returns>
     /// <exception cref="LimitExceededException">
     /// The predicted wait exceeds the budget, or no permit became available within it.
     /// </exception>
-    internal ValueTask<Lease> AdmitAsync(ResolvedMethodInfo method, object?[]? parameters, int parameterCount)
+    internal ValueTask<Lease> AdmitAsync(ResolvedMethodInfo method, int paramsUtf8Length)
     {
         Gate? gate = _gates[(int)method.CostClass];
         return gate is null
             ? ValueTask.FromResult(default(Lease))
-            : gate.AdmitAsync(RpcRequestWeight.Estimate(method, parameters, parameterCount));
+            : gate.AdmitAsync(RpcRequestWeight.Estimate(method, paramsUtf8Length));
     }
 
     internal int GetPermits(RpcMethodCostClass costClass) => _gates[(int)costClass]?.Permits ?? 0;

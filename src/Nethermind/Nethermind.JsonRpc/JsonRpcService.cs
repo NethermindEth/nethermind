@@ -96,24 +96,25 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(
-            request,
-            methodName,
-            method,
-            out object?[]? parameters,
-            out int parameterCount,
-            out bool returnParametersToPool);
-        if (value is not null)
-        {
-            return value;
-        }
-
+        // Admitted before the parameters are bound so that a shed request never pays for deserializing them.
         // Released once the invocation and any task it returned have completed — except for a streamed result, whose
         // re-execution only runs while the response is written, so its permit travels with the response instead.
-        RpcAdmissionController.Lease lease = await AdmitAsync(method, parameters, parameterCount, returnParametersToPool);
+        RpcAdmissionController.Lease lease = await _admissionController.AdmitAsync(method, request.ParamsUtf8.Length);
         bool leaseTransferred = false;
         try
         {
+            JsonRpcErrorResponse? value = PrepareParameters(
+                request,
+                methodName,
+                method,
+                out object?[]? parameters,
+                out int parameterCount,
+                out bool returnParametersToPool);
+            if (value is not null)
+            {
+                return value;
+            }
+
             IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
             if (rpcModule is IContextAwareRpcModule contextAwareModule)
             {
@@ -200,24 +201,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (returnToPool && parameters is not null)
         {
             ArrayPool<object?>.Shared.Return(parameters, clearArray: true);
-        }
-    }
-
-    private async ValueTask<RpcAdmissionController.Lease> AdmitAsync(
-        ResolvedMethodInfo method,
-        object?[]? parameters,
-        int parameterCount,
-        bool returnParametersToPool)
-    {
-        try
-        {
-            return await _admissionController.AdmitAsync(method, parameters, parameterCount);
-        }
-        catch (LimitExceededException)
-        {
-            // Shedding is an expected outcome, so the pooled array goes back before the error surfaces.
-            ReturnParameters(parameters, returnParametersToPool);
-            throw;
         }
     }
 

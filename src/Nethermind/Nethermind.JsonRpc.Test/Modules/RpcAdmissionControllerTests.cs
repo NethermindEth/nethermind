@@ -6,12 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
-using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -122,44 +116,18 @@ public class RpcAdmissionControllerTests
         Assert.That(config.GetProofModuleConcurrentInstances(), Is.EqualTo(expected));
     }
 
-    [TestCase(0, 0, 1, TestName = "No overrides")]
-    [TestCase(64 * 1024 - 1, 0, 1, TestName = "Just below one unit of code")]
-    [TestCase(64 * 1024, 0, 2, TestName = "One unit of code")]
-    [TestCase(0, 1024, 2, TestName = "One unit of storage slots")]
-    [TestCase(3 * 64 * 1024, 1024, 5, TestName = "Code and slots add up")]
-    [TestCase(7 * 64 * 1024, 0, 8, TestName = "Upper clamp reached exactly")]
-    [TestCase(100 * 64 * 1024, 4096, 8, TestName = "Upper clamp")]
-    public void Weight_grows_with_state_override_size(int codeLength, int slotCount, int expectedWeight)
-    {
-        Dictionary<Address, AccountOverride> stateOverride = BuildStateOverride(codeLength, slotCount);
-        object?[] parameters = [new LegacyTransactionForRpc(), null, stateOverride, null];
-
-        Assert.That(RpcRequestWeight.Estimate(Resolve<IEthRpcModule>("eth_call"), parameters, parameters.Length), Is.EqualTo(expectedWeight));
-    }
+    [TestCase(0, 1, TestName = "No params bytes")]
+    [TestCase(RpcRequestWeight.BytesPerWeightUnit - 1, 1, TestName = "Just below one unit")]
+    [TestCase(RpcRequestWeight.BytesPerWeightUnit, 2, TestName = "One unit")]
+    [TestCase(4 * RpcRequestWeight.BytesPerWeightUnit + 17, 5, TestName = "Partial units round down")]
+    [TestCase(7 * RpcRequestWeight.BytesPerWeightUnit, 8, TestName = "Upper clamp reached exactly")]
+    [TestCase(int.MaxValue, 8, TestName = "Upper clamp")]
+    public void Weight_grows_with_raw_params_size(int paramsUtf8Length, int expectedWeight) =>
+        Assert.That(RpcRequestWeight.Estimate(Resolve<IEthRpcModule>("eth_call"), paramsUtf8Length), Is.EqualTo(expectedWeight));
 
     [Test]
-    public void Weight_counts_simulate_block_overrides()
-    {
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new BlockStateCall<TransactionForRpc> { StateOverrides = BuildStateOverride(64 * 1024, 0) },
-                new BlockStateCall<TransactionForRpc> { StateOverrides = BuildStateOverride(64 * 1024, 0) },
-            ],
-        };
-        object?[] parameters = [payload, null];
-
-        Assert.That(RpcRequestWeight.Estimate(Resolve<IEthRpcModule>("eth_simulateV1"), parameters, parameters.Length), Is.EqualTo(3));
-    }
-
-    [Test]
-    public void Weight_is_one_outside_the_evm_class_even_with_overrides()
-    {
-        object?[] parameters = [BuildStateOverride(100 * 64 * 1024, 0)];
-
-        Assert.That(RpcRequestWeight.Estimate(Resolve<IEthRpcModule>("eth_blockNumber"), parameters, parameters.Length), Is.EqualTo(1));
-    }
+    public void Weight_is_one_outside_the_evm_class_regardless_of_size() =>
+        Assert.That(RpcRequestWeight.Estimate(Resolve<IEthRpcModule>("eth_blockNumber"), int.MaxValue), Is.EqualTo(1));
 
     [Test]
     public async Task Permits_are_respected_and_released_on_dispose()
@@ -219,9 +187,9 @@ public class RpcAdmissionControllerTests
     {
         RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
         long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
-        using RpcAdmissionController.Lease held = await controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), null, 0);
+        using RpcAdmissionController.Lease held = await controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0);
 
-        Assert.ThrowsAsync<LimitExceededException>(async () => await controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), null, 0));
+        Assert.ThrowsAsync<LimitExceededException>(async () => await controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(rejectionsBefore));
@@ -235,10 +203,9 @@ public class RpcAdmissionControllerTests
     public async Task Service_time_ewma_is_normalised_by_weight(int weight)
     {
         const int holdMs = 40;
-        object?[] parameters = [new LegacyTransactionForRpc(), null, BuildStateOverride((weight - 1) * 64 * 1024, 0), null];
 
         Stopwatch outer = Stopwatch.StartNew();
-        using (await _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), parameters, parameters.Length))
+        using (await _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), (weight - 1) * RpcRequestWeight.BytesPerWeightUnit))
         {
             Thread.Sleep(holdMs);
         }
@@ -271,7 +238,7 @@ public class RpcAdmissionControllerTests
         ResolvedMethodInfo blockNumber = Resolve<IEthRpcModule>("eth_blockNumber");
         for (int i = 0; i < 1_000; i++)
         {
-            ValueTask<RpcAdmissionController.Lease> admission = _controller.AdmitAsync(blockNumber, null, 0);
+            ValueTask<RpcAdmissionController.Lease> admission = _controller.AdmitAsync(blockNumber, 0);
             Assert.That(admission.IsCompletedSuccessfully, Is.True);
             Assert.That(admission.Result.IsGated, Is.False);
         }
@@ -297,7 +264,7 @@ public class RpcAdmissionControllerTests
             _ => Resolve<IEthRpcModule>("eth_getProof"),
         };
 
-        using (RpcAdmissionController.Lease lease = await _controller.AdmitAsync(method, null, 0))
+        using (RpcAdmissionController.Lease lease = await _controller.AdmitAsync(method, 0))
         {
             using (Assert.EnterMultipleScope())
             {
@@ -333,22 +300,8 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    private ValueTask<RpcAdmissionController.Lease> AdmitEthCall() => _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), null, 0);
+    private ValueTask<RpcAdmissionController.Lease> AdmitEthCall() => _controller.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0);
 
     private static ResolvedMethodInfo Resolve<TModule>(string methodName) where TModule : IRpcModule =>
         new(typeof(TModule).Name, typeof(TModule).GetMethod(methodName)!, readOnly: true, RpcEndpoint.All);
-
-    private static Dictionary<Address, AccountOverride> BuildStateOverride(int codeLength, int slotCount)
-    {
-        Dictionary<UInt256, Core.Crypto.Hash256> slots = new(slotCount);
-        for (int i = 0; i < slotCount; i++)
-        {
-            slots[(UInt256)i] = TestItem.KeccakA;
-        }
-
-        return new Dictionary<Address, AccountOverride>
-        {
-            [TestItem.AddressA] = new AccountOverride { Code = new byte[codeLength], State = slots },
-        };
-    }
 }

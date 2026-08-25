@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -742,8 +743,8 @@ public class JsonRpcServiceTests
         }
     }
 
-    [TestCaseSource(nameof(FailingEvmInvocations))]
-    public void Evm_permit_is_released_when_the_invocation_fails(Action<IEthRpcModule> configure, string method, int expectedCode)
+    [TestCaseSource(nameof(FailingEvmRequests))]
+    public void Evm_permit_is_released_when_the_request_fails(Action<IEthRpcModule> configure, string method, object? parameter, int expectedCode)
     {
         UseAdmissionController(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -752,7 +753,7 @@ public class JsonRpcServiceTests
         IJsonRpcService service = CreateService(ethRpcModule);
 
         using JsonRpcErrorResponse failure = AssertJsonRpcError(
-            service.SendRequestAsync(RpcTest.BuildJsonRequest(method, new LegacyTransactionForRpc()), _context).Result,
+            service.SendRequestAsync(RpcTest.BuildJsonRequest(method, parameter), _context).Result,
             expectedCode);
         Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
 
@@ -803,17 +804,49 @@ public class JsonRpcServiceTests
         }
     }
 
-    private static IEnumerable<TestCaseData> FailingEvmInvocations()
+    private static IEnumerable<TestCaseData> FailingEvmRequests()
     {
         yield return new TestCaseData(
             (Action<IEthRpcModule>)(static module => module.eth_estimateGas(Arg.Any<SignableTransactionForRpc>()).ThrowsForAnyArgs(new InvalidOperationException("boom"))),
             "eth_estimateGas",
+            new LegacyTransactionForRpc(),
             ErrorCodes.InternalError).SetName("Synchronous exception");
         yield return new TestCaseData(
             (Action<IEthRpcModule>)(static module => module.eth_fillTransaction(Arg.Any<SignableTransactionForRpc>())
                 .ReturnsForAnyArgs(Task.FromException<ResultWrapper<FillTransactionResult>>(new InvalidOperationException("boom")))),
             "eth_fillTransaction",
+            new LegacyTransactionForRpc(),
             ErrorCodes.InternalError).SetName("Faulted task");
+        yield return new TestCaseData(
+            (Action<IEthRpcModule>)(static _ => { }),
+            "eth_estimateGas",
+            "not a transaction",
+            ErrorCodes.InvalidParams).SetName("Invalid params");
+    }
+
+    [TestCase(true, ErrorCodes.LimitExceeded, 0, TestName = "Saturated gate sheds before binding")]
+    [TestCase(false, ErrorCodes.InvalidParams, 1, TestName = "Free gate binds, then rejects")]
+    public async Task Gated_parameters_are_bound_only_after_admission(bool saturated, int expectedCode, int expectedBindings)
+    {
+        UseAdmissionController(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
+        IJsonRpcService service = CreateService(Substitute.For<IMetadataTestRpcModule>());
+        RpcModuleProvider.ResolvedMethodInfo ethCall = new(
+            nameof(IMetadataTestRpcModule),
+            typeof(IMetadataTestRpcModule).GetMethod(nameof(IMetadataTestRpcModule.eth_call))!,
+            readOnly: true,
+            RpcEndpoint.All);
+        using RpcAdmissionController.Lease held = saturated ? await _admissionController.AdmitAsync(ethCall, 0) : default;
+        int bindingsBefore = BindingProbeConverter.Bindings;
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new object()), _context),
+            expectedCode);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BindingProbeConverter.Bindings - bindingsBefore, Is.EqualTo(expectedBindings));
+            Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(saturated ? 1 : 0), "only the externally held permit may remain in flight");
+        }
     }
 
     private static async Task WaitUntil(Func<bool> condition)
@@ -879,6 +912,25 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC array parameter metadata handling.")]
         ResultWrapper<int> test_byte_arrays(byte[][] value);
+
+        [JsonRpcMethod(Description = "Test method used to verify that gated requests are admitted before their parameters are bound.")]
+        ResultWrapper<string> eth_call(BindingProbe probe);
+    }
+
+    [JsonConverter(typeof(BindingProbeConverter))]
+    public sealed class BindingProbe;
+
+    public sealed class BindingProbeConverter : JsonConverter<BindingProbe>
+    {
+        public static int Bindings;
+
+        public override BindingProbe Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            Interlocked.Increment(ref Bindings);
+            throw new JsonException("binding probe");
+        }
+
+        public override void Write(Utf8JsonWriter writer, BindingProbe value, JsonSerializerOptions options) => throw new NotSupportedException();
     }
 
     private sealed class DisposableProbe : IDisposable
