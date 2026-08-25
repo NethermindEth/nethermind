@@ -9,6 +9,12 @@ namespace Nethermind.Tools.Kute.Replay;
 public static class ConcurrencySpec
 {
     /// <summary>
+    /// Highest level accepted. Well past anything useful, and low enough that the doubling progression
+    /// cannot overflow.
+    /// </summary>
+    public const int MaxLevel = 100_000;
+
+    /// <summary>
     /// Expands a concurrency specification into the levels to run.
     /// </summary>
     /// <param name="spec">
@@ -38,9 +44,9 @@ public static class ConcurrencySpec
                 throw new FormatException($"Concurrency range '{trimmed}' runs backwards.");
             }
 
-            for (int level = from; level < to; level *= 2)
+            for (long level = from; level < to; level *= 2)
             {
-                levels.Add(level);
+                levels.Add((int)level);
             }
 
             levels.Add(to);
@@ -63,9 +69,11 @@ public static class ConcurrencySpec
 
     private static int ParseLevel(string text)
     {
-        if (!int.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int level) || level < 1)
+        if (!int.TryParse(text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int level)
+            || level < 1
+            || level > MaxLevel)
         {
-            throw new FormatException($"'{text}' is not a concurrency level of 1 or more.");
+            throw new FormatException($"'{text}' is not a concurrency level between 1 and {MaxLevel}.");
         }
 
         return level;

@@ -113,6 +113,12 @@ kute replay -i capture.jsonl.zst -a http://localhost:8545 -c 1-32 -n 2000 -w 200
 Reads `.jsonl`, `.jsonl.gz` and `.jsonl.zst`. No JWT secret is needed for port 8545; pass `-s` only
 when replaying against an authenticated endpoint.
 
+The block parameter's position is per-method, so only methods with a known position are rewritten:
+`eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1`, `eth_getBalance`,
+`eth_getCode` and `eth_getTransactionCount` (second parameter); `eth_getStorageAt`, `eth_getProof` and
+`trace_call` (third); `eth_getBlockByNumber` (first). Any other method is replayed untouched rather
+than guessed at, since rewriting the wrong slot would corrupt the request and leave the stale block.
+
 ### How a level is measured
 
 Each concurrency level runs twice over the same prefix of the trace: a warm-up pass whose latencies
@@ -163,7 +169,8 @@ Captured `eth_call` records carrying state overrides run to hundreds of kilobyte
 override bytecode. Parsing each record into a document and writing it back out would cost more than
 the node spends answering it, and the harness would become what the numbers measure. Instead records
 are moved as UTF-8 bytes, and locating the block parameter stops the scan before the override map,
-which is the bulk of the record. A record already carrying the target tag is sent without a copy.
+which is the bulk of the record. Every record is still copied once into a pooled buffer, because the
+reader's buffer is reused; what a record needing no change avoids is being re-encoded.
 
 ### Prometheus Push Gateway
 

@@ -25,14 +25,38 @@ public readonly record struct RequestEdit(int Start, int Length, bool IsBlockPar
 /// Works on the raw UTF-8 bytes rather than a parsed document. Captured <c>eth_call</c> records run
 /// to hundreds of kilobytes, almost all of it the state-override map in the last parameter, so
 /// parsing and writing back every record would cost more than the node spends answering it. The scan
-/// stops once the block parameter has been located, so the override map is never read, and a record
-/// that needs no change is sent without a copy.
+/// stops once the block parameter has been located, so the override map is never read.
 /// </para>
 /// </remarks>
 public static class RequestRewriter
 {
     /// <summary>Largest number of edits a single request can need: three fee fields and the block parameter.</summary>
     public const int MaxEdits = 4;
+
+    /// <summary>
+    /// Zero-based index of the block parameter for each method whose block position is known.
+    /// </summary>
+    /// <remarks>
+    /// The position is per-method, not a convention: <c>eth_call</c> and <c>eth_getBalance</c> carry it
+    /// second, while <c>eth_getStorageAt</c>, <c>eth_getProof</c> and <c>trace_call</c> carry it third.
+    /// Rewriting the wrong slot would replace a storage key or a trace-type list and leave the stale
+    /// block in place, so a method that is not listed is replayed untouched rather than guessed at.
+    /// </remarks>
+    private static int BlockParameterIndex(ReadOnlySpan<byte> method) => method switch
+    {
+        _ when method.SequenceEqual("eth_call"u8) => 1,
+        _ when method.SequenceEqual("eth_estimateGas"u8) => 1,
+        _ when method.SequenceEqual("eth_createAccessList"u8) => 1,
+        _ when method.SequenceEqual("eth_getBalance"u8) => 1,
+        _ when method.SequenceEqual("eth_getCode"u8) => 1,
+        _ when method.SequenceEqual("eth_getTransactionCount"u8) => 1,
+        _ when method.SequenceEqual("eth_getBlockByNumber"u8) => 0,
+        _ when method.SequenceEqual("eth_simulateV1"u8) => 1,
+        _ when method.SequenceEqual("eth_getStorageAt"u8) => 2,
+        _ when method.SequenceEqual("eth_getProof"u8) => 2,
+        _ when method.SequenceEqual("trace_call"u8) => 2,
+        _ => -1,
+    };
 
     /// <summary>
     /// Works out the edits a captured request needs, in ascending, non-overlapping order.
@@ -51,39 +75,104 @@ public static class RequestRewriter
 
         try
         {
-            Utf8JsonReader reader = new(request);
-            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            int blockIndex = forceBlockParameter ? FindBlockParameterIndex(request) : -1;
+            if (blockIndex < 0 && !stripFeeFields)
             {
                 return 0;
             }
 
-            int count = 0;
-            while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            return PlanParams(request, blockIndex, stripFeeFields, edits);
+        }
+        catch (JsonException)
+        {
+            // A malformed record is replayed as captured; the node's response classifies it.
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Reads the request's <c>method</c> and maps it to the position of its block parameter.
+    /// </summary>
+    /// <returns>The zero-based parameter index, or <c>-1</c> if the method is unknown or absent.</returns>
+    /// <remarks>
+    /// Stops as soon as <c>method</c> is found. Recorders put it before <c>params</c>, so this normally
+    /// reads only the first few bytes; the reverse order costs a walk over <c>params</c> instead.
+    /// </remarks>
+    private static int FindBlockParameterIndex(ReadOnlySpan<byte> request)
+    {
+        Utf8JsonReader reader = new(request);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            return -1;
+        }
+
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool isMethod = reader.ValueTextEquals("method"u8);
+            if (!reader.Read())
             {
-                bool isParams = reader.ValueTextEquals("params"u8);
-                if (!reader.Read())
-                {
-                    return count;
-                }
+                return -1;
+            }
 
-                if (!isParams)
-                {
-                    reader.Skip();
-                    continue;
-                }
+            if (isMethod)
+            {
+                return reader.TokenType == JsonTokenType.String && !reader.ValueIsEscaped
+                    ? BlockParameterIndex(reader.ValueSpan)
+                    : -1;
+            }
 
-                if (reader.TokenType != JsonTokenType.StartArray)
-                {
-                    return count;
-                }
+            reader.Skip();
+        }
 
-                // First entry: the call object, which carries the fee fields.
+        return -1;
+    }
+
+    /// <summary>Walks the <c>params</c> array, planning the fee removals and the block replacement.</summary>
+    private static int PlanParams(ReadOnlySpan<byte> request, int blockIndex, bool stripFeeFields, Span<RequestEdit> edits)
+    {
+        Utf8JsonReader reader = new(request);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool isParams = reader.ValueTextEquals("params"u8);
+            if (!reader.Read())
+            {
+                return count;
+            }
+
+            if (!isParams)
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                return count;
+            }
+
+            for (int index = 0; ; index++)
+            {
                 if (!reader.Read() || reader.TokenType == JsonTokenType.EndArray)
                 {
                     return count;
                 }
 
-                if (stripFeeFields && reader.TokenType == JsonTokenType.StartObject)
+                if (index == blockIndex)
+                {
+                    int tokenStart = (int)reader.TokenStartIndex;
+                    reader.Skip();
+                    edits[count++] = new RequestEdit(tokenStart, (int)reader.BytesConsumed - tokenStart, true);
+
+                    return count;
+                }
+
+                if (index == 0 && stripFeeFields && reader.TokenType == JsonTokenType.StartObject)
                 {
                     count += PlanFeeRemovals(ref reader, edits[count..]);
                 }
@@ -92,29 +181,15 @@ public static class RequestRewriter
                     reader.Skip();
                 }
 
-                // Second entry: the block number, hash or tag.
-                if (!reader.Read() || reader.TokenType == JsonTokenType.EndArray)
+                // Nothing further to plan, and walking on would tokenise the state-override map.
+                if (blockIndex < 0)
                 {
                     return count;
                 }
-
-                if (forceBlockParameter)
-                {
-                    int tokenStart = (int)reader.TokenStartIndex;
-                    reader.Skip();
-                    edits[count++] = new RequestEdit(tokenStart, (int)reader.BytesConsumed - tokenStart, true);
-                }
-
-                return count;
             }
+        }
 
-            return count;
-        }
-        catch (JsonException)
-        {
-            // A malformed record is replayed as captured; the node's response classifies it.
-            return 0;
-        }
+        return count;
     }
 
     /// <summary>

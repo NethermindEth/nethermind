@@ -29,6 +29,10 @@ public class ConcurrencySpecTests
     [TestCase("1,x", TestName = "Non-numeric list entry")]
     [TestCase("1-", TestName = "Missing upper bound")]
     [TestCase("2.5", TestName = "Fractional level")]
+    // A doubling progression past int.MaxValue/2 used to overflow to a negative level and spin forever,
+    // so an absurd bound has to be refused rather than hang the run.
+    [TestCase("1-2000000000", TestName = "Range bound above the maximum")]
+    [TestCase("2000000000", TestName = "Single level above the maximum")]
     // A mistyped sweep must fail before the run rather than silently measuring the wrong load.
     public void Rejects_invalid_specification(string spec) =>
         Assert.That(() => ConcurrencySpec.Parse(spec), Throws.InstanceOf<FormatException>());

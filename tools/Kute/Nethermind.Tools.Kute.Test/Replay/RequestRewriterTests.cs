@@ -127,6 +127,77 @@ public class RequestRewriterTests
             Throws.InstanceOf<ArgumentException>());
     }
 
+    private static IEnumerable<TestCaseData> MethodPositionCases()
+    {
+        // The block parameter's slot is per-method. Rewriting a fixed slot would replace a storage key
+        // or a trace-type list and leave the stale block behind, which reads as a working replay.
+        yield return new TestCaseData(
+            """{"method":"eth_getStorageAt","params":["0xabc","0x7","0x1881446"],"id":1}""",
+            2).SetName("eth_getStorageAt takes the third parameter");
+
+        yield return new TestCaseData(
+            """{"method":"eth_getProof","params":["0xabc",["0x7"],"0x1881446"],"id":1}""",
+            2).SetName("eth_getProof takes the third parameter");
+
+        yield return new TestCaseData(
+            """{"method":"trace_call","params":[{"to":"0xabc"},["trace"],"0x1881446"],"id":1}""",
+            2).SetName("trace_call takes the third parameter");
+
+        yield return new TestCaseData(
+            """{"method":"eth_call","params":[{"to":"0xabc"},"0x1881446",{}],"id":1}""",
+            1).SetName("eth_call takes the second parameter");
+
+        yield return new TestCaseData(
+            """{"method":"eth_getBalance","params":["0xabc","0x1881446"],"id":1}""",
+            1).SetName("eth_getBalance takes the second parameter");
+
+        yield return new TestCaseData(
+            """{"method":"eth_getBlockByNumber","params":["0x1881446",false],"id":1}""",
+            0).SetName("eth_getBlockByNumber takes the first parameter");
+    }
+
+    [TestCaseSource(nameof(MethodPositionCases))]
+    public void Rewrites_the_block_parameter_at_the_position_the_method_uses(string request, int index)
+    {
+        using JsonDocument document = JsonDocument.Parse(Rewrite(request, stripFees: false));
+        JsonElement parameters = document.RootElement.GetProperty("params");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters[index].GetString(), Is.EqualTo("latest"), "the block slot is rewritten");
+
+            for (int i = 0; i < parameters.GetArrayLength(); i++)
+            {
+                if (i != index)
+                {
+                    Assert.That(parameters[i].ToString(), Does.Not.Contain("latest"), $"parameter {i} is untouched");
+                }
+            }
+        }
+    }
+
+    [TestCase("""{"method":"eth_getLogs","params":[{"fromBlock":"0x1"}],"id":1}""", TestName = "Unmapped method")]
+    [TestCase("""{"params":[{"to":"0x01"},"0x10",{}],"id":1}""", TestName = "No method member")]
+    public void Leaves_a_method_with_no_known_block_position_untouched(string request)
+    {
+        // Guessing a slot is worse than not rewriting: it corrupts the request and hides the stale block.
+        byte[] utf8 = Encoding.UTF8.GetBytes(request);
+        RequestEdit[] edits = new RequestEdit[RequestRewriter.MaxEdits];
+
+        Assert.That(RequestRewriter.Plan(utf8, forceBlockParameter: true, stripFeeFields: false, edits), Is.Zero);
+    }
+
+    [Test]
+    public void Finds_the_block_parameter_when_method_follows_params()
+    {
+        // Property order is not guaranteed, so the method has to be resolved either way round.
+        const string request = """{"id":1,"params":[{"to":"0x01"},"0x1881446",{}],"method":"eth_call"}""";
+
+        using JsonDocument document = JsonDocument.Parse(Rewrite(request, stripFees: false));
+
+        Assert.That(document.RootElement.GetProperty("params")[1].GetString(), Is.EqualTo("latest"));
+    }
+
     private static IEnumerable<TestCaseData> FeeStrippingCases()
     {
         yield return new TestCaseData(
