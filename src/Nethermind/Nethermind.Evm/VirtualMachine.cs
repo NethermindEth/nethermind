@@ -980,8 +980,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
     /// <summary>
     /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
-    /// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,
-    /// the method adjusts the available gas by the code deposit cost and validates the deployed code.
+    /// various conditions such as exceptions, reverts, and contract creation flows. For successful contract
+    /// creation, the method adjusts the available gas by the code deposit cost and validates the deployed code.
     /// </summary>
     /// <param name="currentState">
     /// The current EVM state, which contains the available gas, execution type, and target address.
@@ -996,13 +996,11 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        ulong executionDepositCost = 0;
-        long stateDepositCost = 0;
         ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
         if (currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert)
         {
-            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out executionDepositCost, out stateDepositCost))
+            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
             {
                 ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);

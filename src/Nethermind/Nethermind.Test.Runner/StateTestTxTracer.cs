@@ -13,7 +13,13 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Test.Runner;
 
-public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
+/// <summary>
+/// Produces EIP-3155 traces for Ethereum state tests.
+/// </summary>
+/// <param name="standardIntrinsicGas">
+/// Standard transaction intrinsic gas, used only when execution ends before a top-level frame is traced.
+/// </param>
+public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
@@ -223,7 +229,7 @@ public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
         if (_hasTopLevelActionResult)
             return;
 
-        _trace.Result.GasUsed = gasSpent.SpentGas.SaturatingSub(intrinsicGas);
+        _trace.Result.GasUsed = gasSpent.SpentGas.SaturatingSub(standardIntrinsicGas);
     }
 
     public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();

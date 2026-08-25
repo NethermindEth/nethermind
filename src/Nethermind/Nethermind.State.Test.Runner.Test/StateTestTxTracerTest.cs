@@ -24,7 +24,7 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     private StateTestTxTracer tracer;
 
     [SetUp]
-    public void StateTestTxTracerSetUp() => tracer = new StateTestTxTracer();
+    public void StateTestTxTracerSetUp() => tracer = new StateTestTxTracer(standardIntrinsicGas: 0);
 
     [TearDown]
     public void StateTestTxTracerTearDown() => tracer.Dispose();
@@ -51,7 +51,7 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Reports_top_level_action_gas()
+    public void Reports_pre_settlement_top_level_action_gas()
     {
         tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
         tracer.ReportAction(60, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
@@ -61,6 +61,7 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
         GasConsumed settledGas = new(SpentGas: 200, OperationGas: 180, BlockStateGas: 80, GasRefund: 20);
         tracer.MarkAsSuccess(Address.Zero, in settledGas, [], []);
 
+        // EIP-3155 follows the frame delta; receipt settlement and refunds do not change it.
         Assert.That(tracer.BuildResult().Result.GasUsed, Is.EqualTo(30));
     }
 
@@ -168,17 +169,16 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
             postHash: createCollisionPostHash,
             contractCreation: true,
             collision: true);
-        tracer.Dispose();
-        tracer = new StateTestTxTracer(IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard);
+        using StateTestTxTracer collisionTracer = new(IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard);
 
         // 100,000 gas limit minus the 53,058 creation intrinsic gas.
-        AssertTraceGas(test, 46_942);
+        AssertTraceGas(test, 46_942, collisionTracer);
     }
 
     [Test]
     public void Receipt_gas_fallback_saturates_below_intrinsic_gas()
     {
-        using StateTestTxTracer fallbackTracer = new(intrinsicGas: 100);
+        using StateTestTxTracer fallbackTracer = new(standardIntrinsicGas: 100);
         GasConsumed settledGas = new(SpentGas: 90, OperationGas: 90);
 
         fallbackTracer.MarkAsSuccess(Address.Zero, in settledGas, [], []);
@@ -187,13 +187,16 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     }
 
     private void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed)
+        => AssertTraceGas(test, expectedGasUsed, tracer);
+
+    private static void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed, StateTestTxTracer txTracer)
     {
-        EthereumTestResult result = new StateTestExecutor().Execute(test, tracer);
+        EthereumTestResult result = new StateTestExecutor().Execute(test, txTracer);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Pass, Is.True, result.Error);
-            Assert.That(tracer.BuildResult().Result.GasUsed, Is.EqualTo(expectedGasUsed));
+            Assert.That(txTracer.BuildResult().Result.GasUsed, Is.EqualTo(expectedGasUsed));
         }
     }
 
