@@ -4,10 +4,13 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
+using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,6 +67,29 @@ public class StateOverridesTests
         _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
 
         Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.False);
+    }
+
+    [Test]
+    public void code_override_stamps_code_hash_and_shares_code_info_across_requests()
+    {
+        byte[] code = [0x60, 0x01, 0x5b, 0x00];
+        StaticCodeCache codeCache = new(16);
+        OverridableCodeInfoRepository firstRequest = new(Substitute.For<ICodeInfoRepository>(), _state, codeCache);
+        OverridableCodeInfoRepository secondRequest = new(Substitute.For<ICodeInfoRepository>(), _state, codeCache);
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            { TestItem.AddressA, new AccountOverride { Code = code } },
+        };
+
+        _state.ApplyStateOverridesNoCommit(firstRequest, overrides, Shanghai.Instance);
+        _state.ApplyStateOverridesNoCommit(secondRequest, overrides, Shanghai.Instance);
+
+        CodeInfo codeInfo = firstRequest.GetCachedCodeInfo(TestItem.AddressA, Shanghai.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.CodeHash, Is.EqualTo(ValueKeccak.Compute(code)));
+            Assert.That(secondRequest.GetCachedCodeInfo(TestItem.AddressA, Shanghai.Instance), Is.SameAs(codeInfo));
+        }
     }
 
     [Test]

@@ -109,12 +109,14 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            ReadOnlyMemory<byte> code = accountOverride.Code;
+            ValueHash256 codeHash = ValueKeccak.Compute(code.Span);
+            stateProvider.InsertCode(address, in codeHash, code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                new CodeInfo(code) { CodeHash = codeHash });
         }
     }
 

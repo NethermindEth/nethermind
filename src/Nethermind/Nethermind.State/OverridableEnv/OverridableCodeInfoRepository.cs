@@ -13,7 +13,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, ICodeCache codeCache) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = [];
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
@@ -40,15 +40,39 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Identical code is served by one <see cref="CodeInfo"/> across requests through the shared code cache:
+    /// the jump-destination analysis is reused, and the instruction stream is reachable at all, as its build
+    /// threshold counts hits per instance and its cache is keyed by <see cref="CodeInfo.CodeHash"/> - a fresh,
+    /// hash-less instance per request would never get there.
+    /// </remarks>
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = (value, ValueKeccak.Compute(value.Code.Span));
+        CodeInfo value)
+    {
+        ValueHash256 codeHash = value.CodeHash != default ? value.CodeHash : ValueKeccak.Compute(value.Code.Span);
+        CodeInfo? shared = value.IsEmpty ? null : codeCache.Get(in codeHash);
+        if (shared is null)
+        {
+            value.CodeHash = codeHash;
+            if (!value.IsEmpty)
+            {
+                codeCache.Set(in codeHash, value);
+            }
+
+            shared = value;
+        }
+
+        _codeOverrides[key] = (shared, codeHash);
+    }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
         _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
-        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
+        ValueHash256 movedCodeHash = worldState.GetCodeHash(precompileAddr);
+        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)) { CodeHash = movedCodeHash }, movedCodeHash);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
