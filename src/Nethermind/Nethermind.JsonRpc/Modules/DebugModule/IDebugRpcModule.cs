@@ -75,7 +75,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
 
-    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true, ResultCanBeNull = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
