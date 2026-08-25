@@ -13,14 +13,17 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Test.Runner;
 
-public class StateTestTxTracer : ITxTracer, IDisposable
+public class StateTestTxTracer(ulong intrinsicGas = 0) : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
     private bool _gasAlreadySetForCurrentOp;
+    private int _actionDepth;
+    private ulong _topLevelActionGas;
+    private bool _hasTopLevelActionResult;
 
     public bool IsTracingReceipt => true;
-    public bool IsTracingActions => false;
+    public bool IsTracingActions => true;
     public bool IsTracingOpLevelStorage => true;
     public bool IsTracingMemory => true;
     public bool IsTracingDetailedMemory { get; set; } = true;
@@ -41,14 +44,14 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
-        _trace.Result.GasUsed = gasSpent;
+        SetReceiptGasFallback(in gasSpent);
     }
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
-        _trace.Result.GasUsed = gasSpent;
+        SetReceiptGasFallback(in gasSpent);
     }
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -174,7 +177,9 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+    }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
@@ -188,15 +193,36 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
 
-    public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
+    public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        if (_actionDepth++ == 0)
+            _topLevelActionGas = gas;
+    }
 
-    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
 
-    public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
+    public void ReportActionError(EvmExceptionType exceptionType) => CompleteAction(0);
 
-    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
 
-    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => CompleteAction(gas);
+
+    private void CompleteAction(ulong gas)
+    {
+        if (--_actionDepth == 0)
+        {
+            _trace.Result.GasUsed = _topLevelActionGas.SaturatingSub(gas);
+            _hasTopLevelActionResult = true;
+        }
+    }
+
+    private void SetReceiptGasFallback(in GasConsumed gasSpent)
+    {
+        if (_hasTopLevelActionResult)
+            return;
+
+        _trace.Result.GasUsed = gasSpent.SpentGas.SaturatingSub(intrinsicGas);
+    }
 
     public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 

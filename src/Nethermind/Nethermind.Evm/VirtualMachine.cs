@@ -239,11 +239,11 @@ public partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     if (_isTracingActionsCached)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
-                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
                 }
@@ -1024,13 +1024,9 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             _txTracer.ReportActionError(callResult.ExceptionType);
         }
-        // If the call is set to revert, report a revert action, adjusting the reported gas for creation operations.
         else if (callResult.ShouldRevert)
         {
-            // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
-            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
-            ulong reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable.SaturatingSub(codeDepositGasCost) : gasAvailable;
-            _txTracer.ReportActionRevert(reportedGas, outputBytes);
+            _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
         }
         // Process contract creation flows.
         else if (currentState.ExecutionType.IsAnyCreate())

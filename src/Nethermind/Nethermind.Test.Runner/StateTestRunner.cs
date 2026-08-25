@@ -126,7 +126,17 @@ namespace Nethermind.Test.Runner
 
             if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
             {
-                StateTestTxTracer txTracer = new();
+                ulong intrinsicGas = 0;
+                try
+                {
+                    intrinsicGas = IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+                }
+                catch (InvalidDataException e)
+                {
+                    _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
+                }
+
+                StateTestTxTracer txTracer = new(intrinsicGas);
                 txTracer.IsTracingDetailedMemory = _traceMemory;
                 // EIP-3155 always needs stack; IsTracingStack controls whether
                 // the EVM calls SetOperationStack at all.
@@ -136,14 +146,6 @@ namespace Nethermind.Test.Runner
                 StateTestTxTrace txTrace = txTracer.BuildResult();
                 txTrace.Result.Time = result.TimeInMs;
                 txTrace.State.StateRoot = result.StateRoot;
-                try
-                {
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
-                }
-                catch (InvalidDataException e)
-                {
-                    _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
-                }
                 WriteErr(txTrace);
             }
 
