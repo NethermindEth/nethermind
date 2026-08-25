@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using Nethermind.Tools.Kute.Replay;
 using NUnit.Framework;
 
@@ -46,6 +47,31 @@ public class ReplayCommandTests
             Assert.That(exitCode, Is.EqualTo(2));
             Assert.That(server.Requests, Is.Zero);
         }
+    }
+
+    [TestCase("--requests=-1")]
+    [TestCase("--warmup=-1")]
+    [TestCase("--skip=-1")]
+    [TestCase("--duration=-1")]
+    [TestCase("--timeout=0")]
+    [TestCase("--max-failure-rate=NaN")]
+    public void Rejects_an_out_of_range_option(string option)
+    {
+        // -1 requests would silently mean the whole trace, a zero timeout throws from inside
+        // HttpClient, and a NaN failure rate compares false against everything, disabling the gate.
+        string[] args = ["-i", "trace.jsonl", option];
+
+        ParseResult result = ReplayCommand.Create().Parse(args);
+
+        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error.Message.Contains("must be")));
+    }
+
+    [Test]
+    public void Accepts_the_documented_zero_values()
+    {
+        string[] args = ["-i", "trace.jsonl", "-n", "0", "-w", "0", "--skip", "0", "-d", "0"];
+
+        Assert.That(ReplayCommand.Create().Parse(args).Errors, Is.Empty);
     }
 
     private string WriteTrace(string content)

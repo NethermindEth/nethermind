@@ -347,6 +347,21 @@ public static class RequestRewriter
         return false;
     }
 
+    /// <summary>Reports whether the record is a JSON-RPC batch, whose entries this rewriter cannot reach.</summary>
+    /// <param name="request">A single captured record, as UTF-8 bytes.</param>
+    public static bool IsBatch(ReadOnlySpan<byte> request)
+    {
+        foreach (byte b in request)
+        {
+            if (b is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'))
+            {
+                return b == (byte)'[';
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Reports whether the call object of a request still carries a fee field.</summary>
     /// <param name="request">A single JSON-RPC request, as UTF-8 bytes.</param>
     public static bool HasFeeField(ReadOnlySpan<byte> request)

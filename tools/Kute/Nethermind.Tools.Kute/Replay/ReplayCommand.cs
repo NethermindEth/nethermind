@@ -119,6 +119,34 @@ public static class ReplayCommand
         Description = "Write per-level progress to standard error",
     };
 
+    static ReplayCommand()
+    {
+        RequireMinimum(Requests, 0);
+        RequireMinimum(Warmup, 0);
+        RequireMinimum(Skip, 0);
+        RequireMinimum(Duration, 0);
+        RequireMinimum(Timeout, 1);
+        MaxFailurePercent.Validators.Add(static result =>
+        {
+            double value = result.GetValueOrDefault<double>();
+            // The negated form also rejects NaN, which would otherwise disable the failure gate.
+            if (!(value >= 0d && value <= 100d))
+            {
+                result.AddError("--max-failure-rate must be a percentage between 0 and 100.");
+            }
+        });
+    }
+
+    /// <summary>Rejects values below <paramref name="minimum"/> at parse time, before they reach a loop bound or HttpClient.</summary>
+    private static void RequireMinimum(Option<int> option, int minimum) =>
+        option.Validators.Add(result =>
+        {
+            if (result.GetValueOrDefault<int>() < minimum)
+            {
+                result.AddError($"{option.Name} must be at least {minimum}.");
+            }
+        });
+
     /// <summary>Builds the <c>replay</c> subcommand.</summary>
     public static Command Create()
     {
@@ -156,7 +184,16 @@ public static class ReplayCommand
             }
 
             ReplaySweep sweep = new(options, Console.Error);
-            IReadOnlyList<LevelResult> results = await sweep.RunAsync(cancellationToken);
+            IReadOnlyList<LevelResult> results;
+            try
+            {
+                results = await sweep.RunAsync(cancellationToken);
+            }
+            catch (InvalidDataException e)
+            {
+                await Console.Error.WriteLineAsync(e.Message);
+                return 2;
+            }
 
             string report = parseResult.GetValue(Output) switch
             {

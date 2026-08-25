@@ -250,17 +250,23 @@ public class ReplaySweepTests
             WarmupRequests = 0,
         });
 
+        int[] concurrencies = new int[results.Count];
+        for (int i = 0; i < results.Count; i++)
+        {
+            concurrencies[i] = results[i].Concurrency;
+        }
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Has.Count.EqualTo(3));
-            Assert.That(results.Select(result => result.Concurrency), Is.EqualTo(new[] { 1, 2, 4 }));
+            Assert.That(concurrencies, Is.EqualTo(new[] { 1, 2, 4 }));
             Assert.That(server.Requests, Is.EqualTo(15));
         }
 
         // Concurrent levels may answer in any order, so compare the sets each level was given.
-        string[] firstLevel = [.. server.Bodies.Take(5).Order()];
-        string[] secondLevel = [.. server.Bodies.Skip(5).Take(5).Order()];
-        string[] thirdLevel = [.. server.Bodies.Skip(10).Take(5).Order()];
+        string[] firstLevel = SortedSlice(server.Bodies, 0, 5);
+        string[] secondLevel = SortedSlice(server.Bodies, 5, 5);
+        string[] thirdLevel = SortedSlice(server.Bodies, 10, 5);
 
         using (Assert.EnterMultipleScope())
         {
@@ -454,6 +460,108 @@ public class ReplaySweepTests
     }
 
     [Test]
+    public void Fails_on_a_batch_record_it_would_have_to_rewrite()
+    {
+        // A batch's entries carry their own block and fee fields the rewriter cannot reach, so sending
+        // one as captured would silently break the every-request-hits-latest contract.
+        const string batch = """[{"method":"eth_call","params":[{"to":"0x01"},"0x10",{}],"id":1,"jsonrpc":"2.0"}]""";
+        string path = WriteTrace(".jsonl", [batch]);
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = new Uri("http://127.0.0.1:1/"),
+            Concurrencies = [1],
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+        };
+
+        ReplaySweep sweep = new(options, TextWriter.Null);
+
+        Assert.That(
+            async () => await sweep.RunAsync(CancellationToken.None),
+            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("batch"));
+    }
+
+    [Test]
+    public async Task Replays_a_batch_verbatim_when_no_edits_are_asked_for()
+    {
+        const string batch = """[{"method":"eth_call","params":[{"to":"0x01"},"0x10",{}],"id":1,"jsonrpc":"2.0"}]""";
+        string path = WriteTrace(".jsonl", [batch]);
+        await using StubJsonRpcServer server = new();
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            BlockTag = null,
+            StripFeeFields = false,
+            Concurrencies = [1],
+            MeasuredRequests = 0,
+            WarmupRequests = 0,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Total, Is.EqualTo(1));
+            Assert.That(server.Bodies[0], Is.EqualTo(batch));
+        }
+    }
+
+    [Test]
+    public async Task Never_counts_a_truncated_batch_as_a_success()
+    {
+        // The response scanner caps its buffer at one 8 MiB token; an error entry hiding behind a
+        // giant result must not be reported as a success just because the scan could not reach it.
+        string giant = new('a', 9 * 1024 * 1024);
+        string body = $"[{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"{giant}\"}},{{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{{\"code\":-32000,\"message\":\"boom\"}}}}]";
+        string path = WriteTrace(".jsonl", Requests(2, _ => "latest"));
+        await using StubJsonRpcServer server = new(_ => (HttpStatusCode.OK, body));
+
+        IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
+        {
+            Concurrencies = [1],
+            MeasuredRequests = 2,
+            WarmupRequests = 0,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Succeeded, Is.Zero);
+            Assert.That(results[0].RpcErrors, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Warns_when_priming_or_warm_up_fails()
+    {
+        // Warm-up traffic is not reported in the results, so a node that failed it silently would
+        // leave the measured window cold with nothing in the output to say so.
+        string path = WriteTrace(".jsonl", Requests(20, _ => "latest"));
+        await using StubJsonRpcServer server = new(_ => (HttpStatusCode.InternalServerError, "boom"));
+        StringWriter log = new();
+
+        ReplayOptions options = new()
+        {
+            InputPath = path,
+            Address = server.Address,
+            Concurrencies = [2],
+            MeasuredRequests = 4,
+            WarmupRequests = 2,
+            StripFeeFields = false,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+
+        await new ReplaySweep(options, log).RunAsync(CancellationToken.None);
+        string output = log.ToString();
+
+        // Progress is off, so these lines prove the warnings do not hide behind -p.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(output, Does.Contain("priming failed 2/2"));
+            Assert.That(output, Does.Contain("warm-up had 2/2 failures"));
+        }
+    }
+
+    [Test]
     public async Task Dry_run_rewrites_without_sending_anything()
     {
         string path = WriteTrace(".jsonl.zst", Requests(25, index => index < 5 ? "latest" : $"0x{index:x}"));
@@ -510,6 +618,19 @@ public class ReplaySweepTests
         });
 
         return new ReplaySweep(options, TextWriter.Null).RunAsync(CancellationToken.None);
+    }
+
+    private static string[] SortedSlice(IReadOnlyList<string> bodies, int start, int count)
+    {
+        string[] slice = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            slice[i] = bodies[start + i];
+        }
+
+        Array.Sort(slice, StringComparer.Ordinal);
+
+        return slice;
     }
 
     private static IReadOnlyList<string> FeeBearingRequests(int count)

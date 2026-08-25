@@ -122,6 +122,10 @@ The block parameter's position is per-method, so only methods with a known posit
 `trace_call` (third); `eth_getBlockByNumber` (first). Any other method is replayed untouched rather
 than guessed at, since rewriting the wrong slot would corrupt the request and leave the stale block.
 
+A record that is itself a JSON-RPC batch cannot be retagged or stripped, so a run that would have to
+edit one fails on it instead of silently sending it as captured; `-b keep --keep-fees` replays
+batches verbatim.
+
 ### How a level is measured
 
 Each concurrency level runs twice over the same prefix of the trace: a warm-up pass whose latencies
@@ -129,9 +133,10 @@ are discarded, then the measured pass. Both share one connection pool, so the me
 pays connection setup. Exactly `-c` requests are kept in flight by that many persistent workers, so
 the level label is the load actually offered.
 
-Connections are opened by a priming burst before the warm-up pass: one request per connection, sent
-simultaneously, because the pool only opens as many connections as it sees concurrent requests. `-w 0`
-opts out of priming and warming altogether.
+Connections are opened by a priming burst before the warm-up pass: one request per connection, each
+held until the whole burst is serializing, because the pool only opens a fresh connection while every
+existing one is busy. Priming and warm-up failures are reported even without `-p`, since a failed
+warm-up leaves the measured window cold. `-w 0` opts out of priming and warming altogether.
 
 Every level replays the same records, which is what makes levels comparable. Size a level with
 `-n <count>` (measured requests) or `-d <seconds>` (wall-clock cap), and note that at low concurrency

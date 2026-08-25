@@ -4,6 +4,8 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text;
 using System.Threading.Channels;
 using Nethermind.Tools.Kute.Auth;
@@ -59,7 +61,11 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
                 await PrimeConnectionsAsync(concurrency, httpClient, auth, token);
 
                 Report($"concurrency {concurrency}: warm-up, {_options.WarmupRequests} requests");
-                await RunPassAsync(concurrency, _options.WarmupRequests, httpClient, auth, measure: false, token);
+                LevelResult warmup = await RunPassAsync(concurrency, _options.WarmupRequests, httpClient, auth, measure: false, token);
+                if (warmup.Failed > 0)
+                {
+                    Warn($"concurrency {concurrency}: warm-up had {warmup.Failed}/{warmup.Total} failures; the measured window may be cold");
+                }
             }
 
             Report($"concurrency {concurrency}: measuring");
@@ -116,11 +122,11 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
         for (int i = 0; i < concurrency; i++)
         {
-            WorkerTally tally = new(measure ? perWorkerHint : 0);
+            WorkerTally tally = new(perWorkerHint);
             tallies[i] = tally;
             RawJsonRpcClient client = new(httpClient, _options.Address, auth);
             tasks[i + 1] = Task.Run(
-                () => WorkerAsync(channel.Reader, client, tally, measure, deadline, passCts, passToken),
+                () => WorkerAsync(channel.Reader, client, tally, deadline, passCts, passToken),
                 CancellationToken.None);
         }
 
@@ -144,7 +150,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             int sent = 0;
             while (sent < requestLimit && !deadline.HasExpired && reader.TryReadRecord(out ReadOnlySpan<byte> record))
             {
-                await writer.WriteAsync(Materialize(record), token);
+                await writer.WriteAsync(Materialize(record, reader.RecordsRead), token);
                 sent++;
             }
         }
@@ -167,10 +173,11 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
     /// <summary>Opens every connection the level will use by sending one request per connection at once.</summary>
     /// <remarks>
-    /// The pool opens a connection per concurrent request, so exactly <paramref name="concurrency"/>
-    /// simultaneous sends open them all. Feeding warm-up requests through the shared channel cannot
-    /// guarantee that: a fast worker can take two while another takes none, leaving a connection to
-    /// open inside the measured window.
+    /// The pool assigns a connection before it serializes a request body, so bodies that wait for the
+    /// whole burst keep one connection occupied each until all of them exist. Merely starting the
+    /// sends together is not enough: a fast early response can hand its connection to a later send
+    /// instead of the pool opening a fresh one. Feeding warm-up requests through the shared channel
+    /// cannot guarantee coverage either, since a fast worker can take two while another takes none.
     /// </remarks>
     private async Task PrimeConnectionsAsync(int concurrency, HttpClient httpClient, IAuth? auth, CancellationToken token)
     {
@@ -181,17 +188,58 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
             return;
         }
 
-        PendingRequest request = Materialize(record);
+        PendingRequest request = Materialize(record, reader.RecordsRead);
         ReadOnlyMemory<byte> body = request.Buffer.AsMemory(0, request.Length);
+        GatedContent.Gate gate = new(concurrency);
 
-        Task<RequestOutcome>[] primes = new Task<RequestOutcome>[concurrency];
+        Task<bool>[] primes = new Task<bool>[concurrency];
         for (int i = 0; i < concurrency; i++)
         {
-            primes[i] = new RawJsonRpcClient(httpClient, _options.Address, auth).SendAsync(body, token);
+            primes[i] = PrimeOneAsync(httpClient, auth, body, gate, token);
         }
 
         await Task.WhenAll(primes);
         ArrayPool<byte>.Shared.Return(request.Buffer);
+
+        int failed = 0;
+        foreach (Task<bool> prime in primes)
+        {
+            if (!prime.Result)
+            {
+                failed++;
+            }
+        }
+
+        if (failed > 0)
+        {
+            Warn($"concurrency {concurrency}: priming failed {failed}/{concurrency} requests; their connections may open inside the measured window");
+        }
+    }
+
+    /// <summary>Sends one priming request, reporting whether it got a success status.</summary>
+    private async Task<bool> PrimeOneAsync(HttpClient httpClient, IAuth? auth, ReadOnlyMemory<byte> body, GatedContent.Gate gate, CancellationToken token)
+    {
+        try
+        {
+            using HttpRequestMessage request = new(HttpMethod.Post, _options.Address) { Content = new GatedContent(body, gate) };
+            if (auth is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AuthToken);
+            }
+
+            using HttpResponseMessage response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            await response.Content.CopyToAsync(Stream.Null, token);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or InvalidOperationException)
+        {
+            return false;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -202,11 +250,20 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     /// A block parameter that already matches the target is not an edit, so a record needing no change
     /// is copied straight through rather than rebuilt.
     /// </remarks>
-    private PendingRequest Materialize(ReadOnlySpan<byte> record)
+    private PendingRequest Materialize(ReadOnlySpan<byte> record, long recordNumber)
     {
         bool forceBlock = _quotedTag.Length > 0;
         if (forceBlock || _options.StripFeeFields)
         {
+            if (RequestRewriter.IsBatch(record))
+            {
+                // Entries carry their own block and fee fields the planner cannot reach; sending the
+                // batch as captured would silently break the rewrite contract.
+                throw new InvalidDataException(
+                    $"Record {recordNumber} is a batch, whose entries cannot be retagged or stripped. Replay batches with '-b keep --keep-fees'.");
+            }
+
+
             Span<RequestEdit> planned = stackalloc RequestEdit[RequestRewriter.MaxEdits];
             int count = RequestRewriter.Plan(record, forceBlock, _options.StripFeeFields, planned);
             ReadOnlySpan<RequestEdit> edits = Keep(record, planned[..count], out bool rewroteBlock, out bool droppedFees);
@@ -261,7 +318,6 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         ChannelReader<PendingRequest> reader,
         RawJsonRpcClient client,
         WorkerTally tally,
-        bool measure,
         PassDeadline deadline,
         CancellationTokenSource passCts,
         CancellationToken token)
@@ -285,10 +341,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
 
                 ArrayPool<byte>.Shared.Return(request.Buffer);
 
-                if (measure)
-                {
-                    tally.Add(start, end, request.Length, outcome, request.RewroteBlock, request.StrippedFees);
-                }
+                tally.Add(start, end, request.Length, outcome, request.RewroteBlock, request.StrippedFees);
             }
         }
         catch
@@ -315,7 +368,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         {
             token.ThrowIfCancellationRequested();
 
-            PendingRequest request = Materialize(record);
+            PendingRequest request = Materialize(record, reader.RecordsRead);
             string? failure = Validate(request, reader.RecordsRead);
 
             // Returned before the deliberate throw below rather than abandoned to the GC.
@@ -453,9 +506,15 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     {
         if (_options.Progress)
         {
-            _log.WriteLine(message);
-            _log.Flush();
+            Warn(message);
         }
+    }
+
+    /// <summary>Writes a line regardless of the progress setting: it changes how to read the results.</summary>
+    private void Warn(string message)
+    {
+        _log.WriteLine(message);
+        _log.Flush();
     }
 
     private static string JsonQuote(string value) => string.Concat("\"", value, "\"");
@@ -466,6 +525,69 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
     /// the deadline must not be reported as an edited request.
     /// </remarks>
     private readonly record struct PendingRequest(byte[] Buffer, int Length, bool RewroteBlock, bool StrippedFees);
+
+    /// <summary>A priming request body that starts writing only once the whole burst holds connections.</summary>
+    /// <remarks>
+    /// Serialization runs on the connection assigned to the request, so a body that waits for its
+    /// peers keeps that connection occupied until the burst has one each. The wait gives up after a
+    /// few seconds, degrading to a plain burst, so an endpoint that caps connections below the level
+    /// stalls priming instead of hanging it.
+    /// </remarks>
+    private sealed class GatedContent : HttpContent
+    {
+        private readonly ReadOnlyMemory<byte> _body;
+        private readonly Gate _gate;
+
+        public GatedContent(ReadOnlyMemory<byte> body, Gate gate)
+        {
+            _body = body;
+            _gate = gate;
+            Headers.ContentType = new MediaTypeHeaderValue(MediaTypeNames.Application.Json) { CharSet = "utf-8" };
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+        {
+            await _gate.WaitForBurstAsync();
+            await stream.WriteAsync(_body, cancellationToken);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = _body.Length;
+            return true;
+        }
+
+        /// <summary>Releases every waiting body once <paramref name="participants"/> of them have arrived.</summary>
+        /// <param name="participants">Number of bodies that must be serializing before any writes.</param>
+        public sealed class Gate(int participants)
+        {
+            private static readonly TimeSpan s_timeout = TimeSpan.FromSeconds(5);
+
+            private readonly TaskCompletionSource _burstSerializing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _remaining = participants;
+
+            public async Task WaitForBurstAsync()
+            {
+                if (Interlocked.Decrement(ref _remaining) <= 0)
+                {
+                    _burstSerializing.TrySetResult();
+                }
+
+                try
+                {
+                    await _burstSerializing.Task.WaitAsync(s_timeout);
+                }
+                catch (TimeoutException)
+                {
+                    // Fewer connections available than asked for; release the rest and prime what exists.
+                    _burstSerializing.TrySetResult();
+                }
+            }
+        }
+    }
 
     /// <summary>Bounds how long a level spends sending, measured from its first request.</summary>
     /// <remarks>

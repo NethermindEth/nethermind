@@ -88,6 +88,7 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
         BatchProgress batch = default;
         int buffered = 0;
         bool endOfStream = false;
+        bool truncated = false;
         RequestOutcome? verdict = null;
 
         while (verdict is null)
@@ -95,6 +96,7 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
             if (buffered == _buffer.Length && !Grow())
             {
                 // A single token larger than the cap: stop parsing but keep the connection usable.
+                truncated = true;
                 break;
             }
 
@@ -121,9 +123,9 @@ public sealed class RawJsonRpcClient(HttpClient httpClient, Uri uri, IAuth? auth
 
         await DrainAsync(stream, endOfStream, token);
 
-        // With no early verdict, a fully-walked batch of results is a success; anything else carried
-        // no decisive member and was not a JSON-RPC response.
-        return verdict ?? (batch.IsBatch && batch.Entries > 0 && batch.Results == batch.Entries
+        // With no early verdict, a fully-walked batch of results is a success. A truncated scan may
+        // have unread entries, so it can never be one; nor can a body with no decisive member.
+        return verdict ?? (!truncated && batch.IsBatch && batch.Entries > 0 && batch.Results == batch.Entries
             ? RequestOutcome.Success
             : RequestOutcome.RpcError);
     }
