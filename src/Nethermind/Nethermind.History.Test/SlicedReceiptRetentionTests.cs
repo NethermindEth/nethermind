@@ -32,55 +32,6 @@ public class SlicedReceiptRetentionTests
 {
     // Both retention paths, because the pruner reclaims by range: with the index it answers for a whole span at
     // once, and without it falls back to asking block by block. A real sliced node runs the first.
-    [Test]
-    public async Task Retains_the_body_of_a_sliced_height_when_bodies_are_retained_with_receipts()
-    {
-        Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
-
-        IHistoryConfig historyConfig = new HistoryConfig
-        {
-            Pruning = PruningModes.Rolling,
-            RetentionEpochs = 1,
-            PruningInterval = 0,
-            RetainBodiesWithReceipts = true
-        };
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
-
-        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig);
-
-        byte[] logCode = Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.LOG0).Done;
-
-        Block slicedBlock = await testBlockchain.AddBlock(Build.A.Transaction
-            .WithCode(logCode).WithNonce(0).WithGasLimit(210200)
-            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
-        Block otherBlock = await testBlockchain.AddBlock(Build.A.Transaction
-            .WithCode(logCode).WithNonce(1).WithGasLimit(210200)
-            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
-
-        ulong slicedBlockNumber = slicedBlock.Number;
-        Hash256 slicedBlockHash = slicedBlock.Hash!;
-        ulong otherBlockNumber = otherBlock.Number;
-
-        for (int i = 0; i < 100; i++)
-        {
-            await testBlockchain.AddBlock();
-        }
-        testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
-
-        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        historyPruner.TryPruneHistory(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(testBlockchain.BlockTree.FindBlock(slicedBlockNumber, BlockTreeLookupOptions.None), Is.Not.Null,
-                "the retained height keeps its body, which is what makes its transactions answerable");
-            Assert.That(testBlockchain.BlockTree.FindBlock(otherBlockNumber, BlockTreeLookupOptions.None), Is.Null,
-                "a height nothing retains still loses its body");
-            Assert.That(testBlockchain.ReceiptStorage.HasBlock(slicedBlockNumber, slicedBlockHash), Is.True,
-                "its receipts stay readable through the body it kept");
-        }
-    }
-
     [TestCase(false, TestName = "Retains_receipts_for_a_sliced_address_asking_block_by_block")]
     [TestCase(true, TestName = "Retains_receipts_for_a_sliced_address_asking_the_log_index_for_the_span")]
     public async Task Retains_receipts_for_a_sliced_address_and_serves_its_logs_through_LogFinder(bool logIndexEnabled)
@@ -143,7 +94,10 @@ public class SlicedReceiptRetentionTests
         {
             Assert.That(testBlockchain.ReceiptStorage.HasBlock(slicedBlockNumber, slicedBlockHash), Is.True, "Sliced block's receipts should be retained");
             Assert.That(testBlockchain.ReceiptStorage.HasBlock(otherBlockNumber, otherBlockHash), Is.False, "Non-sliced block's receipts should be pruned");
-            Assert.That(testBlockchain.BlockTree.FindBlock(slicedBlockNumber, BlockTreeLookupOptions.None), Is.Null, "Sliced block's body should still be pruned - only receipts are retained");
+            Assert.That(testBlockchain.BlockTree.FindBlock(slicedBlockNumber, BlockTreeLookupOptions.None), Is.Not.Null,
+                "the retained height keeps its body, which is what makes its transactions answerable and spares the walk a signature recovery per transaction");
+            Assert.That(testBlockchain.BlockTree.FindBlock(otherBlockNumber, BlockTreeLookupOptions.None), Is.Null,
+                "a height nothing retains still loses its body");
         }
 
         LogFinder logFinder = new(
@@ -164,9 +118,9 @@ public class SlicedReceiptRetentionTests
         TxReceipt[] retained = testBlockchain.ReceiptStorage.Get(slicedBlockHash);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retained, Has.Length.EqualTo(1), "retained receipts must resolve by block hash even though the body is gone");
-            Assert.That(retained[0].TxHash, Is.Not.Null, "the self-describing record carries the tx hash the body would otherwise provide");
-            Assert.That(retained[0].Sender, Is.Not.Null, "the self-describing record carries the recovered sender");
+            Assert.That(retained, Has.Length.EqualTo(1), "retained receipts must resolve by block hash");
+            Assert.That(retained[0].TxHash, Is.Not.Null, "the tx hash comes from the body the height kept");
+            Assert.That(retained[0].Sender, Is.Not.Null, "so does the sender, without the walk having had to recover it");
         }
     }
 

@@ -48,7 +48,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
     private readonly IPrunedReceiptRetention _receiptRetention;
-    private readonly bool _retainBodies;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
@@ -101,7 +100,6 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
-        _retainBodies = historyConfig.RetainBodiesWithReceipts;
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -387,9 +385,6 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong MinimumReclaimChunkBlocks = 100_000;
 
-    /// <summary>Density at which reclaiming the gaps by range stops being worth the writes it costs.</summary>
-    private const int DenseRetentionDivisor = 8;
-
     /// <summary>How far the receipt walk goes before it looks at the deadline again. A chunk is sized for range
     /// operations; deciding retention can cost a header read per height, so it needs its own, narrower step.</summary>
     private const ulong ReceiptRetentionSlice = 10_000;
@@ -438,9 +433,6 @@ public class HistoryPruner : IHistoryPruner
                 // short, and the rest of the chunk stops with it rather than stranding undecided receipts.
                 to = RetainReceiptsAndReclaimTheRest(from, to, cancellationToken);
 
-                // Retaining bodies has to drop them height by height, beside the retention that decides which
-                // survive; one range over the chunk would take those with it.
-                if (!_retainBodies) _blockTree.DeleteOldBlockRange(from, to);
                 _blockAccessListStore.DeleteRange(from, to);
 
                 _blocksReclaimCursor = to;
@@ -527,54 +519,23 @@ public class HistoryPruner : IHistoryPruner
         if (candidates.Count == 0)
         {
             _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
-            if (_retainBodies) _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
+            _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
             return;
         }
 
-        if (_retainBodies)
+        // A retained height keeps its body, so its receipts resolve through it and need no re-encoding - which is
+        // what was paying a signature recovery per transaction, on most heights of a span sliced by busy addresses.
+        HashSet<ulong> keep = [.. candidates];
+        Metrics.SlicedReceiptsRetained += keep.Count;
+
+        for (ulong number = fromInclusive; number < toExclusive; number++)
         {
-            // A kept height keeps its body, so its receipts stay readable through it and need no re-encoding at
-            // all - which is what was paying a signature recovery per transaction, on most heights of the span.
-            HashSet<ulong> keep = [.. candidates];
-            for (ulong number = fromInclusive; number < toExclusive; number++)
-            {
-                if (keep.Contains(number) || TryRemoveReceiptsAt(number)) continue;
+            if (keep.Contains(number) || TryRemoveReceiptsAt(number)) continue;
 
-                _receiptStorage.RemoveReceiptsRange(number, number + 1);
-                _blockTree.DeleteOldBlockRange(number, number + 1);
-            }
-
-            return;
+            // A height whose level will not load has to lose both whatever its hashes are.
+            _receiptStorage.RemoveReceiptsRange(number, number + 1);
+            _blockTree.DeleteOldBlockRange(number, number + 1);
         }
-
-        // Dense retention leaves gaps a block or two wide, where no file lies entirely inside the range.
-        if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
-        {
-            HashSet<ulong> keep = [.. candidates];
-            for (ulong number = fromInclusive; number < toExclusive; number++)
-            {
-                if (keep.Contains(number) && TryRetainAt(number)) continue;
-
-                // The block range goes either way, so a height that will not load still has to lose its receipts.
-                if (!TryRemoveReceiptsAt(number)) _receiptStorage.RemoveReceiptsRange(number, number + 1);
-            }
-
-            return;
-        }
-
-        candidates.Sort();
-
-        ulong gapStart = fromInclusive;
-        foreach (ulong height in candidates)
-        {
-            if (height > gapStart) _receiptStorage.RemoveReceiptsRange(gapStart, height);
-
-            // Receipts that could not be made self-describing would outlive the body they need to be read.
-            if (!TryRetainAt(height)) _receiptStorage.RemoveReceiptsRange(height, height + 1);
-            gapStart = height + 1;
-        }
-
-        if (gapStart < toExclusive) _receiptStorage.RemoveReceiptsRange(gapStart, toExclusive);
     }
 
     private static List<ulong> CandidatesFromAnswer(IReadOnlySet<ulong> answered, ulong fromInclusive, ulong toExclusive)
@@ -635,40 +596,10 @@ public class HistoryPruner : IHistoryPruner
         foreach (BlockInfo info in level.BlockInfos)
         {
             _receiptStorage.RemoveReceipts(number, info.BlockHash);
-            if (_retainBodies) _blockTree.DeleteOldBlock(number, info.BlockHash);
+            _blockTree.DeleteOldBlock(number, info.BlockHash);
         }
 
         return true;
-    }
-
-    /// <summary>True when every body at the height was accounted for - retained, or removed here. A height that
-    /// was not goes to the caller's range removal, losing any sibling that did retain.</summary>
-    private bool TryRetainAt(ulong number)
-    {
-        ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
-        if (level is null) return false;
-
-        bool accountedForAll = level.BlockInfos.Length > 0;
-        foreach (BlockInfo info in level.BlockInfos)
-        {
-            Block? block = _blockTree.FindBlock(info.BlockHash, BlockTreeLookupOptions.None, number);
-            if (block is null)
-            {
-                accountedForAll = false;
-                continue;
-            }
-
-            if (_receiptStorage.TryRetainSelfDescribing(block))
-            {
-                Metrics.SlicedReceiptsRetained++;
-            }
-            else
-            {
-                _receiptStorage.RemoveReceipts(block);
-            }
-        }
-
-        return accountedForAll;
     }
 
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
