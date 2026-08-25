@@ -284,6 +284,16 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("10 faster", body)
         self.assertIn("Closed-loop throughput (concurrency 16): master 800.0 req/s, PR 880.0 req/s", body)
 
+    def test_record_shift_needs_to_exceed_the_records_own_aa_spread(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.0, 100.0)
+        self._timings("nethermind_master", [10.0] * 10 + [100.0] * 10, achieved=800.0)
+        self._timings("nethermind_master_r2", [10.0] * 10 + [90.0] * 10, achieved=800.0)
+        self._timings("nethermind", [10.0] * 10 + [80.0] * 10, achieved=880.0)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("0 records slower and 0 faster", body)
+        self.assertRegex(body, r"median delta .* -\d+\.\d%")
+
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")

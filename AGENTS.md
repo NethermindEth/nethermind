@@ -227,11 +227,11 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
-`arch`, and always pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than
-building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.clients` listing one
-`nethermind@<image>` per arm (the first is the response-parity baseline, compared byte-for-byte), then
-dispatch the same config a second time with the arms swapped, because position artifacts on this rig
-reach ~10% and have pointed in opposite directions on different workloads.
+`arch`, and pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than building one.
+The default preset (`benchmark_tool=corpus-ab`) is the A/B: `docker_image` vs `baseline_image` (the
+response-parity baseline, compared byte-for-byte), two ABBA rounds in one dispatch — position artifacts on
+this rig reach ~10%, and the reversed second round cancels them and yields an A/A control. More than two
+arms: `tool_config.clients` (`nethermind@<image>` per arm) overrides the derived list.
 
 ### What the runners actually hold
 
@@ -266,8 +266,8 @@ corpus (`corpus-v2`, ~1.1 GB) rather than these JSONL corpora, and with a seeded
 its own stale timings — use the json-bench per-category config for an A/B instead.
 
 ```bash
+# default preset corpus-ab: docker_image (the PR build) vs baseline_image on the private corpus, 20k requests
+# at 100 rps per arm, 2 ABBA rounds, 40-pass replay; every knob is a plain input, JSON is only for overrides
 gh workflow run run-rpc-benchmarks.yml --ref <branch> \
-  -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
-  -f docker_image=nethermindeth/nethermind:master-<sha> \
-  -f tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","corpus_requests":20000,"rounds":2,"timings_passes":40}'
+  -f arch=amd64 -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
 ```

@@ -299,22 +299,89 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
+## Triggering
+
+The workflow inputs are plain fields; the default preset (`benchmark_tool: corpus-ab`) needs no JSON
+at all. `docker_image` is the image under test (empty = this branch: the prebuilt tag for
+master/release, otherwise a build on the runner — refused on arm64); `baseline_image` is the other
+arm and the parity reference. Everything the inputs do not cover is an `tool_config` /
+`node_config` JSON override merged on top (its keys win).
+
+```bash
+# This branch vs master on the private corpus — the standard A/B, all defaults
+gh workflow run run-rpc-benchmarks.yml --ref <branch>
+
+# Same with pinned images (mandatory on arm64, and the fast path everywhere: no build on the runner)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f arch=arm64 \
+  -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
+
+# Smoke test of the harness itself (~10 min): tiny cells, one round, short warm-up
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermindeth/nethermind:master-<sha> \
+  -f requests_per_cell=3000 -f rounds=1 -f timings_passes=4 -f warmup=30
+
+# Rate ladder on the corpus (one cell per rate, still request-sized)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f rps="50 100 300"
+
+# Two images on a json-bench workload instead of the corpus (timed cells)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60
+
+# Single node: json-bench curated workload / flood / EthCallChaos
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f rps=50 -f duration=60 \
+  -f tool_config='{"benchmark_config":"ethcall-contracts-head"}'
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=flood -f rps="10 100 500" -f duration=30 \
+  -f tool_config='{"tests":"eth_call eth_getBalance"}'
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=ethcallchaos -f rps=50 -f duration=300
+
+# Cross-client response comparison (amd64 only): Nethermind vs reth, same head
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f reference_client=reth
+
+# Profile the node under the corpus load
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f dottrace=sampling \
+  -f tool_config='{"eth_call_corpus":true,"corpus_file":"/mnt/sda/expb-data/rpc-bench/eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
+```
+
+Labeling a PR `rpc-benchmark` runs the default preset for that PR's branch.
+
+`tool_config` templates (all keys optional; the inputs above already set the common ones):
+
+```json
+{"clients": "nethermind@<a> nethermind@<b> nethermind@<c>", "seed": 7, "corpus_passes": 40,
+ "timings_rps": 100, "timings_concurrency": 16, "corpus_warmup_rps": 400,
+ "parity_diffs": true, "max_corpus_records": 50000, "max_divergence_indexes": 500,
+ "db_isolation_all": "copy", "node_env_vars": "NETHERMIND_EXPERIMENTAL_X=1", "resource_sampling": true,
+ "benchmark_config": "config/benchmark/ethcallchaos-percategory-validated.yaml", "iso_configs": "", "iso_duration": "20s",
+ "ref": "<json-bench sha>", "state_layout": "flat", "snapshot_block": "25490000", "corpus_dir": ""}
+```
+```json
+{"mode": "benchmark", "benchmark_config": "ethcall-contracts-head", "vus": 10, "seed": 1, "deep_check": false,
+ "compare_config": "config/compare/defaults.yaml", "concurrency": 5, "timeout": 30, "validate_schema": false,
+ "fail_on_diff": false, "max_fail_rate_pct": 1, "html_report": true, "corpus_file": "", "extra_args": ""}
+```
+```json
+{"tests": "eth_call eth_getBalance", "deep_check": false, "label": "", "extra_args": ""}
+```
+```json
+{"parallel": 8, "leaderboard_top": 50, "api_port": 5000, "min_mean_ms": 1, "max_cv": 10, "corpus_db": "", "corpus_url": ""}
+```
+
+`node_config` template: see [`node_config` JSON](#node_config-json).
+
 ## Fixed corpus A/B against master
 
-The canonical branch-vs-master check is a fixed `eth_call` corpus A/B — the 497-record
-corpus, 20k requests at 100 rps per arm, two rounds in ABBA order, plus a closed-loop
-per-record replay, the branch build against `nethermind:master` as the parity baseline.
-Dispatch it with `benchmark_tool: jsonbench-sweep` and:
+The canonical branch-vs-master check (`benchmark_tool: corpus-ab`, the default) is a fixed `eth_call`
+corpus A/B — the 497-record corpus, 20k requests at 100 rps per arm, two rounds in ABBA order, plus a
+closed-loop per-record replay, `docker_image` against `baseline_image` as the parity baseline. The
+inputs expand to this sweep config:
 
 ```json
 {"eth_call_corpus": true,
- "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
+ "clients": "nethermind@<baseline_image> nethermind@<docker_image>",
  "rps_list": "100", "corpus_requests": 20000, "rounds": 2, "timings_passes": 40,
- "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
+ "corpus_warmup_duration": "60s", "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
 ```
 
-Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
-runner, which serializes every other job behind it. What makes the number trustworthy:
+Pin both arms to prebuilt tags where you can: building the branch image on the benchmark runner
+serializes every other job behind it. What makes the number trustworthy:
 
 - **Request count, not wall time** (`corpus_requests`): every cell has the same sample size
   whatever the rate, so percentiles resolve equally at 50, 100 or 300 rps.

@@ -380,17 +380,32 @@ def _load_timings(path: Path) -> dict[int, list[float]]:
 
 
 def paired_timings(base_paths: list[Path], cand_paths: list[Path]) -> dict[str, Any] | None:
-    """Per-record paired comparison: median of each record's ok samples per arm, then the per-record delta."""
+    """Per-record paired comparison: median of each record's ok samples per arm, then the per-record delta.
+
+    A record counts as moved when its delta exceeds RECORD_SHIFT_PCT and twice its own spread across
+    the baseline runs, so a few noisy samples per record do not read as a shift.
+    """
     base: dict[int, list[float]] = {}
     cand: dict[int, list[float]] = {}
+    base_runs: list[dict[int, float]] = []
     for paths, into in ((base_paths, base), (cand_paths, cand)):
         for path in paths:
-            for record, values in _load_timings(path).items():
+            samples = _load_timings(path)
+            if into is base:
+                base_runs.append({r: statistics.median(v) for r, v in samples.items() if v})
+            for record, values in samples.items():
                 into.setdefault(record, []).extend(values)
-    deltas = []
+    deltas: list[float] = []
+    regressed = improved = 0
     for record in sorted(base):
-        if base[record] and cand.get(record):
-            deltas.append(_delta_pct(statistics.median(base[record]), statistics.median(cand[record])))
+        if not (base[record] and cand.get(record)):
+            continue
+        delta = _delta_pct(statistics.median(base[record]), statistics.median(cand[record]))
+        deltas.append(delta)
+        own = [run[record] for run in base_runs if record in run]
+        threshold = max(RECORD_SHIFT_PCT, 2 * (_spread_pct(own) or 0.0))
+        regressed += delta > threshold
+        improved += delta < -threshold
     if not deltas:
         return None
     rng = random.Random(20260825)
@@ -401,8 +416,8 @@ def paired_timings(base_paths: list[Path], cand_paths: list[Path]) -> dict[str, 
         "mean_delta": _mean(deltas),
         "ci_low": resampled[int(0.025 * BOOTSTRAP_ROUNDS)],
         "ci_high": resampled[int(0.975 * BOOTSTRAP_ROUNDS)],
-        "regressed": sum(1 for d in deltas if d > RECORD_SHIFT_PCT),
-        "improved": sum(1 for d in deltas if d < -RECORD_SHIFT_PCT),
+        "regressed": regressed,
+        "improved": improved,
     }
 
 
@@ -453,7 +468,7 @@ def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
 
     def row(name: str, base_values: list[float], cand_values: list[float], unit: str) -> None:
         spread = _spread_pct(base_values)
-        floor = max(spread or 0.0, NOISE_FLOOR_PCT if spread is None else 1.0)
+        floor = NOISE_FLOOR_PCT if spread is None else max(2 * spread, 1.0)  # an n=2 range is a ~1 sigma estimate
         delta = _delta_pct(_mean(base_values), _mean(cand_values))
         spread_text = f"{spread:.1f}%" if spread is not None else "n/a"
         lines.append(f"| {name} | {_mean(base_values):.2f}{unit} | {_mean(cand_values):.2f}{unit} | {_arrow(delta, floor)} {delta:+.1f}% | {spread_text} |")
@@ -494,7 +509,8 @@ def _render_timings(lines: list[str], corpus: dict) -> None:
     lines += [f"Paired per-record replay ({paired['records']} records, medians across passes/runs): "
               f"median delta {_arrow(paired['median_delta'], 1.0)} {paired['median_delta']:+.1f}% "
               f"(95% CI {paired['ci_low']:+.1f}% .. {paired['ci_high']:+.1f}%), mean {paired['mean_delta']:+.1f}%; "
-              f"{paired['regressed']} records slower and {paired['improved']} faster by more than {RECORD_SHIFT_PCT:g}%."]
+              f"{paired['regressed']} records slower and {paired['improved']} faster beyond {RECORD_SHIFT_PCT:g}% "
+              f"and twice their own A/A spread."]
     closed = {arm: [m["achieved_rps"] for m in metas if m.get("target_rps") == 0] for arm, metas in meta.items()}
     if closed.get("master") and closed.get("PR"):
         base, cand = _mean(closed["master"]), _mean(closed["PR"])
@@ -534,8 +550,8 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str) -> str:
         _render_parity(lines, corpus["parity"])
         lines.append("")
     lines.append("<sub>Fixed corpus, seeded request sequence, arms interleaved. A/A spread is master against its own repeat: "
-                 f"deltas inside it (or under ~{NOISE_FLOOR_PCT:g}% when no repeat ran) are noise. A PR that changes results "
-                 "is a correctness regression regardless of latency.</sub>")
+                 f"a delta within twice it (min 1%; ~{NOISE_FLOOR_PCT:g}% when no repeat ran) is noise. A PR that changes "
+                 "results is a correctness regression regardless of latency.</sub>")
     return "\n".join(lines)
 
 

@@ -1,66 +1,86 @@
 name: Run RPC Benchmarks
 
 # Read-only JSON-RPC benchmarks against a DB snapshot on a self-hosted runner (amd64 or arm64 box, picked by `arch`).
-# Snapshots are fingerprinted before/after; any change fails the job (warn-only under reth's read-write `direct` mode). See scripts/rpc-bench/README.md.
+# Snapshots are fingerprinted before/after; any change fails the job (warn-only under reth's read-write `direct` mode).
+# The default preset needs no JSON: it A/Bs this branch against master on the private eth_call corpus.
+# Templates and the advanced keys: scripts/rpc-bench/README.md, "Triggering".
 
 on:
   workflow_dispatch:
     inputs:
+      benchmark_tool:
+        description: >-
+          corpus-ab = fixed private eth_call corpus A/B of docker_image vs baseline_image (seeded requests, ABBA rounds,
+          per-record replay, parity). jsonbench-sweep = same two-arm sweep on a json-bench workload. jsonbench / flood /
+          ethcallchaos = single node (client, reference_client, state_layout apply).
+        required: true
+        type: choice
+        options:
+          - corpus-ab
+          - jsonbench-sweep
+          - jsonbench
+          - flood
+          - ethcallchaos
+        default: corpus-ab
       arch:
         description: >-
-          Runner: amd64 = `reproducible-benchmarks` (EPYC 4344P, /mnt/sda, all clients and layouts); arm64 =
-          `reproducible-benchmarks-arm` (Axion, /data, Nethermind flat only, prebuilt images only). Never compare across boxes.
+          Runner. amd64 = EPYC box (all clients/layouts, builds images); arm64 = Axion box (Nethermind flat only,
+          prebuilt images only). Never compare timings across boxes.
         required: false
         type: choice
         options:
           - amd64
           - arm64
         default: amd64
-      benchmark_tool:
-        description: Load tool (with reference_client, flood runs --equality and jsonbench runs compare)
-        required: true
-        type: choice
-        options:
-          - flood
-          - ethcallchaos
-          - jsonbench
-          - jsonbench-sweep
-        default: flood
-      client:
-        description: Client to benchmark (geth/reth use upstream images and the runner's <client>-<block> snapshot set)
-        required: true
-        type: choice
-        options:
-          - nethermind
-          - geth
-          - reth
-        default: nethermind
-      reference_client:
-        description: Start a second client from its same-block snapshot and compare responses (flood/jsonbench only)
-        required: true
-        type: choice
-        options:
-          - none
-          - geth
-          - nethermind
-          - reth
-        default: none
-      snapshot_block:
-        description: >-
-          Snapshot set tag (<snapshot root>/<client>-<tag>; nethermind = nethermind-flat-<tag>). Empty = the expb
-          snapshot for nethermind, 25490000 for geth/reth or any comparison.
-        required: false
-        default: ""
       docker_image:
         description: >-
-          Image for the benchmarked client (e.g. nethermindeth/nethermind:master-21f1dca). Empty = resolve from the
-          branch (nethermind) or the upstream image (geth/reth). Reference image: node_config.reference_image.
+          Image under test (sweep candidate / single-node client), e.g. nethermindeth/nethermind:master-21f1dca.
+          Empty = this branch (prebuilt tag for master/release, otherwise built on the runner — refused on arm64).
+        required: false
+        default: ""
+      baseline_image:
+        description: Sweep baseline and parity reference (corpus-ab, jsonbench-sweep).
+        required: false
+        default: nethermindeth/nethermind:master
+      rps:
+        description: Request rate(s), space-separated. Sweeps run one cell per rate; single-node tools take the first.
+        required: false
+        default: "100"
+      requests_per_cell:
+        description: corpus-ab — requests per cell (cell length = requests / rps). 0 = time the cell with duration instead.
+        required: false
+        type: number
+        default: 20000
+      rounds:
+        description: Sweep rounds. 2 = A B B A, which also yields the A/A control printed next to every delta.
+        required: false
+        type: number
+        default: 2
+      timings_passes:
+        description: corpus-ab — passes of the closed-loop per-record replay per arm (paired comparison). 0 = skip.
+        required: false
+        type: number
+        default: 40
+      warmup:
+        description: corpus-ab — discarded warm-up seconds per node at 400 rps. 0 = measure cold.
+        required: false
+        type: number
+        default: 60
+      corpus:
+        description: corpus-ab — corpus filename (glob) in the runner's rpc-bench dir. Empty = every eth-call-corpus*.jsonl.gz.
+        required: false
+        default: eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz
+      duration:
+        description: Seconds per cell/test where cells are timed (jsonbench-sweep, jsonbench, flood, ethcallchaos, corpus-ab with requests_per_cell=0).
+        required: false
+        type: number
+        default: 60
+      snapshot_block:
+        description: Snapshot set tag (<root>/<client>-<tag>; nethermind = nethermind-flat-<tag>). Empty = 25490000 for sweeps/geth/reth/comparisons, the expb snapshot otherwise.
         required: false
         default: ""
       dottrace:
-        description: >-
-          dotTrace profiling of the node (nethermind only). sampling/tracing are post-processed to XML; timeline is a
-          UI-only snapshot. 'true' is a legacy alias for sampling.
+        description: dotTrace profiling of the node (nethermind only). sampling/tracing produce XML reports; timeline is UI-only.
         required: false
         type: choice
         options:
@@ -69,37 +89,43 @@ on:
           - tracing
           - timeline
         default: "false"
-      state_layout:
-        description: State layout — picks the Nethermind DB snapshot and layout flags; ignored for geth/reth
-        required: true
+      client:
+        description: Single-node tools — client to benchmark.
+        required: false
         type: choice
         options:
-          - halfpath
+          - nethermind
+          - geth
+          - reth
+        default: nethermind
+      reference_client:
+        description: Single-node tools — second client from its same-block snapshot to compare responses against (flood/jsonbench).
+        required: false
+        type: choice
+        options:
+          - none
+          - geth
+          - nethermind
+          - reth
+        default: none
+      state_layout:
+        description: Single-node tools — Nethermind DB layout (sweeps are flat only).
+        required: false
+        type: choice
+        options:
           - flat
+          - halfpath
         default: flat
       additional_nethermind_flags:
-        description: "Extra Nethermind flags appended to the node command (e.g. --Pruning.CacheMb=4000)"
+        description: Extra Nethermind flags for single-node runs (e.g. --Pruning.CacheMb=4000).
         required: false
         default: ""
       tool_config:
-        description: >-
-          Tool config as JSON (empty = defaults). Recipes:
-          (1) fixed-corpus A/B: {"eth_call_corpus":true,"clients":"nethermind@<master image> nethermind@<pr image>","rps_list":"100","corpus_requests":20000,"rounds":2,"timings_passes":40,"corpus_glob":"eth-call-corpus-<label>.jsonl.gz"};
-          (2) sweep: {"clients":"nethermind@<img-a> nethermind@<img-b>","rps_list":"50 100","duration":"60s"};
-          (3) jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"};
-          (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
-          (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/seed/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file/max_corpus_records/extra_args.
-          sweep keys: clients/rounds/rps_list/duration/seed/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob/corpus_requests/corpus_passes/max_corpus_records/timings_passes/timings_rps/timings_concurrency/parity_diffs/max_divergence_indexes/db_isolation_all/db_isolation_allow_snapshot_mutation/node_env_vars/corpus_warmup_duration/corpus_warmup_rps/resource_sampling.
-          In sweep mode the single-client inputs (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
+        description: Advanced — JSON merged over the values derived from the inputs above (its keys win). Templates and all keys in README "Triggering".
         required: false
         default: ""
       node_config:
-        description: >-
-          Node/runner overrides as JSON: {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"",
-          "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
-          "cpu_max_freq_khz":"3800000","reference_db_source":"","reference_image":"","reference_flags":"","reference_db_isolation":""}.
-          Empty = defaults (db_isolation 'direct' for reth, else 'overlay'; cpu_max_freq_khz 3800000 on amd64, none on arm64; 0 = do not cap).
+        description: Advanced — node/runner JSON (db_source, db_isolation, scratch_root, cpuset, memory, cpu_max_freq_khz, reference_*). See README.
         required: false
         default: ""
   pull_request:
@@ -155,13 +181,21 @@ jobs:
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
+          IN_ARCH: ${{ inputs.arch }}
+          IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          IN_BASELINE_IMAGE: ${{ inputs.baseline_image }}
+          IN_RPS: ${{ inputs.rps }}
+          IN_REQUESTS: ${{ inputs.requests_per_cell }}
+          IN_ROUNDS: ${{ inputs.rounds }}
+          IN_TIMINGS_PASSES: ${{ inputs.timings_passes }}
+          IN_WARMUP: ${{ inputs.warmup }}
+          IN_CORPUS: ${{ inputs.corpus }}
+          IN_DURATION: ${{ inputs.duration }}
+          IN_SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
+          IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_CLIENT: ${{ inputs.client }}
           IN_REFERENCE_CLIENT: ${{ inputs.reference_client }}
-          IN_SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
-          IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
-          IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
-          IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
           IN_TOOL_CONFIG: ${{ inputs.tool_config }}
           IN_NODE_CONFIG: ${{ inputs.node_config }}
@@ -169,46 +203,52 @@ jobs:
           set -euo pipefail
           fail() { echo "::error::$*"; exit 1; }
 
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            branch="${PUSH_BRANCH}"
-            benchmark_tool="${IN_TOOL:-flood}"
-            client="${IN_CLIENT:-nethermind}"
-            reference_client="${IN_REFERENCE_CLIENT:-none}"
-            snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
-            docker_image="${IN_DOCKER_IMAGE:-}"
-            dottrace="${IN_DOTTRACE:-false}"
-            state_layout="${IN_STATE_LAYOUT:-flat}"
-            additional_flags="${IN_FLAGS:-}"
-            tool_config="${IN_TOOL_CONFIG:-}"
-            node_config="${IN_NODE_CONFIG:-}"
-          else
-            branch="${PR_HEAD_BRANCH}"
-            benchmark_tool="flood"
-            client="nethermind"
-            reference_client="none"
-            snapshot_block=""
-            docker_image=""
-            dottrace="false"
-            state_layout="flat"
-            additional_flags=""
-            tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
-            node_config=""
-          fi
+          # A PR labeled `rpc-benchmark` runs the default preset: this branch vs master on the corpus.
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then branch="${PUSH_BRANCH}"; else branch="${PR_HEAD_BRANCH}"; fi
+          preset="${IN_TOOL:-corpus-ab}"
+          arch="${IN_ARCH:-amd64}"
+          docker_image="${IN_DOCKER_IMAGE:-}"
+          baseline_image="${IN_BASELINE_IMAGE:-nethermindeth/nethermind:master}"
+          rps="${IN_RPS:-100}"
+          requests="${IN_REQUESTS:-20000}"
+          rounds="${IN_ROUNDS:-2}"
+          timings_passes="${IN_TIMINGS_PASSES:-40}"
+          warmup="${IN_WARMUP:-60}"
+          corpus="${IN_CORPUS-eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz}"
+          duration="${IN_DURATION:-60}"
+          snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
+          dottrace="${IN_DOTTRACE:-false}"
+          client="${IN_CLIENT:-nethermind}"
+          reference_client="${IN_REFERENCE_CLIENT:-none}"
+          state_layout="${IN_STATE_LAYOUT:-flat}"
+          additional_flags="${IN_FLAGS:-}"
+          user_tool_config="${IN_TOOL_CONFIG:-}"
+          node_config="${IN_NODE_CONFIG:-}"
 
+          for pair in "requests_per_cell=${requests}" "rounds=${rounds}" "timings_passes=${timings_passes}" "warmup=${warmup}" "duration=${duration}"; do
+            [[ "${pair#*=}" =~ ^[0-9]+$ ]] || fail "${pair%%=*} must be a non-negative integer, got '${pair#*=}'."
+          done
+          [[ "${rps}" =~ ^[1-9][0-9]*( [1-9][0-9]*)*$ ]] || fail "rps must be space-separated positive integers, got '${rps}'."
+          (( rounds >= 1 )) || fail "rounds must be at least 1."
+          (( duration >= 1 )) || fail "duration must be at least 1 second."
           case "${client}" in nethermind|geth|reth) ;; *) fail "Unknown client '${client}'." ;; esac
           case "${reference_client}" in none|nethermind|geth|reth) ;; *) fail "Unknown reference_client '${reference_client}'." ;; esac
-
-          arch="${IN_ARCH:-amd64}"
           case "${arch}" in
             arm64) runner_label="reproducible-benchmarks-arm"; snapshot_root="/data/nethermind"; bench_data_dir="/data/expb-data"; default_freq="" ;;
             amd64) runner_label="reproducible-benchmarks"; snapshot_root="/mnt/sda"; bench_data_dir="/mnt/sda/expb-data"; default_freq="3800000" ;;
             *) fail "Unsupported arch '${arch}' (expected amd64 or arm64)." ;;
           esac
+
+          sweep="false"
+          case "${preset}" in
+            corpus-ab|jsonbench-sweep) benchmark_tool="jsonbench-sweep"; sweep="true"; client="nethermind"; reference_client="none"; state_layout="flat" ;;
+            jsonbench|flood|ethcallchaos) benchmark_tool="${preset}" ;;
+            *) fail "Unknown benchmark_tool '${preset}'." ;;
+          esac
           if [[ "${arch}" == "arm64" ]] && [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
             fail "The arm64 runner only supports a single Nethermind client — use arch=amd64 for geth/reth or a reference client."
           fi
           [[ "${arch}" != "arm64" || "${state_layout}" == "flat" ]] || fail "The arm64 runner only supports the flat state layout."
-
           comparison="false"; [[ "${reference_client}" != "none" ]] && comparison="true"
           [[ "${comparison}" != "true" || "${benchmark_tool}" != "ethcallchaos" ]] || fail "reference_client comparison is supported for flood and jsonbench only."
           case "${dottrace}" in
@@ -225,8 +265,51 @@ jobs:
           [[ -n "${branch}" ]] || fail "Failed to resolve branch."
           clean_branch="$(echo "${branch}" | sed 's/[^a-zA-Z0-9._-]/-/g')"
 
-          [[ -n "${tool_config}" ]] || tool_config="{}"
-          echo "${tool_config}" | jq -e 'type == "object"' >/dev/null 2>&1 || fail "tool_config must be a JSON object: ${tool_config}"
+          default_client_image() {
+            case "$1" in
+              geth) echo "ethereum/client-go:stable" ;;
+              reth) echo "ghcr.io/paradigmxyz/reth:latest" ;;
+              nethermind) echo "nethermindeth/nethermind:master" ;;
+            esac
+          }
+          if [[ -n "${docker_image}" ]]; then
+            image_mode="provided"; image_ref="${docker_image}"
+          elif [[ "${client}" != "nethermind" ]]; then
+            image_mode="provided"; image_ref="$(default_client_image "${client}")"
+          elif [[ "${branch}" == "master" || "${branch}" == "performance" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
+            image_mode="reuse"; image_ref="nethermindeth/nethermind:${clean_branch}"
+          else
+            image_mode="build"; image_ref="nethermind-rpcbench:${clean_branch}"
+          fi
+          # A build fills the ARM box's ~19G root disk and takes the runner offline.
+          if [[ "${arch}" == "arm64" && "${image_mode}" == "build" ]]; then
+            echo "::error::The arm64 runner does not build images (branch '${branch}' has no prebuilt image). Build one first:"
+            echo "  gh workflow run publish-docker.yml --ref ${branch} -f image-name=nethermind -f tag=<tag> -f dockerfile=Dockerfile -f build-config=release"
+            echo "  gh workflow run run-rpc-benchmarks.yml --ref ${branch} -f docker_image=nethermindeth/nethermind:<tag> ..."
+            exit 1
+          fi
+
+          # tool_config = preset-derived keys, then the user's JSON on top.
+          first_rps="${rps%% *}"
+          case "${preset}" in
+            corpus-ab)
+              preset_cfg="$(jq -n --arg clients "nethermind@${baseline_image} nethermind@${image_ref}" --arg rps "${rps}" \
+                --argjson rounds "${rounds}" --argjson requests "${requests}" --argjson passes "${timings_passes}" \
+                --arg warmup "${warmup}s" --arg duration "${duration}s" --arg corpus "${corpus}" \
+                '{eth_call_corpus: true, clients: $clients, rps_list: $rps, rounds: $rounds, corpus_warmup_duration: $warmup}
+                 + (if $requests > 0 then {corpus_requests: $requests} else {duration: $duration} end)
+                 + (if $passes > 0 then {timings_passes: $passes} else {} end)
+                 + (if $corpus != "" then {corpus_glob: $corpus} else {} end)')" ;;
+            jsonbench-sweep)
+              preset_cfg="$(jq -n --arg clients "nethermind@${baseline_image} nethermind@${image_ref}" --arg rps "${rps}" \
+                --argjson rounds "${rounds}" --arg duration "${duration}s" '{clients: $clients, rps_list: $rps, rounds: $rounds, duration: $duration}')" ;;
+            jsonbench) preset_cfg="$(jq -n --arg rps "${first_rps}" --arg duration "${duration}s" '{rps: $rps, duration: $duration}')" ;;
+            flood) preset_cfg="$(jq -n --arg rates "${rps}" --argjson duration "${duration}" '{rates: $rates, duration: $duration}')" ;;
+            ethcallchaos) preset_cfg="$(jq -n --argjson rate "${first_rps}" --argjson duration "${duration}" '{rate: $rate, duration: $duration}')" ;;
+          esac
+          [[ -n "${user_tool_config}" ]] || user_tool_config="{}"
+          echo "${user_tool_config}" | jq -e 'type == "object"' >/dev/null 2>&1 || fail "tool_config must be a JSON object: ${user_tool_config}"
+          tool_config="$(jq -c -n --argjson a "${preset_cfg}" --argjson b "${user_tool_config}" '$a * $b')"
           corpus_raw="$(echo "${tool_config}" | jq -r 'if has("eth_call_corpus") then (.eth_call_corpus|type) else "absent" end')"
           case "${corpus_raw}" in absent|boolean) ;; *) fail "eth_call_corpus must be a JSON boolean, got ${corpus_raw}." ;; esac
           eth_call_corpus="$(echo "${tool_config}" | jq -r 'if .eth_call_corpus == true then "true" else "false" end')"
@@ -239,9 +322,8 @@ jobs:
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
           DEFAULT_SNAPSHOT_BLOCK="25490000"
-          if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
+          if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" || "${sweep}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
             snapshot_block="${DEFAULT_SNAPSHOT_BLOCK}"
-            echo "snapshot_block not set — defaulting to ${DEFAULT_SNAPSHOT_BLOCK} (required for geth/reth and comparisons)."
           fi
           snapshot_path() {
             if [[ -n "${snapshot_block}" ]]; then
@@ -272,7 +354,7 @@ jobs:
           done
           if [[ "${comparison}" == "true" && "${client}" == "${reference_client}" && "${db_source}" == "${ref_db_source}" ]] \
              && { [[ "${db_isolation}" == "direct" ]] || [[ "${ref_db_isolation}" == "direct" ]]; }; then
-            fail "Two concurrent read-write mounts of one 'direct' snapshot corrupt the DB — use jsonbench-sweep for same-client comparison."
+            fail "Two concurrent read-write mounts of one 'direct' snapshot corrupt the DB — use a sweep for same-client comparison."
           fi
           scratch_root="$(nc '.scratch_root')"; [[ -n "${scratch_root}" ]] || scratch_root="${bench_data_dir}/rpc-bench-scratch"
           network="$(nc '.network')"; [[ -n "${network}" ]] || network="mainnet"
@@ -299,30 +381,6 @@ jobs:
           if [[ -n "${ref_db_source}" ]]; then
             validate_runner_path "node_config.reference_db_source" "${ref_db_source}"
             [[ "${ref_db_source}/" != "${scratch_root}"/* && "${scratch_root}/" != "${ref_db_source}"/* ]] || fail "reference_db_source and scratch_root must be disjoint."
-          fi
-
-          default_client_image() {
-            case "$1" in
-              geth) echo "ethereum/client-go:stable" ;;
-              reth) echo "ghcr.io/paradigmxyz/reth:latest" ;;
-              nethermind) echo "nethermindeth/nethermind:master" ;;
-            esac
-          }
-          if [[ -n "${docker_image}" ]]; then
-            image_mode="provided"; image_ref="${docker_image}"
-          elif [[ "${client}" != "nethermind" ]]; then
-            image_mode="provided"; image_ref="$(default_client_image "${client}")"
-          elif [[ "${branch}" == "master" || "${branch}" == "performance" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then
-            image_mode="reuse"; image_ref="nethermindeth/nethermind:${clean_branch}"
-          else
-            image_mode="build"; image_ref="nethermind-rpcbench:${clean_branch}"
-          fi
-          # A build fills the ARM box's ~19G root disk and takes the runner offline.
-          if [[ "${arch}" == "arm64" && "${image_mode}" == "build" ]]; then
-            echo "::error::The arm64 runner does not build images (branch '${branch}' has no prebuilt image). Build one first:"
-            echo "  gh workflow run publish-docker.yml --ref ${branch} -f image-name=nethermind -f tag=<tag> -f dockerfile=Dockerfile -f build-config=release"
-            echo "  gh workflow run run-rpc-benchmarks.yml --ref ${branch} -f docker_image=nethermindeth/nethermind:<tag> ..."
-            exit 1
           fi
           ref_image_ref=""
           if [[ "${comparison}" == "true" ]]; then
@@ -365,7 +423,8 @@ jobs:
             echo "${tool_config}"
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
-          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} cpu_max_freq_khz=${cpu_max_freq_khz:-none}"
+          echo "Resolved: preset=${preset} tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} cpu_max_freq_khz=${cpu_max_freq_khz:-none}"
+          echo "tool_config: ${tool_config}"
 
   benchmark:
     needs: [resolve]
@@ -421,6 +480,7 @@ jobs:
           echo "Corpus dir:  ${{ needs.resolve.outputs.corpus_dir }}"
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
           echo "CPU cap kHz: ${{ needs.resolve.outputs.cpu_max_freq_khz }}"
+          echo "tool_config: ${{ needs.resolve.outputs.tool_config }}"
 
       - name: Reclaim root disk before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
