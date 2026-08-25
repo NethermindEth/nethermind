@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -19,10 +20,15 @@ namespace Nethermind.Test.Runner;
 /// <param name="standardIntrinsicGas">
 /// Standard transaction intrinsic gas, used only when execution ends before a top-level frame is traced.
 /// </param>
-public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposable
+/// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
+public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
+    private long _refund;
+    private readonly Stack<long> _refundCheckpoints = new();
+    private readonly JournalSet<Address> _selfDestructs = new(Address.EqualityComparer);
+    private readonly Stack<int> _selfDestructCheckpoints = new();
     private bool _gasAlreadySetForCurrentOp;
     private int _actionDepth;
     private ulong _topLevelActionGas;
@@ -34,7 +40,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
     public bool IsTracingMemory => true;
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
-    public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingRefunds { get; } = true;
     public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => false;
     public bool IsTracingStack { get; set; } = true;
@@ -70,6 +76,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
             OperationName = Enum.GetName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
+            Refund = _refund,
         };
         _trace.Entries.Add(_traceEntry);
     }
@@ -185,7 +192,8 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        // Action tracing enables this callback, but EIP-3155 emits no SELFDESTRUCT record.
+        if (destroyRefund != 0 && _selfDestructs.Add(address))
+            _refund += destroyRefund;
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
@@ -204,16 +212,32 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
     {
         if (_actionDepth++ == 0)
             _topLevelActionGas = gas;
+
+        _refundCheckpoints.Push(_refund);
+        _selfDestructCheckpoints.Push(_selfDestructs.TakeSnapshot());
     }
 
-    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteSuccessfulAction(gas);
 
     // An exceptional halt consumes all gas assigned to the frame.
-    public void ReportActionError(EvmExceptionType exceptionType) => CompleteAction(0);
+    public void ReportActionError(EvmExceptionType exceptionType) => CompleteRevertedAction(0);
 
-    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => CompleteAction(gas);
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => CompleteRevertedAction(gas);
 
-    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => CompleteAction(gas);
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => CompleteSuccessfulAction(gas);
+
+    private void CompleteSuccessfulAction(ulong gas)
+    {
+        _refundCheckpoints.TryPop(out _);
+        _selfDestructCheckpoints.TryPop(out _);
+        CompleteAction(gas);
+    }
+
+    private void CompleteRevertedAction(ulong gas)
+    {
+        RestoreRefundCheckpoint();
+        CompleteAction(gas);
+    }
 
     private void CompleteAction(ulong gas)
     {
@@ -244,9 +268,9 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
     {
     }
 
-    public void ReportRefund(long refund) => _traceEntry.Refund = (int)refund;
+    public void ReportRefund(long refund) => _refund += refund;
 
-    public void ReportExtraGasPressure(ulong extraGasPressure) => throw new NotImplementedException();
+    public void ReportExtraGasPressure(ulong extraGasPressure) { }
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 
@@ -259,4 +283,13 @@ public class StateTestTxTracer(ulong standardIntrinsicGas) : ITxTracer, IDisposa
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new NotImplementedException();
 
     public void Dispose() { }
+
+    private void RestoreRefundCheckpoint()
+    {
+        if (_refundCheckpoints.TryPop(out long checkpoint))
+            _refund = checkpoint;
+
+        if (_selfDestructCheckpoints.TryPop(out int selfDestructCheckpoint))
+            _selfDestructs.Restore(selfDestructCheckpoint);
+    }
 }

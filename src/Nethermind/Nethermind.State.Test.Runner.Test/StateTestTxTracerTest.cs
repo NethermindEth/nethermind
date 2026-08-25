@@ -1,6 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
+using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,21 +13,28 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
+using Nethermind.Evm.Test.Tracing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Test.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.State.Test.Runner.Test;
 
-public class StateTestTxTracerTest : VirtualMachineTestsBase
+public class StateTestTxTracerTest : GethLikeTracerTestsBase
 {
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+    protected override ISpecProvider SpecProvider => new TestSpecProvider(Amsterdam.Instance);
+
     private StateTestTxTracer tracer;
 
     [SetUp]
-    public void StateTestTxTracerSetUp() => tracer = new StateTestTxTracer(standardIntrinsicGas: 0);
+    public void StateTestTxTracerSetUp() => tracer = new StateTestTxTracer(standardIntrinsicGas: 0, destroyRefund: 0);
 
     [TearDown]
     public void StateTestTxTracerTearDown() => tracer.Dispose();
@@ -171,7 +181,9 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
             postHash: createCollisionPostHash,
             contractCreation: true,
             collision: true);
-        using StateTestTxTracer collisionTracer = new(IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard);
+        using StateTestTxTracer collisionTracer = new(
+            IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard,
+            (long)test.Fork.GasCosts.DestroyRefund);
 
         // 100,000 gas limit minus the 53,058 creation intrinsic gas.
         AssertTraceGas(test, 46_942, collisionTracer);
@@ -180,12 +192,199 @@ public class StateTestTxTracerTest : VirtualMachineTestsBase
     [Test]
     public void Receipt_gas_fallback_saturates_below_intrinsic_gas()
     {
-        using StateTestTxTracer fallbackTracer = new(standardIntrinsicGas: 100);
+        using StateTestTxTracer fallbackTracer = new(standardIntrinsicGas: 100, destroyRefund: 0);
         GasConsumed settledGas = new(SpentGas: 90, OperationGas: 90);
 
         fallbackTracer.MarkAsSuccess(Address.Zero, in settledGas, [], []);
 
         Assert.That(fallbackTracer.BuildResult().Result.GasUsed, Is.Zero);
+    }
+
+    [TestCase(Instruction.DUPN, 0x80, 18)]
+    [TestCase(Instruction.SWAPN, 0x80, 18)]
+    [TestCase(Instruction.EXCHANGE, 0x8e, 3)]
+    public void Eip8024_immediate_is_not_traced_as_an_instruction(Instruction operation, byte immediate, int stackDepth)
+    {
+        byte[] code = Prepare.EvmCode
+            .For(stackDepth, static (prepare, _) => prepare.PushData(0))
+            .Op(operation)
+            .Data(immediate)
+            .Op(Instruction.STOP)
+            .Done;
+
+        StateTestTxTrace trace = Execute(tracer, code).BuildResult();
+        int operationPc = stackDepth * 2;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Count, Is.EqualTo(stackDepth + 2));
+            Assert.That(trace.Entries[stackDepth].Pc, Is.EqualTo(operationPc));
+            Assert.That(trace.Entries[stackDepth].Operation, Is.EqualTo((byte)operation));
+            Assert.That(trace.Entries[stackDepth + 1].Pc, Is.EqualTo(operationPc + 2));
+            Assert.That(trace.Entries[stackDepth + 1].Operation, Is.EqualTo((byte)Instruction.STOP));
+        }
+    }
+
+    [Test]
+    public void Trace_entries_include_opcode_name_and_cumulative_refund()
+    {
+        StateTestTxTrace trace = Execute(tracer, ClearSstoreCode()).BuildResult();
+        StateTestTxTraceEntry sstore = FindEntry(trace, Instruction.SSTORE);
+        StateTestTxTraceEntry stop = FindEntry(trace, Instruction.STOP);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.OperationName, Is.EqualTo(nameof(Instruction.SSTORE)));
+            Assert.That(sstore.Refund, Is.EqualTo(0));
+            Assert.That(stop.OperationName, Is.EqualTo(nameof(Instruction.STOP)));
+            Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+        }
+    }
+
+    [Test]
+    public void Refund_decreases_when_a_storage_clear_is_reversed()
+    {
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), [1]);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x0", HexZero)
+            .PersistData("0x0", "01")
+            .Op(Instruction.STOP)
+            .Done;
+
+        StateTestTxTrace trace = Execute(tracer, code).BuildResult();
+        StateTestTxTraceEntry firstSstore = FindEntry(trace, Instruction.SSTORE);
+        StateTestTxTraceEntry secondSstore = FindEntry(trace, Instruction.SSTORE, fromEnd: true);
+        StateTestTxTraceEntry stop = FindEntry(trace, Instruction.STOP);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstSstore.Refund, Is.Zero);
+            Assert.That(secondSstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(stop.Refund, Is.EqualTo(Eip8038Constants.StorageWrite));
+        }
+    }
+
+    [Test]
+    public void Refund_is_rolled_back_when_frame_reverts()
+    {
+        StateTestTxTrace trace = Execute(tracer, ChildClearThenRevertCode()).BuildResult();
+        StateTestTxTraceEntry revert = FindEntry(trace, Instruction.REVERT);
+        StateTestTxTraceEntry topLevelStop = FindEntry(trace, Instruction.STOP, depth: 1, fromEnd: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+            Assert.That(topLevelStop.Refund, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void Exceptional_halt_rolls_back_refund_and_consumes_top_level_gas()
+    {
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportRefund((long)Spec.GasCosts.SClearRefund);
+        tracer.ReportActionError(EvmExceptionType.OutOfGas);
+
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        tracer.StartOperation(0, Instruction.STOP, 25, in environment);
+        tracer.ReportActionError(EvmExceptionType.OutOfGas);
+        StateTestTxTrace trace = tracer.BuildResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].Refund, Is.Zero);
+            Assert.That(trace.Result.GasUsed, Is.EqualTo(100));
+        }
+    }
+
+    [Test]
+    public void Parent_refund_survives_when_child_frame_reverts()
+    {
+        StateTestTxTrace trace = Execute(tracer, RefundThenChildRevertCode()).BuildResult();
+        StateTestTxTraceEntry topLevelStop = FindEntry(trace, Instruction.STOP, depth: 1, fromEnd: true);
+
+        Assert.That(topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
+    }
+
+    [Test]
+    public void Legacy_self_destruct_refund_is_deduplicated_and_journaled()
+    {
+        long destroyRefund = (long)Frontier.Instance.GasCosts.DestroyRefund;
+        using StateTestTxTracer legacyTracer = new(standardIntrinsicGas: 0, destroyRefund: destroyRefund);
+
+        legacyTracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        legacyTracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        legacyTracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        legacyTracer.ReportActionRevert(25, default);
+
+        legacyTracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        legacyTracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        legacyTracer.ReportActionEnd(25, default);
+
+        legacyTracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        legacyTracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        legacyTracer.ReportActionEnd(25, default);
+
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        legacyTracer.StartOperation(0, Instruction.STOP, 25, in environment);
+
+        Assert.That(legacyTracer.BuildResult().Entries[0].Refund, Is.EqualTo(destroyRefund));
+    }
+
+    [Test, NonParallelizable]
+    public void Jsonl_trace_includes_refund_and_opcode_name()
+    {
+        GeneralStateTest test = CreateStateTest(
+            Osaka.Instance,
+            code: [0],
+            input: [0],
+            gasLimit: 5_000_000,
+            postHash: new Hash256("0x9efbc3518d97c09664295c8fcf82ddc73ea94a770bfbd59bb98f4c2c6c8219a4"));
+        TextWriter originalError = Console.Error;
+        using StringWriter error = new();
+        EthereumTestResult result;
+
+        Console.SetError(error);
+        try
+        {
+            StateTestsRunner runner = new(WhenTrace.Always, traceMemory: false, traceStack: true, chainId: 1);
+            result = runner.RunSingleTest(test);
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+
+        using StringReader lines = new(error.ToString());
+        using JsonDocument operation = JsonDocument.Parse(lines.ReadLine()!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pass, Is.True, result.Error);
+            Assert.That(operation.RootElement.GetProperty("refund").GetInt64(), Is.Zero);
+            Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(nameof(Instruction.STOP)));
+        }
+    }
+
+    private static StateTestTxTraceEntry FindEntry(StateTestTxTrace trace, Instruction operation, int? depth = null, bool fromEnd = false)
+    {
+        int index = fromEnd ? trace.Entries.Count - 1 : 0;
+        int end = fromEnd ? -1 : trace.Entries.Count;
+        int step = fromEnd ? -1 : 1;
+
+        for (; index != end; index += step)
+        {
+            StateTestTxTraceEntry entry = trace.Entries[index];
+            if (entry.Operation == (byte)operation && (depth is null || entry.Depth == depth))
+                return entry;
+        }
+
+        throw new AssertionException($"No {operation} trace entry was found.");
     }
 
     private void AssertTraceGas(GeneralStateTest test, ulong expectedGasUsed)
