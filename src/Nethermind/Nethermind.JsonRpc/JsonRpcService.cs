@@ -99,8 +99,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // Admitted before the parameters are bound so that a shed request never pays for deserializing them.
         // Released once the invocation and any task it returned have completed — except for a streamed result, whose
         // re-execution only runs while the response is written, so its permit travels with the response instead.
-        RpcAdmissionController.Lease lease = await _admissionController.AdmitAsync(method, request.ParamsUtf8.Length);
-        bool leaseTransferred = false;
+        RpcAdmissionController.Lease lease = await _admissionController.AdmitAsync(method, request.ParamsUtf8Length);
+        bool leaseSettled = false;
         try
         {
             JsonRpcErrorResponse? value = PrepareParameters(
@@ -112,6 +112,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 out bool returnParametersToPool);
             if (value is not null)
             {
+                // Nothing ran under the permit, so this is not a service-time observation.
+                lease.ReleaseWithoutSampling();
+                leaseSettled = true;
                 return value;
             }
 
@@ -163,7 +166,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 if (lease.IsGated && response.TryGetStreamableResult(out _))
                 {
                     returnAction += lease.Dispose;
-                    leaseTransferred = true;
+                    leaseSettled = true;
                 }
 
                 return response.WithResponseContext(in request.IdRef, returnAction);
@@ -173,7 +176,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
         finally
         {
-            if (!leaseTransferred)
+            if (!leaseSettled)
             {
                 lease.Dispose();
             }

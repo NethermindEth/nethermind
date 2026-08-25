@@ -11,6 +11,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -219,17 +220,28 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    [Test]
-    public async Task Service_time_ewma_moves_towards_new_observations()
+    [TestCase(true, TestName = "Disposing folds one ~0 ms observation in, landing near 900 at alpha 0.1")]
+    [TestCase(false, TestName = "Releasing without sampling leaves the estimate untouched")]
+    public async Task Service_time_ewma_moves_only_on_sampled_releases(bool sampled)
     {
         _controller.SetServiceTimeMs(RpcMethodCostClass.EvmExecution, 1_000);
 
-        using (await AdmitEthCall())
+        RpcAdmissionController.Lease lease = await AdmitEthCall();
+        if (sampled)
         {
+            lease.Dispose();
+        }
+        else
+        {
+            lease.ReleaseWithoutSampling();
         }
 
-        double serviceTimeMs = _controller.GetServiceTimeMs(RpcMethodCostClass.EvmExecution);
-        Assert.That(serviceTimeMs, Is.LessThan(1_000).And.GreaterThan(800), "one ~0 ms observation at alpha 0.1 lands near 900");
+        Constraint serviceTime = sampled ? Is.LessThan(1_000).And.GreaterThan(800) : Is.EqualTo(1_000);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(_controller.GetServiceTimeMs(RpcMethodCostClass.EvmExecution), serviceTime);
+        }
     }
 
     [Test]

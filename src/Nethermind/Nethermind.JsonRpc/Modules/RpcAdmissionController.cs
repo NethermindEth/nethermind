@@ -23,8 +23,6 @@ namespace Nethermind.JsonRpc.Modules;
 /// long. <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
 /// Admitted invocations run inline on whichever thread the permit is granted on (the request thread when one is
 /// free, a thread-pool continuation otherwise); the permit count alone bounds how much of a class's work is in flight.
-/// Admission precedes parameter binding, so under saturation a malformed request in a gated class is shed rather
-/// than answered with invalid params: the server does not spend CPU validating what it will not execute.
 /// </remarks>
 public sealed class RpcAdmissionController
 {
@@ -43,7 +41,7 @@ public sealed class RpcAdmissionController
     /// Acquires a permit for <paramref name="method"/>, waiting at most <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>.
     /// </summary>
     /// <param name="method">The resolved method; its cost class selects the gate.</param>
-    /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c> element, or zero when unknown; drives the request weight.</param>
+    /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c> element, or zero when the request carries none; drives the request weight.</param>
     /// <returns>A lease that must be disposed when the invocation, including any returned task, has completed.</returns>
     /// <exception cref="LimitExceededException">
     /// The predicted wait exceeds the budget, or no permit became available within it.
@@ -69,6 +67,9 @@ public sealed class RpcAdmissionController
         public bool IsGated => gate is not null;
 
         public void Dispose() => gate?.Release(weight, startTimestamp);
+
+        /// <summary>Releases the permit without a service-time observation, for a request that was admitted but never invoked.</summary>
+        public void ReleaseWithoutSampling() => gate?.Release();
     }
 
     internal sealed class Gate
@@ -135,9 +136,14 @@ public sealed class RpcAdmissionController
         public void Release(int weight, long startTimestamp)
         {
             double observedMs = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+            Release();
+            UpdateServiceTime(observedMs / weight);
+        }
+
+        public void Release()
+        {
             Metrics.RpcAdmissionInFlight[_costClass] = Interlocked.Decrement(ref _inFlight);
             _permits.Release();
-            UpdateServiceTime(observedMs / weight);
         }
 
         private void UpdateServiceTime(double observedMsPerUnit)

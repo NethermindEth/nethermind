@@ -9,14 +9,12 @@ namespace Nethermind.JsonRpc.Modules;
 /// Estimates how many "unit" requests a JSON-RPC request is worth for admission purposes.
 /// </summary>
 /// <remarks>
-/// Only EVM-execution requests weigh more than one unit, scaled by the raw size of their <c>params</c>: state
-/// overrides (injected code plus storage slots) dominate the payload of heavy simulations and are the best
-/// pre-execution proxy for how much work one will do, and heavy multicall simulations otherwise get admitted as if
-/// they were an <c>eth_getBalance</c>. The raw byte count is known before anything is deserialized, so a request
-/// can be weighed — and shed — without paying for parameter binding; a request parsed into a
-/// <see cref="System.Text.Json.JsonDocument"/> rather than sliced from the request body carries no byte count and
-/// weighs one unit. The weight is clamped to <see cref="MaxWeight"/> so a single pathological request cannot
-/// starve the queue for everybody else.
+/// Only EVM-execution requests weigh more than one unit, scaled by the byte size of their <c>params</c>. Payload
+/// size is the best pre-execution proxy for how much work a simulation will do — state overrides (injected code plus
+/// storage slots) dominate heavy simulations, and large calldata counts as well — and heavy multicall simulations
+/// would otherwise get admitted as if they were an <c>eth_getBalance</c>. The size is known before anything is
+/// deserialized, so a request can be weighed — and shed — without paying for parameter binding. The weight is
+/// clamped to <see cref="MaxWeight"/> so a single pathological request cannot starve the queue for everybody else.
 /// </remarks>
 internal static class RpcRequestWeight
 {

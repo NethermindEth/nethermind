@@ -195,9 +195,10 @@ public interface IJsonRpcConfig : IConfig
             The max time, in milliseconds, a gated JSON-RPC request (see `EvmExecutionConcurrency`,
             `TracingConcurrency`, `ProofConcurrency`) may wait for an execution slot. Requests whose predicted wait
             already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. The
-            predicted wait is `queued requests x mean service time / slots`: at ~30 CPU-ms per request and 16 slots
-            the default absorbs a burst of roughly 2,500 requests while still answering callers well before the
-            request `Timeout`.
+            predicted wait is `queued requests x mean service time / slots`, with EVM-executing requests weighted by
+            their `params` size (one unit per 128 KiB, at most 8): at ~30 CPU-ms per request and 16 slots the
+            default absorbs a burst of roughly 2,500 requests while still answering callers well before the request
+            `Timeout`.
             """,
         DefaultValue = "5000")]
     int MaxQueueWaitMs { get; set; }

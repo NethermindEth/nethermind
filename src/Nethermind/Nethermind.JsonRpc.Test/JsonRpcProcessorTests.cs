@@ -93,6 +93,23 @@ public class JsonRpcProcessorTests
         }
     }
 
+    [TestCase(RpcEndpoint.Http, TestName = "Http reads the params slice from the body")]
+    [TestCase(RpcEndpoint.Ws, TestName = "Ws reads the params length from the parsed document")]
+    public async Task Params_length_is_known_on_every_input_path(RpcEndpoint endpoint)
+    {
+        const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
+        int capturedParamsLength = -1;
+        IJsonRpcService service = CreateService(request =>
+        {
+            capturedParamsLength = request.ParamsUtf8Length;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        await ProcessAsync(CreateProcessor(service), CreateRequest("1", "eth_call", paramsJson), new JsonRpcContext(endpoint));
+
+        Assert.That(capturedParamsLength, Is.EqualTo(Encoding.UTF8.GetByteCount(paramsJson)));
+    }
+
     [Test]
     public async Task Http_generated_method_names_use_cached_instances(
         [Values("engine_newPayloadV4", "engine_getBlobsV2", "eth_call", "eth_getBlockByNumber", "eth_chainId", "eth_unknown")] string methodName,
