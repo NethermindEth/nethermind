@@ -48,10 +48,17 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Value;
+        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
         private static CacheLinePaddedLong _mainStateReaderReads;
-        private static CacheLinePaddedLong _otherStateReaderReads;
-        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads.Value : ref _otherStateReaderReads.Value);
+        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
+        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
+        // keeps its own padded word and is left alone.
+        private static readonly StripedLong _otherStateReaderReads = new();
+        internal static void IncrementStateReaderReads()
+        {
+            if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads.Value);
+            else _otherStateReaderReads.Increment();
+        }
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
@@ -119,9 +126,9 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads => _storageReaderReads.Value;
-        private static CacheLinePaddedLong _storageReaderReads;
-        internal static void IncrementStorageReaderReads() => Interlocked.Increment(ref _storageReaderReads.Value);
+        public static long StorageReaderReads => _storageReaderReads.Sum;
+        private static readonly StripedLong _storageReaderReads = new();
+        internal static void IncrementStorageReaderReads() => _storageReaderReads.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

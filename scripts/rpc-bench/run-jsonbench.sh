@@ -46,7 +46,8 @@ JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 # machine: raw tool output goes to VM scratch instead of the job log, per-call outputs are not
 # copied to OUT_DIR, and only a sanitized aggregate summary.json is published.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
-JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-/data/expb-data/rpc-bench/eth-call-corpus.jsonl.gz}"
+# Follows the selected runner: the workflow exports this, and CORPUS_DIR covers direct invocation.
+JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-data/rpc-bench}/eth-call-corpus.jsonl.gz}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"

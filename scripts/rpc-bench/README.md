@@ -2,18 +2,26 @@
 
 Scripts behind the [`run-rpc-benchmarks.yml`](../../.github/workflows/run-rpc-benchmarks.yml)
 workflow, which benchmarks Nethermind's **state-reading JSON-RPC**
-(`eth_call`, `eth_getBalance`, `trace_*`, `debug_*`, …) on the
-`reproducible-benchmarks-arm` runner, reusing the EXPB workflow's DB snapshots.
+(`eth_call`, `eth_getBalance`, `trace_*`, `debug_*`, …) on a self-hosted
+benchmark runner, reusing the EXPB workflow's DB snapshots.
 Drives three load tools and can optionally capture a JetBrains dotTrace snapshot
 and post-process it to XML.
 
-**Supported configuration.** That runner carries exactly one kind of snapshot
-set — Nethermind in the **flat** layout under
-`/data/nethermind/nethermind-flat-<block>` — so `client`, `reference_client`
-(i.e. cross-client comparison mode) and `state_layout` are pinned to
-`nethermind` / `none` / `flat`. Anything else is refused before a node starts —
-by the workflow's `resolve` job for a single-node run, and by
-`run-rpc-sweep.sh` for the `tool_config.clients` list that sweep mode uses
+**Which runner, and what it can serve.** The `arch` input picks the box:
+`amd64` (default) is `reproducible-benchmarks` with snapshots under `/mnt/sda`,
+`arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every
+path below follows that choice. **Never compare timings across the two boxes.**
+
+The amd64 box holds the full snapshot set, so it serves every `client`,
+`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
+snapshot set — Nethermind in the **flat** layout — so there `client`,
+`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
+and an image it would have to build is refused as well (that box's ~19G root disk
+dies under a build). `resolve` checks those limits against the selected runner.
+
+Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
+Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
+a non-Nethermind entry in `tool_config.clients`
 instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
 geth/reth or a second layout is a matter of provisioning the snapshot set and
 widening those two guards.
@@ -36,7 +44,7 @@ which uses the same snapshots on this runner:
   bound to `/execution-data`; the node runs
   `--datadir=/execution-data --Init.BaseDbPath=<network>` — same as expb's
   `NethermindConfig`.
-- `state_layout=flat` → `/data/nethermind/nethermind-flat-<block>` +
+- `state_layout=flat` → `<snapshot root>/nethermind-flat-<block>` +
   `--FlatDb.Enabled=true` (the `snapshot_source` of
   `github-action-mainnet-flat.yaml`). Override via `node_config.db_source`.
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
@@ -51,7 +59,7 @@ which uses the same snapshots on this runner:
 ## Snapshot sets
 
 The runner keeps **block-tagged snapshot sets** under
-`/data/nethermind/nethermind-flat-<block>` — e.g. `nethermind-flat-25490000` —
+`<snapshot root>/nethermind-flat-<block>` — e.g. `nethermind-flat-25490000` —
 each carrying provenance sidecars (`_snapshot_metadata.json`,
 `_snapshot_web3_clientVersion.json`, `_snapshot_eth_getBlockByNumber.json`) that
 `start-node.sh` logs at startup.
@@ -158,7 +166,8 @@ the workflow's defensive-cleanup step).
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
 | `client` | `nethermind` — the only client with a snapshot set on this runner. |
 | `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
-| `snapshot_block` | Snapshot set tag (`/data/nethermind/nethermind-flat-<tag>`); empty = `25490000`. |
+| `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
+| `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
@@ -177,7 +186,7 @@ from `Dockerfile` on the runner.
 {
   "db_source": "",                 // snapshot path; empty = resolved from snapshot_block
   "db_isolation": "",              // overlay | copy | readonly-bind | direct; empty = overlay
-  "scratch_root": "/data/expb-data/rpc-bench-scratch",
+  "scratch_root": "",   // empty = <expb data dir>/rpc-bench-scratch on the selected runner
   "network": "mainnet",
   "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
   "health_timeout_minutes": 30,
@@ -289,17 +298,25 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
-## `performance is good` label — automatic PR vs master
+## Fixed corpus A/B against master
 
-Adding the **`performance is good`** label to a PR runs a fixed `eth_call` corpus A/B and
-posts the result as a PR comment. The configuration is hard-coded in `resolve` rather
-than read from an input, so every PR is measured identically and results stay comparable
-across PRs and over time: the 497-record corpus, 100 rps for 120s, PR build against
-`nethermind:master` as the parity baseline.
+The canonical branch-vs-master check is a fixed `eth_call` corpus A/B — the 497-record
+corpus, 100 rps for 120s, the branch build against `nethermind:master` as the parity
+baseline. Dispatch it with `benchmark_tool: jsonbench-sweep` and:
 
-The comment carries per-metric latency deltas and the response-parity verdict. It is
-rendered by `corpus_results.py comment` from the **staged** tree, not the raw output, so
-everything posted publicly has already passed the aggregate-only validator.
+```json
+{"eth_call_corpus": true,
+ "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
+ "rps_list": "100", "duration": "120s",
+ "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
+```
+
+Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
+runner, which serializes every other job behind it. Holding the rest fixed is what keeps results
+comparable across branches and over time.
+`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders the
+per-metric latency deltas and the response-parity verdict from the **staged** tree, not the
+raw output, so its rendering has already passed the aggregate-only validator.
 
 Read it correctly: a parity divergence is a correctness regression regardless of the
 latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
@@ -329,7 +346,8 @@ parity/timings only with an empty `rps_list`.
 
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
-`/data/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
+`<expb data dir>/rpc-bench/eth-call-corpus[-<label>].jsonl.gz` — `/mnt/sda/expb-data` on the
+amd64 runner, `/data/expb-data` on arm64, selected by the `arch` input. A
 `jsonbench-sweep` with `eth_call_corpus:true` discovers **every**
 `eth-call-corpus*.jsonl.gz` there and runs each as its own scenario;
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
@@ -373,22 +391,37 @@ random draw. The CSV carries record indexes, milliseconds and outcome names only
 safe to publish under the same boundary as the parity reports.
 
 A `timings.meta.json` sidecar records the head block hash, record/pass counts, target and
-achieved rate, concurrency, and `warmup_seconds` — the seconds of discarded warm load the
-node absorbed before the matrix (0 = measured cold). **Only compare matrices whose metadata
-matches** — a different head, rate or concurrency makes the numbers incomparable, and
-`warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
-and nothing in the CSV itself would reveal that. On k6-warmed runs the field is the exact
+achieved rate, concurrency, and `warmup_seconds`/`warmup_rps` — the discarded warm load the
+node absorbed before the matrix (0 seconds = measured cold). **Only compare matrices whose
+metadata matches** — a different head, rate or concurrency makes the numbers incomparable, and
+the warm-up fields most of all (the same seconds at a different rate is a different warm
+state): a cold matrix reads ~60% higher on p99 than the same node warm, and nothing in the
+CSV itself would reveal that. On k6-warmed runs the field is the exact
 requested duration and can be matched literally; on replay-warmed runs it is a measured
 elapsed value (and ~request+60 when the wall-clock bound fired), so compare it as
 "both warm and within a few percent", not byte-for-byte.
 
 **What a corpus sweep does per client:** first a discarded **warm-up, once per
 corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is
-rejected; default `240s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
-N x 240 s per client before measuring): a k6 cell at the highest requested rate when
-`rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
-fixture-free mode stays fixture-free. Cold nodes fail ~2% of calls and read ~60% higher p99,
-so every measured number below assumes this ran. Then one k6 latency cell per corpus per
+rejected; default `60s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
+N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `400`, so the
+window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
+time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
+when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+fixture-free mode stays fixture-free.
+
+The request count is the point, and the rate is a request for one, not a guarantee of one — so
+both branches record what they **delivered** and warn when it lands below 80% of the target.
+Two reasons it can: `run_cell` does not scale `vus` with the rate, and k6's arrival-rate executor
+drops iterations once demand outruns that pool; and 400 rps is above the 300 rps that already
+measured a 1.22% fail rate on arm64, so on that box the warm-up is saturated by construction. The
+warm-up's own fail-rate gate is lifted, so this warning is the only thing that reports it. The
+replay branch is request-bounded rather than window-bounded for the same reason: its wall-clock
+bound has a 300s floor, so a slow node still reaches the request target instead of being cut off
+at the shorter window — meaning in that mode the warm-up can outlast `corpus_warmup_duration`.
+
+Cold nodes fail ~2% of calls and read ~60% higher p99, so every measured number below assumes
+this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
 then one full-corpus replay via `corpus_parity.py` while the node is still up.
@@ -485,10 +518,10 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **Docker** (nodes run as containers; EthCallChaos runs in a .NET SDK container;
   json-bench builds and runs its own runner image).
 - **The block-tagged Nethermind flat snapshot sets** shared with expb
-  (`/data/nethermind/nethermind-flat-<block>`, e.g. `nethermind-flat-25490000`).
+  (`<snapshot root>/nethermind-flat-<block>`, e.g. `nethermind-flat-25490000`).
   A client or layout with no set there is refused up front rather than run.
 - **A writable scratch location** on the same large disk (default
-  `/data/expb-data/rpc-bench-scratch`).
+  `<expb data dir>/rpc-bench-scratch`).
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
