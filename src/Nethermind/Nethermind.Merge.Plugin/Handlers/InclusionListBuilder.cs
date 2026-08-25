@@ -38,8 +38,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
         foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
         {
-            // Dropped before sampling, not at encode time, so an unenforceable tx never takes a slot a
-            // Profile 1 one could have used and leaves the list short.
+            // Dropped before the draw rather than at encode time, so an unenforceable transaction never
+            // takes a sender slot and leaves the list shorter than it needed to be.
             Transaction[] bySender = WithoutFrameTxs(pending);
             if (bySender.Length == 0) continue;
 

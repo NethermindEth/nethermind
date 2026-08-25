@@ -94,6 +94,7 @@ public class InclusionListTxSource(
         return result;
     }
 
+    /// <summary>Whether <paramref name="tx"/> would need a blob sidecar the inclusion list cannot carry.</summary>
     /// <remarks>
     /// An inclusion list is decoded from the canonical form, where the blob hashes are all that marks an
     /// EIP-8141 blob-carrying frame transaction, so the type-3-only <see cref="Transaction.SupportsBlobs"/>
