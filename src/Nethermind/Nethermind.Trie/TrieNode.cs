@@ -38,6 +38,8 @@ namespace Nethermind.Trie
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
         private const byte _boundaryProof = 0b100;
+        // A warmer-owned node is shared with live readers, which use it only once resolved; a single resolver at a
+        // time holds the resolving bit and verifies the RLP hash before it publishes.
         private const byte _warmerOwnedMask = 0b0000_1000;
         private const byte _warmerResolvingMask = 0b0001_0000;
         private const byte _warmerResolvedMask = 0b0010_0000;
@@ -655,7 +657,7 @@ namespace Nethermind.Trie
 
                 if ((currentValue & _warmerResolvingMask) != 0)
                 {
-                    spinWait.SpinOnce();
+                    spinWait.SpinOnce(sleep1Threshold: -1);
                     continue;
                 }
 
@@ -665,7 +667,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                spinWait.SpinOnce();
+                spinWait.SpinOnce(sleep1Threshold: -1);
             }
         }
 

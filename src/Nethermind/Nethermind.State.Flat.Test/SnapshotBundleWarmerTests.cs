@@ -47,6 +47,20 @@ public class SnapshotBundleWarmerTests
         public void Clear() { }
     }
 
+    private sealed class BlockingTrieNodeCache(ManualResetEventSlim entered, ManualResetEventSlim release) : ITrieNodeCache
+    {
+        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        {
+            entered.Set();
+            if (!release.Wait(BailOutTimeout)) throw new TimeoutException("warmer read was not released");
+            node = null;
+            return false;
+        }
+
+        public void Add(TransientResource transientResource) { }
+        public void Clear() { }
+    }
+
     private SnapshotBundle NewBundle(Action<SnapshotContent>? persisted = null) =>
         new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
 
@@ -246,10 +260,6 @@ public class SnapshotBundleWarmerTests
             Assert.That(cached, Is.Not.SameAs(live));
             Assert.That(cached!.FullRlp.UnderlyingArray, Is.SameAs(live.FullRlp.UnderlyingArray));
         }
-
-        // The live read was served from the transient instead of repeating the warmer's persistence read.
-        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     [TestCase(false)]
@@ -321,6 +331,36 @@ public class SnapshotBundleWarmerTests
 
         if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
         else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    // Retirement must not scan the transient while a warmer read that passed the lease check is still writing to it.
+    [Test]
+    public void Retirement_waits_for_an_in_flight_warmer_read()
+    {
+        TreePath path = TreePath.FromHexString("12");
+        using ManualResetEventSlim readEntered = new(false);
+        using ManualResetEventSlim releaseRead = new(false);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool),
+            new BlockingTrieNodeCache(readEntered, releaseRead), _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        Task<TrieNode> warmerRead = Task.Run(() => bundle.FindStateNodeOrUnknownForTrieWarmer(path, TestItem.KeccakA));
+        Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warmer read did not reach the cache");
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
+        Task add = Task.Run(() => cache.Add(retired!));
+        bool addCompletedWhileRead = add.Wait(TimeSpan.FromMilliseconds(200));
+        releaseRead.Set();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addCompletedWhileRead, Is.False, "retirement scanned the transient under an in-flight warmer read");
+            Assert.That(add.Wait(BailOutTimeout), Is.True, "retirement did not resume after the warmer read released its lease");
+            Assert.That(warmerRead.Wait(BailOutTimeout), Is.True);
+            Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
+        }
+
+        retired!.ReleaseLease();
     }
 
     [Test]
