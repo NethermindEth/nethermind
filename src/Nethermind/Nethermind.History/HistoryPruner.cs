@@ -433,9 +433,8 @@ public class HistoryPruner : IHistoryPruner
             {
                 ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
 
-                // Receipts first: retaining re-encodes them from the block the delete below removes. It can stop
-                // short, and the rest of the chunk stops with it rather than stranding undecided receipts.
-                to = RetainReceiptsAndReclaimTheRest(from, to, cancellationToken);
+                // It can stop short, and the rest of the chunk stops with it rather than stranding undecided heights.
+                to = RetainSlicedAndReclaimTheRest(from, to, cancellationToken);
 
                 _blockAccessListStore.DeleteRange(from, to);
 
@@ -477,16 +476,14 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>Reclaims the receipts of <c>[from, to)</c> except the ones still answered for, and returns the
     /// height it reached - <paramref name="to"/> unless the budget ran out between two slices.</summary>
-    private ulong RetainReceiptsAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken)
+    private ulong RetainSlicedAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken)
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
-        // Per-height work in an answered span is one body read per retained height, not one per height, so the
-        // span needs slicing only when there are enough of them to outrun a deadline. Below that a single wide
-        // range beats a hundred narrow ones, which unlink fewer whole files between them.
+        // A single wide range beats a hundred narrow ones, which unlink fewer whole files between them.
         if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
         {
-            ReclaimReceiptSlice(from, to, answered);
+            ReclaimSlice(from, to, answered);
             return to;
         }
 
@@ -499,7 +496,7 @@ public class HistoryPruner : IHistoryPruner
             else if (cursor < answeredTo) sliceEnd = ulong.Min(sliceEnd, answeredTo);
 
             bool alreadyAnswered = cursor >= answeredFrom && cursor < answeredTo;
-            ReclaimReceiptSlice(cursor, sliceEnd, alreadyAnswered ? answered : null);
+            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? answered : null);
             cursor = sliceEnd;
 
             // Slices decide where a pass may stop, not how early. ChunkStep already narrowed the chunk to the
@@ -514,7 +511,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary><paramref name="answered"/> is null where the headers have to be read instead.</summary>
-    private void ReclaimReceiptSlice(ulong fromInclusive, ulong toExclusive, IReadOnlySet<ulong>? answered)
+    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, IReadOnlySet<ulong>? answered)
     {
         IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
         try

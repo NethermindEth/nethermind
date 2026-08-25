@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
-
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
@@ -866,7 +865,6 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        [SkipLocalsInit]
         public void EnsureCanonical(Block block) => EnsureCanonical(block, null);
 
         public void RemoveReceipts(Block block)

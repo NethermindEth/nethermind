@@ -29,7 +29,7 @@ public static class Metrics
     public static long TransactionIndexEntriesPruned { get; set; }
 
     [CounterMetric]
-    [Description("The number of historical blocks whose receipts were retained past the pruning cutoff because their logs matched a configured slice address (since restart).")]
+    [Description("The number of historical heights kept past the pruning cutoff, with both their receipts and their body, because a configured slice address appeared in them (since restart). Counted from the bloom candidates, so a false positive is included.")]
     public static long SlicedReceiptsRetained { get; set; }
 
     [GaugeMetric]

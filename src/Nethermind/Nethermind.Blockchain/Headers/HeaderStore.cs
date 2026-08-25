@@ -25,9 +25,9 @@ public class HeaderStore(
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
 
-    private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
+    private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
     public void Insert(BlockHeader header)
