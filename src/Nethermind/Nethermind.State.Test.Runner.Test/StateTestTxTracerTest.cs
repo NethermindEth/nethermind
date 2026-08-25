@@ -27,9 +27,11 @@ namespace Nethermind.State.Test.Runner.Test;
 
 public class StateTestTxTracerTest : GethLikeTracerTestsBase
 {
+    private readonly ISpecProvider _specProvider = new TestSpecProvider(Amsterdam.Instance);
+
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
-    protected override ISpecProvider SpecProvider => new TestSpecProvider(Amsterdam.Instance);
+    protected override ISpecProvider SpecProvider => _specProvider;
 
     private StateTestTxTracer tracer;
 
@@ -239,6 +241,34 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             Assert.That(stop.OperationName, Is.EqualTo(nameof(Instruction.STOP)));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
         }
+    }
+
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
+    [TestCase((Instruction)0xd0, "DATALOAD")]
+    [TestCase((Instruction)0xd1, "DATALOADN")]
+    [TestCase((Instruction)0xd2, "DATASIZE")]
+    [TestCase((Instruction)0xd3, "DATACOPY")]
+    [TestCase((Instruction)0xe0, "RJUMP")]
+    [TestCase((Instruction)0xe1, "RJUMPI")]
+    [TestCase((Instruction)0xe2, "RJUMPV")]
+    [TestCase((Instruction)0xe3, "CALLF")]
+    [TestCase((Instruction)0xe4, "RETF")]
+    [TestCase((Instruction)0xe5, "JUMPF")]
+    [TestCase((Instruction)0xec, "EOFCREATE")]
+    [TestCase((Instruction)0xee, "RETURNCONTRACT")]
+    [TestCase((Instruction)0xf7, "RETURNDATALOAD")]
+    [TestCase((Instruction)0xf8, "EXTCALL")]
+    [TestCase((Instruction)0xf9, "EXTDELEGATECALL")]
+    [TestCase((Instruction)0xfb, "EXTSTATICCALL")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
+    public void Trace_entry_uses_geth_opcode_name(Instruction operation, string expectedName)
+    {
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+
+        tracer.StartOperation(0, operation, 100, in environment);
+
+        Assert.That(tracer.BuildResult().Entries[0].OperationName, Is.EqualTo(expectedName));
     }
 
     [Test]

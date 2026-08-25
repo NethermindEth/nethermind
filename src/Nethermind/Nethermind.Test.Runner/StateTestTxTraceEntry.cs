@@ -30,7 +30,7 @@ namespace Nethermind.Test.Runner
         public long Refund { get; set; }
 
         [JsonPropertyName("opName")]
-        public string? OperationName { get; set; }
+        public string OperationName { get; set; } = string.Empty;
 
         public string? Error { get; set; } = string.Empty;
 

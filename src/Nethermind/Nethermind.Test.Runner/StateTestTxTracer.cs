@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         {
             Pc = pc,
             Operation = (byte)opcode,
-            OperationName = Enum.GetName(opcode),
+            OperationName = GetOperationName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
             Refund = _refund,
@@ -192,6 +193,9 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
+        // Credit legacy refunds at the opcode boundary. TransactionProcessor reports the value again
+        // during post-execution finalization, after the last EIP-3155 entry has sampled _refund.
+        // EIP-3529 also zeroes destroyRefund before EIP-6780's same-transaction restriction applies.
         if (destroyRefund != 0 && _selfDestructs.Add(address))
             _refund += destroyRefund;
     }
@@ -270,6 +274,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void ReportRefund(long refund) => _refund += refund;
 
+    // Reached because IsTracingRefunds is enabled; EIP-3155 has no gas-pressure record.
     public void ReportExtraGasPressure(ulong extraGasPressure) { }
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
@@ -292,4 +297,27 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         if (_selfDestructCheckpoints.TryPop(out int selfDestructCheckpoint))
             _selfDestructs.Restore(selfDestructCheckpoint);
     }
+
+    // Geth's global opcode table names inactive EOF instructions and retains DIFFICULTY for 0x44.
+    private static string GetOperationName(Instruction opcode) => (byte)opcode switch
+    {
+        0x44 => "DIFFICULTY",
+        0xd0 => "DATALOAD",
+        0xd1 => "DATALOADN",
+        0xd2 => "DATASIZE",
+        0xd3 => "DATACOPY",
+        0xe0 => "RJUMP",
+        0xe1 => "RJUMPI",
+        0xe2 => "RJUMPV",
+        0xe3 => "CALLF",
+        0xe4 => "RETF",
+        0xe5 => "JUMPF",
+        0xec => "EOFCREATE",
+        0xee => "RETURNCONTRACT",
+        0xf7 => "RETURNDATALOAD",
+        0xf8 => "EXTCALL",
+        0xf9 => "EXTDELEGATECALL",
+        0xfb => "EXTSTATICCALL",
+        byte value => Enum.GetName(opcode) ?? string.Create(CultureInfo.InvariantCulture, $"opcode 0x{value:x} not defined"),
+    };
 }

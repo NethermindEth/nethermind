@@ -1,10 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -21,6 +26,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
             Assert.That(tracer.IsTracingMemory, Is.True);
             Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
             Assert.That(tracer.IsTracingRefunds, Is.True);
+            Assert.That(tracer.IsTracingActions, Is.True);
         }
     }
 
@@ -31,6 +37,43 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Gas, Is.EqualTo(24));
         Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Should_report_refund_received_before_first_operation()
+    {
+        const long initialRefund = 12_500;
+        List<GethTxFileTraceEntry> entries = [];
+        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+
+        tracer.ReportRefund(initialRefund);
+        tracer.StartOperation(0, Instruction.STOP, 100, in environment);
+        tracer.BuildResult();
+
+        Assert.That(entries.Single().Refund, Is.EqualTo(initialRefund));
+    }
+
+    [Test]
+    public void Should_restore_refund_when_action_reverts()
+    {
+        const long initialRefund = 12_500;
+        List<GethTxFileTraceEntry> entries = [];
+        GethLikeTxFileTracer tracer = new(e => entries.Add(CloneTraceEntry(e)), GethTraceOptions.Default);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+
+        tracer.ReportRefund(initialRefund);
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportRefund(10_000);
+        tracer.ReportActionRevert(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+        tracer.BuildResult();
+
+        Assert.That(entries.Single().Refund, Is.EqualTo(initialRefund));
     }
 
     [Test]
