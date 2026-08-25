@@ -20,6 +20,10 @@ namespace Nethermind.Blockchain.Test.Validators;
 public class InclusionListValidatorTests
 {
     private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+    // Bogota carries inclusion lists alone; a chain wanting frame transactions too schedules their
+    // transition alongside it. That combination is what makes a frame transaction reachable as an entry.
+    private static readonly ISpecProvider _frameSpecProvider = new CustomSpecProvider(
+        ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
@@ -120,7 +124,7 @@ public class InclusionListValidatorTests
             .WithTransactions([])
             .WithInclusionListTransactions([frameTx])
             .TestObject;
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
 
         Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
         Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);

@@ -73,17 +73,17 @@ public class ForkTests
         }
     }
 
-    // Bogota is the single scheduling point for the combined frame-transaction / inclusion-list devnet.
-    // Both EIPs stay off Amsterdam so its genesis and its consensus test vectors are unchanged by either.
+    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
+    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
+    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
     [Test]
-    public void Bogota_carries_both_frame_transactions_and_inclusion_lists_on_top_of_Amsterdam()
+    public void Bogota_enables_inclusion_lists_without_frame_transactions()
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
-            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.True);
             Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
-            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False);
+            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
             Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
         }
     }
