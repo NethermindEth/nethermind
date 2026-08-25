@@ -60,6 +60,11 @@ CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 # which is what the 2026-08-13 measurements showed is needed to reach a 0% failure rate; set to 0
 # to measure a cold node deliberately.
 CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-240s}"
+# Rate for that load. Empty = the highest rate the run measures, which ties the warm-up to the
+# heaviest cell: a run measuring 400 rps then warms at 400, and past ~400 on this corpus the
+# warm-up itself fails and every cell is silently left cold. Setting it pins one rate for every
+# cell instead, so they all start from the same warm state.
+CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
@@ -76,6 +81,7 @@ require_positive_int CORPUS_REQUESTS "$CORPUS_REQUESTS"
 require_positive_int CORPUS_PASSES "$CORPUS_PASSES"
 require_positive_int CORPUS_TIMINGS_PASSES "$CORPUS_TIMINGS_PASSES"
 require_positive_int CORPUS_TIMINGS_CONCURRENCY "$CORPUS_TIMINGS_CONCURRENCY"
+require_positive_int CORPUS_WARMUP_RPS "$CORPUS_WARMUP_RPS"
 if [[ -n "$CORPUS_REQUESTS" && -n "$CORPUS_PASSES" ]]; then
   echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1
 fi
@@ -354,12 +360,16 @@ for entry in $CLIENTS; do
       # purpose: different corpora can touch disjoint state.
       WARMED_SECONDS=0
       if (( WARMUP_SECONDS > 0 )); then
-        # Warm at the highest rate the run will measure — the k6 cells AND the timings matrix
-        # both count, so the max spans both knobs; unpaced timings (0) falls back flat.
-        warm_rps=0
-        for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
-        [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
-        (( warm_rps == 0 )) && warm_rps=100
+        # Absent CORPUS_WARMUP_RPS, warm at the highest rate the run will measure — the k6 cells
+        # AND the timings matrix both count, so the max spans both knobs; unpaced timings (0)
+        # falls back flat.
+        warm_rps="$CORPUS_WARMUP_RPS"
+        if [[ -z "$warm_rps" ]]; then
+          warm_rps=0
+          for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
+          [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
+          (( warm_rps == 0 )) && warm_rps=100
+        fi
         # Discarded output must stay OUT of OUT_DIR: stage() publishes by filename and comment()
         # keys cells by directory position, so a staged warmup summary.json would displace the
         # measured cell in the published PR comment.
