@@ -182,16 +182,21 @@ public class ReplaySweepTests
     [Test]
     public async Task Stops_a_level_once_its_duration_cap_expires()
     {
-        // The cap has to gate sending, not just enqueueing: the channel holds twice the concurrency, so
-        // gating only the reader would let that many requests through after the level should have ended.
-        TimeSpan cap = TimeSpan.FromMilliseconds(400);
-        string path = WriteTrace(".jsonl", Requests(4000, _ => "latest"));
-        await using StubJsonRpcServer server = new(delay: TimeSpan.FromMilliseconds(20));
+        // The cap has to gate sending, not just enqueueing. The channel holds twice the concurrency, so
+        // gating only the reader lets that whole backlog through after the level should have ended. The
+        // response delay is sized so only two rounds fit inside the cap: a harness that also drains its
+        // backlog sends roughly double that, which the bound below rejects.
+        const int concurrency = 16;
+        TimeSpan delay = TimeSpan.FromMilliseconds(150);
+        TimeSpan cap = TimeSpan.FromMilliseconds(200);
+
+        string path = WriteTrace(".jsonl", Requests(concurrency * 20, _ => "latest"));
+        await using StubJsonRpcServer server = new(delay: delay);
 
         IReadOnlyList<LevelResult> results = await Run(server, path, options => options with
         {
-            Concurrencies = [8],
-            MeasuredRequests = 4000,
+            Concurrencies = [concurrency],
+            MeasuredRequests = concurrency * 20,
             WarmupRequests = 0,
             MaxDuration = cap,
         });
@@ -201,9 +206,12 @@ public class ReplaySweepTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Total, Is.GreaterThan(0), "the level ran");
-            Assert.That(result.Total, Is.LessThan(4000), "the cap stopped it early");
-            Assert.That(result.Elapsed, Is.LessThan(cap * 4), "the window tracks the cap");
+            Assert.That(result.Total, Is.LessThan(concurrency * 20), "the cap stopped it early");
             Assert.That(server.Requests, Is.EqualTo(result.Total), "nothing was sent that was not measured");
+            Assert.That(
+                server.Requests,
+                Is.LessThanOrEqualTo(concurrency * 3),
+                "expiry dropped the queued backlog instead of sending it");
         }
     }
 
