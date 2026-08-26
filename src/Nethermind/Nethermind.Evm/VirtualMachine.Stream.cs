@@ -13,9 +13,15 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
+    // NETHERMIND_EVM_STREAM_FORCE=1 is an explicit diagnostic override for ARM64's normal default.
+    private static readonly bool ForceEnabled = string.Equals(
+        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FORCE"),
+        "1",
+        StringComparison.Ordinal);
+
     // Enabled by default except on ARM64, where the bytecode loop is currently preferred. Volatile so tests
     // can override it in-process.
-    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture) || ForceEnabled;
 
     internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
 
@@ -24,6 +30,13 @@ internal static class StreamInterpreter
     // contexts (eth_call/estimateGas/simulate). Differential tests set this to exercise the stream in any
     // context regardless of that heuristic.
     public static volatile bool ForceAllContexts;
+
+    // NETHERMIND_EVM_STREAM_BUILD_ONLY=1 keeps stream lookup and background construction active while measuring
+    // the bytecode loop. Select it before process startup so cached streams cannot mix execution modes.
+    internal static readonly bool BuildOnly = string.Equals(
+        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_BUILD_ONLY"),
+        "1",
+        StringComparison.Ordinal);
 
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;

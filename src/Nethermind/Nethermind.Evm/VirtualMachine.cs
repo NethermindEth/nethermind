@@ -1319,7 +1319,8 @@ public partial class VirtualMachine<TGasPolicy>(
             && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
-            return RunStream<TCancelable>(stream, ref stack, ref gas);
+            if (!StreamInterpreter.BuildOnly)
+                return RunStream<TCancelable>(stream, ref stack, ref gas);
         }
 
         return (spec.ShiftOpcodesEnabled, spec.IncludePush0Instruction) switch
