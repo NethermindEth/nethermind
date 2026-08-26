@@ -38,6 +38,7 @@ CORPUS_PASSES="${CORPUS_PASSES:-}"          # ... or as a multiple of the corpus
 CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"   # per-record replay; 0 rps = closed loop at CORPUS_TIMINGS_CONCURRENCY
 CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
 CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
+CORPUS_WARMUP_RPS_MAX="${CORPUS_WARMUP_RPS_MAX:-0}"   # 0 = no cap on the warm-up rate
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per node per corpus; 0 = measure cold
@@ -127,6 +128,9 @@ warm_node() {
   local warm_rps="$CORPUS_WARMUP_RPS" r got
   for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
   [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
+  # json-bench pre-generates rps x duration request rows and k6 parses the whole file, so a long warm-up at a high
+  # rate can exceed what the generator can hold; the cap trades warm-up pace for warm-up length.
+  (( CORPUS_WARMUP_RPS_MAX > 0 && warm_rps > CORPUS_WARMUP_RPS_MAX )) && warm_rps="$CORPUS_WARMUP_RPS_MAX"
   local warm_cell="$SCRATCH_ROOT/warmup-cell/$1/$2"   # outside OUT_DIR so it is never staged
   echo "-- WARMUP $1 $2 @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
   if [[ -n "$RPS_LIST" ]]; then

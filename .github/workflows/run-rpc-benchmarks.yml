@@ -710,7 +710,7 @@ jobs:
           for pair in corpus_dir:CORPUS_DIR corpus_glob:CORPUS_GLOB clients:CLIENTS rounds:ROUNDS seed:JB_SEED snapshot_block:SNAPSHOT_BLOCK \
                       state_layout:STATE_LAYOUT benchmark_config:JB_BENCHMARK_CONFIG ref:JB_REF duration:JB_DURATION iso_configs:ISO_CONFIGS \
                       iso_duration:ISO_DURATION db_isolation_all:DB_ISOLATION_ALL corpus_requests:CORPUS_REQUESTS corpus_passes:CORPUS_PASSES \
-                      corpus_warmup_duration:CORPUS_WARMUP_DURATION corpus_warmup_rps:CORPUS_WARMUP_RPS max_corpus_records:RPC_BENCH_MAX_CORPUS_RECORDS \
+                      corpus_warmup_duration:CORPUS_WARMUP_DURATION corpus_warmup_rps:CORPUS_WARMUP_RPS corpus_warmup_rps_max:CORPUS_WARMUP_RPS_MAX max_corpus_records:RPC_BENCH_MAX_CORPUS_RECORDS \
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
