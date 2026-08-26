@@ -420,9 +420,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
+        private bool _clearedNonEmptyStorage;
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
+        public bool ClearedNonEmptyStorage => _clearedNonEmptyStorage;
 
         /// <summary>Whether any uncommitted block-level change leaves a slot at a non-zero value.</summary>
         public bool HasNonZeroValue
@@ -444,11 +446,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
+            _clearedNonEmptyStorage = false;
             _dictionary.ClearAndTrim(capacity, capacity);
         }
-        public void ClearAndSetMissingAsDefault()
+        public void ClearAndSetMissingAsDefault(bool clearedNonEmptyStorage = false)
         {
             _missingAreDefault = true;
+            _clearedNonEmptyStorage |= clearedNonEmptyStorage;
             _dictionary.Clear();
         }
 
@@ -489,7 +493,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
         }
 
-        public void UnmarkClear() => _missingAreDefault = false;
+        public void UnmarkClear()
+        {
+            _missingAreDefault = false;
+            _clearedNonEmptyStorage = false;
+        }
     }
 
     private sealed class PerContractState : IReturnable
@@ -566,8 +574,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
-            BlockChange.ClearAndSetMissingAsDefault();
-            Db.Metrics.IncrementStorageCleared();
+            BlockChange.ClearAndSetMissingAsDefault(_backend.RootHash != Keccak.EmptyTreeHash);
         }
 
         public void Return()
@@ -639,6 +646,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
+                if (BlockChange.ClearedNonEmptyStorage) Db.Metrics.IncrementStorageCleared();
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 

@@ -64,24 +64,37 @@ public class StorageProviderTests(bool useFlat)
 
     [Test]
     [NonParallelizable]
-    public void ClearStorage_IncrementsStorageClearedMetric_ButEmptyStorageFastPathDoesNot()
+    public void StorageClearedMetric_CountsOnlyCommittedClearOfNonEmptyStorage()
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell cell = new(ctx.Address1, 1);
+        StorageCell persistedCell = new(ctx.Address1, 1);
+        Address freshAddress = TestItem.AddressA;
+        StorageCell freshCell = new(freshAddress, 1);
         long storageClearedBefore = Db.Metrics.StorageCleared;
 
         Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.True);
-        provider.Set(cell, _values[1]);
+        provider.Set(persistedCell, _values[1]);
         provider.Commit(Frontier.Instance);
         long storageClearedAfterEmptyStorageReadAndWrite = Db.Metrics.StorageCleared;
 
+        Assert.That(provider.AccountExists(freshAddress), Is.False);
+        provider.ClearStorage(freshAddress);
+        provider.CreateAccount(freshAddress, 0);
+        provider.Set(freshCell, _values[1]);
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterFreshAddressClear = Db.Metrics.StorageCleared;
+
         provider.ClearStorage(ctx.Address1);
+        provider.Commit(Frontier.Instance, commitRoots: false);
+        long storageClearedBeforeRootCommit = Db.Metrics.StorageCleared;
         provider.Commit(Frontier.Instance);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storageClearedAfterEmptyStorageReadAndWrite, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedAfterFreshAddressClear, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedBeforeRootCommit, Is.EqualTo(storageClearedBefore));
             Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
         }
     }
