@@ -826,9 +826,9 @@ namespace Nethermind.TxPool
         /// Evicting here is the spec's
         /// "invalid against the current head first" eviction order: such transactions never compete for
         /// pool space in the first place. A simulation that fails on a resource bound rather than on the
-        /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec while pricing
-        /// reads the head spec, matching <see cref="RemoveExpiredFrameTransactions"/>; they differ only for
-        /// the one head that crosses a fork boundary.
+        /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec, matching
+        /// <see cref="RemoveExpiredFrameTransactions"/>. Pricing reuses the admission helper, so what a
+        /// revalidation reserves cannot drift from what the exposure filter reserved.
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
@@ -838,7 +838,6 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
 
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
@@ -851,7 +850,7 @@ namespace Nethermind.TxPool
                 }
 
                 Metrics.FrameTxRevalidations++;
-                if (!TryRevalidateFrameTransaction(tx, headSpec, state, out bool holdsNoReservation))
+                if (!TryRevalidateFrameTransaction(tx, state, out bool holdsNoReservation))
                 {
                     // The Removed handler must release exactly once: an unreleased reservation is permanent,
                     // and releasing one that was never taken under-counts the payer just as badly.
@@ -883,17 +882,17 @@ namespace Nethermind.TxPool
         /// A transaction that stays pending is re-indexed: both the payer and the sender's delegation target
         /// are head-state snapshots, so either can move without the other.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool holdsNoReservation)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, out bool holdsNoReservation)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, headSpec, state, out holdsNoReservation);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out holdsNoReservation);
             if (stillValid) IndexFrameTxDependencies(tx);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool holdsNoReservation)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out bool holdsNoReservation)
         {
             holdsNoReservation = false;
-            if (!FrameTxValidation.TryCalculateMaxCost(tx, headSpec, out UInt256 maxCost)) return false;
+            if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
             if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
