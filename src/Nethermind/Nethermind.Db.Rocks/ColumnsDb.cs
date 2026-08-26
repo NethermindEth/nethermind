@@ -163,6 +163,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
+        private readonly RocksDbReadSession _sharedReadSession;
+        private readonly RocksDbReadSession _sharedCacheMissReadSession;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
@@ -179,6 +181,12 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
+
+            // One session pair for every column reader, so their point reads skip the per-call
+            // SafeHandle ref-counting. Owned here because the readers are never disposed and the
+            // database cannot close while a session is held.
+            _sharedReadSession = columnsDb.CreateReadSession(_sharedReadOptions);
+            _sharedCacheMissReadSession = columnsDb.CreateReadSession(_sharedCacheMissReadOptions);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
             // Each call still creates its own ReadOptions, disposed by the returned view.
@@ -241,7 +249,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                         _sharedReadOptions,
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
-                        columnFamily: columnsDb._columnDbs[k]._columnFamily);
+                        iteratorManager: null,
+                        columnFamily: columnsDb._columnDbs[k]._columnFamily,
+                        session: _sharedReadSession,
+                        hintCacheMissSession: _sharedCacheMissReadSession);
                 }
 
                 return readers;
@@ -264,6 +275,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+            // Sessions first: they hold the database open, and the options and snapshot below are
+            // what their cached pointers refer to.
+            _sharedReadSession.Dispose();
+            _sharedCacheMissReadSession.Dispose();
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             _sharedReadOptions.Dispose();

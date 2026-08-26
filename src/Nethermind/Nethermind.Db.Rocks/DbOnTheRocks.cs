@@ -812,6 +812,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     internal byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions) =>
         _db.Get(key, cf, readOptions);
 
+    internal byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, RocksDbReadSession session) =>
+        session.Get(key, cf);
+
+    /// <summary>
+    /// Opens a session holding the database and read-options leases for its lifetime, so reads made
+    /// through it skip the per-call SafeHandle ref-counting.
+    /// </summary>
+    /// <remarks>
+    /// The database cannot close until the session is disposed, so only callers whose disposal runs
+    /// before <see cref="ReleaseUnmanagedResources"/> may hold one.
+    /// </remarks>
+    internal RocksDbReadSession CreateReadSession(ReadOptions readOptions) => _db.CreateReadSession(readOptions);
+
     /// <summary>
     /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
     /// Here we attempt to do that first. To prevent futile attempt some logic is added to approximately detect
@@ -939,24 +952,44 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
-            Span<byte> span = _db.GetSpan(key, cf, readOptions);
-
-            if (!span.IsNullOrEmpty())
-            {
-                _allocatedSpan.Increment();
-                // Pressure hints exist so the GC accounts for sizeable native memory held alive by
-                // managed wrappers. Sub-threshold spans are transient (released within the request)
-                // and each Add/Remove pair mutates GC-global accounting — a contended cost per DB
-                // read under concurrent load. The threshold must match DangerousReleaseMemory.
-                if (span.Length >= GcPressureSpanThreshold) GC.AddMemoryPressure(span.Length);
-            }
-            return span;
+            return TrackReadSpan(_db.GetSpan(key, cf, readOptions));
         }
         catch (RocksDbException e)
         {
             HandleFatalDbError(e);
             throw;
         }
+    }
+
+    internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, RocksDbReadSession session)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateReadMetrics();
+
+        try
+        {
+            return TrackReadSpan(session.GetSpan(key, cf));
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    private Span<byte> TrackReadSpan(Span<byte> span)
+    {
+        if (!span.IsNullOrEmpty())
+        {
+            _allocatedSpan.Increment();
+            // Pressure hints exist so the GC accounts for sizeable native memory held alive by
+            // managed wrappers. Sub-threshold spans are transient (released within the request)
+            // and each Add/Remove pair mutates GC-global accounting — a contended cost per DB
+            // read under concurrent load. The threshold must match DangerousReleaseMemory.
+            if (span.Length >= GcPressureSpanThreshold) GC.AddMemoryPressure(span.Length);
+        }
+        return span;
     }
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
@@ -966,6 +999,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         UpdateReadMetrics();
 
         int length = _db.Get(key, output, cf, readOptions);
+        return length < 0 ? 0 : length;
+    }
+
+    internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, RocksDbReadSession session)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateReadMetrics();
+
+        int length = session.Get(key, output, cf);
         return length < 0 ? 0 : length;
     }
 
