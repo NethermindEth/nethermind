@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -80,24 +81,60 @@ public class RpcAdmissionControllerTests
         Assert.That(config.GetEvmExecutionConcurrency(), Is.EqualTo(expected ?? Environment.ProcessorCount));
     }
 
-    [TestCase(null, null, TestName = "Tracing: processor count minus two, at least two")]
+    [TestCase(null, null, TestName = "Tracing: processor count minus two, clamped")]
     [TestCase(5, 5, TestName = "Tracing: explicit value wins")]
     [TestCase(0, 1, TestName = "Tracing: zero is clamped to one")]
+    [TestCase(64, 64, TestName = "Tracing: an explicit value is not capped")]
     public void Tracing_concurrency_default_chain(int? tracingConcurrency, int? expected)
     {
         JsonRpcConfig config = new() { TracingConcurrency = tracingConcurrency };
 
-        Assert.That(config.GetTracingConcurrency(), Is.EqualTo(expected ?? Math.Max(2, Environment.ProcessorCount - 2)));
+        Assert.That(config.GetTracingConcurrency(), Is.EqualTo(expected ?? RpcConcurrencyLimits.ClampDerived(Environment.ProcessorCount - 2)));
     }
 
-    [TestCase(null, null, TestName = "Proof: half the processor count, at least two")]
+    [TestCase(null, null, TestName = "Proof: half the processor count, clamped")]
     [TestCase(3, 3, TestName = "Proof: explicit value wins")]
     [TestCase(-1, 1, TestName = "Proof: negative is clamped to one")]
     public void Proof_concurrency_default_chain(int? proofConcurrency, int? expected)
     {
         JsonRpcConfig config = new() { ProofConcurrency = proofConcurrency };
 
-        Assert.That(config.GetProofConcurrency(), Is.EqualTo(expected ?? Math.Max(2, Environment.ProcessorCount / 2)));
+        Assert.That(config.GetProofConcurrency(), Is.EqualTo(expected ?? RpcConcurrencyLimits.ClampDerived(Environment.ProcessorCount / 2)));
+    }
+
+    // Each tracing/proof instance is a block-processing pipeline kept until shutdown, so the derived default stops at 16.
+    [TestCase(-1, 2)]
+    [TestCase(2, 2)]
+    [TestCase(9, 9)]
+    [TestCase(RpcConcurrencyLimits.MaxDerivedConcurrency, RpcConcurrencyLimits.MaxDerivedConcurrency)]
+    [TestCase(126, RpcConcurrencyLimits.MaxDerivedConcurrency)]
+    public void Derived_tracing_and_proof_defaults_are_clamped(int derived, int expected) =>
+        Assert.That(RpcConcurrencyLimits.ClampDerived(derived), Is.EqualTo(expected));
+
+    [TestCase(RpcMethodCostClass.EvmExecution, null, 500, TestName = "Evm: MaxQueueWaitMs, not the request timeout")]
+    [TestCase(RpcMethodCostClass.EvmExecution, -1, 0, TestName = "Evm: negative is clamped to zero")]
+    [TestCase(RpcMethodCostClass.Tracing, null, 20_000, TestName = "Tracing: defaults to the request timeout")]
+    [TestCase(RpcMethodCostClass.Tracing, 750, 750, TestName = "Tracing: explicit value wins")]
+    [TestCase(RpcMethodCostClass.Tracing, -1, 0, TestName = "Tracing: negative is clamped to zero")]
+    [TestCase(RpcMethodCostClass.Proof, null, 20_000, TestName = "Proof: defaults to the request timeout")]
+    [TestCase(RpcMethodCostClass.Proof, 0, 0, TestName = "Proof: zero disables queueing")]
+    public void Wait_budget_default_chain_per_class(RpcMethodCostClass costClass, int? configured, int expected)
+    {
+        JsonRpcConfig config = new() { Timeout = 20_000, MaxQueueWaitMs = 500 };
+        switch (costClass)
+        {
+            case RpcMethodCostClass.EvmExecution when configured is not null:
+                config.MaxQueueWaitMs = configured.Value;
+                break;
+            case RpcMethodCostClass.Tracing:
+                config.TracingMaxQueueWaitMs = configured;
+                break;
+            case RpcMethodCostClass.Proof:
+                config.ProofMaxQueueWaitMs = configured;
+                break;
+        }
+
+        Assert.That(new RpcAdmissionController(config).GetMaxQueueWaitMs(costClass), Is.EqualTo(expected));
     }
 
     [TestCase(null, 7, 7, TestName = "Trace module instances follow TracingConcurrency")]
@@ -187,20 +224,29 @@ public class RpcAdmissionControllerTests
         (await queued.AsTask().WaitAsync(WaitBudget)).Dispose();
     }
 
-    // A zero budget fires the timeout while the waiter is still being enqueued, so it also pins the grant/timeout ordering.
-    [TestCase(0)]
-    [TestCase(100)]
-    public async Task Rejects_after_wait_timeout_when_permits_never_free(int maxQueueWaitMs)
+    [TestCase(0, TestName = "Zero budget: shed on the calling thread, nothing queued")]
+    [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
+    public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
     {
         RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = maxQueueWaitMs });
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
+        ConcurrentDictionary<RpcMethodCostClass, long> rejections = maxQueueWaitMs == 0
+            ? Metrics.RpcAdmissionPredictedWaitRejections
+            : Metrics.RpcAdmissionWaitTimeoutRejections;
+        long rejectionsBefore = rejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
         RpcAdmissionController.Lease held = await controller.AdmitAsync(ethCall, 0);
 
-        Assert.ThrowsAsync<LimitExceededException>(async () => await controller.AdmitAsync(ethCall, 0));
+        if (maxQueueWaitMs == 0)
+        {
+            Assert.Throws<LimitExceededException>(() => controller.AdmitAsync(ethCall, 0), "a zero budget must reject synchronously, without a waiter");
+        }
+        else
+        {
+            Assert.ThrowsAsync<LimitExceededException>(async () => await controller.AdmitAsync(ethCall, 0));
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(rejectionsBefore));
+            Assert.That(rejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(rejectionsBefore));
             Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
             Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
         }

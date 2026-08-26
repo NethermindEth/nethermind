@@ -19,7 +19,10 @@ namespace Nethermind.JsonRpc.Modules;
 /// converts throughput into queueing delay and, past saturation, into request timeouts. This controller keeps
 /// concurrency at the plateau and turns the excess into fast "Too many requests" answers instead: a request is
 /// rejected up front when <c>queued weight no heavier than it x EWMA(service time per unit) / permits</c> exceeds
-/// <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>, and otherwise waits asynchronously for a permit for at most that long.
+/// its class's wait budget (<see cref="IJsonRpcConfig.MaxQueueWaitMs"/> for EVM execution,
+/// <see cref="IJsonRpcConfig.TracingMaxQueueWaitMs"/> and <see cref="IJsonRpcConfig.ProofMaxQueueWaitMs"/> otherwise),
+/// and otherwise waits asynchronously for a permit for at most that long. A zero budget disables queueing: a request
+/// that finds no free permit is rejected on the calling thread without allocating a waiter.
 /// <see cref="RpcMethodCostClass.Default"/> methods are never gated — cheap reads must stay uncapped.
 /// <para>
 /// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish
@@ -37,14 +40,13 @@ public sealed class RpcAdmissionController
     /// <summary>Creates one gate per gated cost class, sized by the concurrency limits resolved from <paramref name="config"/>.</summary>
     public RpcAdmissionController(IJsonRpcConfig config)
     {
-        int maxQueueWaitMs = Math.Max(0, config.MaxQueueWaitMs);
-        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), maxQueueWaitMs);
-        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), maxQueueWaitMs);
-        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), maxQueueWaitMs);
+        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), Math.Max(0, config.MaxQueueWaitMs));
+        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), config.GetTracingMaxQueueWaitMs());
+        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), config.GetProofMaxQueueWaitMs());
     }
 
     /// <summary>
-    /// Acquires a permit for <paramref name="method"/>, waiting at most <see cref="IJsonRpcConfig.MaxQueueWaitMs"/>.
+    /// Acquires a permit for <paramref name="method"/>, waiting at most its cost class's queue-wait budget.
     /// </summary>
     /// <param name="method">The resolved method; its cost class selects the gate.</param>
     /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c> element, or zero when the request carries none; drives the request weight.</param>
@@ -61,6 +63,7 @@ public sealed class RpcAdmissionController
     }
 
     internal int GetPermits(RpcMethodCostClass costClass) => _gates[(int)costClass]?.Permits ?? 0;
+    internal int GetMaxQueueWaitMs(RpcMethodCostClass costClass) => _gates[(int)costClass]?.MaxQueueWaitMs ?? 0;
     internal int GetQueued(RpcMethodCostClass costClass) => _gates[(int)costClass]?.Queued ?? 0;
     internal int GetInFlight(RpcMethodCostClass costClass) => _gates[(int)costClass]?.InFlight ?? 0;
     internal double GetServiceTimeMs(RpcMethodCostClass costClass) => _gates[(int)costClass]?.ServiceTimeMs ?? 0;
@@ -98,6 +101,7 @@ public sealed class RpcAdmissionController
         private double _serviceTimeMs;
 
         public int Permits { get; } = Math.Max(1, permits);
+        public int MaxQueueWaitMs => _maxQueueWaitMs;
         public int Queued => Volatile.Read(ref _queued);
         public int InFlight => Volatile.Read(ref _inFlight);
         public double ServiceTimeMs => Volatile.Read(ref _serviceTimeMs);
@@ -116,7 +120,7 @@ public sealed class RpcAdmissionController
                 }
 
                 predictedWaitMs = QueuedWeightNoHeavierThan(weight) * _serviceTimeMs / Permits;
-                if (predictedWaitMs <= _maxQueueWaitMs)
+                if (_maxQueueWaitMs > 0 && predictedWaitMs <= _maxQueueWaitMs)
                 {
                     waiter = new Waiter(this, weight);
                     // Armed inside the lock, before the waiter is linked: a grant always finds the timer to dispose, a
@@ -131,8 +135,9 @@ public sealed class RpcAdmissionController
             if (waiter is null)
             {
                 Metrics.RpcAdmissionPredictedWaitRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
-                throw new LimitExceededException(
-                    $"Unable to start new {_costClass} request. Predicted queue wait {predictedWaitMs:F0} ms exceeds {_maxQueueWaitMs} ms.");
+                throw new LimitExceededException(_maxQueueWaitMs == 0
+                    ? $"Unable to start new {_costClass} request. All {Permits} execution slots are busy and queueing is disabled."
+                    : $"Unable to start new {_costClass} request. Predicted queue wait {predictedWaitMs:F0} ms exceeds {_maxQueueWaitMs} ms.");
             }
 
             return new ValueTask<Lease>(AwaitGrantAsync(waiter));

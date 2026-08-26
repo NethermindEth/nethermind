@@ -99,7 +99,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // Admitted before the parameters are bound so that a shed request never pays for deserializing them.
         // Released once the invocation and any task it returned have completed — except for a streamed result, whose
         // re-execution only runs while the response is written, so its permit travels with the response instead.
-        RpcAdmissionController.Lease lease = await _admissionController.AdmitAsync(method, request.ParamsUtf8Length);
+        // Ungated methods skip the controller entirely so the hottest path never measures its raw params.
+        RpcAdmissionController.Lease lease = method.CostClass == RpcMethodCostClass.Default
+            ? default
+            : await _admissionController.AdmitAsync(method, request.ParamsUtf8Length);
         bool leaseSettled = false;
         try
         {

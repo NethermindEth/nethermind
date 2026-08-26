@@ -175,41 +175,65 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(
         Description = """
             The number of tracing JSON-RPC requests (`debug_trace*`, `trace_*`) allowed to execute at once;
-            further requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded` (HTTP 503)
-            beyond that. Defaults to the number of logical processors minus two, but not less than two, leaving
-            headroom for block processing. Keep `DebugModuleConcurrentInstances` at or above this value, otherwise
-            admitted `debug_trace*` requests wait for a module instance while holding their slot.
+            further requests wait up to `TracingMaxQueueWaitMs` for a slot and are answered with `LimitExceeded`
+            (HTTP 503) beyond that. Defaults to the number of logical processors minus two, clamped to between two
+            and sixteen: every slot needs a module instance, and each instance is a full block-processing pipeline
+            kept for the lifetime of the process. Keep `DebugModuleConcurrentInstances` at or above this value,
+            otherwise admitted `debug_trace*` requests wait for a module instance while holding their slot.
             """)]
     int? TracingConcurrency { get; set; }
 
     [ConfigItem(
         Description = """
             The number of proof-generating JSON-RPC requests (`proof_*`, `eth_getProof`) allowed to execute at
-            once; further requests wait up to `MaxQueueWaitMs` for a slot and are answered with `LimitExceeded`
-            (HTTP 503) beyond that. Defaults to half the number of logical processors, but not less than two.
+            once; further requests wait up to `ProofMaxQueueWaitMs` for a slot and are answered with `LimitExceeded`
+            (HTTP 503) beyond that. Defaults to half the number of logical processors, clamped to between two and
+            sixteen, for the same reason as `TracingConcurrency`.
             """)]
     int? ProofConcurrency { get; set; }
 
     [ConfigItem(
         Description = """
-            The max time, in milliseconds, a gated JSON-RPC request (see `EvmExecutionConcurrency`,
-            `TracingConcurrency`, `ProofConcurrency`) may wait for an execution slot. Requests whose predicted wait
-            already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. The
-            predicted wait is `queued work no heavier than the request x mean service time per unit / slots`, with
-            EVM-executing requests weighted by their `params` size (one unit per 128 KiB, at most 8) and lighter
-            requests served first: at ~30 CPU-ms per request and 16 slots the default absorbs a burst of roughly
-            250 requests. A queue a few service times deep already keeps every slot busy under sustained overload;
-            a longer one only adds latency to the requests it does serve.
+            The max time, in milliseconds, an EVM-executing JSON-RPC request (see `EvmExecutionConcurrency`) may
+            wait for an execution slot. Requests whose predicted wait already exceeds it are rejected immediately
+            with `LimitExceeded` (HTTP 503) rather than queued, and `0` disables queueing altogether: a request that
+            finds no free slot is rejected at once. The predicted wait is
+            `queued work no heavier than the request x mean service time per unit / slots`, with requests weighted
+            by their `params` size (one unit per 128 KiB, at most 8) and lighter requests served first: at ~30 CPU-ms
+            per request and 16 slots the default absorbs a burst of roughly 250 requests. A queue a few service
+            times deep already keeps every slot busy under sustained overload; a longer one only adds latency to
+            the requests it does serve. Tracing and proof requests have their own budgets
+            (`TracingMaxQueueWaitMs`, `ProofMaxQueueWaitMs`).
             """,
         DefaultValue = "500")]
     int MaxQueueWaitMs { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Trace RPC module (`trace_*`). Instances are created on first use and kept for the lifetime of the process. Defaults to `TracingConcurrency`.")]
+        Description = """
+            The max time, in milliseconds, a tracing JSON-RPC request (see `TracingConcurrency`) may wait for an
+            execution slot; the predicted-wait rejection and the `0` semantics of `MaxQueueWaitMs` apply against
+            this budget. Defaults to `Timeout`, which is how long these requests waited for a module instance before
+            the admission gate existed: tracing service times run into seconds, so a budget sized for `eth_call`
+            would shed nearly every tracing request the moment its slots are full.
+            """,
+        DefaultValue = "null")]
+    int? TracingMaxQueueWaitMs { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max time, in milliseconds, a proof-generating JSON-RPC request (see `ProofConcurrency`) may wait
+            for an execution slot; the predicted-wait rejection and the `0` semantics of `MaxQueueWaitMs` apply
+            against this budget. Defaults to `Timeout`, for the same reason as `TracingMaxQueueWaitMs`.
+            """,
+        DefaultValue = "null")]
+    int? ProofMaxQueueWaitMs { get; set; }
+
+    [ConfigItem(
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_*`). Each instance is a full block-processing pipeline, created on first use and kept for the lifetime of the process. Defaults to `TracingConcurrency`, every slot of which needs an instance.")]
     int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Proof RPC module (`proof_*`). Instances are created on first use and kept for the lifetime of the process. Defaults to `ProofConcurrency`.")]
+        Description = "The number of concurrent instances of the Proof RPC module (`proof_*`). Each instance is a full block-processing pipeline, created on first use and kept for the lifetime of the process. Defaults to `ProofConcurrency`, every slot of which needs an instance.")]
     int? ProofModuleConcurrentInstances { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
