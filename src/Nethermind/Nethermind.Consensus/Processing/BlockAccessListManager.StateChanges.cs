@@ -59,9 +59,8 @@ public partial class BlockAccessListManager
 
             if (accountChanges.CodeChanges.Length > 0)
             {
-                // A predeploy that mandates runtime code alone, leaving balance and nonce as they stand
-                // (EIP-8141's expiry verifier), records a code change and nothing else, so neither branch
-                // above has created the account yet.
+                // A predeploy installing code without a nonce is the only change that touches neither branch
+                // above, so the account may not exist yet.
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }

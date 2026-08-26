@@ -87,11 +87,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
     /// <remarks>
-    /// EIP-8369 classifies a frame transaction as Profile 2, whose omission an inclusion-list check cannot
-    /// judge until the bounded validation replay lands, so listing one buys no censorship resistance while
-    /// still spending the byte cap. Removing them also keeps the gapless-run test below meaningful: an
-    /// EIP-8250 keyed nonce shares <see cref="Transaction.Nonce"/> with account nonces but counts in a
-    /// separate per-key sequence, so one left in the run would break the offset for every tx behind it.
+    /// Listing one spends the byte cap without buying censorship resistance, and its EIP-8250 keyed nonce
+    /// shares <see cref="Transaction.Nonce"/> while counting per key, breaking the offsets behind it.
     /// </remarks>
     private static Transaction[] WithoutFrameTxs(Transaction[] bySender)
     {
@@ -109,10 +106,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>Whether <paramref name="bySender"/> still begins at the sender's next account nonce.</summary>
     /// <remarks>
-    /// The pool filters per bucket, not per transaction: it admits the whole run on <paramref name="pending"/>[0]
-    /// being ready, so that entry alone names the next account nonce — and an EIP-8250 keyed one names none at
-    /// all. Once a frame transaction is dropped from the head the rest has no anchor, and a run starting past
-    /// the account nonce could never be appended, spending the byte cap on entries no validator enforces.
+    /// The pool admits a whole bucket on <paramref name="pending"/>[0] being ready, so that entry alone names
+    /// the next account nonce — an EIP-8250 keyed one names none, and a run past it could never be appended.
     /// </remarks>
     private static bool IsAnchoredAtNextAccountNonce(Transaction[] pending, Transaction[] bySender) =>
         !KeyedNonceManager.UsesKeyedNonce(pending[0]) && bySender[0].Nonce == pending[0].Nonce;

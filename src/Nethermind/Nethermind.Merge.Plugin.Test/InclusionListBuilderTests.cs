@@ -96,10 +96,8 @@ public class InclusionListBuilderTests
         pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
     }
 
-    // EIP-8369 classifies a frame transaction as Profile 2, whose omission the inclusion-list check does
-    // not judge, so listing one spends the byte cap on an entry that buys no censorship resistance. Its
-    // EIP-8250 keyed nonce also counts in a per-key sequence rather than the account's, so one left in the
-    // run breaks the gapless-offset test for every transaction behind it — hence both assertions.
+    // Listing a frame transaction spends the byte cap for nothing, and its per-key nonce would break the
+    // gapless-offset test for everything behind it — hence both assertions.
     [Test]
     public void Frame_transactions_are_kept_out_and_do_not_break_the_sender_run()
     {
