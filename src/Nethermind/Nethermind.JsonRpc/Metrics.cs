@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionInFlight { get; } = new();
 
         [CounterMetric]
-        [Description("Number of surplus JSON RPC admission permit releases (a lease released more than once) that were ignored instead of raising the class's effective permit count, per cost class. Any nonzero value is a bug in a call site.")]
+        [Description("Number of JSON RPC admission permit releases that found nothing in flight and were ignored, per cost class. Each is a lease released more than once; a double release while other requests were in flight raises the class's effective permit count by one until the class next drains, and is counted then. Any nonzero value is a bug in a call site.")]
         [KeyIsLabel("cost_class")]
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionReleaseAnomalies { get; } = new();
 

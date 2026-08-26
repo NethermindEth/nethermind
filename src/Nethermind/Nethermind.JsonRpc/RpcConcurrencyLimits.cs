@@ -35,10 +35,15 @@ public static class RpcConcurrencyLimits
         Math.Max(1, config.ProofModuleConcurrentInstances ?? config.GetProofConcurrency());
 
     public static int GetTracingMaxQueueWaitMs(this IJsonRpcConfig config) =>
-        Math.Max(0, config.TracingMaxQueueWaitMs ?? config.Timeout);
+        Math.Max(0, config.TracingMaxQueueWaitMs ?? GetRequestTimeoutWaitBudget(config));
 
     public static int GetProofMaxQueueWaitMs(this IJsonRpcConfig config) =>
-        Math.Max(0, config.ProofMaxQueueWaitMs ?? config.Timeout);
+        Math.Max(0, config.ProofMaxQueueWaitMs ?? GetRequestTimeoutWaitBudget(config));
+
+    // A negative Timeout means Timeout.Infinite for the request and its module rental, so it must not collapse into
+    // the zero budget that disables queueing.
+    private static int GetRequestTimeoutWaitBudget(IJsonRpcConfig config) =>
+        config.Timeout < 0 ? int.MaxValue : config.Timeout;
 
     internal static int ClampDerived(int derivedConcurrency) =>
         Math.Clamp(derivedConcurrency, MinDerivedConcurrency, MaxDerivedConcurrency);

@@ -112,16 +112,18 @@ public class RpcAdmissionControllerTests
     public void Derived_tracing_and_proof_defaults_are_clamped(int derived, int expected) =>
         Assert.That(RpcConcurrencyLimits.ClampDerived(derived), Is.EqualTo(expected));
 
-    [TestCase(RpcMethodCostClass.EvmExecution, null, 500, TestName = "Evm: MaxQueueWaitMs, not the request timeout")]
-    [TestCase(RpcMethodCostClass.EvmExecution, -1, 0, TestName = "Evm: negative is clamped to zero")]
-    [TestCase(RpcMethodCostClass.Tracing, null, 20_000, TestName = "Tracing: defaults to the request timeout")]
-    [TestCase(RpcMethodCostClass.Tracing, 750, 750, TestName = "Tracing: explicit value wins")]
-    [TestCase(RpcMethodCostClass.Tracing, -1, 0, TestName = "Tracing: negative is clamped to zero")]
-    [TestCase(RpcMethodCostClass.Proof, null, 20_000, TestName = "Proof: defaults to the request timeout")]
-    [TestCase(RpcMethodCostClass.Proof, 0, 0, TestName = "Proof: zero disables queueing")]
-    public void Wait_budget_default_chain_per_class(RpcMethodCostClass costClass, int? configured, int expected)
+    [TestCase(RpcMethodCostClass.EvmExecution, null, 20_000, 500, TestName = "Evm: MaxQueueWaitMs, not the request timeout")]
+    [TestCase(RpcMethodCostClass.EvmExecution, -1, 20_000, 0, TestName = "Evm: negative is clamped to zero")]
+    [TestCase(RpcMethodCostClass.Tracing, null, 20_000, 20_000, TestName = "Tracing: defaults to the request timeout")]
+    [TestCase(RpcMethodCostClass.Tracing, null, -1, int.MaxValue, TestName = "Tracing: an infinite request timeout keeps the wait unbounded")]
+    [TestCase(RpcMethodCostClass.Tracing, 750, 750, 750, TestName = "Tracing: explicit value wins")]
+    [TestCase(RpcMethodCostClass.Tracing, -1, 20_000, 0, TestName = "Tracing: negative is clamped to zero")]
+    [TestCase(RpcMethodCostClass.Proof, null, 20_000, 20_000, TestName = "Proof: defaults to the request timeout")]
+    [TestCase(RpcMethodCostClass.Proof, null, -1, int.MaxValue, TestName = "Proof: an infinite request timeout keeps the wait unbounded")]
+    [TestCase(RpcMethodCostClass.Proof, 0, 20_000, 0, TestName = "Proof: zero disables queueing")]
+    public void Wait_budget_default_chain_per_class(RpcMethodCostClass costClass, int? configured, int timeout, int expected)
     {
-        JsonRpcConfig config = new() { Timeout = 20_000, MaxQueueWaitMs = 500 };
+        JsonRpcConfig config = new() { Timeout = timeout, MaxQueueWaitMs = 500 };
         switch (costClass)
         {
             case RpcMethodCostClass.EvmExecution when configured is not null:
@@ -307,13 +309,22 @@ public class RpcAdmissionControllerTests
         }
     }
 
-    [Test]
-    public async Task Surplus_release_is_ignored_and_counted_instead_of_raising_the_permits()
+    [TestCase(false, TestName = "Idle class: the second release is dropped and counted at once")]
+    [TestCase(true, TestName = "Loaded class: the second release passes for the live lease's, whose own release is dropped and counted")]
+    public async Task Surplus_release_is_counted_and_the_permits_restored_once_the_class_drains(bool otherInFlight)
     {
         long anomaliesBefore = Metrics.RpcAdmissionReleaseAnomalies.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
+        RpcAdmissionController.Lease other = otherInFlight ? await AdmitEthCall() : default;
         RpcAdmissionController.Lease lease = await AdmitEthCall();
         lease.Dispose();
         lease.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(Metrics.RpcAdmissionReleaseAnomalies[RpcMethodCostClass.EvmExecution], Is.EqualTo(otherInFlight ? anomaliesBefore : anomaliesBefore + 1));
+        }
+
+        other.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
@@ -394,6 +405,28 @@ public class RpcAdmissionControllerTests
             Assert.That(Metrics.RpcAdmissionInFlight[RpcMethodCostClass.EvmExecution], Is.EqualTo(0));
             Assert.That(Metrics.RpcAdmissionQueued[RpcMethodCostClass.EvmExecution], Is.EqualTo(0));
             Assert.That(Metrics.RpcAdmissionServiceTimeMs[RpcMethodCostClass.EvmExecution], Is.EqualTo(_controller.GetServiceTimeMs(RpcMethodCostClass.EvmExecution)));
+        }
+    }
+
+    // Both permits are released at once, over and over; a gauge published from a stale snapshot would read 1 at rest.
+    [Test]
+    [NonParallelizable]
+    public async Task In_flight_gauge_reads_zero_at_rest_after_concurrent_releases()
+    {
+        const int Iterations = 20_000;
+        using Barrier releaseTogether = new(EvmPermits);
+        void ReleaseInStep(RpcAdmissionController.Lease lease)
+        {
+            releaseTogether.SignalAndWait();
+            lease.Dispose();
+        }
+
+        for (int i = 0; i < Iterations; i++)
+        {
+            RpcAdmissionController.Lease first = await AdmitEthCall();
+            RpcAdmissionController.Lease second = await AdmitEthCall();
+            await Task.WhenAll(Task.Run(() => ReleaseInStep(first)), Task.Run(() => ReleaseInStep(second)));
+            Assert.That(Metrics.RpcAdmissionInFlight[RpcMethodCostClass.EvmExecution], Is.EqualTo(0), $"iteration {i}");
         }
     }
 

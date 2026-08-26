@@ -76,9 +76,10 @@ public sealed class RpcAdmissionController
     /// A permit that is never released cannot be recovered: once a class's in-flight count sticks at its permit count
     /// with nothing queued, the class sheds every request until restart. <see cref="JsonRpcService"/> therefore settles
     /// every lease exactly once — in a <c>finally</c> around the invocation or, for a streamed result whose re-execution
-    /// runs while the response is written, through the response's disposal action. A surplus release, which would
-    /// otherwise raise the effective permit count for the rest of the process, is ignored and counted in
-    /// <see cref="Metrics.RpcAdmissionReleaseAnomalies"/>.
+    /// runs while the response is written, through the response's disposal action. A surplus release cannot be told
+    /// from a live lease's release while other requests of the class are in flight, so it raises the effective permit
+    /// count by one until the class next drains; the release that then finds nothing in flight is ignored and counted
+    /// in <see cref="Metrics.RpcAdmissionReleaseAnomalies"/>, which resynchronises the count.
     /// </remarks>
     internal readonly struct Lease(Gate? gate, int weight, long startTimestamp) : IDisposable
     {
@@ -102,8 +103,8 @@ public sealed class RpcAdmissionController
         // One lock guards the permit count, the wait queue and the EWMA. Admission is one short critical section per
         // gated call against executions lasting tens of milliseconds, so it is effectively uncontended, and serialising
         // grant and timeout through it is what keeps the two from ever settling the same waiter. The gauges are
-        // published after the lock is released so the critical section stays a counter update; a concurrent transition
-        // may publish a slightly stale value, which the next one overwrites.
+        // published inside it too: published after it, two releases can land in reverse order and leave a gauge
+        // reading in-flight work at rest until the next request of that class, which may never come.
         private readonly Lock _lock = new();
         // One FIFO per weight (indices RpcRequestWeight.MinWeight..MaxWeight); the lowest non-empty one is served first.
         private readonly Waiter?[] _heads = new Waiter?[RpcRequestWeight.MaxWeight + 1];
@@ -122,44 +123,32 @@ public sealed class RpcAdmissionController
 
         public ValueTask<Lease> AdmitAsync(int weight)
         {
-            bool admitted = false;
             Waiter? waiter = null;
-            double predictedWaitMs = 0;
-            int inFlight = 0;
-            int queued = 0;
+            double predictedWaitMs;
             lock (_lock)
             {
                 // A freed permit is handed straight to a waiter, so a free permit means nobody is waiting to be overtaken.
                 if (_inFlight < Permits)
                 {
-                    admitted = true;
-                    inFlight = ++_inFlight;
+                    Metrics.RpcAdmissionInFlight[_costClass] = ++_inFlight;
+                    return ValueTask.FromResult(new Lease(this, weight, Stopwatch.GetTimestamp()));
                 }
-                else
-                {
-                    predictedWaitMs = QueuedWeightNoHeavierThan(weight) * _serviceTimeMs / Permits;
-                    if (_maxQueueWaitMs > 0 && predictedWaitMs <= _maxQueueWaitMs)
-                    {
-                        waiter = new Waiter(this, weight);
-                        // Armed inside the lock, before the waiter is linked: a grant always finds the timer to dispose, a
-                        // firing that races the enqueue blocks until the waiter is fully linked, and a failed arm leaves the
-                        // gate untouched.
-                        waiter.Timer = new Timer(static state => ((Waiter)state!).OnTimeout(), waiter, _maxQueueWaitMs, Timeout.Infinite);
-                        Enqueue(waiter);
-                        queued = ++_queued;
-                    }
-                }
-            }
 
-            if (admitted)
-            {
-                Metrics.RpcAdmissionInFlight[_costClass] = inFlight;
-                return ValueTask.FromResult(new Lease(this, weight, Stopwatch.GetTimestamp()));
+                predictedWaitMs = QueuedWeightNoHeavierThan(weight) * _serviceTimeMs / Permits;
+                if (_maxQueueWaitMs > 0 && predictedWaitMs <= _maxQueueWaitMs)
+                {
+                    waiter = new Waiter(this, weight);
+                    // Armed inside the lock, before the waiter is linked: a grant always finds the timer to dispose, a
+                    // firing that races the enqueue blocks until the waiter is fully linked, and a failed arm leaves the
+                    // gate untouched.
+                    waiter.Timer = new Timer(static state => ((Waiter)state!).OnTimeout(), waiter, _maxQueueWaitMs, Timeout.Infinite);
+                    Enqueue(waiter);
+                    Metrics.RpcAdmissionQueued[_costClass] = ++_queued;
+                }
             }
 
             if (waiter is not null)
             {
-                Metrics.RpcAdmissionQueued[_costClass] = queued;
                 return new ValueTask<Lease>(AwaitGrantAsync(waiter));
             }
 
@@ -183,56 +172,40 @@ public sealed class RpcAdmissionController
 
         private void Release(bool sampled, double observedMsPerUnit)
         {
-            bool released;
-            Waiter? next = null;
-            int inFlight = 0;
-            int queued = 0;
-            double serviceTimeMs = 0;
+            Waiter? next;
             lock (_lock)
             {
-                // A release with nothing in flight can only be a lease released twice; letting it through would raise the
-                // effective permit count for the rest of the process, so it is dropped and reported instead.
-                released = _inFlight > 0;
-                if (released)
+                // A release with nothing in flight is a lease released twice (or the live release that an earlier double
+                // release pre-empted); letting it through would raise the effective permit count for the rest of the
+                // process, so it is dropped and reported instead.
+                if (_inFlight == 0)
                 {
-                    if (sampled)
-                    {
-                        double current = _serviceTimeMs;
-                        serviceTimeMs = current == 0 ? observedMsPerUnit : current + EwmaAlpha * (observedMsPerUnit - current);
-                        Volatile.Write(ref _serviceTimeMs, serviceTimeMs);
-                    }
+                    ReportSurplusRelease();
+                    return;
+                }
 
-                    next = DequeueLightest();
-                    if (next is null)
-                    {
-                        inFlight = --_inFlight;
-                    }
-                    else
-                    {
-                        // The permit passes straight on, so in-flight is unchanged.
-                        queued = --_queued;
-                    }
+                if (sampled)
+                {
+                    double current = _serviceTimeMs;
+                    double updated = current == 0 ? observedMsPerUnit : current + EwmaAlpha * (observedMsPerUnit - current);
+                    Volatile.Write(ref _serviceTimeMs, updated);
+                    Metrics.RpcAdmissionServiceTimeMs[_costClass] = updated;
+                }
+
+                next = DequeueLightest();
+                if (next is null)
+                {
+                    Metrics.RpcAdmissionInFlight[_costClass] = --_inFlight;
+                }
+                else
+                {
+                    // The permit passes straight on, so in-flight is unchanged.
+                    Metrics.RpcAdmissionQueued[_costClass] = --_queued;
                 }
             }
 
-            if (!released)
+            if (next is not null)
             {
-                ReportSurplusRelease();
-                return;
-            }
-
-            if (sampled)
-            {
-                Metrics.RpcAdmissionServiceTimeMs[_costClass] = serviceTimeMs;
-            }
-
-            if (next is null)
-            {
-                Metrics.RpcAdmissionInFlight[_costClass] = inFlight;
-            }
-            else
-            {
-                Metrics.RpcAdmissionQueued[_costClass] = queued;
                 next.Timer!.Dispose();
                 // Completes on the pool: the releasing request's thread never runs the next request's continuation.
                 next.TrySetResult();
@@ -254,7 +227,6 @@ public sealed class RpcAdmissionController
 
         private void OnTimeout(Waiter waiter)
         {
-            int queued;
             lock (_lock)
             {
                 // Lost the race to a grant: the request owns the permit and proceeds, so there is nothing to give back.
@@ -264,10 +236,9 @@ public sealed class RpcAdmissionController
                 }
 
                 Unlink(waiter);
-                queued = --_queued;
+                Metrics.RpcAdmissionQueued[_costClass] = --_queued;
             }
 
-            Metrics.RpcAdmissionQueued[_costClass] = queued;
             Metrics.RpcAdmissionWaitTimeoutRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
             waiter.Timer!.Dispose();
             waiter.TrySetException(new LimitExceededException(
@@ -350,9 +321,8 @@ public sealed class RpcAdmissionController
             lock (_lock)
             {
                 Volatile.Write(ref _serviceTimeMs, serviceTimeMs);
+                Metrics.RpcAdmissionServiceTimeMs[_costClass] = serviceTimeMs;
             }
-
-            Metrics.RpcAdmissionServiceTimeMs[_costClass] = serviceTimeMs;
         }
 
         /// <summary>

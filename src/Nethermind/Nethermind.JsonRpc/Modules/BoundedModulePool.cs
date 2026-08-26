@@ -71,7 +71,8 @@ namespace Nethermind.JsonRpc.Modules
     /// receives, say, a <c>trace_*</c> call should not pay for a processor's worth of them at startup. The semaphore
     /// bounds concurrent exclusive rentals, and every returned instance goes back to the idle queue, so a rental only
     /// finds the queue empty while fewer than <c>exclusiveCapacity</c> instances exist — the total never exceeds the
-    /// capacity. <see cref="Preload"/> restores eager creation for operators who prefer first-request latency.
+    /// capacity. <see cref="Preload"/> restores eager creation for operators who prefer first-request latency; it is
+    /// meant to run before the first rental, as a rental racing it can create one instance beyond the capacity.
     /// </remarks>
     public class BoundedModulePool<T>(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout) : IRpcModulePool<T> where T : IRpcModule
     {
@@ -142,6 +143,7 @@ namespace Nethermind.JsonRpc.Modules
             }
             catch
             {
+                Interlocked.Decrement(ref _createdExclusive);
                 _semaphore.Release();
                 throw;
             }
