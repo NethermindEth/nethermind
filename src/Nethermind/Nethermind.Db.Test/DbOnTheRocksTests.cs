@@ -683,6 +683,21 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
+        // Straddles the stack buffer of the single-call Get fast path; the last case exercises the pinned large-value path.
+        [TestCase(1)]
+        [TestCase(DbOnTheRocks.GetStackBufferSize - 1)]
+        [TestCase(DbOnTheRocks.GetStackBufferSize)]
+        [TestCase(DbOnTheRocks.GetStackBufferSize + 1)]
+        [TestCase(DbOnTheRocks.GetStackBufferSize * 8)]
+        public void Smoke_test_value_size_boundaries(int valueSize)
+        {
+            byte[] value = new byte[valueSize];
+            new Random(valueSize).NextBytes(value);
+
+            _db[[1, 2, 3]] = value;
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], value);
+        }
+
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
         public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
