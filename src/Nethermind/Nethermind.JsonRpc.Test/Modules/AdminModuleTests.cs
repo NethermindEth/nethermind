@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -183,12 +184,13 @@ public class AdminModuleTests
         Assert.That(serialized, Does.Contain(stateAvailable ? "true" : "false"), "admin_isStateRootAvailable mirrors the state reader's HasStateForBlock answer");
     }
 
-    [TestCase(false, false, TestName = "AdminAddTrustedPeer_WhenPersistentFalse_KeepsAsInMemoryTrustedPeer")]
-    [TestCase(true, true, TestName = "AdminAddTrustedPeer_WhenPersistentTrue_AlsoWritesToTrustedNodesFile")]
-    public async Task AdminAddTrustedPeer_WithValidEnode_AddsAsTrustedPeerAndReturnsTrue(bool persistent, bool expectedUpdateFile)
+    [TestCase(false, false, false, TestName = "AdminAddTrustedPeer_WhenPersistentFalse_KeepsAsInMemoryTrustedPeer")]
+    [TestCase(true, true, false, TestName = "AdminAddTrustedPeer_WhenPersistentTrue_AlsoWritesToTrustedNodesFile")]
+    [TestCase(true, true, true, TestName = "AdminAddTrustedPeer_WhenAlreadyTrustedAndPersistent_StillRequestsFileUpdate")]
+    public async Task AdminAddTrustedPeer_WithValidEnode_AddsAsTrustedPeerAndReturnsTrue(bool persistent, bool expectedUpdateFile, bool alreadyTrusted)
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(!alreadyTrusted));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(peerPool: peerPool, trustedNodesManager: trustedNodesManager);
 
@@ -196,26 +198,9 @@ public class AdminModuleTests
 
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
-        Assert.That(result, Is.True, "a valid enode is added to the trusted peer set and the call must report success as a boolean");
+        Assert.That(result, Is.True, "addTrustedPeer is idempotent: adding a new or already-trusted peer must report success as a boolean, matching geth's Server.AddTrustedPeer semantics");
         await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), expectedUpdateFile, Arg.Any<CancellationToken>());
         peerPool.Received(1).GetOrAdd(Arg.Any<NetworkNode>());
-    }
-
-    [Test]
-    public async Task AdminAddTrustedPeer_WhenAlreadyTrusted_SkipsAddAsyncAndPoolInsert()
-    {
-        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
-        IPeerPool peerPool = Substitute.For<IPeerPool>();
-        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager, peerPool: peerPool);
-
-        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
-
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
-        bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
-        Assert.That(result, Is.True, "addTrustedPeer is idempotent: trusting an already-trusted peer is success, matching geth's Server.AddTrustedPeer semantics");
-        await trustedNodesManager.DidNotReceive().AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-        peerPool.DidNotReceive().GetOrAdd(Arg.Any<NetworkNode>());
     }
 
     [TestCase("admin_addPeer", "not-an-enode", TestName = "AdminAddPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
@@ -354,7 +339,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task AdminUnsubscribe_AfterClientCloses_ReturnsFailure()
+    public async Task AdminUnsubscribe_AfterClientCloses_ReturnsNotFoundError()
     {
         string serializedPeerEvents = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
         string peerEventsId = serializedPeerEvents.Substring(serializedPeerEvents.Length - 44, 34);
@@ -364,10 +349,8 @@ public class AdminModuleTests
         _jsonRpcDuplexClient.Closed += Raise.Event();
 
         string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_unsubscribe", peerEventsId);
-        string expectedPeerEventsUnsub = string.Concat(
-            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-            peerEventsId, ".\"},\"id\":67}");
-        Assert.That(expectedPeerEventsUnsub, Is.EqualTo(serializedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe fails");
+        string expectedPeerEventsUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+        Assert.That(serializedPeerEventsUnsub, Is.EqualTo(expectedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe reports subscription not found");
     }
 
     [Test]
@@ -658,11 +641,41 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public async Task AdminNodeInfo_WithNodeRecordProvider_ReturnsEnr()
+    {
+        const string enrString = "enr:-Iu4QExs-VuocNcT-C-bs0EP4h7MGinmnKQHu7OSoHu_wG95TjjU61ifQ_q51GGjsy-1dcvqffYeLuRtV0jfBYJZGoSAgmlkgnY0gmlwhJ_fdDyJc2VjcDI1NmsxoQIsggF1NrG3S2KqKoF2n0oSE6ye3Tod9Dr1_QCPMwXpK4N0Y3CCdl-DdWRwgnZf";
+        INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
+        nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<NodeRecord>(NodeRecord.FromEnrString(enrString)));
+
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(nodeRecordProvider: nodeRecordProvider);
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(nodeInfo.Enr, Is.EqualTo(enrString), "admin_nodeInfo surfaces the signed local ENR");
+    }
+
+    [Test]
+    public async Task AdminNodeInfo_WithoutNodeRecordProvider_OmitsEnr()
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(nodeInfo.Enr, Is.Null, "the ENR is unavailable when discovery is disabled");
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
-        IBlockProcessingPauseControl? blockProcessingPauseControl = null)
+        IBlockProcessingPauseControl? blockProcessingPauseControl = null,
+        INodeRecordProvider? nodeRecordProvider = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -677,7 +690,8 @@ public class AdminModuleTests
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
             new JsonRpcConfig(),
-            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>());
+            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>(),
+            nodeRecordProvider);
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)

@@ -42,13 +42,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
+    // Zero means never captured, which is what a default BlockChange entry carries.
+    private uint _originalsRound = 1;
+
+    private void EndOriginalsRound()
+    {
+        _originalValues.ClearAndTrim();
+        if (++_originalsRound == 0) _originalsRound = 1;
+    }
+
     /// <summary>
     /// Reset the storage state
     /// </summary>
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        _originalValues.ClearAndTrim();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
@@ -144,17 +153,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
-            if (_committedThisRound.Contains(change!.StorageCell))
+            if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
             }
 
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
-            if (forAssertion != currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
-            }
+            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
+                $"Expected the cached index to equal {currentPosition} - {i}");
 
             if (change.ChangeType == ChangeType.Update)
             {
@@ -233,7 +239,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        _originalValues.ClearAndTrim();
+        EndOriginalsRound();
         _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
 
@@ -374,7 +380,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                _originalValues.ClearAndTrim();
+                EndOriginalsRound();
             }
 
             _destroyedThisRound.ClearAndTrim();
@@ -417,6 +423,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
+
+        /// <summary>Whether any uncommitted block-level change leaves a slot at a non-zero value.</summary>
+        public bool HasNonZeroValue
+        {
+            get
+            {
+                foreach (StorageChangeTrace trace in _dictionary.Values)
+                {
+                    if (!trace.After.IsZero())
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
 
         public void Reset(int capacity)
         {
@@ -501,6 +524,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             get
             {
+                // Block-level writes that have not been merkleized yet are invisible to the storage root
+                // (state overrides, and every tx before the block's single root computation), so consult
+                // them first: a "state" override clears the storage before writing, leaving the clear
+                // marker set alongside non-zero entries, and testing the marker first would report empty.
+                // Gated on _wasWritten because only writes can hide from the root - a non-zero read implies
+                // a non-empty root, which the check below already reports.
+                // Writes made by the currently executing transaction still live in the journal and are not
+                // seen here; this reports block-level state, which is what EIP-7610 needs.
+                if (_wasWritten && BlockChange.HasNonZeroValue) return false;
+
                 // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
                 // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
                 if (BlockChange.HasClear) return true;
@@ -576,7 +609,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            uint round = _provider._originalsRound;
+            if (valueChange.CapturedRound != round)
+            {
+                _provider.CaptureOriginalValue(storageCell, valueChange.After);
+                valueChange = valueChange.WithCapturedRound(round);
+            }
+
             return valueChange.After;
         }
 
@@ -705,8 +744,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             IsInitialValue = true;
         }
 
+        private StorageChangeTrace(byte[] before, byte[] after, bool isInitialValue, uint capturedRound)
+        {
+            Before = before;
+            After = after;
+            IsInitialValue = isInitialValue;
+            CapturedRound = capturedRound;
+        }
+
+        public StorageChangeTrace WithCapturedRound(uint round) => new(Before, After, IsInitialValue, round);
+
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
+        public readonly uint CapturedRound;
     }
 }

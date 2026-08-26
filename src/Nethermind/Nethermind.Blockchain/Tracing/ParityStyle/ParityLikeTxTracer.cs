@@ -465,7 +465,11 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert);
+
+    private void HandleActionError(EvmExceptionType evmExceptionType)
     {
         _currentAction!.Result = null;
         _currentAction.Error = GetErrorDescription(evmExceptionType);

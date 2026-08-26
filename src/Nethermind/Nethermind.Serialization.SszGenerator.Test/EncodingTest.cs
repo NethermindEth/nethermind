@@ -70,6 +70,112 @@ public class EncodingTest
         }
     }
 
+    [Test]
+    public void Decode_collection_itself_byte_lists()
+    {
+        ByteListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListItself.Encode(original);
+        ByteListItself.Decode(encoded, out ByteListItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_enforces_item_limit()
+    {
+        byte[] encoded = [8, 0, 0, 0, 12, 0, 0, 0, 1, 2, 3, 4];
+
+        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_supports_class_items()
+    {
+        ByteListClassItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListClassItself.Encode(original);
+        ByteListClassItself.Decode(encoded, out ByteListClassItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Encode_fixed_size_class_collection_clears_null_items()
+    {
+        StaticClassCollectionItem[] items = [new() { Value = 1 }, null!, new() { Value = 2 }];
+
+        byte[] encoded = StaticClassCollectionItem.Encode(items);
+
+        Assert.That(encoded, Is.EqualTo(new byte[]
+        {
+            1, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            2, 0, 0, 0, 0, 0, 0, 0,
+        }));
+    }
+
+    [Test]
+    public void Encode_nonnullable_static_class_null_clears_output()
+    {
+        NonNullableStaticClassContainer container = new() { Child = null! };
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, sizeof(ulong)).ToArray();
+
+        NonNullableStaticClassContainer.Encode(reusedBuffer, container);
+
+        Assert.That(reusedBuffer, Is.EqualTo(new byte[sizeof(ulong)]));
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_supports_list_destinations()
+    {
+        ByteListListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListListItself.Encode(original);
+        ByteListListItself.Decode(encoded, out ByteListListItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new List<byte> { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_vectors()
+    {
+        ByteVectorItself[] original = [new() { Bytes = [1, 2, 3] }, new() { Bytes = [4, 5, 6] }];
+
+        byte[] encoded = ByteVectorItself.Encode(original);
+        ByteVectorItself.Decode(encoded, out ByteVectorItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_vectors_rejects_wrong_item_length()
+    {
+        byte[] encoded = [1, 2, 3, 4, 5];
+
+        Assert.That(() => ByteVectorItself.Decode(encoded, out ByteVectorItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
     private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);
@@ -894,16 +1000,17 @@ public class EncodingTest
             return;
         }
 
-        int rightCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        ReadOnlySpan<UInt256> leftChunks = chunks[rightCount..];
-        UInt256 left = UInt256.Zero;
-        if (!leftChunks.IsEmpty)
+        int subtreeCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        Merkle.Merkleize(out UInt256 subtree, chunks[..subtreeCount], numLeaves);
+
+        ReadOnlySpan<UInt256> remainingChunks = chunks[subtreeCount..];
+        UInt256 continuation = UInt256.Zero;
+        if (!remainingChunks.IsEmpty)
         {
-            MerkleizeProgressiveSpec(leftChunks, out left, checked(numLeaves * 4));
+            MerkleizeProgressiveSpec(remainingChunks, out continuation, checked(numLeaves * 4));
         }
 
-        Merkle.Merkleize(out UInt256 right, chunks[..rightCount], numLeaves);
-        root = HashConcat(left, right);
+        root = HashConcat(subtree, continuation);
     }
 
     private static UInt256 HashConcat(UInt256 left, UInt256 right)

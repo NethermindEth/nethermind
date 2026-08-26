@@ -135,7 +135,7 @@ public static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -195,7 +195,7 @@ public static partial class EvmInstructions
         CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
         // EIP-7610: If the account already exists and is non-zero, then the creation fails.
-        // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
+        // Collision behaves as an immediate exceptional halt — burned callGas counts as block_execution.
         if (isNonZeroAccount)
         {
             if (chargeCreateStateGas)

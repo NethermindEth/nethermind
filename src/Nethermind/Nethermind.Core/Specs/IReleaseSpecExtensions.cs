@@ -52,6 +52,7 @@ public static partial class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
+        public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
@@ -62,12 +63,5 @@ public static partial class IReleaseSpecExtensions
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
             spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;
-
-        /// <summary>
-        /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
-        /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
-        /// </summary>
-        public IReleaseSpec WithoutEip3607() =>
-            spec.IsEip3607Enabled ? GetNoEip3607Spec(spec) : spec;
     }
 }

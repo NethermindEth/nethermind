@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -12,30 +11,62 @@ namespace Nethermind.Kademlia;
 /// <summary>
 /// Runs active random Kademlia lookups and streams discovered nodes.
 /// </summary>
+/// <remarks>
+/// Jobs iterate at <see cref="MinimumIterationDuration"/> while the routing table is still underfilled or while
+/// lookups keep admitting nodes into it. Once the table is filled and a lookup admits nothing, the job doubles its
+/// interval up to <see cref="MaximumIterationDuration"/>, so a node with a healthy table stops behaving like a
+/// crawler. Periodic bootstrap and bucket refresh in <see cref="IKademlia{TKey,TNode}.Run"/> are unaffected.
+/// </remarks>
 public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     IKademlia<TKey, TNode> kademlia,
+    IRoutingTable<TNode, TKadKey> routingTable,
     IKeyOperator<TKey, TNode, TKadKey> keyOperator,
     IKademliaDistance<TKadKey> distance,
     KademliaConfig<TNode> kademliaConfig,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    TimeProvider? timeProvider = null)
     : IKademliaDiscovery<TKey, TNode>
     where TNode : notnull
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// Longest interval an idle job backs off to.
+    /// </summary>
+    /// <remarks>
+    /// The lookup rate is inversely proportional to this cap, so almost all of the saving is already banked by the
+    /// first few doublings: a one-minute cap removes 98% of the one-second crawl rate and this one removes 99.7%,
+    /// while a half-hour cap would buy a further 0.3% at six times the worst-case delay. Because a reset only
+    /// applies to the next iteration and never wakes a sleeping job, this cap alone bounds how long a job can go
+    /// without looking up, whatever else happens in the table meanwhile.
+    /// </remarks>
+    private static readonly TimeSpan MaximumIterationDuration = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Reciprocal of the bucket-slot fill ratio the table must reach before idle lookups may slow down.
+    /// </summary>
+    /// <remarks>
+    /// Buckets only split once they overflow, so a table that saturated its reachable neighbourhood settles above
+    /// 90% of its slots. A table holding only a handful of contacts, such as one still bootstrapping or one whose
+    /// peers were just evicted for being unresponsive, stays below this ratio and keeps discovering at full speed.
+    /// </remarks>
+    private const int HealthyOccupancyDivisor = 3;
+
     public RandomWalkKademliaDiscovery(
         IKademlia<TKey, TNode> kademlia,
+        IRoutingTable<TNode, TKadKey> routingTable,
         IKeyOperator<TKey, TNode, TKadKey> keyOperator,
         IKademliaDistance<TKadKey> distance,
         KademliaConfig<TNode> kademliaConfig)
-        : this(kademlia, keyOperator, distance, kademliaConfig, NullLoggerFactory.Instance)
+        : this(kademlia, routingTable, keyOperator, distance, kademliaConfig, NullLoggerFactory.Instance)
     {
     }
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>();
     private readonly TKadKey _currentNodeHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
     private readonly int _maxDistance = distance.MaxDistance;
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     /// <inheritdoc/>
     public IAsyncEnumerable<TNode> DiscoverNodes(int concurrentDiscoveryJobs, int lookupResultLimit, CancellationToken token)
@@ -59,16 +90,18 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken discoveryToken = disposeCts.Token;
         Channel<TNode> channel = Channel.CreateBounded<TNode>(lookupResultLimit);
+        AdmissionCounter admissions = new();
 
         Task[] discoverTasks = new Task[concurrentDiscoveryJobs];
         for (int i = 0; i < discoverTasks.Length; i++)
         {
-            discoverTasks[i] = Task.Run(() => RunDiscoveryJob(channel.Writer, lookupResultLimit, discoveryToken));
+            discoverTasks[i] = Task.Run(() => RunDiscoveryJob(channel.Writer, lookupResultLimit, admissions, discoveryToken));
         }
 
         Task discoverTask = Task.WhenAll(discoverTasks);
         try
         {
+            routingTable.OnNodeAdded += admissions.OnNodeAdded;
             await foreach (TNode node in channel.Reader.ReadAllAsync(token))
             {
                 yield return node;
@@ -76,6 +109,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         }
         finally
         {
+            routingTable.OnNodeAdded -= admissions.OnNodeAdded;
             await disposeCts.CancelAsync();
             channel.Writer.TryComplete();
             try
@@ -88,11 +122,15 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         }
     }
 
-    private async Task RunDiscoveryJob(ChannelWriter<TNode> writer, int lookupResultLimit, CancellationToken token)
+    private async Task RunDiscoveryJob(ChannelWriter<TNode> writer, int lookupResultLimit, AdmissionCounter admissions, CancellationToken token)
     {
+        TimeSpan iterationDuration = MinimumIterationDuration;
+        // Carried across iterations so that the window covers the paced wait as well as the lookup; a job at the
+        // maximum interval is asleep for nearly all of its iteration, and admissions made then must still reset it.
+        long admissionsSeen = admissions.Count;
         while (!token.IsCancellationRequested)
         {
-            Stopwatch iterationTime = Stopwatch.StartNew();
+            long iterationStart = _timeProvider.GetTimestamp();
             try
             {
                 int targetDistance = Random.Shared.Next(_maxDistance) + 1;
@@ -107,11 +145,6 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
                 }
 
                 if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Found {count} nodes from random Kademlia lookup.");
-
-                if (iterationTime.Elapsed < MinimumIterationDuration)
-                {
-                    await Task.Delay(MinimumIterationDuration - iterationTime.Elapsed, token);
-                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -121,6 +154,63 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
             {
                 _logger.LogError(ex, "Random Kademlia discovery lookup failed.");
             }
+
+            long admissionsNow = admissions.Count;
+            iterationDuration = NextIterationDuration(iterationDuration, admissionsNow != admissionsSeen);
+            admissionsSeen = admissionsNow;
+
+            TimeSpan elapsed = _timeProvider.GetElapsedTime(iterationStart);
+            if (elapsed < iterationDuration)
+            {
+                try
+                {
+                    await Task.Delay(iterationDuration - elapsed, _timeProvider, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// Returns the pace for the next iteration, resetting it when the last lookup was worth running.
+    /// </summary>
+    /// <param name="current">Pace the finished iteration ran at.</param>
+    /// <param name="admittedNodes">Whether the routing table admitted a node since the previous iteration decided its pace.</param>
+    private TimeSpan NextIterationDuration(TimeSpan current, bool admittedNodes)
+    {
+        if (admittedNodes || IsUnderfilled())
+        {
+            return MinimumIterationDuration;
+        }
+
+        return TimeSpan.FromTicks(Math.Min(current.Ticks * 2, MaximumIterationDuration.Ticks));
+    }
+
+    private bool IsUnderfilled()
+    {
+        RoutingTableOccupancy occupancy = routingTable.GetOccupancy();
+        return occupancy.NodeCount * HealthyOccupancyDivisor < occupancy.Capacity;
+    }
+
+    /// <summary>
+    /// Counts nodes newly admitted into the routing table, so that a job can tell a lookup that grew the table from
+    /// one that only re-confirmed nodes it already knew or whose results a full bucket rejected.
+    /// </summary>
+    /// <remarks>
+    /// Jobs compare this counter across their whole iteration, so admissions made by a concurrent job or by inbound
+    /// traffic count too. Attributing an admission to the lookup that caused it would mean threading a lookup
+    /// identity through every protocol adapter, and the imprecision is one-sided: an admission this job did not
+    /// cause still means the table is changing, and reading it as productive only keeps discovery eager.
+    /// </remarks>
+    private sealed class AdmissionCounter
+    {
+        private long _count;
+
+        public long Count => Interlocked.Read(ref _count);
+
+        public void OnNodeAdded(object? sender, TNode node) => Interlocked.Increment(ref _count);
     }
 }

@@ -25,8 +25,8 @@ internal static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
-    // Streams over this size aren't retained (fall back to the metered loop); 256 KiB covers any EIP-170 contract.
-    public const int MaxStreamRetainedBytes = 256 * 1024;
+    // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
+    public const int MaxStreamRetainedBytes = 512 * 1024;
 
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
@@ -412,13 +412,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return CallResult.Empty();
 
     DataReturn:
-        if (ReturnData is byte[] data)
-        {
-            return new CallResult(data, null);
-        }
-        else if (ReturnData is VmState<TGasPolicy> state)
+        // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
+        // the general helper, while a class one has a specialized fast path. Order them accordingly.
+        if (ReturnData is VmState<TGasPolicy> state)
         {
             return new CallResult(state);
+        }
+        else if (ReturnData is byte[] data)
+        {
+            return new CallResult(data, null);
         }
         return new CallResult(ReturnDataBuffer, null);
 
