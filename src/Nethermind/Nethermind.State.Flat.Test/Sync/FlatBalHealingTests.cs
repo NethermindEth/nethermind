@@ -143,6 +143,7 @@ public class FlatBalHealingTests
             .WithCodeChanges(new CodeChange(0, code))
             .TestObject;
         BlockHeader lastPivot = SetupBlock(firstPivot, expected, Bal(changes));
+        Assert.That(_codeDb.Get(codeHash.Bytes), Is.Null, "the code must reach the db through healing, not through the setup");
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
@@ -302,11 +303,55 @@ public class FlatBalHealingTests
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
         Assert.That(result, Is.True);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "pre-existing slot must be wiped");
             Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.False, "slot written in the same batch must be wiped too");
-        });
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Storage_written_around_an_account_delete_is_wiped_from_flat_store(bool blockByBlock)
+    {
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
+        Hash256 afterWrite = BuildRoot(
+            Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05]), new Slot(3, [0x09]), new Slot(4, [0x0a])]),
+            Acc(TestItem.AddressB, 200));
+        Hash256 afterDelete = BuildRoot(Acc(TestItem.AddressB, 200));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        BlockHeader write = SetupBlock(firstPivot, afterWrite, Bal(Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(3, new StorageChange(0, (UInt256)9))
+            .WithStorageChanges(4, new StorageChange(0, (UInt256)10))
+            .TestObject));
+        BlockHeader delete = SetupBlock(write, afterDelete, BalanceBal(TestItem.AddressA, 0));
+        BlockHeader writeAgain = SetupBlock(delete, afterDelete, Bal(Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(4, new StorageChange(0, (UInt256)11))
+            .WithStorageChanges(5, new StorageChange(0, (UInt256)12))
+            .TestObject));
+
+        Hash256? root = _healing.Reassemble([StorageOf(TestItem.AddressA)], default);
+        if (blockByBlock)
+        {
+            root = _healing.ApplyRange(root!, firstPivot, write, default);
+            root = _healing.ApplyRange(root!, write, delete, default);
+            root = _healing.ApplyRange(root!, delete, writeAgain, default);
+        }
+        else
+        {
+            root = _healing.ApplyRange(root!, firstPivot, writeAgain, default);
+        }
+
+        UInt256[] watched = [1, 3, 4, 5];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(afterDelete), "apply must reach the target root");
+            foreach (UInt256 slot in watched)
+                Assert.That(FlatSlotExists(TestItem.AddressA, slot), Is.False, $"slot {slot} must be wiped from the flat store");
+        }
     }
 
     [Test]
@@ -419,15 +464,16 @@ public class FlatBalHealingTests
 
     private void SeedInitialState(params AccountSpec[] accounts) => CommitState(_persistence, accounts);
 
-    private Hash256 BuildRoot(params AccountSpec[] accounts)
+    private static Hash256 BuildRoot(params AccountSpec[] accounts)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = new(db, LimboLogs.Instance);
         return CommitState(persistence, accounts);
     }
 
-    // Writes a consistent flat state (flat leaves + trie nodes) and returns the state root.
-    private Hash256 CommitState(RocksDbPersistence persistence, AccountSpec[] accounts)
+    // Writes a consistent flat state (flat leaves + trie nodes) and returns the state root. Code bytes are not
+    // stored - the code db is written by healing alone.
+    private static Hash256 CommitState(RocksDbPersistence persistence, AccountSpec[] accounts)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
@@ -438,11 +484,7 @@ public class FlatBalHealingTests
             Account account = new(spec.Nonce, spec.Balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
 
             if (spec.Code is { } code)
-            {
-                Hash256 codeHash = Keccak.Compute(code);
-                _codeDb.Set(codeHash.Bytes, code);
-                account = account.WithChangedCodeHash(codeHash);
-            }
+                account = account.WithChangedCodeHash(Keccak.Compute(code));
 
             if (spec.Slots is { Length: > 0 } slots)
             {

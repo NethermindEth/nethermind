@@ -226,7 +226,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
         batch.SetAccountRaw(fullPath.Path, newAccount);
 
-        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.Encode(newAccount).Bytes);
+        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.EncodeAsBytes(newAccount));
     }
 
     private TrieNode Persist(IPersistence.IWriteBatch batch, Hash256? address, ref TreePath path, TrieNode node)
@@ -239,6 +239,8 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
 
     private static void WriteTrieNode(IPersistence.IWriteBatch batch, Hash256? address, in TreePath path, TrieNode node)
     {
+        Metrics.BalHealingReassembledNodes++;
+
         if (address is null)
             batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
         else

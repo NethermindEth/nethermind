@@ -105,11 +105,11 @@ public class SnapP2PCapabilityResolverTests
         PublishSyncProgress(syncModeSelector);
 
         HashSet<Capability> capabilities = Resolve(resolver);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(capabilities.Contains(Snap1), Is.True);
             Assert.That(capabilities.Contains(Snap2), Is.False);
-        });
+        }
     }
 
     [Test]
@@ -141,11 +141,11 @@ public class SnapP2PCapabilityResolverTests
 
         healingStrategy.SetPivot(Build.A.BlockHeader.WithNumber(Pivot).WithBlockAccessListHash(TestItem.KeccakA).TestObject);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(fired, Is.EqualTo(1));
             Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
-        });
+        }
     }
 
     [Test]

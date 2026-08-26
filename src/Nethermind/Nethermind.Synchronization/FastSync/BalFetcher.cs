@@ -20,6 +20,8 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.FastSync;
 
+/// <summary>Fills gaps in the BALs healing needs for a block range - a backstop for
+/// <see cref="FastBlocks.BlockAccessListsSyncFeed"/>, which normally has them by this point.</summary>
 public class BalFetcher(
     ISyncPeerPool peerPool,
     IBlockTree blockTree,

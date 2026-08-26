@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,7 @@ public class StateSyncRunner(
     StateHealingStrategy healingStrategy,
     BalFetcher balFetcher,
     IStateSyncPivot stateSyncPivot,
+    IBlockTree blockTree,
     TreeSync treeSync,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
@@ -57,18 +59,14 @@ public class StateSyncRunner(
                     BlockHeader firstPivot = await WaitForPivot(token);
                     healingStrategy.SetPivot(firstPivot);
 
-                    if (_logger.IsInfo) _logger.Info("Starting snap sync.");
-                    await snapSyncRunner.Run(token);
-                    if (_logger.IsInfo) _logger.Info("Snap sync completed.");
-
                     if (healingStrategy.CanBalHeal)
-                    {
-                        await RunBalHealing(firstPivot, token);
-                        return;
-                    }
+                        await RunSnapSyncWithBalHealing(firstPivot, token);
+                    else
+                        await RunSnapSync(token);
                 }
 
-                await RunStateSyncRounds(token);
+                if (!healingStrategy.CanBalHeal)
+                    await RunStateSyncRounds(token);
 
                 if (syncConfig.StaticSnapPivot && _logger.IsInfo)
                     _logger.Info($"StaticSnapPivot: state sync complete at block {syncConfig.PivotNumber} - node is idle (no further sync without a consensus client). Set Sync.ExitOnSynced=true to exit on completion.");
@@ -97,6 +95,33 @@ public class StateSyncRunner(
         return pivot;
     }
 
+    private async Task RunSnapSync(CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info("Starting snap sync.");
+        await snapSyncRunner.Run(token);
+        if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+    }
+
+    /// <remarks>A deep reorg orphans the synced state, so it is discarded and synced again from a canonical pivot.</remarks>
+    public async Task RunSnapSyncWithBalHealing(BlockHeader pivot, CancellationToken token)
+    {
+        while (true)
+        {
+            await RunSnapSync(token);
+
+            try
+            {
+                await RunBalHealing(pivot, token);
+                return;
+            }
+            catch (PivotReorgedException e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"{e.Message} Discarding the synced state and starting over.");
+                pivot = await WaitForPivot(token);
+            }
+        }
+    }
+
     public async Task RunBalHealing(BlockHeader firstPivot, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Starting BAL healing from block {firstPivot.Number}.");
@@ -111,13 +136,17 @@ public class StateSyncRunner(
         {
             await StateSyncPrecursorWait(token);
 
+            if (!blockTree.IsMainChain(currentPivot)) throw new PivotReorgedException(currentPivot);
+
             stateSyncPivot.UpdateHeaderForcefully();
             BlockHeader roundPivot = stateSyncPivot.GetPivotHeader() ?? throw new InvalidOperationException("BAL healing failed - no new pivot available.");
 
             // Healed up to the latest pivot — wait for it to move on, unless it is final and healing is done.
-            if (currentPivot.Hash == roundPivot.Hash)
+            // The pivot can also move back below it, which leaves nothing to apply; a reorg behind that is caught
+            // by the main chain check above once the block tree settles.
+            if (roundPivot.Number <= currentPivot.Number)
             {
-                if (stateSyncPivot.CanFinalize(currentPivot))
+                if (currentPivot.Hash == roundPivot.Hash && stateSyncPivot.CanFinalize(currentPivot))
                 {
                     finalPivot = currentPivot;
                     break;
@@ -134,16 +163,27 @@ public class StateSyncRunner(
                 continue;
             }
 
-            root = balHealing.ApplyRange(root, currentPivot, roundPivot, token)
-                ?? throw new InvalidOperationException($"BAL healing failed - could not apply BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number}.");
+            Hash256? newRoot = balHealing.ApplyRange(root, currentPivot, roundPivot, token);
 
+            // The round is collected by block number, so a reorg under either end of it invalidates the result.
+            if (!blockTree.IsMainChain(currentPivot)) throw new PivotReorgedException(currentPivot);
+            if (!blockTree.IsMainChain(roundPivot)) throw new PivotReorgedException(roundPivot);
+
+            if (newRoot is null)
+                throw new InvalidOperationException($"BAL healing failed - could not apply BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number}.");
+
+            root = newRoot;
             currentPivot = roundPivot;
         }
 
         if (finalPivot is null) return;
 
+        if (!blockTree.IsMainChain(finalPivot)) throw new PivotReorgedException(finalPivot);
+
         if (root != finalPivot.StateRoot)
+        {
             throw new InvalidOperationException($"BAL healing failed - produced root {root} does not match pivot state root {finalPivot.StateRoot}.");
+        }
 
         if (_logger.IsInfo) _logger.Info($"BAL healing finished at block {finalPivot.Number}");
 
@@ -203,6 +243,9 @@ public class StateSyncRunner(
         stateDb?.Tune(tuneType);
         codeDb?.Tune(tuneType);
     }
+
+    private sealed class PivotReorgedException(BlockHeader pivot)
+        : Exception($"State sync pivot {pivot.Number} ({pivot.Hash}) was reorged out.");
 
     private async Task StateSyncPrecursorWait(CancellationToken token)
     {

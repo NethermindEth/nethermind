@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.Test.FastSync;
 public class StateSyncRunnerTests : StateSyncFeedTestsBase
 {
     private IBalHealing _healing = null!;
+    private ISnapSyncRunner _snapSyncRunner = null!;
     private IStateSyncPivot _pivot = null!;
 
     [Test]
@@ -60,12 +61,21 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 
         // Nothing seeded into the BAL store, and the test peers only speak snap/1, so the window can never
         // be fetched. Healing must keep asking rather than fail - cancellation is the only way out.
-        _pivot.GetPivotHeader().Returns(roundPivot);
+        // The timer is only a guard against a regression that never comes back for a second round; the
+        // cancellation this test relies on is the deterministic one below.
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        int rounds = 0;
+        _pivot.GetPivotHeader().Returns(_ =>
+        {
+            if (++rounds == 2) cts.Cancel();
+            return roundPivot;
+        });
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
 
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
         Assert.ThrowsAsync<OperationCanceledException>(() => runner.RunBalHealing(firstPivot, cts.Token));
 
+        // Reaching the second round is the retry: the first fetch failure was swallowed, not surfaced.
+        Assert.That(rounds, Is.EqualTo(2));
         _healing.DidNotReceive().ApplyRange(Arg.Any<Hash256>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
         _healing.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
@@ -90,16 +100,40 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
 
+    [Test]
+    public async Task Syncs_the_state_again_when_the_pivot_is_reorged_out()
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+
+        BlockHeader canonical = blockTree.FindHeader(10)!;
+        // Same height, different hash: the block tree does not have it on the main chain.
+        BlockHeader orphaned = Build.A.BlockHeader.WithNumber(10).TestObject;
+
+        _pivot.GetPivotHeader().Returns(canonical);
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(canonical.StateRoot);
+
+        await runner.RunSnapSyncWithBalHealing(orphaned, default);
+
+        // The first attempt healed onto an orphaned pivot, so it must be thrown away and synced again.
+        await _snapSyncRunner.Received(2).Run(Arg.Any<CancellationToken>());
+        _healing.Received(1).FinalizeSync(canonical);
+    }
+
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
+        _snapSyncRunner = Substitute.For<ISnapSyncRunner>();
 
         _pivot = Substitute.For<IStateSyncPivot>();
         _pivot.UpdatedStorages.Returns([]);
         _pivot.CanFinalize(Arg.Any<BlockHeader>()).Returns(true);
 
-        return PrepareDownloader(new RemoteDbContext(_logManager), configureBuilder: builder => builder
+        // No peer here can serve BALs, so waiting on allocation only slows the retry test down.
+        return PrepareDownloader(new RemoteDbContext(_logManager), syncDispatcherAllocateTimeoutMs: 0, configureBuilder: builder => builder
             .AddSingleton<IBalHealing>(_healing)
+            .AddSingleton<ISnapSyncRunner>(_snapSyncRunner)
             .AddSingleton<IStateSyncPivot>(_pivot));
     }
 

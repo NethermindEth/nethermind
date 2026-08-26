@@ -308,4 +308,12 @@ public static class Metrics
     [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
     public static long FlatHistoryCaptureDisabled { get; set; }
+
+    [CounterMetric]
+    [Description("Trie nodes created by the trie reassembly that precedes BAL healing")]
+    public static long BalHealingReassembledNodes { get; set; }
+
+    [CounterMetric]
+    [Description("Block access lists replayed onto the reassembled state by BAL healing")]
+    public static long BalHealingBalsApplied { get; set; }
 }

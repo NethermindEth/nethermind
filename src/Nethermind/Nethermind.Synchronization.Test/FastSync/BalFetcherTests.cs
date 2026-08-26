@@ -141,12 +141,12 @@ public class BalFetcherTests
 
         bool result = await _fetcher.EnsureRange(from, to, default);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.True);
             Assert.That(_largestRequest, Is.EqualTo(expectedLargestRequest));
             Assert.That(_balStore.Exists(to.Number, to.Hash!), Is.True);
-        });
+        }
     }
 
     // Registers a header at `number` and (when it has a BAL) records the RLP a peer should return for it.

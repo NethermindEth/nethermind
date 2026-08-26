@@ -25,11 +25,11 @@ public class StateHealingStrategyTests
 
         strategy.SetPivot(Pivot(balPivot));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(strategy.CanBalHeal, Is.EqualTo(expected));
             Assert.That(fired, Is.EqualTo(expected ? 1 : 0));
-        });
+        }
     }
 
     [Test]
@@ -47,11 +47,11 @@ public class StateHealingStrategyTests
         // snap/2 drops GetTrieNodes, so a later pivot must not send this node back to requesting them.
         strategy.SetPivot(Pivot(balPivot: false));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(strategy.CanBalHeal, Is.True);
             Assert.That(fired, Is.EqualTo(1));
-        });
+        }
     }
 
     private static StateHealingStrategy CreateStrategy(bool snapSync = true, bool balHealing = true) =>

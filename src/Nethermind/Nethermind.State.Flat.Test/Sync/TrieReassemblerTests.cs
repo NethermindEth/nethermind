@@ -246,9 +246,8 @@ public class TrieReassemblerTests
         DeleteTrieNodes();
 
         // Step 4: patch flat account entry only (state trie leaves remain stale)
-        IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        writer.SetAccountRaw(TestItem.KeccakA, new Account(0, 100, newStorageRoot, Keccak.OfAnEmptyString));
-        writer.Dispose();
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+            writer.SetAccountRaw(TestItem.KeccakA, new Account(0, 100, newStorageRoot, Keccak.OfAnEmptyString));
 
         // State trie branch is stale but exists — reassembler must ignore it and rebuild
         Hash256? reassembledRoot = _reassembler.TryReassemble([TestItem.KeccakA], CancellationToken.None);

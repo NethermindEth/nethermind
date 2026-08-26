@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.SnapSync;
 
+/// <summary>Used where BAL healing is unavailable; every heal attempt fails.</summary>
 public sealed class NoopBalHealing : IBalHealing
 {
     public static readonly NoopBalHealing Instance = new();

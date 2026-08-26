@@ -457,6 +457,13 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
 
+        public void Reset()
+        {
+            AccountRangeReadyForRequest.Clear();
+            SetupAccountRangePartition();
+            _pivot.UpdatedStorages.Clear();
+        }
+
         public void LoadProgress()
         {
             if (!_snapTrieFactory.IsRangePhaseFinished()) return;

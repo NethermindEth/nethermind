@@ -20,6 +20,7 @@ using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
+/// <summary>Heals the mixed flat state left by snap sync by rebuilding its trie and replaying BALs onto it.</summary>
 public class FlatBalHealing(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
@@ -110,6 +111,7 @@ public class FlatBalHealing(
             if (nextRoot is null) return null;
             currentRoot = nextRoot;
             cursor += chunkSize;
+            Metrics.BalHealingBalsApplied += chunkSize;
 
             float progress = (float)cursor / toApply.Length;
             if (_logger.IsInfo) _logger.Info($"BAL healing: applying BALs ({progress,8:P2}) {Progress.GetMeter(progress, 1)} block {chunk[^1].Number}");
