@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Block genesis = Build.A.Block.Genesis
                 .WithTimestamp(1_742_212_800)
-                .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+                .WithDifficulty(0)
                 .WithTotalDifficulty((UInt256?)null)
                 .TestObject;
 
@@ -103,6 +103,37 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(isTerminal, Is.False);
                 Assert.That(isPostMerge, Is.False);
                 Assert.That(genesis.Header.IsPostMerge, Is.False);
+            }
+        }
+
+        [Test]
+        public void Positive_difficulty_genesis_is_terminal_pow_when_chain_spec_ttd_is_zero()
+        {
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 0 };
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis
+                .WithDifficulty(1)
+                .WithTotalDifficulty((UInt256?)null)
+                .TestObject;
+            ChainSpec chainSpec = new() { Genesis = genesis, Parameters = new ChainParameters { TerminalTotalDifficulty = 0 } };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, chainSpec, LimboLogs.Instance);
+
+            (bool isTerminal, bool isPostMerge) = poSSwitcher.GetBlockConsensusInfo(genesis.Header);
+            Block genesisWithTotalDifficulty = Build.A.Block.Genesis
+                .WithDifficulty(1)
+                .WithTotalDifficulty(1L)
+                .TestObject;
+            (bool isTerminalWithTotalDifficulty, bool isPostMergeWithTotalDifficulty) = poSSwitcher.GetBlockConsensusInfo(genesisWithTotalDifficulty.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+                Assert.That(isTerminal, Is.False);
+                Assert.That(isPostMerge, Is.False);
+                Assert.That(genesis.Header.IsPostMerge, Is.False);
+                Assert.That(isTerminalWithTotalDifficulty, Is.True);
+                Assert.That(isPostMergeWithTotalDifficulty, Is.False);
+                Assert.That(genesisWithTotalDifficulty.Header.IsPostMerge, Is.False);
             }
         }
 
@@ -231,6 +262,14 @@ namespace Nethermind.Merge.Plugin.Test
             blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
             Assert.That(poSSwitcher.GetBlockConsensusInfo(alternativeTerminalBlock.Header), Is.EqualTo((true, false)));
+
+            Block laterTerminalBlock = Build.A.Block
+                .WithTotalDifficulty(5000000L)
+                .WithNumber(5)
+                .WithParent(blockTree.Head!)
+                .WithDifficulty(1000000L)
+                .TestObject;
+            Assert.That(poSSwitcher.GetBlockConsensusInfo(laterTerminalBlock.Header), Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -305,16 +344,6 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(restartedSpecProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(5));
                 Assert.That(restarted.HasEverReachedTerminalBlock(), Is.True);
             }
-
-            int restartedTerminalBlockReachedCount = 0;
-            restarted.TerminalBlockReached += (_, _) => restartedTerminalBlockReachedCount++;
-            bool restoredTerminalBlockUpdated = restarted.TryUpdateTerminalBlock(terminalBlock.Header);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(restoredTerminalBlockUpdated, Is.True);
-                Assert.That(restartedTerminalBlockReachedCount, Is.Zero);
-            }
         }
 
         [Test]
@@ -351,7 +380,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public void Best_suggested_header_regression_does_not_clear_local_ttd_evidence()
+        public void Best_suggested_header_regression_does_not_latch_local_ttd_evidence()
         {
             TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -364,7 +393,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
 
             blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
         }
 
         [Test]

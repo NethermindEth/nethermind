@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -43,7 +44,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ISpecProvider _specProvider;
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
-        private readonly object _transitionLock = new();
+        private readonly Lock _transitionLock = new();
         private Hash256? _terminalBlockHash;
 
         private ulong? _terminalBlockNumber;
@@ -81,10 +82,10 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            _hasTerminalBlockMetadata = _terminalBlockNumber is not null;
-            _hasLocalChainCrossedTerminalTotalDifficulty = HasLocalChainCrossedTerminalTotalDifficulty();
+            Volatile.Write(ref _hasTerminalBlockMetadata, _terminalBlockNumber is not null);
+            Volatile.Write(ref _hasLocalChainCrossedTerminalTotalDifficulty, HasDurableTerminalTotalDifficultyEvidence());
 
-            if (_terminalBlockNumber is null)
+            if (!_terminalBlockExplicitSpecified && Volatile.Read(ref _finalizedBlockHash) == Keccak.Zero)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
@@ -117,10 +118,11 @@ namespace Nethermind.Merge.Plugin
         /// Config-declared <see cref="IMergeConfig.FinalTotalDifficulty"/> (shipped in archive configs for
         /// post-merge TD bookkeeping and gossip policy) means the network merged, not that this node's chain
         /// crossed TTD — a fresh archive DB must still full-sync the pre-merge range without a CL. Only local
-        /// evidence counts here: a post-TTD sync pivot, a merged-at-genesis chain, or a local best header at
-        /// or above TTD.
+        /// evidence counts here: a post-TTD sync pivot, a merged-at-genesis chain, or a processed local head
+        /// at or above TTD. A best suggestion is considered only for the current answer because it can be
+        /// invalidated before becoming durable.
         /// </remarks>
-        private bool HasLocalChainCrossedTerminalTotalDifficulty()
+        private bool HasDurableTerminalTotalDifficultyEvidence()
         {
             UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
             if (terminalTotalDifficulty is null)
@@ -129,8 +131,15 @@ namespace Nethermind.Merge.Plugin
             if (HasPostTerminalTotalDifficultyPivot(terminalTotalDifficulty.Value) || HasPostTerminalTotalDifficultyGenesis(terminalTotalDifficulty.Value))
                 return true;
 
-            // BestSuggestedHeader excludes beacon-inserted headers, so it reflects the locally synced chain
-            return (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? _blockTree.Head?.Header.TotalDifficulty) >= terminalTotalDifficulty;
+            // Head is processed and durable; a suggestion is only current evidence and may be invalidated.
+            return _blockTree.Head?.Header.TotalDifficulty >= terminalTotalDifficulty;
+        }
+
+        private bool HasCurrentSuggestedTerminalTotalDifficultyEvidence()
+        {
+            UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
+            return terminalTotalDifficulty is not null &&
+                   _blockTree.BestSuggestedHeader?.TotalDifficulty >= terminalTotalDifficulty;
         }
 
         private bool HasPostTerminalTotalDifficultyPivot(UInt256 terminalTotalDifficulty) =>
@@ -141,7 +150,7 @@ namespace Nethermind.Merge.Plugin
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
-        private void LoadFinalizedBlockHash() => _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+        private void LoadFinalizedBlockHash() => Volatile.Write(ref _finalizedBlockHash, LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero);
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
@@ -155,16 +164,20 @@ namespace Nethermind.Merge.Plugin
                     return false;
                 }
 
+                using (IWriteBatch batch = _metadataDb.StartWriteBatch())
+                {
+                    batch.Set((long)MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(header.Number).Bytes);
+                    batch.Set((long)MetadataDbKeys.TerminalPoWHash, Rlp.Encode(header.Hash).Bytes);
+                }
+
                 _terminalBlockNumber = header.Number;
                 _terminalBlockHash = header.Hash;
-                _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
-                _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
                 _firstPoSBlockNumber = header.Number + 1;
                 _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
 
-                _hasLocalChainCrossedTerminalTotalDifficulty = true;
-                shouldNotifyTerminalBlockReached = !_hasTerminalBlockMetadata;
-                _hasTerminalBlockMetadata = true;
+                Volatile.Write(ref _hasLocalChainCrossedTerminalTotalDifficulty, true);
+                shouldNotifyTerminalBlockReached = !Volatile.Read(ref _hasTerminalBlockMetadata);
+                Volatile.Write(ref _hasTerminalBlockMetadata, true);
             }
 
             if (shouldNotifyTerminalBlockReached)
@@ -192,7 +205,7 @@ namespace Nethermind.Merge.Plugin
                         unsubscribeFromNewHeadBlock = true;
                     }
 
-                    _finalizedBlockHash = finalizedHash;
+                    Volatile.Write(ref _finalizedBlockHash, finalizedHash);
                 }
             }
 
@@ -207,8 +220,7 @@ namespace Nethermind.Merge.Plugin
                 if (FinalTotalDifficulty is not null)
                     return true;
 
-                lock (_transitionLock)
-                    return _finalizedBlockHash != Keccak.Zero;
+                return Volatile.Read(ref _finalizedBlockHash) != Keccak.Zero;
             }
         }
 
@@ -219,7 +231,7 @@ namespace Nethermind.Merge.Plugin
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
 
             bool isTerminal = false, isPostMerge;
-            if (_specProvider.TerminalTotalDifficulty is null) // TTD = null, so everything is preMerge
+            if (_specProvider.TerminalTotalDifficulty is null)
             {
                 isTerminal = false;
                 isPostMerge = false;
@@ -230,7 +242,7 @@ namespace Nethermind.Merge.Plugin
                 isTerminal = false;
                 isPostMerge = true;
             }
-            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty) // pre TTD blocks
+            else if (header.TotalDifficulty is not null && header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
             {
                 // In a hive test, a block is requested from EL with total difficulty < TTD. so IsPostMerge does not work.
                 isTerminal = false;
@@ -249,13 +261,23 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 bool theMergeEnabled = (ForkActivation)header.Number >= _specProvider.MergeBlockNumber;
-                if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled) // if transition finished or we know terminalBlock from config we can decide by blockNumber
+                bool isTerminalBlock = header.IsTerminalBlock(_specProvider);
+                bool terminalSelectionOpen = !_terminalBlockExplicitSpecified &&
+                                              Volatile.Read(ref _finalizedBlockHash) == Keccak.Zero;
+
+                if (terminalSelectionOpen && isTerminalBlock)
+                {
+                    // Until the first finalized PoS block, EIP-3675 permits a later qualifying terminal PoW block.
+                    isTerminal = true;
+                    isPostMerge = false;
+                }
+                else if ((TransitionFinished || _terminalBlockExplicitSpecified) && theMergeEnabled)
                 {
                     isPostMerge = true;
                 }
                 else
                 {
-                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
+                    isTerminal = isTerminalBlock;
                     isPostMerge = !isTerminal;
                 }
             }
@@ -273,19 +295,25 @@ namespace Nethermind.Merge.Plugin
         // Use chain-spec TTD, not effective spec-provider TTD, so MergeConfig test overrides
         // do not change genesis classification.
         private bool IsPostMergeGenesis(BlockHeader header) =>
-            header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
+            header.IsGenesis && header.Difficulty == UInt256.Zero && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
         /// <summary>
         /// Returns whether this switcher has observed local TTD evidence or concrete terminal PoW metadata.
         /// </summary>
         public bool HasEverReachedTerminalBlock()
         {
-            bool hasLocalChainCrossedTerminalTotalDifficulty = HasLocalChainCrossedTerminalTotalDifficulty();
-            lock (_transitionLock)
+            if (Volatile.Read(ref _hasTerminalBlockMetadata) || Volatile.Read(ref _hasLocalChainCrossedTerminalTotalDifficulty))
             {
-                _hasLocalChainCrossedTerminalTotalDifficulty |= hasLocalChainCrossedTerminalTotalDifficulty;
-                return _hasLocalChainCrossedTerminalTotalDifficulty || _hasTerminalBlockMetadata;
+                return true;
             }
+
+            if (HasDurableTerminalTotalDifficultyEvidence())
+            {
+                Volatile.Write(ref _hasLocalChainCrossedTerminalTotalDifficulty, true);
+                return true;
+            }
+
+            return HasCurrentSuggestedTerminalTotalDifficultyEvidence();
         }
 
         /// <summary>
