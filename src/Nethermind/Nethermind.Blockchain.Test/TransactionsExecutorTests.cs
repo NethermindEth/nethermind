@@ -473,7 +473,7 @@ namespace Nethermind.Blockchain.Test
             frameTx.Hash = frameTx.CalculateHash();
 
             Block block = Build.A.Block.WithGasLimit(130_000).WithTransactions([frameTx]).TestObject;
-            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
 
             BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);

@@ -67,7 +67,11 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
+            if (included[i]) continue;
+            // The rules below judge appendability on the account nonce, which a frame transaction does not
+            // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
+            if (il[i].SupportsFrames) continue;
+            if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
