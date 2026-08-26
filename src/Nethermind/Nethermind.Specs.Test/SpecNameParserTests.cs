@@ -26,6 +26,22 @@ public class SpecNameParserTests
         }
     }
 
+    // The frame-transaction fixtures label their fork "Bogota" too, meaning Amsterdam plus EIP-8141 rather
+    // than plus EIP-7805. Only the archive tells the two apart, so the runner aliases that name onto this
+    // one, which therefore has to resolve.
+    [Test]
+    public void Parse_maps_Eip8141Prototype_to_the_frame_transaction_fork()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("Eip8141Prototype");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
     [TestCase("NotAFork", "NotAFork")]
     [TestCase("Merge+9999", "Paris+9999")]
     public void Parse_names_the_offending_fork_when_unmapped(string specName, string resolvedSpecName)
