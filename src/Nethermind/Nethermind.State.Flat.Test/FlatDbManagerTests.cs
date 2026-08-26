@@ -165,12 +165,12 @@ public class FlatDbManagerTests
     [TestCase(2)]
     public async Task DisposeAsync_CallsFlushOnce(int disposeCalls)
     {
-        _persistenceManager.FlushToPersistence().Returns(CreateStateId(10));
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
 
         FlatDbManager manager = CreateManager();
         for (int i = 0; i < disposeCalls; i++) await manager.DisposeAsync();
 
-        _persistenceManager.Received(1).FlushToPersistence();
+        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
     }
 
     [TestCase(false)]
@@ -180,18 +180,18 @@ public class FlatDbManagerTests
     {
         (FlatDbManager manager, StateId snapshotTo) =
             CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
-        _persistenceManager.FlushToPersistence().Returns(snapshotTo);
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(snapshotTo);
 
         await manager.DisposeAsync();
 
         _snapshotRepository.Received(1).AddStateId(snapshotTo);
         await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
-        _persistenceManager.Received(1).FlushToPersistence();
+        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
         Received.InOrder(() =>
         {
             _snapshotRepository.AddStateId(snapshotTo);
             _ = _persistenceManager.AddToPersistence(snapshotTo);
-            _persistenceManager.FlushToPersistence();
+            _persistenceManager.FlushToPersistence(CancellationToken.None);
         });
     }
 
@@ -209,7 +209,7 @@ public class FlatDbManagerTests
         });
 
         (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
-        _persistenceManager.FlushToPersistence().Returns(_ =>
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(_ =>
         {
             flushAttempted.TrySetResult();
             throw flushFailure;

@@ -448,7 +448,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
 
-        StateId persistedState = _persistenceManager.FlushToPersistence();
+        StateId persistedState = _persistenceManager.FlushToPersistence(cancellationToken);
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
