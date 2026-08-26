@@ -109,24 +109,33 @@ class RpcSweepTests(unittest.TestCase):
                 self.assertIn(f"--Cache.Path={captured_scratch}", captured_flags)
                 self.assertEqual(captured_scratch, str(scratch / "arm" / label))
                 self.assertTrue((scratch / "arm" / label).is_dir())
+                self.assertEqual(stat.S_IMODE((scratch / "arm" / label).stat().st_mode), 0o777)
 
     def test_per_arm_scratch_is_wired_as_an_identical_path_bind_mount(self):
         sweep = SCRIPT.read_text(encoding="utf-8")
         start = START_NODE.read_text(encoding="utf-8")
-        self.assertIn('ARM_SCRATCH_DIR="$arm_scratch_dir"', sweep)
-        self.assertIn(
-            'docker_args+=(--mount "type=bind,source=$ARM_SCRATCH_DIR,target=$ARM_SCRATCH_DIR")',
+        cleanup = Path(__file__).with_name("cleanup.sh").read_text(encoding="utf-8")
+        self.assertRegex(sweep, r'ARM_SCRATCH_DIR="\$arm_scratch_dir"')
+        self.assertRegex(
             start,
+            r'docker_args\+=\(--mount "type=bind,source=\$ARM_SCRATCH_DIR,target=\$ARM_SCRATCH_DIR"\)',
         )
-        self.assertIn("direct mode does not refresh the fingerprint anchor", start)
-        self.assertIn("as_root rm -rf -- \"$arm_scratch_dir\"", sweep)
-        self.assertIn("as_root mkdir -p -- \"$arm_scratch_dir\"", sweep)
+        self.assertRegex(start, r'(?m)^\s*echo "::warning::direct mode does not refresh the fingerprint anchor;')
+        self.assertRegex(sweep, r'as_root rm -rf -- "\$arm_scratch_dir"')
+        self.assertRegex(sweep, r'as_root mkdir -p -- "\$arm_scratch_dir"')
+        self.assertRegex(sweep, r'as_root chmod 0777 -- "\$arm_scratch_dir"')
+        self.assertRegex(sweep, r'! -w "\$arm_scratch_dir"')
+        self.assertRegex(cleanup, r'(?m)^for sub in .*\barm\b')
+
+        self.assertNotIn('read -r -a additional_args <<< "$ADDITIONAL_FLAGS"', start)
+        self.assertRegex(start, r'while IFS= read -r additional_flags_line .*?\n\s+line_args=\(\)')
+        self.assertIn('additional_args+=("${line_args[@]}")', start)
 
     def test_docs_describe_separator_and_direct_sweep_limitations(self):
         readme = Path(__file__).with_name("README.md").read_text(encoding="utf-8")
         workflow = Path(__file__).parents[2] / ".github" / "workflows" / "run-rpc-benchmarks.yml"
         workflow_text = workflow.read_text(encoding="utf-8")
-        self.assertIn("semicolon\nis the flag separator", readme)
+        self.assertRegex(readme, r"semicolon\s+is the flag separator")
         self.assertIn("order-dependent", readme)
         self.assertIn("not a clean A/B", readme)
         self.assertIn("direct reth", readme)

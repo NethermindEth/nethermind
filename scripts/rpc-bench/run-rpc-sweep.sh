@@ -412,8 +412,11 @@ for arm_index in "${!SWEEP_ENTRIES[@]}"; do
     if ! as_root mkdir -p -- "$arm_scratch_dir"; then
       echo "::error::failed to recreate per-arm scratch directory '$arm_scratch_dir'"; exit 1
     fi
-    if [[ ! -d "$arm_scratch_dir" || -L "$arm_scratch_dir" ]]; then
-      echo "::error::per-arm scratch path '$arm_scratch_dir' is not a directory after recreation"; exit 1
+    if ! as_root chmod 0777 -- "$arm_scratch_dir"; then
+      echo "::error::failed to make per-arm scratch directory '$arm_scratch_dir' writable"; exit 1
+    fi
+    if [[ ! -d "$arm_scratch_dir" || -L "$arm_scratch_dir" || ! -w "$arm_scratch_dir" ]]; then
+      echo "::error::per-arm scratch path '$arm_scratch_dir' is not a writable, non-symlink directory after recreation"; exit 1
     fi
     arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch_dir}"
   fi

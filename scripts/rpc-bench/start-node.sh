@@ -117,7 +117,7 @@ ANCHOR_DIR="$SCRATCH_ROOT/fingerprints"
 ANCHOR_FILE="$ANCHOR_DIR/$(basename "$DB_SOURCE").txt"
 mkdir -p "$ANCHOR_DIR"
 if [[ "$DB_ISOLATION" == "direct" && -f "$ANCHOR_FILE" ]]; then
-  log "::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only."
+  echo "::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only."
 fi
 if [[ -f "$ANCHOR_FILE" ]]; then
   if [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "$BASELINE_FILE")" ]] \
@@ -266,7 +266,12 @@ esac
 if [[ -n "$ADDITIONAL_FLAGS" ]]; then
   # Flags are whitespace-delimited by the caller; read into an array so values cannot undergo
   # pathname expansion before Docker receives them.
-  read -r -a additional_args <<< "$ADDITIONAL_FLAGS"
+  additional_args=()
+  while IFS= read -r additional_flags_line || [[ -n "$additional_flags_line" ]]; do
+    line_args=()
+    read -r -a line_args <<< "$additional_flags_line"
+    additional_args+=("${line_args[@]}")
+  done <<< "$ADDITIONAL_FLAGS"
   node_args+=("${additional_args[@]}")
 fi
 
