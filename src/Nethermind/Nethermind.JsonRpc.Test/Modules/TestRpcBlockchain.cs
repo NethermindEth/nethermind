@@ -205,7 +205,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
-            @this.ReceiptConfig,
             @this.BlocksConfig.SecondsPerSlot,
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(

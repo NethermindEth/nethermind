@@ -37,7 +37,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IBlocksConfig blocksConfig,
         IForkInfo forkInfo,
         ILogIndexConfig logIndexConfig,
-        IReceiptConfig receiptConfig,
         IEthCapabilitiesProvider capabilitiesProvider,
         IBlockForRpcFactory blockForRpcFactory)
         : ModuleFactoryBase<IEthRpcModule>
@@ -64,7 +63,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 protocolsManager,
                 forkInfo,
                 logIndexConfig,
-                receiptConfig,
                 _secondsPerSlot,
                 _headBlockSignal,
                 capabilitiesProvider,

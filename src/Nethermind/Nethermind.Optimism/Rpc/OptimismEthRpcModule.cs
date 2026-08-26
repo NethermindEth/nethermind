@@ -78,7 +78,6 @@ public class OptimismEthRpcModule(
         protocolsManager,
         forkInfo,
         logIndexConfig,
-        receiptConfig,
         secondsPerSlot,
         headBlockSignal,
         capabilitiesProvider,
