@@ -554,8 +554,8 @@ jobs:
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
           if (( $(avail_gb) < MIN_FREE_GB )); then
-            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
-            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
+            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n' | sed -E 's/.*@//; s/#[^[:space:]]*$//' | grep -v '^$' || true)"
+            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | sed -E 's/#[^[:space:]]*$//' | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
               (( $(avail_gb) >= MIN_FREE_GB )) && break
