@@ -13,7 +13,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -129,18 +129,23 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
+    public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.RemoveRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.ReclaimRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
     public void Compact() =>
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
 
     /// <summary>
-    /// Not sure how to handle delete of the columns DB
+    /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
     /// </summary>
-    /// <exception cref="NotSupportedException"></exception>
+    /// <exception cref="NotSupportedException">Always thrown; clearing a single column family is not supported.</exception>
     public void Clear() => throw new NotSupportedException();
 
-    // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public void SetWriteBuffer(long sizeBytes)

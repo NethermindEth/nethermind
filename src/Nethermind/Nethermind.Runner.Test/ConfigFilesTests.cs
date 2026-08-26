@@ -21,7 +21,10 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -315,6 +318,22 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         Assert.That(archiveConfig.GenesisHash, Is.Not.Null);
         Assert.That(archiveConfig.GenesisHash, Is.EqualTo(regularConfig.GenesisHash));
+    }
+
+    // XDPoS v1 blocks are not supported, so the archive node cannot sync from genesis.
+    [Test]
+    public void Xdc_archive_syncs_from_the_XDPoS_v2_switch_block()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("xdc.json");
+        ulong switchBlock = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>().SwitchBlock;
+
+        ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(syncConfig.FastSync, Is.True);
+            Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
+        });
     }
 
     [TestCase("*")]
