@@ -923,27 +923,7 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
         /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
-        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
-        {
-            // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing it
-            // would permanently drop the tx-index write of every block queued near the head.
-            if (_pendingReceipts is not null)
-            {
-                _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => RemoveReceiptsRangeFromDb(fromInclusive, toExclusive));
-            }
-            else
-            {
-                RemoveReceiptsRangeFromDb(fromInclusive, toExclusive);
-            }
-
-            _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
-        }
-
-        private void RemoveReceiptsRangeFromDb(ulong fromInclusive, ulong toExclusive)
-        {
-            _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
-            if (fromInclusive < toExclusive) _receiptsCache.Clear();
-        }
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => RemoveReceiptsRanges([(fromInclusive, toExclusive)]);
 
         /// <summary>One cache invalidation for the whole batch: the cache is keyed by hash, so it cannot be narrowed
         /// to a range, and clearing it per range would keep it cold for as long as a caller has ranges to hand over.</summary>
@@ -955,6 +935,8 @@ namespace Nethermind.Blockchain.Receipts
                 if (fromInclusive >= toExclusive) continue;
                 removedAny = true;
 
+                // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing
+                // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
                 {
                     _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));

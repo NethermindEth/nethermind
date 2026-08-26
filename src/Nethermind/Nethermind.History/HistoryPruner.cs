@@ -539,6 +539,7 @@ public class HistoryPruner : IHistoryPruner
             {
                 levels ??= LoadLevels(fromInclusive, toExclusive);
                 HashSet<ulong> keep = [.. candidates];
+                List<(ulong FromInclusive, ulong ToExclusive)> unreachable = [];
                 for (ulong number = fromInclusive; number < toExclusive; number++)
                 {
                     if (keep.Contains(number)) continue;
@@ -547,7 +548,13 @@ public class HistoryPruner : IHistoryPruner
                     ChainLevelInfo? level = index < levels.Count ? levels[index] : null;
 
                     // A height whose level will not load has to lose both whatever its hashes are.
-                    if (!RemoveBothAt(number, level)) ReclaimBoth(number, number + 1);
+                    if (!RemoveBothAt(number, level)) unreachable.Add((number, number + 1));
+                }
+
+                if (unreachable.Count != 0)
+                {
+                    _receiptStorage.RemoveReceiptsRanges(unreachable);
+                    _blockTree.DeleteOldBlockRanges(unreachable);
                 }
 
                 return;
