@@ -102,7 +102,7 @@ internal static class EngineBenchmarkHost
         RpcModuleProvider modules = new(fs, config, Serializer, LimboLogs.Instance);
         modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
 
-        JsonRpcService service = new(modules, LimboLogs.Instance, config);
+        JsonRpcService service = new(modules, LimboLogs.Instance, config, new RpcAdmissionController(config));
         JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
 
         return Build(

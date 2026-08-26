@@ -10,7 +10,6 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
