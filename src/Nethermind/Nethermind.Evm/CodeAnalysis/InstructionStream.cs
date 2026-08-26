@@ -25,8 +25,8 @@ internal enum StreamOpKind : byte
 }
 
 /// <summary>
-/// Virtual opcodes for fused PUSH+op pairs, placed in byte values the EVM does not define
-/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xAF gaps). The fingerprint gate keeps new forks (which might define
+/// Virtual opcodes for fused PUSH+op and stack-operation pairs, placed in byte values the EVM does not define
+/// (0x0C..0x0F, 0x21..0x2F, 0x4D..0x4E, and 0xA5..0xAF gaps). The fingerprint gate keeps new forks (which might define
 /// one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
@@ -50,6 +50,8 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
+    public const byte PopPop = 0x4D;
+    public const byte SwapPop = 0x4E;
     public const byte DupBinary = 0xAC;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
@@ -81,7 +83,7 @@ internal static class FusedOpcode
 }
 
 /// <summary>
-/// One pre-decoded instruction (or fused PUSH+op or DUP+binary pair). Hot-first layout: dispatch fields fit
+/// One pre-decoded instruction (or fused PUSH+op, DUP+binary, or stack-operation pair/run). Hot-first layout: dispatch fields fit
 /// the first 8 bytes; <see cref="Operand"/> is loaded only by the cases that need it.
 /// </summary>
 internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
@@ -190,6 +192,40 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && instruction == Instruction.POP
+                    && TryExtendPrecedingPopRun(ops, out StreamOp popRun, out ulong popCount))
+                {
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    StreamOpKind fusedKind = popRun.Kind is StreamOpKind.BlockFirst or StreamOpKind.FusedBlockFirst
+                        ? StreamOpKind.FusedBlockFirst
+                        : StreamOpKind.FusedInBlock;
+                    ops[^1] = new StreamOp(
+                        FusedOpcode.PopPop,
+                        fusedKind,
+                        popRun.Pc,
+                        popRun.BlockIndex,
+                        (byte)(popRun.Advance + size),
+                        popCount);
+                }
+                else if (openBlock >= 0
+                    && instruction == Instruction.POP
+                    && TryTakePrecedingSwapPop(ops, out ulong swapDepth, out StreamOp first))
+                {
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    StreamOpKind fusedKind = first.Kind == StreamOpKind.BlockFirst
+                        ? StreamOpKind.FusedBlockFirst
+                        : StreamOpKind.FusedInBlock;
+                    ops[^1] = new StreamOp(
+                        FusedOpcode.SwapPop,
+                        fusedKind,
+                        first.Pc,
+                        first.BlockIndex,
+                        (byte)(first.Advance + size),
+                        swapDepth);
+                }
+                else if (openBlock >= 0
                     && IsFusedStackBinaryInstruction(instruction)
                     && TryTakePrecedingDup(ops, out StreamOp dup))
                 {
@@ -364,6 +400,58 @@ internal sealed class InstructionStream
             return false;
 
         dup = last;
+        return true;
+    }
+
+    private static bool TryTakePrecedingSwapPop(
+        List<StreamOp> ops,
+        out ulong swapDepth,
+        out StreamOp first)
+    {
+        swapDepth = 0;
+        first = default;
+        if (ops.Count == 0)
+            return false;
+
+        StreamOp last = ops[^1];
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
+            return false;
+
+        Instruction firstInstruction = (Instruction)last.Opcode;
+        if (firstInstruction is not (>= Instruction.SWAP1 and <= Instruction.SWAP8))
+            return false;
+
+        swapDepth = (ulong)(firstInstruction - Instruction.SWAP1 + 2);
+        first = last;
+        return true;
+    }
+
+    private static bool TryExtendPrecedingPopRun(List<StreamOp> ops, out StreamOp popRun, out ulong popCount)
+    {
+        popRun = default;
+        popCount = 0;
+        if (ops.Count == 0)
+            return false;
+
+        StreamOp last = ops[^1];
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.FusedBlockFirst or StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+            || last.Advance == byte.MaxValue)
+            return false;
+
+        if ((Instruction)last.Opcode == Instruction.POP)
+        {
+            popCount = 2;
+        }
+        else if (last.Opcode == FusedOpcode.PopPop && last.Operand < byte.MaxValue)
+        {
+            popCount = last.Operand + 1;
+        }
+        else
+        {
+            return false;
+        }
+
+        popRun = last;
         return true;
     }
 

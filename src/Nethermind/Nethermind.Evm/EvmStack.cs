@@ -2255,6 +2255,24 @@ public ref struct EvmStack
         return ref top;
     }
 
+    /// <summary>Executes <c>SWAPn; POP</c> by retaining the original top at the swap partner and dropping it.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal EvmExceptionType SwapPop(int depth)
+    {
+        int head = Head;
+        if (head < depth)
+            return EvmExceptionType.StackUnderflow;
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+        ref byte partner = ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5));
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        Unsafe.WriteUnaligned(ref partner, Unsafe.ReadUnaligned<EvmWord>(ref top));
+        Head = head - 1;
+        return EvmExceptionType.None;
+    }
+
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
