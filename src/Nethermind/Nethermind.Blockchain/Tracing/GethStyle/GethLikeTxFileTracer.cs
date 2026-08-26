@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;

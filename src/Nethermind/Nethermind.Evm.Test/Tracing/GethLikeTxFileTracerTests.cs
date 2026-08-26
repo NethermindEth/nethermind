@@ -8,8 +8,6 @@ using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 

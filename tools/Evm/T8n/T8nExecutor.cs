@@ -64,7 +64,7 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem(), (long)test.Spec.GasCosts.DestroyRefund));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();
