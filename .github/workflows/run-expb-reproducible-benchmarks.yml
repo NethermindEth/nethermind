@@ -863,6 +863,43 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        run: |
+          set -uo pipefail
+          # An empty data dir would anchor the sweep at / and match every overlay on the box.
+          [[ -n "${EXPB_DATA_DIR:-}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
+          as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay`
+          # over the same path fails with exit status 32 and the benchmark dies ~90s in;
+          # container, network and volume pruning all leave the mount in place. Anchored on the
+          # data dir rather than on expb's `paths.work` leaf, so renaming that cannot silently
+          # turn this into a no-op and rpc-bench's scratch overlays get swept too. Deepest first.
+          reaped=0
+          while IFS=$'\t' read -r mp opts; do
+            reaped=1
+            # Plain unmount first: `umount -l` can report success while a container-held
+            # reference still blocks the next mount. Lazy is the fallback for that case.
+            if as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null; then
+              echo "unmounted ${mp}"
+            else
+              echo "::warning::failed to unmount ${mp}"
+              continue
+            fi
+            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves
+            # behind, and state the next overlay would silently layer on top of. The paths come
+            # from the kernel's own mount options; anything outside the data dir is refused.
+            while IFS= read -r d; do
+              [[ "${d}" == "${EXPB_DATA_DIR}"/* ]] && as_root rm -rf -- "${d}" && echo "removed ${d}"
+            done < <(printf '%s\n' "${opts}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p')
+          done < <(awk -v d="${EXPB_DATA_DIR}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' /proc/self/mounts | sort -r)
+          if [[ "${reaped}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts under ${EXPB_DATA_DIR}."
+            # Surface anything we did not match so pattern drift shows up in the log instead of
+            # a reassuring "clean"; docker's own overlays live under /var/lib and are not ours.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 { print "  unmatched overlay: " $2 }' /proc/self/mounts | head -n 20
+          fi
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -2006,6 +2043,43 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        run: |
+          set -uo pipefail
+          # An empty data dir would anchor the sweep at / and match every overlay on the box.
+          [[ -n "${EXPB_DATA_DIR:-}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
+          as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay`
+          # over the same path fails with exit status 32 and the benchmark dies ~90s in;
+          # container, network and volume pruning all leave the mount in place. Anchored on the
+          # data dir rather than on expb's `paths.work` leaf, so renaming that cannot silently
+          # turn this into a no-op and rpc-bench's scratch overlays get swept too. Deepest first.
+          reaped=0
+          while IFS=$'\t' read -r mp opts; do
+            reaped=1
+            # Plain unmount first: `umount -l` can report success while a container-held
+            # reference still blocks the next mount. Lazy is the fallback for that case.
+            if as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null; then
+              echo "unmounted ${mp}"
+            else
+              echo "::warning::failed to unmount ${mp}"
+              continue
+            fi
+            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves
+            # behind, and state the next overlay would silently layer on top of. The paths come
+            # from the kernel's own mount options; anything outside the data dir is refused.
+            while IFS= read -r d; do
+              [[ "${d}" == "${EXPB_DATA_DIR}"/* ]] && as_root rm -rf -- "${d}" && echo "removed ${d}"
+            done < <(printf '%s\n' "${opts}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p')
+          done < <(awk -v d="${EXPB_DATA_DIR}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' /proc/self/mounts | sort -r)
+          if [[ "${reaped}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts under ${EXPB_DATA_DIR}."
+            # Surface anything we did not match so pattern drift shows up in the log instead of
+            # a reassuring "clean"; docker's own overlays live under /var/lib and are not ours.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 { print "  unmatched overlay: " $2 }' /proc/self/mounts | head -n 20
+          fi
 
       - name: Run expb scenarios
         id: run-expb
