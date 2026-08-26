@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -369,6 +370,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         Assert.That(
             SpecProvider.GetSpec(Activation).IncludePush0Instruction,
             "the differential fixture must run on a fork where the stream engages");
+
+    [TestCase(Architecture.Arm64, false)]
+    [TestCase(Architecture.X64, true)]
+    public void StreamInterpreter_DefaultEnablement_IsArchitectureSpecific(Architecture architecture, bool expected) =>
+        Assert.That(StreamInterpreter.IsEnabledByDefault(architecture), Is.EqualTo(expected));
 
     private static readonly byte[] CalleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)
