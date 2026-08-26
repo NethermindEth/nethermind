@@ -430,10 +430,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.ClearStorage(address);
 
-        bool hadRootUpdate = _toUpdateRoots.TryGetValue(address, out bool rootUpdate);
+        bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
         DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
         _toUpdateRoots.TryAdd(address, true);
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, hadRootUpdate, rootUpdate));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
         PushStorageClear(address);
     }
 
@@ -449,17 +449,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _storageClearJournal.RemoveAt(lastIndex);
         GetOrCreateStorage(address).RestoreClear(change.BlockChange);
 
-        using (ArrayPoolListRef<StorageCell> currentOriginals = new(0))
+        foreach (StorageCell cell in _originalValues.Keys)
         {
-            foreach (StorageCell cell in _originalValues.Keys)
-            {
-                if (cell.Address == address)
-                {
-                    currentOriginals.Add(cell);
-                }
-            }
-
-            foreach (ref readonly StorageCell cell in currentOriginals.AsSpan())
+            if (cell.Address == address)
             {
                 _originalValues.Remove(cell);
             }
@@ -467,15 +459,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (change.OriginalValues is not null)
         {
-            foreach (KeyValuePair<StorageCell, byte[]> originalValue in change.OriginalValues)
-            {
-                _originalValues.Add(originalValue.Key, originalValue.Value);
-            }
+            _originalValues.AddOrUpdateRange(change.OriginalValues);
         }
 
-        if (change.HadRootUpdate)
+        if (change.RootUpdate is { } rootUpdate)
         {
-            _toUpdateRoots[address] = change.RootUpdate;
+            _toUpdateRoots[address] = rootUpdate;
         }
         else
         {
@@ -487,8 +476,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Address Address,
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, byte[]>>? OriginalValues,
-        bool HadRootUpdate,
-        bool RootUpdate);
+        bool? RootUpdate);
 
     private sealed class DefaultableDictionary()
     {

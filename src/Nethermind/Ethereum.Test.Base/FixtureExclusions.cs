@@ -5,10 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Enumeration;
+using System.Text.RegularExpressions;
 
 namespace Ethereum.Test.Base;
 
-internal static class FixtureExclusions
+internal static partial class FixtureExclusions
 {
     private static readonly Dictionary<string, string[]> ExcludedFixturePatterns = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -76,7 +77,10 @@ internal static class FixtureExclusions
         if (testName is null)
             return string.Empty;
 
-        int caseSuffix = testName.LastIndexOf("_d", StringComparison.Ordinal);
-        return caseSuffix >= 0 ? testName[..caseSuffix] : testName;
+        Match caseSuffix = LegacyCaseSuffix().Match(testName);
+        return caseSuffix.Success ? testName[..caseSuffix.Index] : testName;
     }
+
+    [GeneratedRegex(@"_d\d+g\d+v\d+_")]
+    private static partial Regex LegacyCaseSuffix();
 }

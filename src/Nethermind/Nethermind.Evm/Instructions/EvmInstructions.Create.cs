@@ -207,8 +207,7 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst>();
         }
 
-        if (accountExists)
-            state.ClearStorage(contractAddress);
+        state.ClearStorage(contractAddress);
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
