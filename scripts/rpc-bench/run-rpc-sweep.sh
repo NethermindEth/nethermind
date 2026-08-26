@@ -270,6 +270,7 @@ declare -a SUMMARIES=() LABELS=() CORPORA=() PARITY_ROWS=()
 declare -A CORPUS_RECORDS=() LABEL_SEEN=() PARITY_BASE_STATE=() PARITY_BASE_LABEL=() PARITY_BASE_SAVED=()
 node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; parity_skipped=0; baseline_fail=0
 BASELINE_LABEL=""
+USING_SAVED_BASELINE=false   # true once every corpus has a saved baseline to compare against, so no arm here is one
 
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   for f in "$CORPUS_DIR"/$CORPUS_GLOB; do [[ -f "$f" ]] && CORPORA+=("$f"); done
@@ -284,6 +285,13 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     CORPUS_RECORDS["$corpus"]="$(awk '/^corpus OK:/ {print $3}' <<< "$out")"
   done
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
+  if [[ "$CORPUS_BASELINE" == "use" ]]; then
+    USING_SAVED_BASELINE=true
+    for corpus in "${CORPORA[@]}"; do
+      [[ -s "$CORPUS_BASELINE_DIR/$(corpus_label "$corpus").json.gz" ]] || USING_SAVED_BASELINE=false
+    done
+    [[ "$USING_SAVED_BASELINE" == "true" ]] && echo "Parity baseline: saved responses under $CORPUS_BASELINE_DIR"
+  fi
 fi
 
 read -ra entries <<< "$CLIENTS"
@@ -319,7 +327,7 @@ for entry in "${schedule[@]}"; do
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
-    if [[ "$JB_ETH_CALL_CORPUS" == "true" && -z "$BASELINE_LABEL" ]]; then
+    if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$USING_SAVED_BASELINE" != "true" && -z "$BASELINE_LABEL" ]]; then
       echo "::error::${label} failed to start — it was to capture the parity baseline, so later arms are compared against a substitute"; baseline_fail=1
     else
       echo "::warning::${label} failed to start — skipping its cells"
@@ -372,7 +380,9 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"
   {
     echo
-    echo "## Corpus parity (baseline = ${BASELINE_LABEL:-<none started>})"
+    baseline_desc="${BASELINE_LABEL:-<none started>}"
+    [[ "$USING_SAVED_BASELINE" == "true" ]] && baseline_desc="saved ${PARITY_BASE_LABEL[${CORPORA[0]:+$(corpus_label "${CORPORA[0]}")}]:-master}"
+    echo "## Corpus parity (baseline = ${baseline_desc})"
     echo
     echo "| corpus | client | matched (+both-error)/total | nonzero defect counters |"
     echo "|---|---|---|---|"
