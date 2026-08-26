@@ -188,7 +188,8 @@ internal sealed class InstructionStream
             }
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
-                if (openBlock >= 0
+                if (StreamInterpreter.FusionsEnabled
+                    && openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -238,7 +239,8 @@ internal sealed class InstructionStream
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
             }
-            else if (instruction == Instruction.PUSH2
+            else if (StreamInterpreter.FusionsEnabled
+                && instruction == Instruction.PUSH2
                 && pc + 3 < code.Length
                 && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
                 && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
