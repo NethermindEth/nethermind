@@ -83,7 +83,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         _metrics.IncrementStorageWrites();
-        // Keep the address registry complete so ClearStorage can reject fresh targets without scanning cell caches.
+        // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
         _ = GetOrCreateStorage(storageCell.Address);
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
@@ -445,6 +445,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         PushStorageClear(journalIndex);
     }
 
+    /// <summary>
+    /// Determines whether <paramref name="address"/> has readable storage that must be cleared.
+    /// </summary>
+    /// <remarks>
+    /// Reads and writes register the address in <see cref="_storages"/>; <see cref="Set"/> does so
+    /// explicitly because a cached write can bypass the loading path. Persisted trie storage is
+    /// reachable only through the current account's storage root. <c>TrieStoreScopeProvider</c>
+    /// resolves from that root, while <c>FlatWorldStateScope</c> clears dirtied storage when the
+    /// account is absent. Therefore no registered state and no account storage root exhaust the
+    /// readable cases.
+    /// </remarks>
     private bool HasStorageToClear(Address address)
     {
         if (_storages.ContainsKey(address))

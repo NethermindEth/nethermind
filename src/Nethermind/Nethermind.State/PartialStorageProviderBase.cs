@@ -21,7 +21,6 @@ namespace Nethermind.State
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
-        private readonly List<Change> _keptInCache = [];
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -105,28 +104,13 @@ namespace Nethermind.State
                     ref readonly Change previous = ref changes[change.PrevIdx];
                     head = new HeadChange(previous.Value, change.PrevIdx, previous.OriginalIdx);
                 }
-                else if (change.ChangeType == StorageChangeType.JustCache)
-                {
-                    // Keep the read-only entry; its head is stale until re-appended below.
-                    _keptInCache.Add(change);
-                }
                 else
                 {
                     _intraBlockCache.Remove(change.StorageCell);
                 }
             }
 
-            ReadOnlySpan<Change> keptInCache = CollectionsMarshal.AsSpan(_keptInCache);
             CollectionsMarshal.SetCount(_changes, snapshot + 1);
-            currentPosition = _changes.Count - 1;
-            foreach (ref readonly Change kept in keptInCache)
-            {
-                currentPosition++;
-                _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell] = new HeadChange(kept.Value, currentPosition, kept.OriginalIdx);
-            }
-
-            _keptInCache.Clear();
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
@@ -276,7 +260,6 @@ namespace Nethermind.State
         protected enum StorageChangeType
         {
             Null,
-            JustCache,
             Update,
             StorageClear,
         }

@@ -1067,21 +1067,38 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Eip161_empty_account_with_storage_does_not_throw_on_commit()
+    public void Eip161_pruned_storage_is_unreadable_after_storage_cache_clear()
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
-        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
 
-        // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
-        // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
-        // storage flush has already produced a non-empty storage root. The commit must
-        // handle this gracefully by skipping the storage root update for deleted accounts.
-        worldState.CreateAccount(TestItem.AddressA, 0);
-        worldState.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
-        worldState.Commit(SpuriousDragon.Instance);
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(cell, [1, 2, 3]);
+            worldState.Commit(SpuriousDragon.Instance);
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
 
-        Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
+        using (worldState.BeginScope(baseBlock))
+        {
+            Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
+
+            Snapshot before = worldState.TakeSnapshot();
+            worldState.ClearStorage(TestItem.AddressA);
+            Snapshot after = worldState.TakeSnapshot();
+            byte[] value = worldState.Get(cell).ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(after.StorageSnapshot.PersistentStorageSnapshot,
+                    Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot));
+                Assert.That(value, Is.EqualTo(StorageTree.ZeroBytes));
+            }
+        }
     }
 
     [Test]

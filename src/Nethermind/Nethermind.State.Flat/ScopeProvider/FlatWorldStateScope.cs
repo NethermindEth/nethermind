@@ -515,7 +515,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
-                scope.CreateStorageTreeImpl(key).SelfDestruct();
+                FlatStorageTree storageTree = scope.CreateStorageTreeImpl(key);
+                if (scope._trieless)
+                {
+                    // Trie-less batches do not report dirty roots, so no later epilogue can clear current flat writes.
+                    storageTree.ClearStorage();
+                }
+                else
+                {
+                    storageTree.SelfDestruct();
+                }
             }
         }
 

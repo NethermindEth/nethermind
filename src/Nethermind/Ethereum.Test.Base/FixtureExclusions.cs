@@ -26,6 +26,7 @@ internal static partial class FixtureExclusions
         ["stExtCodeHash"] = ["dynamicAccountOverwriteEmpty*"],
         ["stRevertTest"] = ["RevertInCreateInInit*"],
         ["stSpecialTest"] = ["FailedCreateRevertsDeletionParis"],
+        // Explicit EEST version overrides can still select releases containing these retired fixtures.
         ["eip7610_create_collision"] =
         [
             "test_collision_with_create2_revert_in_initcode[fork_*",

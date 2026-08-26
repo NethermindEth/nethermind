@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -497,18 +497,20 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     // Also called SelfDestruct
-    public void Clear(Address address, Hash256 addressHash)
+    public void Clear(Address address, Hash256 addressHash) => Clear(address, addressHash, removeCurrentChanges: false);
+
+    internal void ClearStorage(Address address, Hash256 addressHash) => Clear(address, addressHash, removeCurrentChanges: true);
+
+    private void Clear(Address address, Hash256 addressHash, bool removeCurrentChanges)
     {
         GuardDispose();
 
         Account? account = DoGetAccount(address, excludeChanged: true, out _);
-        // So... a clear is always sent even on a new account. This makes is a minor optimization as
-        // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
-        if (!isNewAccount)
+        if (!isNewAccount || removeCurrentChanges)
         {
             _changedStorageNodes.RemoveAddress(addressHash);
 

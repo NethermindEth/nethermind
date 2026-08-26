@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -145,6 +145,17 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     public void SelfDestruct()
     {
         _bundle.Clear(_address, _addressHash);
+        ResetAfterClear();
+    }
+
+    internal void ClearStorage()
+    {
+        _bundle.ClearStorage(_address, _addressHash);
+        ResetAfterClear();
+    }
+
+    private void ResetAfterClear()
+    {
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
     }
@@ -175,7 +186,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         public void Clear()
         {
             trieBatch.Clear();
-            storageTree.SelfDestruct();
+            storageTree.ClearStorage();
         }
 
         public void Dispose() => trieBatch.Dispose();
@@ -186,7 +197,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         public void Set(in UInt256 index, byte[] value) => storageTree.Set(index, value);
 
-        public void Clear() => storageTree.SelfDestruct();
+        public void Clear() => storageTree.ClearStorage();
 
         public void Dispose() { }
     }
