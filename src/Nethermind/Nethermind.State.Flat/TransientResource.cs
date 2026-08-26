@@ -44,6 +44,19 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
     /// <summary>
+    /// Waits until this retired resource is held only by its owner, so in-flight warmer reads have drained before
+    /// retirement scans its caches.
+    /// </summary>
+    internal void WaitForExclusiveLease()
+    {
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
+        {
+            spinWait.SpinOnce();
+        }
+    }
+
+    /// <summary>
     /// Releases one lease; the final release returns the resource to the pool it was checked out from.
     /// </summary>
     /// <remarks>
