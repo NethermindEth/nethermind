@@ -678,6 +678,25 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Clearing_unaccessed_empty_storage_is_a_noop(bool accountExists)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        if (accountExists)
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+        }
+
+        Snapshot before = provider.TakeSnapshot();
+        provider.ClearStorage(TestItem.AddressA);
+        Snapshot after = provider.TakeSnapshot();
+
+        Assert.That(after.StorageSnapshot.PersistentStorageSnapshot,
+            Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot));
+    }
+
     [Test]
     public void Restored_storage_clear_reuses_dictionary()
     {

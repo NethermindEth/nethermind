@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -83,9 +83,9 @@ namespace Nethermind.State
             {
                 int position = currentPosition - i;
                 ref readonly Change change = ref changes[position];
-                if (change.ChangeType == ChangeType.StorageClear)
+                if (change.ChangeType == StorageChangeType.StorageClear)
                 {
-                    RestoreStorageClear(change.StorageCell.Address);
+                    RestoreStorageClear(change.PrevIdx);
                     continue;
                 }
 
@@ -105,7 +105,7 @@ namespace Nethermind.State
                     ref readonly Change previous = ref changes[change.PrevIdx];
                     head = new HeadChange(previous.Value, change.PrevIdx, previous.OriginalIdx);
                 }
-                else if (change.ChangeType == ChangeType.JustCache)
+                else if (change.ChangeType == StorageChangeType.JustCache)
                 {
                     // Keep the read-only entry; its head is stale until re-appended below.
                     _keptInCache.Add(change);
@@ -218,17 +218,17 @@ namespace Nethermind.State
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
 
             head = new HeadChange(value, _changes.Count, originalIdx);
-            _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx, originalIdx));
+            _changes.Add(new Change(in cell, value, StorageChangeType.Update, prevIdx, originalIdx));
         }
 
-        protected void PushStorageClear(Address address)
+        protected void PushStorageClear(int journalIndex)
         {
-            StorageCell marker = new(address, default);
-            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, ChangeType.StorageClear, -1, -1));
+            StorageCell marker = default;
+            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
         }
 
-        protected virtual void RestoreStorageClear(Address address) =>
-            throw new InvalidOperationException($"{GetType().Name} cannot restore a storage clear for {address}");
+        protected virtual void RestoreStorageClear(int journalIndex) =>
+            throw new InvalidOperationException($"{GetType().Name} cannot restore storage clear journal entry {journalIndex}");
 
         /// <summary>
         /// Clear all storage at specified address
@@ -251,13 +251,16 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType, int prevIdx, int originalIdx)
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
             public readonly byte[] Value = value;
-            public readonly ChangeType ChangeType = changeType;
+            public readonly StorageChangeType ChangeType = changeType;
 
-            /// <summary>Index into <c>_changes</c> of the previous change for the same cell, or -1 if none.</summary>
+            /// <summary>
+            /// Index into <c>_changes</c> of the previous change for the same cell, or the derived
+            /// provider's clear journal for <see cref="StorageChangeType.StorageClear"/>.
+            /// </summary>
             public readonly int PrevIdx = prevIdx;
 
             /// <summary>
@@ -267,7 +270,15 @@ namespace Nethermind.State
             /// </summary>
             public readonly int OriginalIdx = originalIdx;
 
-            public bool IsNull => ChangeType == ChangeType.Null;
+            public bool IsNull => ChangeType == StorageChangeType.Null;
+        }
+
+        protected enum StorageChangeType
+        {
+            Null,
+            JustCache,
+            Update,
+            StorageClear,
         }
 
         /// <summary>

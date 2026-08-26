@@ -12,5 +12,4 @@ internal enum ChangeType
     New,
     Delete,
     RecreateEmpty,
-    StorageClear,
 }

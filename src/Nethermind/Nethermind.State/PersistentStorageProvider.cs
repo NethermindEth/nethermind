@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -61,7 +61,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             for (int i = _storageClearJournal.Count - 1; i >= 0; i--)
             {
-                RestoreStorageClear(_storageClearJournal[i].Address);
+                RestoreStorageClear(i);
             }
         }
 
@@ -83,6 +83,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         _metrics.IncrementStorageWrites();
+        // Keep the address registry complete so ClearStorage can reject fresh targets without scanning cell caches.
+        _ = GetOrCreateStorage(storageCell.Address);
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
@@ -161,7 +163,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
-            if (change.ChangeType == ChangeType.StorageClear)
+            if (change.ChangeType == StorageChangeType.StorageClear)
             {
                 continue;
             }
@@ -175,7 +177,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
                 $"Expected the cached index to equal {currentPosition} - {i}");
 
-            if (change.ChangeType == ChangeType.Update)
+            if (change.ChangeType == StorageChangeType.Update)
             {
                 // A SaveChange would resurrect the dead value over the Clear() marker;
                 // tracers still see the cell zeroed, as the journaled path reported it.
@@ -418,6 +420,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void ClearStorage(Address address)
     {
+        if (!HasStorageToClear(address))
+        {
+            return;
+        }
+
         List<KeyValuePair<StorageCell, byte[]>>? originalValues = null;
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
         {
@@ -433,25 +440,37 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
         DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
         _toUpdateRoots.TryAdd(address, true);
+        int journalIndex = _storageClearJournal.Count;
         _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
-        PushStorageClear(address);
+        PushStorageClear(journalIndex);
     }
 
-    protected override void RestoreStorageClear(Address address)
+    private bool HasStorageToClear(Address address)
     {
-        int lastIndex = _storageClearJournal.Count - 1;
-        if (lastIndex < 0 || _storageClearJournal[lastIndex].Address != address)
+        if (_storages.ContainsKey(address))
         {
-            throw new InvalidOperationException($"Missing storage clear journal entry for {address}");
+            return true;
         }
 
-        StorageClearChange change = _storageClearJournal[lastIndex];
-        _storageClearJournal.RemoveAt(lastIndex);
-        GetOrCreateStorage(address).RestoreClear(change.BlockChange);
+        Account? account = _stateProvider.GetThroughCache(address);
+        return account?.HasStorage == true;
+    }
+
+    protected override void RestoreStorageClear(int journalIndex)
+    {
+        int lastIndex = _storageClearJournal.Count - 1;
+        if ((uint)journalIndex >= (uint)_storageClearJournal.Count || journalIndex != lastIndex)
+        {
+            throw new InvalidOperationException($"Expected storage clear journal entry {lastIndex}, got {journalIndex}");
+        }
+
+        StorageClearChange change = _storageClearJournal[journalIndex];
+        _storageClearJournal.RemoveAt(journalIndex);
+        GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange);
 
         foreach (StorageCell cell in _originalValues.Keys)
         {
-            if (cell.Address == address)
+            if (cell.Address == change.Address)
             {
                 _originalValues.Remove(cell);
             }
@@ -464,11 +483,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (change.RootUpdate is { } rootUpdate)
         {
-            _toUpdateRoots[address] = rootUpdate;
+            _toUpdateRoots[change.Address] = rootUpdate;
         }
         else
         {
-            _toUpdateRoots.Remove(address);
+            _toUpdateRoots.Remove(change.Address);
         }
     }
 
