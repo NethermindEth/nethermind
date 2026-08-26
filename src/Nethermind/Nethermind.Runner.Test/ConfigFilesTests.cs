@@ -32,6 +32,14 @@ namespace Nethermind.Runner.Test;
 [Parallelizable(ParallelScope.All)]
 public class ConfigFilesTests : ConfigFileTestsBase
 {
+    private static readonly string[] ChiadoBootnodes =
+    [
+        "enr:-IS4QIIVMnKVfhiT0_2CIIDjV3-0KEN2xzEBt5q7Rr50fCouLUTaFXIJGYyiQHO5Dto2a_784D2lg9Y4RR2AOC1yJlkCgmlkgnY0gmlwhDNL9gKJc2VjcDI1NmsxoQPRchRHOvq0gR4u_Lkn9YRAx00imC379KGv9sDdr3AKcIN1ZHCCdl8",
+        "enr:-IS4QPLJGp_XX8oMNFNe1QlD_k69_PuCi9IvnZQtWm241BhLGFro-axtZ5_pRT_MkeSeTHRq3r5X2GLe4ghB2ZstqgQCgmlkgnY0gmlwhDmBRt6Jc2VjcDI1NmsxoQMxCB8JAYARigoiC4nLUgBg01vfHwv0vONrotk2Ps_Va4N1ZHCCdl8",
+        "enr:-IS4QGrNaIUMSdwuuqgRb6z73CrZOfwRcjSesypX635zCw_pVd4bdG5P-m0inURd0fcqefAkVnN7ys61sCvM7VrsBGUCgmlkgnY0gmlwhDmA_HuJc2VjcDI1NmsxoQJOEMsMrMOwpU827TBufll0H1UsSLONGiYD9_jIU1N7kYN1ZHCCdl8",
+        "enr:-IS4QEBVtu_k6iLMh9BGmCr7GbgZBc94bhPEnpM_XhTL-IYWShFYQyJ6vEmlYw5sf9FMe10Sg8w7CBQIERabdvEFOFMCgmlkgnY0gmlwhDYnlGKJc2VjcDI1NmsxoQImyPKIynV5ysnxzvmME1f4KyqTBTgVh4hLmg0X_ULC4oN1ZHCCdl8",
+    ];
+
     [TestCase("*")]
     public void Required_config_files_exist(string configWildcard)
     {
@@ -166,9 +174,28 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("sepolia", DiscoveryVersion.V5)]
     [TestCase("hoodi", DiscoveryVersion.V5)]
+    [TestCase("chiado", DiscoveryVersion.V4)]
     [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
+
+    [Test]
+    public void Chiado_discovery_bootnodes_are_correct()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("chiado.json");
+        Assert.That(chainSpec.Bootnodes, Is.Empty);
+
+        foreach (TestConfigProvider configProvider in GetConfigProviders("chiado"))
+        {
+            IDiscoveryConfig config = configProvider.GetConfig<IDiscoveryConfig>();
+            Assert.That(config.Bootnodes, Has.Length.EqualTo(ChiadoBootnodes.Length), configProvider.FileName);
+
+            for (int i = 0; i < ChiadoBootnodes.Length; i++)
+            {
+                Assert.That(config.Bootnodes[i].ToString(), Is.EqualTo(ChiadoBootnodes[i]), $"{configProvider.FileName} bootnode {i}");
+            }
+        }
+    }
 
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);

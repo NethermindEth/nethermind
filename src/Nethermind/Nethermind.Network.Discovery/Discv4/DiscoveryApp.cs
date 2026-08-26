@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -68,19 +68,24 @@ public class DiscoveryApp : KademliaDiscoveryApp
         for (int i = 0; i < configuredBootnodes.Length; i++)
         {
             NetworkNode bootnode = configuredBootnodes[i];
-            if (!bootnode.IsEnode)
+            Node node;
+            if (bootnode.IsEnr)
             {
-                if (logger.IsTrace) logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
-                continue;
+                if (!Node.TryFromDiscoveryEnr(bootnode.Enr, out Node? enrNode))
+                {
+                    if (logger.IsWarn) logger.Warn($"ENR bootnode ignored because it has no usable discovery endpoint: {bootnode}");
+                    continue;
+                }
+
+                node = enrNode;
+                if (logger.IsDebug) logger.Debug($"Accepted discv4 ENR bootnode {node.DiscoveryAddress}.");
+            }
+            else
+            {
+                node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
             }
 
-            if (bootnode.NodeId is null)
-            {
-                logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
-                continue;
-            }
-
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort));
+            bootNodes.Add(node);
         }
 
         return bootNodes;
