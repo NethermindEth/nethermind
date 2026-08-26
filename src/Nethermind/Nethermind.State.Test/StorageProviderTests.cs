@@ -113,7 +113,7 @@ public class StorageProviderTests(bool useFlat)
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = ctx.StateProvider;
         BlockHeader baseBlock = SeedAndClose(provider, p => SeedSlots(p, ctx.Address1, 1, 2));
-        Dictionary<UInt256, ValueHash256> overrides = new() { [0] = SlotValue(3), [2] = SlotValue(4) };
+        Dictionary<UInt256, Hash256> overrides = new() { [0] = SlotValue(3), [2] = SlotValue(4) };
 
         using (provider.BeginScope(baseBlock))
         {
@@ -138,7 +138,7 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(3) }, replaceAll: false);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [0] = SlotValue(3) }, replaceAll: false);
             provider.TakeSnapshot(newTransactionStart: true);
             Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[3]));
 
@@ -169,7 +169,7 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [5] = SlotValue(nonZeroOverride ? (byte)7 : (byte)0) }, replaceAll);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [5] = SlotValue(nonZeroOverride ? (byte)7 : (byte)0) }, replaceAll);
 
             Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.EqualTo(expectedEmpty));
         }
@@ -190,7 +190,7 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [5] = SlotValue(7) }, replaceAll: false);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [5] = SlotValue(7) }, replaceAll: false);
             if (readBeforeWrite)
             {
                 provider.Get(cell);
@@ -212,8 +212,8 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(3) }, replaceAll: false);
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [1] = SlotValue(4) }, replaceAll: false);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [0] = SlotValue(3) }, replaceAll: false);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [1] = SlotValue(4) }, replaceAll: false);
 
             using (Assert.EnterMultipleScope())
             {
@@ -221,7 +221,7 @@ public class StorageProviderTests(bool useFlat)
                 Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[4]), "second stateDiff");
             }
 
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [2] = SlotValue(5) }, replaceAll: true);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [2] = SlotValue(5) }, replaceAll: true);
 
             using (Assert.EnterMultipleScope())
             {
@@ -242,7 +242,7 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, ValueHash256> { [0] = SlotValue(0) }, replaceAll: true);
+            provider.TrySetStorageOverrides(ctx.Address1, new Dictionary<UInt256, Hash256> { [0] = SlotValue(0) }, replaceAll: true);
             Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.True);
         }
 
@@ -304,11 +304,11 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    private static ValueHash256 SlotValue(byte value) => ((UInt256)value).ToValueHash();
+    private static Hash256 SlotValue(byte value) => new(((UInt256)value).ToValueHash());
 
-    private static Dictionary<UInt256, ValueHash256> RandomSlots(Random random, int slotRange)
+    private static Dictionary<UInt256, Hash256> RandomSlots(Random random, int slotRange)
     {
-        Dictionary<UInt256, ValueHash256> slots = [];
+        Dictionary<UInt256, Hash256> slots = [];
         for (int i = 0; i < slotRange / 2; i++)
         {
             // Zero overrides included: they must read as empty without making the storage non-empty.

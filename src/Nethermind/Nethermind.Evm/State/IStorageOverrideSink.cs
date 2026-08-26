@@ -30,5 +30,5 @@ public interface IStorageOverrideSink
     /// through to the underlying state.
     /// </param>
     /// <returns><see langword="false"/> when overrides cannot be served lazily here and must be written eagerly instead.</returns>
-    bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll);
+    bool TrySetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll);
 }

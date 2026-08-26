@@ -236,7 +236,7 @@ namespace Nethermind.State
 
         public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
 
-        public bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+        public bool TrySetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll)
         {
             DebugGuardInScope();
             _persistentStorageProvider.SetStorageOverrides(address, slots, replaceAll);

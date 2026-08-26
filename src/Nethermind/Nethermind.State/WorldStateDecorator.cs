@@ -43,7 +43,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState, ISto
     public virtual bool IsStorageEmpty(Address address)
         => State.IsStorageEmpty(address);
 
-    public virtual bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+    public virtual bool TrySetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll)
         => State is IStorageOverrideSink sink && sink.TrySetStorageOverrides(address, slots, replaceAll);
 
     public virtual ref readonly UInt256 GetBalance(Address address)
