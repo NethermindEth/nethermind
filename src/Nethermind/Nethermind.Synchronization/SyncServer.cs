@@ -65,7 +65,6 @@ namespace Nethermind.Synchronization
         private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
-        private const int NewOldestBlockRangeUpdateFrequency = 10000;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -467,13 +466,6 @@ namespace Nethermind.Synchronization
         {
             if (_blockTree.Head is null)
                 return;
-
-            // Don't send new range for every single deletion
-            if (!onNewOldestBlockArgs.isFinalUpdate &&
-                onNewOldestBlockArgs.OldestBlockHeader.Number % NewOldestBlockRangeUpdateFrequency != 0)
-            {
-                return;
-            }
 
             OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
         }
