@@ -173,6 +173,8 @@ jobs:
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
+      warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
+      warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
     steps:
       - name: Resolve configuration
