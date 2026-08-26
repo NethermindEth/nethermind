@@ -198,9 +198,10 @@ public interface IJsonRpcConfig : IConfig
             predicted wait is `queued work no heavier than the request x mean service time per unit / slots`, with
             EVM-executing requests weighted by their `params` size (one unit per 128 KiB, at most 8) and lighter
             requests served first: at ~30 CPU-ms per request and 16 slots the default absorbs a burst of roughly
-            2,500 requests while still answering callers well before the request `Timeout`.
+            250 requests. A queue a few service times deep already keeps every slot busy under sustained overload;
+            a longer one only adds latency to the requests it does serve.
             """,
-        DefaultValue = "5000")]
+        DefaultValue = "500")]
     int MaxQueueWaitMs { get; set; }
 
     [ConfigItem(
