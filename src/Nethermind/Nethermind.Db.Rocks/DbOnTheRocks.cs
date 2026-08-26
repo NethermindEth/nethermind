@@ -841,7 +841,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             IntPtr valuePtr = Native.Instance.rocksdb_pinnable_handle_get_value(handle, out UIntPtr valueLength);
-            int length = checked((int)valueLength);
+            int length = (int)valueLength;
             if (length == 0)
                 return [];
 
@@ -1051,7 +1051,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (fits == 0 || valueLength > (nuint)output.Length) ThrowNotEnoughMemory(valueLength, output.Length);
 
-        return checked((int)valueLength);
+        return (int)valueLength;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowNotEnoughMemory(nuint length, int bufferLength) =>
@@ -1112,9 +1112,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public unsafe ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, out IntPtr handle, ReadFlags flags)
     {
-        // TODO: update when merged upstream: https://github.com/curiosity-ai/rocksdb-sharp/pull/61
-        // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
-
         handle = default;
         nint db = _db.Handle;
         nint read_options = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions).Handle;
