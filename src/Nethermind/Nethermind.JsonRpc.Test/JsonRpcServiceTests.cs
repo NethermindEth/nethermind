@@ -845,14 +845,16 @@ public class JsonRpcServiceTests
     [TestCase(false, 2, true, TestName = "Parsed params are weighed by size")]
     public async Task Evm_request_weight_follows_its_params_size(bool rawParams, int paddingUnits, bool shed)
     {
-        // Predicted wait = queued x service time x weight / permits: with one request queued, a 5 s service time and a
-        // 10 s budget, a request weighing up to two units queues while three or more units are shed up front.
+        // Predicted wait = queued work no heavier than the request x service time / permits: behind one queued
+        // three-unit request, at a 5 s service time and a 10 s budget, a request weighing up to two units overtakes
+        // it and queues while three or more units are shed up front.
         UseAdmissionController(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 10_000 });
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
         IJsonRpcService service = CreateService(ethRpcModule);
         // Calldata is hex-encoded on the wire, so half a unit of bytes pads the params by one unit.
         LegacyTransactionForRpc transaction = new() { Input = new byte[paddingUnits * RpcRequestWeight.BytesPerWeightUnit / 2] };
+        LegacyTransactionForRpc threeUnitTransaction = new() { Input = new byte[2 * RpcRequestWeight.BytesPerWeightUnit / 2] };
         JsonRpcRequest request = rawParams
             ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)}]")
             : RpcTest.BuildJsonRequest("eth_call", transaction);
@@ -861,7 +863,7 @@ public class JsonRpcServiceTests
         Task<JsonRpcResponse> weighed;
         using (await _admissionController.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0))
         {
-            queued = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).AsTask();
+            queued = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", threeUnitTransaction), _context).AsTask();
             await WaitUntil(() => _admissionController.GetQueued(RpcMethodCostClass.EvmExecution) == 1);
             _admissionController.SetServiceTimeMs(RpcMethodCostClass.EvmExecution, 5_000);
 

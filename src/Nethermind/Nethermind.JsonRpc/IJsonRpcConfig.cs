@@ -197,9 +197,8 @@ public interface IJsonRpcConfig : IConfig
             already exceeds it are rejected immediately with `LimitExceeded` (HTTP 503) rather than queued. The
             predicted wait is `queued work no heavier than the request x mean service time per unit / slots`, with
             EVM-executing requests weighted by their `params` size (one unit per 128 KiB, at most 8) and lighter
-            requests served first: at ~30 CPU-ms per request and 16 slots the
-            default absorbs a burst of roughly 2,500 requests while still answering callers well before the request
-            `Timeout`.
+            requests served first: at ~30 CPU-ms per request and 16 slots the default absorbs a burst of roughly
+            2,500 requests while still answering callers well before the request `Timeout`.
             """,
         DefaultValue = "5000")]
     int MaxQueueWaitMs { get; set; }

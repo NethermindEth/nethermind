@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionPredictedWaitRejections { get; } = new();
 
         [CounterMetric]
-        [Description("Number of gated JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without an execution slot freeing up, per cost class.")]
+        [Description("Number of gated JSON RPC requests shed after waiting JsonRpc.MaxQueueWaitMs without being granted an execution slot (lighter requests are served first), per cost class.")]
         [KeyIsLabel("cost_class")]
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionWaitTimeoutRejections { get; } = new();
 
