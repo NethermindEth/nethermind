@@ -9,19 +9,8 @@ namespace Nethermind.Serialization.Rlp;
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
-    /// <summary>
-    /// Per-transaction gas floor used to bound the transaction count in a block body before allocation.
-    /// </summary>
-    /// <remarks>
-    /// This is a defensive allocation heuristic, not consensus validation. It sits well below
-    /// EIP-2780's 12,000-gas base cost (<see cref="GasCostOf.TransactionEip2780"/>) and matches
-    /// Geth's Amsterdam receipt-count safety floor:
-    /// https://github.com/ethereum/go-ethereum/blob/e9e35a42f8213235da1fde4f9ac8f3e9ff666b87/eth/protocols/eth/peer.go#L583-L592
-    /// </remarks>
-    private const ulong TransactionGasSafetyFloor = 4_500;
-
     private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
-        checked((int)(RlpLimit.MaxBlockGas / TransactionGasSafetyFloor + 1)),
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1)),
         nameof(BlockBody.Transactions)
     );
 
