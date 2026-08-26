@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -15,9 +16,21 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// </summary>
 internal static class InstructionStreamCache
 {
+    private const int RefreshInterval = 256;
     private static readonly AssociativeCache<ValueHash256, InstructionStream> _cache = new(MemoryAllowance.InstructionStreamCacheSize);
 
-    public static bool TryGet(in ValueHash256 codeHash, out InstructionStream? stream) => _cache.TryGet(in codeHash, out stream);
+    [ThreadStatic] private static int _lookupsSinceRefresh;
+
+    public static bool TryGet(in ValueHash256 codeHash, out InstructionStream? stream)
+    {
+        if (++_lookupsSinceRefresh >= RefreshInterval)
+        {
+            _lookupsSinceRefresh = 0;
+            return _cache.TryGet(in codeHash, out stream);
+        }
+
+        return _cache.TryGetNoRefresh(in codeHash, out stream);
+    }
 
     public static void Set(in ValueHash256 codeHash, InstructionStream stream) => _cache.Set(in codeHash, stream);
 
