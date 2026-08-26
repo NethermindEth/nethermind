@@ -119,9 +119,14 @@ public partial class BlockTree
             }
             else if (canonicalBlock is { WasProcessed: false } && persistedNumber is null)
             {
-                // The persisted ceiling is unavailable and the surviving suggested candidate was not processed;
-                // load-time clamps are sufficient.
-                if (Logger.IsInfo) Logger.Info("Skipping head rollback for 'header < body' recovery - persisted ceiling is unavailable and the surviving suggested candidate was not processed.");
+                if (HasBlock(blockNumber, canonicalBlock.BlockHash))
+                {
+                    SetHeadBlock(canonicalBlock.BlockHash);
+                }
+                else if (Logger.IsInfo)
+                {
+                    Logger.Info("Skipping head rollback for 'header < body' recovery - persisted ceiling is unavailable and the surviving suggested candidate was not processed.");
+                }
             }
             else
             {
@@ -234,7 +239,7 @@ public partial class BlockTree
         BlockHeader? found = null;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (blockInfo.IsBeaconHeader != findBeacon)
+            if (findBeacon ? !blockInfo.IsBeaconHeader : blockInfo.IsBeaconInfo)
             {
                 continue;
             }

@@ -3246,6 +3246,33 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_non_beacon_header_when_level_also_has_beacon_body_entry()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+        Block regularBlock = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block beaconBody = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.Insert(regularBlock, BlockTreeInsertBlockOptions.SaveHeader);
+        tree.Insert(beaconBody, BlockTreeInsertBlockOptions.SaveHeader,
+            BlockTreeInsertHeaderOptions.BeaconBodyMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(regularBlock.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(regularBlock.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_body_from_canonical_entry_when_header_only_beacon_body_is_stored()
     {
         CustomSpecProvider specProvider = PostMergeSpecProvider();
@@ -3346,7 +3373,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Loads_with_bodies_ahead_of_lost_headers_when_persisted_ceiling_is_unavailable_and_candidate_is_unprocessed()
+    public void Loads_with_bodies_ahead_of_lost_headers_recovers_persisted_candidate_without_persisted_ceiling()
     {
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
@@ -3372,10 +3399,10 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reloaded.Head?.Number, Is.EqualTo(0UL), "head");
+            Assert.That(reloaded.Head?.Hash, Is.EqualTo(chain[3].Hash), "head");
             Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(4UL), "suggested header");
             Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(4UL), "suggested body clamped to header");
-            Assert.That(logger.LogList, Has.Some.Contains("persisted ceiling is unavailable"), "recovery info");
+            Assert.That(logger.LogList, Has.None.Contains("persisted ceiling is unavailable"), "recovery info");
             Assert.That(logger.LogList, Has.None.Contains("Failed attempt to fix 'header < body' corruption"), "recovery error");
         }
     }
