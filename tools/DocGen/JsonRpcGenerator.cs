@@ -61,7 +61,7 @@ internal static class JsonRpcGenerator
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
-        [typeof(PublicKey)] = "_string_ (node id)",
+        [typeof(PublicKey)] = "_string_ (node id, no \"0x\" prefix)",
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
@@ -72,7 +72,7 @@ internal static class JsonRpcGenerator
         [typeof(ValueHash256)] = "_string_ (hash)",
     };
 
-    // Overrides the type mapping above for members that set their own converter
+    // Labels for members whose own converter writes something other than their type's label
     private static readonly Dictionary<Type, string> _knownConverterTypeNames = new()
     {
         [typeof(BlockNonceConverter)] = "_string_ (8-byte hex data)",
@@ -145,6 +145,14 @@ internal static class JsonRpcGenerator
         if (_guessedTypeNames.Count != 0)
             AnsiConsole.MarkupLine(
                 $"[yellow]Documented from CLR shape, no serializer contract:[/] {string.Join(", ", _guessedTypeNames)}");
+
+        // The probe names number and boolean output before the label is consulted, so such an entry never applies
+        foreach ((Type converterType, string label) in _knownConverterTypeNames)
+        {
+            if (TryProbeScalarKind(converterType, out JsonTokenType token) && token is not JsonTokenType.String)
+                AnsiConsole.MarkupLine(
+                    $"[yellow]Unreachable converter label, the probe names it {token}:[/] {converterType.Name} = {label}");
+        }
     }
 
     private static void WriteMarkdown(string path, string ns, IEnumerable<MethodInfo> methods, int sidebarIndex)
