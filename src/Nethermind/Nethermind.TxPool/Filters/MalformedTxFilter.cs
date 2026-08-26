@@ -57,7 +57,11 @@ namespace Nethermind.TxPool.Filters
 
             ValidationResult Validate(Transaction transaction, IReleaseSpec releaseSpec)
             {
-                ValidationResult validationResult = txValidator.IsWellFormed(transaction, releaseSpec);
+                ValidationResult validationResult = txValidator.IsWellFormed(
+                    transaction,
+                    releaseSpec,
+                    blockGasLimit: 0,
+                    TxValidationOptions.SkipBlobProofs);
                 return validationResult
                     ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
                     : validationResult;

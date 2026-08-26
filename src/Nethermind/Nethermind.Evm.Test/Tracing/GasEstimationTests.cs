@@ -355,7 +355,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -380,7 +380,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,

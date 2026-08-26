@@ -89,6 +89,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             "invalid tx",
                             $"Disconnecting {_protocolHandler} due to invalid tx received");
                     }
+                    else if (accepted == AcceptTxResult.InvalidBlobProofs)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to invalid blob proofs");
+                        _isLegacyDowngraded = true;
+                    }
                     else
                     {
                         _notAcceptedSinceLastCheck++;

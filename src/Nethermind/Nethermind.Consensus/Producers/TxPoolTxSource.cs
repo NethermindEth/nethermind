@@ -60,6 +60,7 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
             // A revalidated pool has already rejected everything whose validity changes with the target spec.
             Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
                 ? filter
@@ -67,7 +68,7 @@ namespace Nethermind.Consensus.Producers
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, pendingTxFilter, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, maxBlobCount);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, BlobFilter, maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -127,6 +128,13 @@ namespace Nethermind.Consensus.Producers
                 return TryResolveBlob(blobTx, spec, out fullBlobTx);
             }
         }
+
+        private static bool HasFullBlobData(Transaction tx) => tx switch
+        {
+            LightTransaction lightTx => lightTx.BlobCellMask.IsFull,
+            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.HasFullBlobs(),
+            _ => false
+        };
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
         {
@@ -417,6 +425,12 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
 
+            if (!wrapper.HasFullBlobs())
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
+                return false;
+            }
+
             if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
@@ -453,20 +467,21 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
-            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs);
+            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit).Select(static tx => tx.tx);
+            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,
-            ulong resourceLimit)
+            ulong resourceLimit,
+            bool enforceSequentialNonces)
         {
             using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
@@ -490,7 +505,10 @@ namespace Nethermind.Consensus.Producers
                     if (!filter(candidateTx))
                         continue;
 
-                    if (enumerator.MoveNext())
+                    if (enumerator.MoveNext()
+                        && (!enforceSequentialNonces
+                            || candidateTx.Nonce != ulong.MaxValue
+                            && enumerator.Current!.Nonce == candidateTx.Nonce + 1))
                     {
                         transactions.Add(enumerator.Current!, (enumerator, totalResource));
                     }
