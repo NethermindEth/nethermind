@@ -15,9 +15,18 @@ public class AutoRpcModuleFactory<T>(ILifetimeScope rootScope) : IRpcModuleFacto
 {
     public T Create()
     {
-        ILifetimeScope childScope = rootScope.BeginLifetimeScope();
-        rootScope.Disposer.AddInstanceForAsyncDisposal(childScope);
-
-        return childScope.Resolve<T>();
+        ILifetimeScope? childScope = rootScope.BeginLifetimeScope();
+        try
+        {
+            T module = childScope.Resolve<T>();
+            rootScope.Disposer.AddInstanceForAsyncDisposal(childScope);
+            childScope = null;
+            return module;
+        }
+        catch
+        {
+            childScope?.Dispose();
+            throw;
+        }
     }
 }

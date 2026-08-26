@@ -79,6 +79,9 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore = new(exclusiveCapacity);
         private readonly Lock _sharedLock = new();
+        // Factories supplied by plugins historically observed serial Create calls. Keep that compatibility while
+        // retaining lazy creation: the lock is held only while a new module is constructed.
+        private readonly Lock _factoryLock = new();
         // Published under _sharedLock, read lock-free on the rental and return paths.
         private volatile Task<T>? _sharedAsTask;
         private int _createdExclusive;
@@ -92,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules
                 int witnessed = Interlocked.CompareExchange(ref _createdExclusive, created + 1, created);
                 if (witnessed == created)
                 {
-                    _pool.Enqueue(Factory.Create());
+                    _pool.Enqueue(CreateModule());
                     created++;
                 }
                 else
@@ -116,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             lock (_sharedLock)
             {
-                return _sharedAsTask ??= Task.FromResult(Factory.Create());
+                return _sharedAsTask ??= Task.FromResult(CreateModule());
             }
         }
 
@@ -139,7 +142,7 @@ namespace Nethermind.JsonRpc.Modules
             try
             {
                 Interlocked.Increment(ref _createdExclusive);
-                return Factory.Create();
+                return CreateModule();
             }
             catch
             {
@@ -164,5 +167,13 @@ namespace Nethermind.JsonRpc.Modules
         }
 
         public IRpcModuleFactory<T> Factory { get; } = factory;
+
+        private T CreateModule()
+        {
+            lock (_factoryLock)
+            {
+                return Factory.Create();
+            }
+        }
     }
 }

@@ -17,6 +17,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -53,7 +54,8 @@ public class JsonRpcServiceTests
         _context = new JsonRpcContext(RpcEndpoint.Http);
         _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
         EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
-        _admissionController = new RpcAdmissionController(_configurationProvider.GetConfig<IJsonRpcConfig>(), _logManager);
+        _timeProvider = new ManualTimeProvider();
+        _admissionController = new RpcAdmissionController(_configurationProvider.GetConfig<IJsonRpcConfig>(), _logManager, _timeProvider);
     }
 
     [TearDown]
@@ -70,6 +72,7 @@ public class JsonRpcServiceTests
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
     private RpcAdmissionController _admissionController = null!;
+    private ManualTimeProvider _timeProvider = null!;
 
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
@@ -228,7 +231,7 @@ public class JsonRpcServiceTests
     private IJsonRpcService CreateService<T>(T module) where T : IRpcModule =>
         CreateService(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
 
-    private void UseAdmissionController(JsonRpcConfig config) => _admissionController = new RpcAdmissionController(config, _logManager);
+    private void UseAdmissionController(JsonRpcConfig config) => _admissionController = new RpcAdmissionController(config, _logManager, _timeProvider);
 
     [TestCase(false, 2UL, TestName = "Number")]
     [TestCase(true, 513UL, TestName = "Size")]
@@ -633,10 +636,10 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public async Task Unhandled_exception_returns_InternalError()
+    public async Task Unhandled_operation_cancellation_without_request_cancellation_returns_InternalError()
     {
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
-        moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
+        moduleProvider.Resolve(Arg.Any<string>()).Throws(new OperationCanceledException("module stopped"));
 
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _admissionController);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
@@ -697,6 +700,7 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
         {
             inFlightDuringInvocation = _admissionController.GetInFlight(RpcMethodCostClass.EvmExecution);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(1));
             return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
         });
 
@@ -705,7 +709,7 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inFlightDuringInvocation, Is.EqualTo(1), "the permit must be held while the method runs");
-            Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.EvmExecution), Is.GreaterThan(0), "admission did not observe the call");
+            Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.EvmExecution), Is.EqualTo(1), "admission did not observe the call");
             Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0), "permit was not released");
         }
     }
@@ -729,8 +733,12 @@ public class JsonRpcServiceTests
         await WaitUntil(() => _admissionController.GetInFlight(RpcMethodCostClass.EvmExecution) == 1);
 
         long rejectionsBefore = Metrics.JsonRpcOverloadRejections;
+        Task<JsonRpcResponse> shedTask = service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context).AsTask();
+        await WaitUntil(() => _admissionController.GetQueued(RpcMethodCostClass.EvmExecution) == 1);
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(100));
         using JsonRpcErrorResponse shed = AssertJsonRpcError(
-            await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), _context),
+            await shedTask,
             ErrorCodes.LimitExceeded,
             "Too many requests");
         ulong? blockNumber = RpcTest.AssertSuccess<ulong?>(await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_blockNumber"), _context));
@@ -744,6 +752,40 @@ public class JsonRpcServiceTests
             Assert.That(blockNumber, Is.EqualTo(7UL), "cheap reads must not be gated");
             Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.Default), Is.EqualTo(0));
             Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_admission_wait_propagates_operation_canceled_to_the_caller()
+    {
+        UseAdmissionController(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = 100 });
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        IJsonRpcService service = CreateService(ethRpcModule);
+        using RpcAdmissionController.Lease held = await _admissionController.AdmitAsync(Resolve<IEthRpcModule>("eth_call"), 0);
+        using CancellationTokenSource cancellation = new();
+
+        Task<JsonRpcResponse> waiting = service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()),
+            _context,
+            cancellation.Token).AsTask();
+        await WaitUntil(() => _admissionController.GetQueued(RpcMethodCostClass.EvmExecution) == 1);
+
+        cancellation.Cancel();
+
+        try
+        {
+            await waiting;
+            Assert.Fail("A cancelled admission must not produce a response.");
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_admissionController.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
         }
     }
 
@@ -784,7 +826,7 @@ public class JsonRpcServiceTests
                 (writer, _, _) =>
                 {
                     Interlocked.Increment(ref executions);
-                    Thread.Sleep(holdMs);
+                    _timeProvider.Advance(TimeSpan.FromMilliseconds(holdMs));
                     writer.WriteStartObject();
                     writer.WriteEndObject();
                 },
@@ -811,7 +853,7 @@ public class JsonRpcServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_admissionController.GetInFlight(RpcMethodCostClass.Tracing), Is.EqualTo(0));
-            Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.Tracing), Is.GreaterThanOrEqualTo(holdMs * 0.9), "service time must cover the streamed re-execution");
+            Assert.That(_admissionController.GetServiceTimeMs(RpcMethodCostClass.Tracing), Is.EqualTo(holdMs), "service time must cover the streamed re-execution");
         }
     }
 
@@ -893,9 +935,14 @@ public class JsonRpcServiceTests
             : default;
         int bindingsBefore = BindingProbeConverter.Bindings;
 
-        using JsonRpcErrorResponse response = AssertJsonRpcError(
-            await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new object()), _context),
-            expectedCode);
+        Task<JsonRpcResponse> responseTask = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new object()), _context).AsTask();
+        if (saturated)
+        {
+            await WaitUntil(() => _admissionController.GetQueued(RpcMethodCostClass.EvmExecution) == 1);
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(100));
+        }
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(await responseTask, expectedCode);
 
         using (Assert.EnterMultipleScope())
         {
@@ -906,12 +953,12 @@ public class JsonRpcServiceTests
 
     private static async Task WaitUntil(Func<bool> condition)
     {
-        long deadline = Environment.TickCount64 + 10_000;
-        while (!condition())
+        for (int attempt = 0; attempt < 10_000 && !condition(); attempt++)
         {
-            Assert.That(Environment.TickCount64, Is.LessThan(deadline), "condition not reached in time");
-            await Task.Delay(5);
+            await Task.Yield();
         }
+
+        Assert.That(condition(), Is.True, "condition not reached in time");
     }
 
     [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]

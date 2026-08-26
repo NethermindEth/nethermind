@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
@@ -30,21 +31,36 @@ public class DebugModuleFactory(
 
     public IDebugRpcModule Create()
     {
-        IOverridableEnv env = envFactory.Create();
+        IOverridableEnv? env = null;
+        ILifetimeScope? tracerLifecycle = null;
+        ILifetimeScope? debugRpcModuleLifetime = null;
+        try
+        {
+            env = envFactory.Create();
 
-        ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureTracerContainer(builder)
-                .AddModule(env));
+            tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+                ConfigureTracerContainer(builder)
+                    .AddModule(env));
 
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
-        ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
+            // Pass only `IGethStyleTracer` into the debug rpc lifetime.
+            // This is to prevent leaking processor or world state accidentally.
+            // `GethStyleTracer` must be very careful to always dispose overridable env.
+            debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
 
-        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
-
-        return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
+            IDebugRpcModule module = debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
+            debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
+            tracerLifecycle = null;
+            rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
+            debugRpcModuleLifetime = null;
+            return module;
+        }
+        catch
+        {
+            debugRpcModuleLifetime?.Dispose();
+            tracerLifecycle?.Dispose();
+            (env as IDisposable)?.Dispose();
+            throw;
+        }
     }
 }

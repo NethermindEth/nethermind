@@ -19,24 +19,38 @@ public static class RpcConcurrencyLimits
     /// </remarks>
     internal const int MaxDerivedConcurrency = 16;
 
+    /// <summary>Gets the effective concurrency limit for EVM-executing JSON-RPC methods.</summary>
+    /// <returns>The configured limit, or the effective default when it is not configured.</returns>
     public static int GetEvmExecutionConcurrency(this IJsonRpcConfig config) =>
         Math.Max(1, config.EvmExecutionConcurrency ?? config.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
 
+    /// <summary>Gets the effective concurrency limit for tracing JSON-RPC methods.</summary>
+    /// <returns>The configured limit, or the processor-count-derived default clamped to the safe range.</returns>
     public static int GetTracingConcurrency(this IJsonRpcConfig config) =>
         Math.Max(1, config.TracingConcurrency ?? ClampDerived(Environment.ProcessorCount - 2));
 
+    /// <summary>Gets the effective concurrency limit for proof-generating JSON-RPC methods.</summary>
+    /// <returns>The configured limit, or the processor-count-derived default clamped to the safe range.</returns>
     public static int GetProofConcurrency(this IJsonRpcConfig config) =>
         Math.Max(1, config.ProofConcurrency ?? ClampDerived(Environment.ProcessorCount / 2));
 
+    /// <summary>Gets the effective number of concurrently retained Trace RPC module instances.</summary>
+    /// <returns>The configured number, or the effective tracing concurrency limit.</returns>
     public static int GetTraceModuleConcurrentInstances(this IJsonRpcConfig config) =>
         Math.Max(1, config.TraceModuleConcurrentInstances ?? config.GetTracingConcurrency());
 
+    /// <summary>Gets the effective number of concurrently retained Proof RPC module instances.</summary>
+    /// <returns>The configured number, or the effective proof concurrency limit.</returns>
     public static int GetProofModuleConcurrentInstances(this IJsonRpcConfig config) =>
         Math.Max(1, config.ProofModuleConcurrentInstances ?? config.GetProofConcurrency());
 
+    /// <summary>Gets the effective tracing admission queue-wait budget in milliseconds.</summary>
+    /// <returns>The configured budget, or the request-timeout-derived default.</returns>
     public static int GetTracingMaxQueueWaitMs(this IJsonRpcConfig config) =>
         Math.Max(0, config.TracingMaxQueueWaitMs ?? GetRequestTimeoutWaitBudget(config));
 
+    /// <summary>Gets the effective proof admission queue-wait budget in milliseconds.</summary>
+    /// <returns>The configured budget, or the request-timeout-derived default.</returns>
     public static int GetProofMaxQueueWaitMs(this IJsonRpcConfig config) =>
         Math.Max(0, config.ProofMaxQueueWaitMs ?? GetRequestTimeoutWaitBudget(config));
 

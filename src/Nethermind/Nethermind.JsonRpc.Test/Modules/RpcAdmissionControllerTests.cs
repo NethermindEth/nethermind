@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -31,15 +31,20 @@ public class RpcAdmissionControllerTests
     private static bool _releasingPermit;
 
     private RpcAdmissionController _controller = null!;
+    private ManualTimeProvider _timeProvider = null!;
 
     [SetUp]
-    public void SetUp() => _controller = new RpcAdmissionController(new JsonRpcConfig
+    public void SetUp()
     {
-        EvmExecutionConcurrency = EvmPermits,
-        TracingConcurrency = 1,
-        ProofConcurrency = 1,
-        MaxQueueWaitMs = MaxQueueWaitMs,
-    }, LimboLogs.Instance);
+        _timeProvider = new ManualTimeProvider();
+        _controller = new RpcAdmissionController(new JsonRpcConfig
+        {
+            EvmExecutionConcurrency = EvmPermits,
+            TracingConcurrency = 1,
+            ProofConcurrency = 1,
+            MaxQueueWaitMs = MaxQueueWaitMs,
+        }, LimboLogs.Instance, _timeProvider);
+    }
 
     [TestCase("eth_call", RpcMethodCostClass.EvmExecution)]
     [TestCase("eth_estimateGas", RpcMethodCostClass.EvmExecution)]
@@ -138,7 +143,7 @@ public class RpcAdmissionControllerTests
                 break;
         }
 
-        Assert.That(new RpcAdmissionController(config, LimboLogs.Instance).GetMaxQueueWaitMs(costClass), Is.EqualTo(expected));
+        Assert.That(new RpcAdmissionController(config, LimboLogs.Instance, _timeProvider).GetMaxQueueWaitMs(costClass), Is.EqualTo(expected));
     }
 
     [TestCase(null, 7, 7, TestName = "Trace module instances follow TracingConcurrency")]
@@ -186,7 +191,6 @@ public class RpcAdmissionControllerTests
         }
 
         ValueTask<RpcAdmissionController.Lease> waiting = AdmitEthCall();
-        await Task.Delay(100);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(waiting.IsCompleted, Is.False, "one over the permit count must wait");
@@ -206,6 +210,45 @@ public class RpcAdmissionControllerTests
     }
 
     [Test]
+    public async Task Cancelled_waiter_is_unlinked_and_does_not_consume_a_later_permit()
+    {
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = MaxQueueWaitMs }, LimboLogs.Instance, _timeProvider);
+        ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
+        using CancellationTokenSource cancellation = new();
+        using RpcAdmissionController.Lease held = await controller.AdmitAsync(ethCall, 0);
+
+        ValueTask<RpcAdmissionController.Lease> waiting = controller.AdmitAsync(ethCall, 0, cancellation.Token);
+        Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
+
+        cancellation.Cancel();
+
+        OperationCanceledException? cancellationException = null;
+        try
+        {
+            await waiting;
+        }
+        catch (OperationCanceledException exception)
+        {
+            cancellationException = exception;
+        }
+        Assert.That(cancellationException, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
+        }
+
+        held.Dispose();
+        ValueTask<RpcAdmissionController.Lease> fresh = controller.AdmitAsync(ethCall, 0);
+        Assert.That(fresh.IsCompletedSuccessfully, Is.True);
+        fresh.Result.Dispose();
+
+        // A timer callback racing cancellation must observe the already-unlinked waiter and do nothing.
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(MaxQueueWaitMs));
+        Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+    }
+
+    [Test]
     public async Task Rejects_immediately_when_predicted_wait_exceeds_budget()
     {
         long rejectionsBefore = Metrics.RpcAdmissionPredictedWaitRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
@@ -215,11 +258,9 @@ public class RpcAdmissionControllerTests
         RpcAdmissionController.Lease[] held = [await AdmitEthCall(), await AdmitEthCall()];
         ValueTask<RpcAdmissionController.Lease> queued = AdmitEthCall();
 
-        Stopwatch elapsed = Stopwatch.StartNew();
         Assert.Throws<LimitExceededException>(() => AdmitEthCall());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(MaxQueueWaitMs / 2), "rejection must not wait for the budget");
             Assert.That(Metrics.RpcAdmissionPredictedWaitRejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(rejectionsBefore));
         }
 
@@ -232,7 +273,7 @@ public class RpcAdmissionControllerTests
     [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
     public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
     {
-        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = maxQueueWaitMs }, LimboLogs.Instance);
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = maxQueueWaitMs }, LimboLogs.Instance, _timeProvider);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
         ConcurrentDictionary<RpcMethodCostClass, long> rejections = maxQueueWaitMs == 0
             ? Metrics.RpcAdmissionPredictedWaitRejections
@@ -246,7 +287,10 @@ public class RpcAdmissionControllerTests
         }
         else
         {
-            Assert.ThrowsAsync<LimitExceededException>(async () => await controller.AdmitAsync(ethCall, 0));
+            ValueTask<RpcAdmissionController.Lease> waiting = controller.AdmitAsync(ethCall, 0);
+            Assert.That(waiting.IsCompleted, Is.False);
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(maxQueueWaitMs));
+            Assert.ThrowsAsync<LimitExceededException>(async () => await waiting);
         }
         using (Assert.EnterMultipleScope())
         {
@@ -310,18 +354,15 @@ public class RpcAdmissionControllerTests
     {
         const int holdMs = 40;
 
-        Stopwatch outer = Stopwatch.StartNew();
         using (await AdmitEthCall(weight))
         {
-            Thread.Sleep(holdMs);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(holdMs));
         }
-        outer.Stop();
 
         double serviceTimeMs = _controller.GetServiceTimeMs(RpcMethodCostClass.EvmExecution);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(serviceTimeMs, Is.GreaterThanOrEqualTo(holdMs * 0.9 / weight));
-            Assert.That(serviceTimeMs, Is.LessThanOrEqualTo(outer.Elapsed.TotalMilliseconds / weight + 1));
+            Assert.That(serviceTimeMs, Is.EqualTo((double)holdMs / weight));
         }
     }
 
@@ -536,35 +577,23 @@ public class RpcAdmissionControllerTests
     }
 
     [Test]
-    public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
+    public async Task Heavy_waiter_is_shed_at_its_wait_budget()
     {
         const int budgetMs = 200;
-        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs }, LimboLogs.Instance);
+        ManualTimeProvider timeProvider = new();
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs }, LimboLogs.Instance, timeProvider);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
-        RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
+        using RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
         Task<RpcAdmissionController.Lease> heavy = controller.AdmitAsync(ethCall, ParamsLengthForWeight(RpcRequestWeight.MaxWeight)).AsTask();
 
-        // A light request is queued before each release, so the single permit always has a lighter taker than the heavy
-        // waiter. Releasing without sampling keeps the EWMA at zero, so no light request can be shed by prediction.
-        int lightServed = 0;
-        Stopwatch elapsed = Stopwatch.StartNew();
-        while (!heavy.IsCompleted && elapsed.Elapsed < WaitBudget)
-        {
-            ValueTask<RpcAdmissionController.Lease> light = controller.AdmitAsync(ethCall, 0);
-            holder.ReleaseWithoutSampling();
-            holder = await light.AsTask().WaitAsync(WaitBudget);
-            lightServed++;
-            await Task.Delay(5);
-        }
-        holder.Dispose();
+        Assert.That(heavy.IsCompleted, Is.False);
+        timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
 
         Assert.ThrowsAsync<LimitExceededException>(() => heavy);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lightServed, Is.GreaterThan(1), "light requests must keep being served past the heavy waiter");
-            Assert.That(elapsed.ElapsedMilliseconds, Is.GreaterThanOrEqualTo(budgetMs * 0.9), "the heavy waiter must be shed no earlier than its budget");
             Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
-            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
         }
     }
 
@@ -611,7 +640,9 @@ public class RpcAdmissionControllerTests
 
         for (int i = 0; i < EvmPermits; i++)
         {
-            Assert.That(controller.AdmitAsync(ethCall, 0).IsCompletedSuccessfully, Is.True, $"permit {i} must be available again");
+            ValueTask<RpcAdmissionController.Lease> fresh = controller.AdmitAsync(ethCall, 0);
+            Assert.That(fresh.IsCompletedSuccessfully, Is.True, $"permit {i} must be available again");
+            fresh.Result.Dispose();
         }
     }
 

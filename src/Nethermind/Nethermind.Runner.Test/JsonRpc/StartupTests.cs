@@ -56,7 +56,7 @@ public class StartupTests
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
-        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, new RpcAdmissionController(rpcConfig, LimboLogs.Instance));
+        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);

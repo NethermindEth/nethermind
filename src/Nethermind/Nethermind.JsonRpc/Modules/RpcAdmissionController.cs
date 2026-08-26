@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -42,13 +41,14 @@ public sealed class RpcAdmissionController
     private readonly Gate?[] _gates = new Gate?[Enum.GetValues<RpcMethodCostClass>().Length];
 
     /// <summary>Creates one gate per gated cost class, sized by the concurrency limits and wait budgets resolved from <paramref name="config"/>.</summary>
-    public RpcAdmissionController(IJsonRpcConfig config, ILogManager logManager)
+    public RpcAdmissionController(IJsonRpcConfig config, ILogManager logManager, TimeProvider? timeProvider = null)
     {
         ILogger logger = logManager.GetClassLogger<RpcAdmissionController>();
+        TimeProvider provider = timeProvider ?? TimeProvider.System;
         int maxQueued = Math.Max(0, config.RequestQueueLimit);
-        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), Math.Max(0, config.MaxQueueWaitMs), maxQueued, logger);
-        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), config.GetTracingMaxQueueWaitMs(), maxQueued, logger);
-        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), config.GetProofMaxQueueWaitMs(), maxQueued, logger);
+        _gates[(int)RpcMethodCostClass.EvmExecution] = new Gate(RpcMethodCostClass.EvmExecution, config.GetEvmExecutionConcurrency(), Math.Max(0, config.MaxQueueWaitMs), maxQueued, logger, provider);
+        _gates[(int)RpcMethodCostClass.Tracing] = new Gate(RpcMethodCostClass.Tracing, config.GetTracingConcurrency(), config.GetTracingMaxQueueWaitMs(), maxQueued, logger, provider);
+        _gates[(int)RpcMethodCostClass.Proof] = new Gate(RpcMethodCostClass.Proof, config.GetProofConcurrency(), config.GetProofMaxQueueWaitMs(), maxQueued, logger, provider);
     }
 
     /// <summary>
@@ -60,12 +60,12 @@ public sealed class RpcAdmissionController
     /// <exception cref="LimitExceededException">
     /// The predicted wait exceeds the budget, or no permit became available within it.
     /// </exception>
-    internal ValueTask<Lease> AdmitAsync(ResolvedMethodInfo method, int paramsUtf8Length)
+    internal ValueTask<Lease> AdmitAsync(ResolvedMethodInfo method, int paramsUtf8Length, CancellationToken cancellationToken = default)
     {
         Gate? gate = _gates[(int)method.CostClass];
         return gate is null
             ? ValueTask.FromResult(default(Lease))
-            : gate.AdmitAsync(RpcRequestWeight.Estimate(method, paramsUtf8Length));
+            : gate.AdmitAsync(RpcRequestWeight.Estimate(method, paramsUtf8Length), cancellationToken);
     }
 
     internal int GetPermits(RpcMethodCostClass costClass) => _gates[(int)costClass]?.Permits ?? 0;
@@ -96,7 +96,7 @@ public sealed class RpcAdmissionController
         public void ReleaseWithoutSampling() => gate?.Release();
     }
 
-    internal sealed class Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs, int maxQueued, ILogger logger)
+    internal sealed class Gate(RpcMethodCostClass costClass, int permits, int maxQueueWaitMs, int maxQueued, ILogger logger, TimeProvider timeProvider)
     {
         // ~10 requests of memory: fast enough to follow a shift in traffic mix, slow enough to ignore one outlier.
         private const double EwmaAlpha = 0.1;
@@ -106,6 +106,7 @@ public sealed class RpcAdmissionController
         // Zero lifts the cap.
         private readonly int _maxQueued = maxQueued;
         private readonly ILogger _logger = logger;
+        private readonly TimeProvider _timeProvider = timeProvider;
         // One lock guards the permit count, the wait queue and the EWMA. Admission is one short critical section per
         // gated call against executions lasting tens of milliseconds, so it is effectively uncontended, and serialising
         // grant and timeout through it is what keeps the two from ever settling the same waiter. The gauges are
@@ -127,31 +128,34 @@ public sealed class RpcAdmissionController
         public int InFlight => Volatile.Read(ref _inFlight);
         public double ServiceTimeMs => Volatile.Read(ref _serviceTimeMs);
 
-        public ValueTask<Lease> AdmitAsync(int weight)
+        public ValueTask<Lease> AdmitAsync(int weight, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Waiter? waiter = null;
             bool queueFull;
             double predictedWaitMs;
             lock (_lock)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 // A freed permit is handed straight to a waiter, so a free permit means nobody is waiting to be overtaken.
                 if (_inFlight < Permits)
                 {
                     Metrics.RpcAdmissionInFlight[_costClass] = ++_inFlight;
-                    return ValueTask.FromResult(new Lease(this, weight, Stopwatch.GetTimestamp()));
+                    return ValueTask.FromResult(new Lease(this, weight, _timeProvider.GetTimestamp()));
                 }
 
                 queueFull = _maxQueued > 0 && _queued >= _maxQueued;
                 predictedWaitMs = QueuedWeightNoHeavierThan(weight) * _serviceTimeMs / Permits;
                 if (!queueFull && _maxQueueWaitMs > 0 && predictedWaitMs <= _maxQueueWaitMs)
                 {
-                    waiter = new Waiter(this, weight);
+                    waiter = new Waiter(this, weight, cancellationToken);
                     // Armed inside the lock, before the waiter is linked: a grant always finds the timer to dispose, a
                     // firing that races the enqueue blocks until the waiter is fully linked, and a failed arm leaves the
                     // gate untouched.
-                    waiter.Timer = new Timer(static state => ((Waiter)state!).OnTimeout(), waiter, _maxQueueWaitMs, Timeout.Infinite);
+                    waiter.Timer = _timeProvider.CreateTimer(static state => ((Waiter)state!).OnTimeout(), waiter, TimeSpan.FromMilliseconds(_maxQueueWaitMs), Timeout.InfiniteTimeSpan);
                     Enqueue(waiter);
                     Metrics.RpcAdmissionQueued[_costClass] = ++_queued;
+                    waiter.CancellationRegistration = cancellationToken.UnsafeRegister(static state => ((Waiter)state!).OnCancellation(), waiter);
                 }
             }
 
@@ -172,11 +176,11 @@ public sealed class RpcAdmissionController
         private async Task<Lease> AwaitGrantAsync(Waiter waiter)
         {
             await waiter.Task;
-            return new Lease(this, waiter.Weight, Stopwatch.GetTimestamp());
+            return new Lease(this, waiter.Weight, _timeProvider.GetTimestamp());
         }
 
         public void Release(int weight, long startTimestamp) =>
-            Release(sampled: true, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds / weight);
+            Release(sampled: true, _timeProvider.GetElapsedTime(startTimestamp).TotalMilliseconds / weight);
 
         public void Release() => Release(sampled: false, 0);
 
@@ -223,7 +227,7 @@ public sealed class RpcAdmissionController
             }
             else if (next is not null)
             {
-                next.Timer!.Dispose();
+                next.DisposeResources();
                 // Completes on the pool: the releasing request's thread never runs the next request's continuation.
                 next.TrySetResult();
             }
@@ -257,9 +261,26 @@ public sealed class RpcAdmissionController
             }
 
             Metrics.RpcAdmissionWaitTimeoutRejections.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
-            waiter.Timer!.Dispose();
+            waiter.DisposeResources();
             waiter.TrySetException(new LimitExceededException(
                 $"Unable to start new {_costClass} request. Not granted an execution slot within {_maxQueueWaitMs} ms."));
+        }
+
+        private void OnCancellation(Waiter waiter)
+        {
+            lock (_lock)
+            {
+                if (!waiter.IsQueued)
+                {
+                    return;
+                }
+
+                Unlink(waiter);
+                Metrics.RpcAdmissionQueued[_costClass] = --_queued;
+            }
+
+            waiter.DisposeResources();
+            waiter.TrySetCanceled(waiter.CancellationToken);
         }
 
         private int QueuedWeightNoHeavierThan(int weight)
@@ -343,18 +364,66 @@ public sealed class RpcAdmissionController
         }
 
         /// <summary>
-        /// A queued admission: a node in its weight's FIFO whose task is settled exactly once, by a grant or by its
-        /// timeout, whichever unlinks it first under the gate lock.
+        /// A queued admission: a node in its weight's FIFO whose task is settled exactly once, by a grant, timeout or
+        /// cancellation, whichever unlinks it first under the gate lock.
         /// </summary>
-        private sealed class Waiter(Gate gate, int weight) : TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+        private sealed class Waiter(Gate gate, int weight, CancellationToken cancellationToken) : TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
         {
             public int Weight { get; } = weight;
+            public CancellationToken CancellationToken { get; } = cancellationToken;
             public Waiter? Previous;
             public Waiter? Next;
-            public Timer? Timer;
+            public ITimer? Timer;
             public bool IsQueued;
 
             public void OnTimeout() => gate.OnTimeout(this);
+            public void OnCancellation() => gate.OnCancellation(this);
+
+            public void DisposeResources()
+            {
+                if (Interlocked.Exchange(ref _resourcesDisposed, 1) == 0)
+                {
+                    try
+                    {
+                        Timer?.Dispose();
+                    }
+                    finally
+                    {
+                        DisposeCancellationRegistration();
+                    }
+                }
+            }
+
+            private int _resourcesDisposed;
+            private int _registrationSet;
+            private int _registrationDisposed;
+
+            public CancellationTokenRegistration CancellationRegistration
+            {
+                get => _registration;
+                set
+                {
+                    _registration = value;
+                    Volatile.Write(ref _registrationSet, 1);
+                    if (Volatile.Read(ref _resourcesDisposed) != 0)
+                    {
+                        DisposeCancellationRegistration(value);
+                    }
+                }
+            }
+
+            private CancellationTokenRegistration _registration;
+
+            private void DisposeCancellationRegistration() =>
+                DisposeCancellationRegistration(_registration);
+
+            private void DisposeCancellationRegistration(CancellationTokenRegistration registration)
+            {
+                if (Volatile.Read(ref _registrationSet) != 0 && Interlocked.Exchange(ref _registrationDisposed, 1) == 0)
+                {
+                    registration.Dispose();
+                }
+            }
         }
     }
 }
