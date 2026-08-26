@@ -14,6 +14,7 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc;
 
@@ -194,9 +195,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             {
                 Hash256 blockHash = ExtractBlockHashFromSigningTxData(tx.Data);
                 tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
-                if (!hashToSigningAddress.ContainsKey(blockHash))
-                    hashToSigningAddress[blockHash] = [];
-                hashToSigningAddress[blockHash].Add(tx.SenderAddress);
+                ref HashSet<Address>? signingAddresses = ref CollectionsMarshal.GetValueRefOrAddDefault(hashToSigningAddress, blockHash, out _);
+                (signingAddresses ??= []).Add(tx.SenderAddress);
             }
 
             if (blockIdx == 0) break;
