@@ -69,6 +69,107 @@ public class InstructionStreamTests
         }
     }
 
+    [TestCase(Instruction.POP, FusedOpcode.PopPop, 2UL, GasCostOf.Base, false)]
+    [TestCase(Instruction.POP, FusedOpcode.PopPop, 2UL, GasCostOf.Base, true)]
+    [TestCase(Instruction.SWAP1, FusedOpcode.SwapPop, 2UL, GasCostOf.VeryLow, false)]
+    [TestCase(Instruction.SWAP1, FusedOpcode.SwapPop, 2UL, GasCostOf.VeryLow, true)]
+    [TestCase(Instruction.SWAP8, FusedOpcode.SwapPop, 9UL, GasCostOf.VeryLow, false)]
+    [TestCase(Instruction.SWAP8, FusedOpcode.SwapPop, 9UL, GasCostOf.VeryLow, true)]
+    public void TryBuild_FixedGasStackPair_PreservesShapeAndGas(
+        Instruction first,
+        byte expectedOpcode,
+        ulong expectedOperand,
+        ulong firstCost,
+        bool hasPrefix)
+    {
+        byte[] code = hasPrefix
+            ? [(byte)Instruction.PUSH0, (byte)first, (byte)Instruction.POP, (byte)Instruction.STOP]
+            : [(byte)first, (byte)Instruction.POP, (byte)Instruction.STOP];
+        int pairPc = hasPrefix ? 1 : 0;
+        int pairEntry = hasPrefix ? 1 : 0;
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(firstCost + GasCostOf.Base + (hasPrefix ? GasCostOf.Base : 0)));
+            Assert.That(stream.Ops[pairEntry].Opcode, Is.EqualTo(expectedOpcode));
+            Assert.That(stream.Ops[pairEntry].Operand, Is.EqualTo(expectedOperand));
+            Assert.That(stream.Ops[pairEntry].Kind, Is.EqualTo(hasPrefix ? StreamOpKind.FusedInBlock : StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[pairEntry].Pc, Is.EqualTo(pairPc));
+            Assert.That(stream.Ops[pairEntry].Advance, Is.EqualTo(2));
+            Assert.That(stream.PcToEntry[pairPc], Is.EqualTo(pairEntry));
+            Assert.That(stream.PcToEntry[pairPc + 1], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[pairPc + 2], Is.EqualTo(pairEntry + 1));
+            Assert.That(stream.Ops[pairEntry + 1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+        }
+    }
+
+    [Test]
+    public void TryBuild_PopRun_CoalescesConsecutivePops()
+    {
+        byte[] code = [(byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.PopPop));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(3UL));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(3));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.Base));
+            Assert.That(stream.PcToEntry[0], Is.EqualTo(0));
+            Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[3], Is.EqualTo(1));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+        }
+    }
+
+    [TestCase(255, 2, 0)]
+    [TestCase(256, 3, 1)]
+    [TestCase(257, 3, 2)]
+    public void TryBuild_PopRun_ChunksAtByteAdvanceBoundary(
+        int popCount,
+        int expectedEntryCount,
+        int expectedTailCount)
+    {
+        byte[] code = new byte[popCount + 1];
+        code.AsSpan(0, popCount).Fill((byte)Instruction.POP);
+        code[^1] = (byte)Instruction.STOP;
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops, Has.Length.EqualTo(expectedEntryCount));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.PopPop));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(255UL));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(byte.MaxValue));
+            Assert.That(stream.BlockGas[0], Is.EqualTo((ulong)popCount * GasCostOf.Base));
+            Assert.That(stream.PcToEntry[0], Is.EqualTo(0));
+            for (int pc = 1; pc < byte.MaxValue; pc++)
+                Assert.That(stream.PcToEntry[pc], Is.EqualTo(InstructionStream.InvalidEntry));
+
+            if (expectedTailCount == 0)
+            {
+                Assert.That(stream.PcToEntry[popCount], Is.EqualTo(1));
+            }
+            else
+            {
+                Assert.That(stream.PcToEntry[255], Is.EqualTo(1));
+                Assert.That(stream.Ops[1].Opcode, Is.EqualTo(expectedTailCount == 1 ? (byte)Instruction.POP : FusedOpcode.PopPop));
+                Assert.That(stream.Ops[1].Operand, Is.EqualTo((ulong)(expectedTailCount == 1 ? 0 : expectedTailCount)));
+                Assert.That(stream.Ops[1].Advance, Is.EqualTo(expectedTailCount == 1 ? 1 : expectedTailCount));
+                if (expectedTailCount > 1)
+                    Assert.That(stream.PcToEntry[256], Is.EqualTo(InstructionStream.InvalidEntry));
+                Assert.That(stream.PcToEntry[popCount], Is.EqualTo(2));
+            }
+
+            Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+        }
+    }
+
     [Test]
     public void TryBuild_MaxSizeTypicalContract_StaysWithinRetainedCap()
     {
@@ -256,6 +357,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         [(byte)Instruction.DUP2, (byte)Instruction.ADD, (byte)Instruction.STOP];
 
     private static readonly byte[] FullStackDupBinary = BuildFullStackDupBinary();
+    private static readonly byte[] SwapPopSuccess = BuildSwapPopCode(8, succeeds: true);
+    private static readonly byte[] SwapPopUnderflow = BuildSwapPopCode(8, succeeds: false);
+    private static readonly byte[] PopPopSuccess =
+        [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP];
 
     private static readonly byte[] JumpLoop = Prepare.EvmCode
         .PushData(5)                                  // counter
@@ -321,6 +427,35 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         code[1025] = (byte)Instruction.ADD;
         code[1026] = (byte)Instruction.STOP;
         return code;
+    }
+
+    private static byte[] BuildSwapPopCode(int swapDepth, bool succeeds)
+    {
+        List<byte> code = [];
+        int stackDepth = succeeds ? swapDepth + 1 : swapDepth;
+        for (int value = 1; value <= stackDepth; value++)
+        {
+            code.Add((byte)Instruction.PUSH1);
+            code.Add((byte)value);
+        }
+
+        code.Add((byte)((byte)Instruction.SWAP1 + swapDepth - 1));
+        code.Add((byte)Instruction.POP);
+        if (!succeeds)
+        {
+            code.Add((byte)Instruction.STOP);
+            return code.ToArray();
+        }
+
+        if (swapDepth > 1)
+            code.Add((byte)((byte)Instruction.SWAP1 + swapDepth - 2));
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.MSTORE);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(32);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.RETURN);
+        return code.ToArray();
     }
 
     private static byte[] BuildDeepStackCode()
@@ -400,6 +535,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(DupBinarySubOrder) { TestName = "FusedDupBinarySubPreservesOrder" };
         yield return new TestCaseData(DupBinaryUnderflow) { TestName = "FusedDupBinaryUnderflow" };
         yield return new TestCaseData(FullStackDupBinary) { TestName = "FusedDupBinaryOverflow" };
+        yield return new TestCaseData(SwapPopSuccess) { TestName = "FusedSwapPopSuccess" };
+        yield return new TestCaseData(SwapPopUnderflow) { TestName = "FusedSwapPopUnderflow" };
+        yield return new TestCaseData(PopPopSuccess) { TestName = "FusedPopPopSuccess" };
         yield return new TestCaseData(JumpLoop) { TestName = "JumpLoopWithFusedPush" };
         yield return new TestCaseData(StoreAndReturn) { TestName = "MemoryBoundaryOpsAndReturn" };
         yield return new TestCaseData(StackUnderflow) { TestName = "StackUnderflowFailure" };
@@ -571,6 +709,168 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
             Assert.That(streamCount, Is.EqualTo(baselineCount));
         }
+    }
+
+    [TestCase(0, 2, 1)]
+    [TestCase(1, 2, 3)]
+    [TestCase(2, 2, 5)]
+    [TestCase(0, 3, 1)]
+    [TestCase(1, 3, 3)]
+    [TestCase(2, 3, 5)]
+    [TestCase(3, 3, 7)]
+    public void StreamInterpreter_PopRun_PreservesFailureOrderAndOpcodeCount(
+        int stackDepth,
+        int popCount,
+        int expectedCount)
+    {
+        byte[] code = BuildPopPopCode(stackDepth, popCount);
+        bool hasPopRun = false;
+        foreach (StreamOp op in InstructionStream.TryBuild(code)!.Ops)
+            hasPopRun |= op.Opcode == FusedOpcode.PopPop;
+        Assert.That(hasPopRun, Is.True);
+
+        RunWithInterpreter(code, useStream: false);
+        int baselineCount = Machine.OpCodeCount;
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        RunWithInterpreter(code, useStream: true);
+        int streamCount = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineCount, Is.EqualTo(expectedCount));
+            Assert.That(streamCount, Is.EqualTo(baselineCount));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+        }
+    }
+
+    [TestCase(false, 9)]
+    [TestCase(true, 17)]
+    public void StreamInterpreter_SwapPop_PreservesStackResultAndOpcodeCount(bool succeeds, int expectedCount)
+    {
+        byte[] code = BuildSwapPopCode(8, succeeds);
+        Assert.That(InstructionStream.TryBuild(code)!.Ops, Has.Some.Matches<StreamOp>(op => op.Opcode == FusedOpcode.SwapPop));
+
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        int baselineCount = Machine.OpCodeCount;
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+        int streamCount = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineCount, Is.EqualTo(expectedCount));
+            Assert.That(streamCount, Is.EqualTo(baselineCount));
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode));
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent));
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+        }
+    }
+
+    private static byte[] BuildPopPopCode(int stackDepth, int popCount)
+    {
+        List<byte> code = [];
+        for (int i = 0; i < stackDepth; i++)
+            code.Add((byte)Instruction.PUSH0);
+        for (int i = 0; i < popCount; i++)
+            code.Add((byte)Instruction.POP);
+        code.Add((byte)Instruction.STOP);
+        return code.ToArray();
+    }
+
+    [TestCase(Instruction.POP, Instruction.POP, 0, false)]
+    [TestCase(Instruction.POP, Instruction.POP, 1, true)]
+    [TestCase(Instruction.SWAP8, Instruction.POP, 8, false)]
+    [TestCase(Instruction.SWAP8, Instruction.POP, 9, true)]
+    public void StreamInterpreter_FixedGasPair_PollsBeforeSecondOpcodeOnlyAfterFirstSucceeds(
+        Instruction first,
+        Instruction second,
+        int stackDepth,
+        bool shouldCancel)
+    {
+        byte[] code = BuildFixedGasPairAtCancellationBoundary(first, second, stackDepth);
+        byte expectedOpcode = first == Instruction.POP ? FusedOpcode.PopPop : FusedOpcode.SwapPop;
+        bool hasFusedPair = false;
+        foreach (StreamOp op in InstructionStream.TryBuild(code)!.Ops)
+            hasFusedPair |= op.Opcode == expectedOpcode;
+        Assert.That(hasFusedPair, Is.True);
+
+        PollingCancellationTracer baselineTracer = new();
+        int baselineCount = AssertCancellationOutcome(code, useStream: false, shouldCancel, baselineTracer);
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        PollingCancellationTracer streamTracer = new();
+        int streamCount = AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(streamTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+            Assert.That(streamCount, Is.EqualTo(baselineCount));
+        }
+    }
+
+    [TestCase(0, 3, false)]
+    [TestCase(1, 3, true)]
+    [TestCase(2, 3, true)]
+    [TestCase(3, 3, true)]
+    public void StreamInterpreter_PopRun_PollsAtEachOriginalOpcodeBoundary(
+        int stackDepth,
+        int popCount,
+        bool shouldCancel)
+    {
+        byte[] code = BuildPopRunAtCancellationBoundary(stackDepth, popCount);
+        bool hasPopRun = false;
+        foreach (StreamOp op in InstructionStream.TryBuild(code)!.Ops)
+            hasPopRun |= op.Opcode == FusedOpcode.PopPop && op.Operand == (ulong)popCount;
+        Assert.That(hasPopRun, Is.True);
+
+        PollingCancellationTracer baselineTracer = new();
+        int baselineCount = AssertCancellationOutcome(code, useStream: false, shouldCancel, baselineTracer);
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        PollingCancellationTracer streamTracer = new();
+        int streamCount = AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(streamTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+            Assert.That(streamCount, Is.EqualTo(baselineCount));
+        }
+    }
+
+    private static byte[] BuildFixedGasPairAtCancellationBoundary(Instruction first, Instruction second, int stackDepth)
+    {
+        const int instructionsBeforePair = 1023;
+        byte[] code = new byte[instructionsBeforePair + 3];
+        int jumpDestCount = instructionsBeforePair - stackDepth;
+        code.AsSpan(0, jumpDestCount).Fill((byte)Instruction.JUMPDEST);
+        code.AsSpan(jumpDestCount, stackDepth).Fill((byte)Instruction.PUSH0);
+        code[instructionsBeforePair] = (byte)first;
+        code[instructionsBeforePair + 1] = (byte)second;
+        code[instructionsBeforePair + 2] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private static byte[] BuildPopRunAtCancellationBoundary(int stackDepth, int popCount)
+    {
+        const int instructionsBeforeRun = 1023;
+        byte[] code = new byte[instructionsBeforeRun + popCount + 1];
+        int jumpDestCount = instructionsBeforeRun - stackDepth;
+        code.AsSpan(0, jumpDestCount).Fill((byte)Instruction.JUMPDEST);
+        code.AsSpan(jumpDestCount, stackDepth).Fill((byte)Instruction.PUSH0);
+        code.AsSpan(instructionsBeforeRun, popCount).Fill((byte)Instruction.POP);
+        code[^1] = (byte)Instruction.STOP;
+        return code;
     }
 
     private static byte[] BuildDupBinaryAtCancellationBoundary(int stackDepth)

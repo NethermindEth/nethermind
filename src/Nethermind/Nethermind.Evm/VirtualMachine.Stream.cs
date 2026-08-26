@@ -182,6 +182,48 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand);
                             break;
                         }
+                        case (Instruction)FusedOpcode.PopPop:
+                        {
+                            int popCount = (int)entry.Operand;
+                            opCodeCount -= 2;
+                            int successful = stack.Head < popCount ? stack.Head : popCount;
+                            for (int i = 0; i < successful; i++)
+                            {
+                                stack.Head--;
+                                opCodeCount++;
+                                if (i + 1 < popCount
+                                    && TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                            }
+
+                            if (successful < popCount)
+                            {
+                                opCodeCount++;
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                            }
+                            else
+                            {
+                                exceptionType = EvmExceptionType.None;
+                            }
+                            break;
+                        }
+                        case (Instruction)FusedOpcode.SwapPop:
+                        {
+                            opCodeCount--;
+                            int depth = (int)entry.Operand;
+                            if (stack.Head >= depth)
+                            {
+                                if (TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                                opCodeCount++;
+                            }
+                            exceptionType = stack.SwapPop(depth);
+                            break;
+                        }
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;
