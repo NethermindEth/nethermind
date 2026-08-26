@@ -228,6 +228,35 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Traces_implicit_stop_after_memory_expanding_final_operation()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(UInt256.MaxValue)
+            .PushData(UInt256.MaxValue)
+            .PushData(UInt256.MaxValue)
+            .PushData(32)
+            .PushData(255)
+            .Op(Instruction.LOG3)
+            .Done;
+
+        StateTestTxTrace trace = Execute(tracer, code).BuildResult();
+        StateTestTxTraceEntry log = trace.Entries[^2];
+        StateTestTxTraceEntry stop = trace.Entries[^1];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Operation, Is.EqualTo((byte)Instruction.LOG3));
+            Assert.That(log.Pc, Is.EqualTo(103));
+            Assert.That(log.GasCost, Is.EqualTo(0x6f7));
+            Assert.That(log.MemSize, Is.Zero);
+            Assert.That(stop.Operation, Is.EqualTo((byte)Instruction.STOP));
+            Assert.That(stop.Pc, Is.EqualTo(104));
+            Assert.That(stop.GasCost, Is.Zero);
+            Assert.That(stop.MemSize, Is.EqualTo(288));
+        }
+    }
+
+    [Test]
     public void Trace_entries_include_opcode_name_and_cumulative_refund()
     {
         StateTestTxTrace trace = Execute(tracer, ClearSstoreCode()).BuildResult();
@@ -243,7 +272,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
         }
     }
 
-    [TestCase(Instruction.KECCAK256, "SHA3")]
+    [TestCase(Instruction.KECCAK256, "KECCAK256")]
     [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
     [TestCase((Instruction)0xd0, "DATALOAD")]
     [TestCase((Instruction)0xd1, "DATALOADN")]

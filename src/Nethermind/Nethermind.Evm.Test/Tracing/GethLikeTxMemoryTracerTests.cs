@@ -466,9 +466,14 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEntry(trace.Entries[^4], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+            AssertEntry(trace.Entries[^3], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+            AssertEntry(trace.Entries[^2], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+            Assert.That(trace.Entries[^1].ProgramCounter, Is.EqualTo(49));
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
     }
 
     [Test]

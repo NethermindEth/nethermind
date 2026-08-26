@@ -1355,24 +1355,67 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
+        => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, in stackValue);
+
+    private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
-        if (_txTracer.IsTracingMemory)
+        tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
+        if (tracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
-            _txTracer.SetOperationMemorySize(vmState.Memory.Size);
+            tracer.SetOperationMemory(vmState.Memory.GetTrace());
+            tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (_txTracer.IsTracingStack)
+        if (tracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
+            tracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
         }
 
-        if (_txTracer.IsTracingReturnData)
+        if (tracer.IsTracingReturnData)
         {
-            _txTracer.SetOperationReturnData(ReturnDataBuffer);
+            tracer.SetOperationReturnData(ReturnDataBuffer);
         }
+    }
+
+    private void TraceImplicitStop(ITxTracer tracer, ulong gasAvailable, int programCounter, in EvmStack stackValue)
+    {
+        if (tracer is ITraceImplicitStop && tracer.IsTracingInstructions)
+        {
+            StartInstructionTrace(tracer, Instruction.STOP, gasAvailable, programCounter, in stackValue);
+            tracer.ReportOperationRemainingGas(gasAvailable);
+        }
+        else if (tracer is ITxTracerWrapper wrapper)
+        {
+            TraceImplicitStop(wrapper.InnerTracer, gasAvailable, programCounter, in stackValue);
+        }
+        else if (tracer is CompositeTxTracer composite)
+        {
+            foreach (ITxTracer innerTracer in composite._txTracers)
+            {
+                TraceImplicitStop(innerTracer, gasAvailable, programCounter, in stackValue);
+            }
+        }
+    }
+
+    private static bool HasImplicitStopTracer(ITxTracer tracer)
+    {
+        if (tracer is ITraceImplicitStop && tracer.IsTracingInstructions)
+            return true;
+
+        if (tracer is ITxTracerWrapper wrapper)
+            return HasImplicitStopTracer(wrapper.InnerTracer);
+
+        if (tracer is CompositeTxTracer composite)
+        {
+            foreach (ITxTracer innerTracer in composite._txTracers)
+            {
+                if (HasImplicitStopTracer(innerTracer))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

@@ -10,7 +10,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer : TxTracer
+public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
 {
     protected GethLikeTxTracer(GethTraceOptions options)
     {

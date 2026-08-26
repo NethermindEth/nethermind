@@ -5,9 +5,12 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Test.Runner;
 using NUnit.Framework;
 
@@ -17,6 +20,9 @@ namespace Nethermind.State.Test.Runner.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockchainTestStreamingTracerTests
 {
+    private const long BeforeTransitionDestroyRefund = 111;
+    private const long AfterTransitionDestroyRefund = 222;
+
     [Test]
     public void Tracer_writes_to_provided_output()
     {
@@ -67,5 +73,50 @@ public class BlockchainTestStreamingTracerTests
 
         Assert.DoesNotThrow(tracer.Dispose);
         Assert.DoesNotThrow(tracer.Dispose); // Double dispose should be safe
+    }
+
+    [TestCase(9UL, BeforeTransitionDestroyRefund)]
+    [TestCase(10UL, AfterTransitionDestroyRefund)]
+    [TestCase(11UL, AfterTransitionDestroyRefund)]
+    public void Tracer_selects_destroy_refund_at_block_transition(ulong blockNumber, long expectedRefund)
+    {
+        long refund = TraceDestroyRefund(new ForkActivation(10), blockNumber, timestamp: 0);
+
+        Assert.That(refund, Is.EqualTo(expectedRefund));
+    }
+
+    [TestCase(9UL, BeforeTransitionDestroyRefund)]
+    [TestCase(10UL, AfterTransitionDestroyRefund)]
+    [TestCase(11UL, AfterTransitionDestroyRefund)]
+    public void Tracer_selects_destroy_refund_at_timestamp_transition(ulong timestamp, long expectedRefund)
+    {
+        long refund = TraceDestroyRefund(ForkActivation.TimestampOnly(10), blockNumber: 1, timestamp: timestamp);
+
+        Assert.That(refund, Is.EqualTo(expectedRefund));
+    }
+
+    private static long TraceDestroyRefund(ForkActivation transition, ulong blockNumber, ulong timestamp)
+    {
+        using MemoryStream output = new();
+        using BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            output,
+            BeforeTransitionDestroyRefund,
+            AfterTransitionDestroyRefund,
+            transition);
+        Block block = Build.A.Block.WithNumber(blockNumber).WithTimestamp(timestamp).TestObject;
+
+        tracer.StartNewBlockTrace(block);
+        GethLikeTxFileTracer txTracer = (GethLikeTxFileTracer)tracer.StartNewTxTrace(null);
+        txTracer.ReportSelfDestruct(Address.Zero, default, Address.Zero);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, Instruction.STOP, 100, in environment);
+        txTracer.ReportOperationRemainingGas(100);
+        tracer.EndTxTrace();
+
+        string firstLine = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine)[0];
+        using JsonDocument operation = JsonDocument.Parse(firstLine);
+        return operation.RootElement.GetProperty("refund").GetInt64();
     }
 }

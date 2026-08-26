@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -22,14 +22,11 @@ namespace Nethermind.Test.Runner;
 /// Standard transaction intrinsic gas, used only when execution ends before a top-level frame is traced.
 /// </param>
 /// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
-public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) : ITxTracer, IDisposable
+public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) : ITraceImplicitStop, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
-    private long _refund;
-    private readonly Stack<long> _refundCheckpoints = new();
-    private readonly JournalSet<Address> _selfDestructs = new(Address.EqualityComparer);
-    private readonly Stack<int> _selfDestructCheckpoints = new();
+    private readonly RefundTracker _refundTracker = new(destroyRefund);
     private bool _gasAlreadySetForCurrentOp;
     private int _actionDepth;
     private ulong _topLevelActionGas;
@@ -77,7 +74,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
             OperationName = GetOperationName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
-            Refund = _refund,
+            Refund = _refundTracker.Refund,
         };
         _trace.Entries.Add(_traceEntry);
     }
@@ -191,14 +188,11 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-    {
-        // Credit legacy refunds at the opcode boundary. TransactionProcessor reports the value again
-        // during post-execution finalization, after the last EIP-3155 entry has sampled _refund.
-        // EIP-3529 also zeroes destroyRefund before EIP-6780's same-transaction restriction applies.
-        if (destroyRefund != 0 && _selfDestructs.Add(address))
-            _refund += destroyRefund;
-    }
+    // Credit legacy refunds at the opcode boundary. TransactionProcessor reports the value again
+    // during post-execution finalization, after the last EIP-3155 entry has sampled the refund.
+    // EIP-3529 also zeroes destroyRefund before EIP-6780's same-transaction restriction applies.
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
+        _refundTracker.CreditSelfDestruct(address);
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
@@ -217,8 +211,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         if (_actionDepth++ == 0)
             _topLevelActionGas = gas;
 
-        _refundCheckpoints.Push(_refund);
-        _selfDestructCheckpoints.Push(_selfDestructs.TakeSnapshot());
+        _refundTracker.TakeSnapshot();
     }
 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => CompleteSuccessfulAction(gas);
@@ -232,14 +225,13 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     private void CompleteSuccessfulAction(ulong gas)
     {
-        _refundCheckpoints.TryPop(out _);
-        _selfDestructCheckpoints.TryPop(out _);
+        _refundTracker.CommitSnapshot();
         CompleteAction(gas);
     }
 
     private void CompleteRevertedAction(ulong gas)
     {
-        RestoreRefundCheckpoint();
+        _refundTracker.RestoreSnapshot();
         CompleteAction(gas);
     }
 
@@ -272,7 +264,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    public void ReportRefund(long refund) => _refund += refund;
+    public void ReportRefund(long refund) => _refundTracker.Add(refund);
 
     // Reached because IsTracingRefunds is enabled; EIP-3155 has no gas-pressure record.
     public void ReportExtraGasPressure(ulong extraGasPressure) { }
@@ -289,19 +281,10 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void Dispose() { }
 
-    private void RestoreRefundCheckpoint()
-    {
-        if (_refundCheckpoints.TryPop(out long checkpoint))
-            _refund = checkpoint;
-
-        if (_selfDestructCheckpoints.TryPop(out int selfDestructCheckpoint))
-            _selfDestructs.Restore(selfDestructCheckpoint);
-    }
-
     // Geth's global opcode table names inactive EOF instructions and retains DIFFICULTY for 0x44.
     private static string GetOperationName(Instruction opcode) => (byte)opcode switch
     {
-        0x20 => "SHA3",
+        0x20 => "KECCAK256",
         0x44 => "DIFFICULTY",
         0xd0 => "DATALOAD",
         0xd1 => "DATALOADN",
