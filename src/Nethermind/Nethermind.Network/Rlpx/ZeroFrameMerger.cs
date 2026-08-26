@@ -44,14 +44,29 @@ namespace Nethermind.Network.Rlpx
                 throw new IllegalReferenceCountException(input.ReferenceCount);
             }
 
+            try
+            {
+                DecodeFrame(context, input, output);
+            }
+            catch
+            {
+                ReleaseInProgressPacket();
+                // The upstream decoder emits exactly one complete frame per input. Do not retain the rejected
+                // frame's payload and padding in ByteToMessageDecoder's cumulation when the peer stays connected.
+                input.SkipBytes(input.ReadableBytes);
+                throw;
+            }
+        }
+
+        private void DecodeFrame(IChannelHandlerContext context, IByteBuffer input, List<object> output)
+        {
             FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
-            bool isFirst = frame.TotalPacketSize.HasValue || _zeroPacket is null;
-            if (isFirst)
+            if (frame.TotalPacketSize.HasValue || _zeroPacket is null)
             {
                 if (_zeroPacket is not null)
                 {
-                    // Offending frame is intentionally not processed: the CorruptedFrameException
-                    // propagates up the pipeline and closes the peer connection.
+                    // Offending frame is intentionally not processed; the CorruptedFrameException propagates
+                    // through the pipeline for the peer handler to classify.
                     ReleaseInProgressPacket();
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");
                 }
@@ -75,14 +90,14 @@ namespace Nethermind.Network.Rlpx
 
             if (_zeroPacket.Content.MaxWritableBytes == 0)
             {
-                output.Add(_zeroPacket);
-                _zeroPacket = null;
-                _currentContextId = null;
-
+                ZeroPacket completedPacket = _zeroPacket!;
                 if (input.IsReadable())
                 {
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
                 }
+
+                output.Add(completedPacket);
+                ResetInProgressPacket();
             }
         }
 
@@ -133,18 +148,20 @@ namespace Nethermind.Network.Rlpx
                 PacketType = (byte)rlpPacketType
             };
 
-            // If not chunked, then we already used a slice of the input,
-            // otherwise we need to read into the freshly allocated buffer.
             if (frame.TotalPacketSize.HasValue)
             {
                 input.ReadBytes(_zeroPacket.Content, frame.Size - read);
-                // do not call Release since the input buffer is managed by
             }
         }
 
         private void ReleaseInProgressPacket()
         {
             _zeroPacket?.Release();
+            ResetInProgressPacket();
+        }
+
+        private void ResetInProgressPacket()
+        {
             _zeroPacket = null;
             _currentContextId = null;
         }

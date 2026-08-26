@@ -1,11 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
@@ -217,6 +220,109 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
+    public void Allocates_only_the_received_chunk_while_packet_is_in_progress()
+    {
+        int totalPacketSize = (int)1.MiB;
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        allocator.Buffer(Arg.Any<int>()).Returns(call => UnpooledByteBufferAllocator.Default.Buffer(call.Arg<int>()));
+        allocator.Buffer(Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+            UnpooledByteBufferAllocator.Default.Buffer(call.ArgAt<int>(0), call.ArgAt<int>(1)));
+        ZeroFrameMergerTestWrapper wrapper = new(allocator);
+
+        try
+        {
+            byte[] firstPayload = new byte[Frame.BlockSize];
+            firstPayload[0] = 2;
+            using DisposableByteBuffer firstFrame = BuildFrame(firstPayload, contextId: 1, totalPacketSize: totalPacketSize).AsDisposable();
+            ZeroPacket packet = wrapper.Decode(firstFrame);
+            Assert.That(packet, Is.Null, "the first frame must not complete the declared packet");
+
+            allocator.Received(1).Buffer(Frame.BlockSize - 1, totalPacketSize - 1);
+        }
+        finally
+        {
+            wrapper.HandlerRemoved(Substitute.For<IChannelHandlerContext>());
+        }
+    }
+
+    [Test]
+    public void Releases_and_recovers_when_continuation_header_is_malformed()
+    {
+        using PooledBufferLeakDetector detector = new();
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
+        long initialActiveAllocations = detector.Allocator.Metric.HeapArenas().Sum(static arena => arena.NumActiveAllocations);
+
+        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+        const int firstFrameLength = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+        using DisposableByteBuffer firstFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameLength).AsDisposable();
+        firstFrame.WriteBytes(frames, frames.ReaderIndex, firstFrameLength);
+        Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first frame must leave a packet in progress");
+
+        using DisposableByteBuffer malformedHeader = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
+        malformedHeader.WriteByte(0);
+        malformedHeader.WriteByte(0);
+        malformedHeader.WriteByte(1);
+        malformedHeader.WriteByte(0xf7);
+        malformedHeader.WriteZero(Frame.HeaderSize - malformedHeader.WriterIndex);
+
+        Assert.That(() => wrapper.Decode(malformedHeader), Throws.InstanceOf<CorruptedFrameException>());
+        long activeAllocations = detector.Allocator.Metric.HeapArenas().Sum(static arena => arena.NumActiveAllocations);
+        Assert.That(activeAllocations, Is.EqualTo(initialActiveAllocations),
+            "a malformed continuation header must release the in-progress packet immediately");
+
+        using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
+        ZeroPacket recovered = wrapper.Decode(recoveryInput);
+        try
+        {
+            Assert.That(recovered, Is.Not.Null, "the merger must accept a fresh packet after the malformed header");
+        }
+        finally
+        {
+            recovered?.Release();
+        }
+    }
+
+    [Test]
+    public void Drains_full_frame_and_recovers_when_continuation_header_is_malformed()
+    {
+        EmbeddedChannel channel = new();
+        channel.Pipeline.AddLast(new ZeroFrameMerger(LimboLogs.Instance));
+
+        try
+        {
+            using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+            const int firstFrameLength = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+            Assert.That(channel.WriteInbound(frames.ReadRetainedSlice(firstFrameLength)), Is.False,
+                "the first frame must leave a packet in progress");
+
+            IByteBuffer malformedFrame = BuildFrame([0], contextId: 1);
+            malformedFrame.SetByte(3, 0xf7);
+
+            Assert.That(() => channel.WriteInbound(malformedFrame),
+                Throws.InstanceOf<CorruptedFrameException>(),
+                "a malformed continuation header must reject the entire decoded frame");
+
+            IByteBuffer recoveryFrame = BuildFrames(1);
+            Assert.That(channel.WriteInbound(recoveryFrame), Is.True,
+                "the merger must not retain payload or padding from the rejected frame");
+
+            ZeroPacket recovered = channel.ReadInbound<ZeroPacket>();
+            try
+            {
+                Assert.That(recovered, Is.Not.Null);
+            }
+            finally
+            {
+                recovered?.Release();
+            }
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public void Throws_when_continuation_frame_exceeds_remaining_packet_size()
     {
         using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
@@ -318,31 +424,6 @@ public class ZeroNettyFrameMergerTests
         finally
         {
             packet?.Release();
-        }
-    }
-
-    [Test]
-    public void Allocates_chunked_packet_buffer_incrementally()
-    {
-        using PooledBufferLeakDetector detector = new();
-        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
-        long usedBefore = detector.Allocator.Metric.UsedHeapMemory;
-
-        byte[] firstPayload = new byte[Frame.DefaultMaxFrameSize];
-        firstPayload[0] = 2;
-        using DisposableByteBuffer firstFrame = BuildFrame(firstPayload, contextId: 1, totalPacketSize: SnappyParameters.MaxSnappyLength).AsDisposable();
-
-        try
-        {
-            Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first chunk must leave the packet open");
-
-            long allocatedBytes = detector.Allocator.Metric.UsedHeapMemory - usedBefore;
-            Assert.That(allocatedBytes, Is.LessThan(SnappyParameters.MaxSnappyLength / 2),
-                "a small first chunk must not eagerly allocate the entire declared packet size");
-        }
-        finally
-        {
-            wrapper.HandlerRemoved(Substitute.For<IChannelHandlerContext>());
         }
     }
 
