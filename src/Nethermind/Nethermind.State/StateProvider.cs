@@ -522,7 +522,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         bool removeEmptyAccounts = releaseSpec.IsEip158Enabled && !isGenesis;
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes)[..(stepsBack + 1)];
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         if (stateTracer.IsTracingState)
         {
             Dictionary<AddressAsKey, ChangeTrace> trace = [];
@@ -613,7 +613,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.Address))
+            bool alreadyCommitted = TStateTracing.IsActive
+                ? _committedThisRound.Contains(change!.Address)
+                : !_committedThisRound.Add(change!.Address);
+            if (alreadyCommitted)
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
                 {
@@ -637,7 +640,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 ThrowUnexpectedCommitPosition(i, forAssertion);
             }
 
-            _committedThisRound.Add(change.Address);
+            if (TStateTracing.IsActive) _committedThisRound.Add(change.Address);
 
             switch (change.ChangeType)
             {

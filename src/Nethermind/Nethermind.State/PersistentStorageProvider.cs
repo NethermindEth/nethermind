@@ -142,7 +142,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes)[..(currentPosition + 1)];
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         Dictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
         {
