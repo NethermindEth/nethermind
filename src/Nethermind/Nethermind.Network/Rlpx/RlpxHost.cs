@@ -201,9 +201,6 @@ namespace Nethermind.Network.Rlpx
             ConnectOutcome outcome = await TryConnect(node, endpoint);
             if (outcome != ConnectOutcome.Connected && node.V6Address is { } alternate && !alternate.Equals(endpoint))
             {
-                // ShouldContact mutates the shared NodeFilter (which also gates inbound via
-                // ShouldRejectInbound). This is intentional: the alternate subnet should be
-                // marked as recently contacted for diversity, just like the primary.
                 if (!ShouldContact(alternate.Address, node.IsStatic || node.IsBootnode))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - filtered");
@@ -274,8 +271,6 @@ namespace Nethermind.Network.Rlpx
             return ConnectOutcome.Connected;
         }
 
-        // Distinguishes timeout from other failures for observability (debug log shows outcome);
-        // ConnectAsync retries on both, so the difference does not affect fallback logic.
         private enum ConnectOutcome
         {
             Connected,

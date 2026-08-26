@@ -1198,8 +1198,6 @@ namespace Nethermind.Network
                     bool isStaleSession = activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId;
                     if (isStaleSession)
                     {
-                        // Abandoned outbound dial (primary) that never completed handshake – don't penalize the
-                        // successful fallback peer that may have just been established
                         if (session.BestStateReached < SessionState.Initialized)
                         {
                             if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
