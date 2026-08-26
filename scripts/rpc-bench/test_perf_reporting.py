@@ -1031,6 +1031,22 @@ esac
                 for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
                     self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
 
+    def test_expb_profile_archive_precedes_deferred_perf_failure(self) -> None:
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        archive = 'zip -9r "${archive}" "${profiling_dirs[@]}" -x \'*/perf.data\''
+        deferred_failure = 'if [[ "${perf_validation_failed}" == "true" ]]; then'
+
+        for job_name in ("benchmark", "benchmark-multi"):
+            collector = workflow_named_step_body(expb_workflow, job_name, "Collect and upload profiling artifacts")
+            self.assertIn("perf_validation_failed=false", collector)
+            self.assertIn("perf_validation_failed=true", collector)
+            self.assertLess(
+                collector.index(archive),
+                collector.index(deferred_failure),
+                f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
+            )
+            self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
 
 if __name__ == "__main__":
     unittest.main()

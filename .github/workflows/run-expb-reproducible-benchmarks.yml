@@ -1279,6 +1279,7 @@ jobs:
             exit 0
           fi
 
+          perf_validation_failed=false
           if [[ "${PERF}" == "true" ]]; then
             mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
             valid_folded_profiles=()
@@ -1291,13 +1292,18 @@ jobs:
             done
             if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
               echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
-              exit 1
+              perf_validation_failed=true
+            else
+              echo "Validated positive-sample perf.folded profile(s):"
+              printf '  %s\n' "${valid_folded_profiles[@]}"
             fi
-            echo "Validated positive-sample perf.folded profile(s):"
-            printf '  %s\n' "${valid_folded_profiles[@]}"
           fi
 
           zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            exit 1
+          fi
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
@@ -2476,6 +2482,7 @@ jobs:
             exit 0
           fi
 
+          perf_validation_failed=false
           if [[ "${PERF}" == "true" ]]; then
             mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
             valid_folded_profiles=()
@@ -2488,13 +2495,18 @@ jobs:
             done
             if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
               echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
-              exit 1
+              perf_validation_failed=true
+            else
+              echo "Validated positive-sample perf.folded profile(s):"
+              printf '  %s\n' "${valid_folded_profiles[@]}"
             fi
-            echo "Validated positive-sample perf.folded profile(s):"
-            printf '  %s\n' "${valid_folded_profiles[@]}"
           fi
 
           zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            exit 1
+          fi
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
