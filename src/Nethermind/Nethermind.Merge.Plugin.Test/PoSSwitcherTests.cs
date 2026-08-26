@@ -576,7 +576,8 @@ namespace Nethermind.Merge.Plugin.Test
                 {
                     operationCompletion.TrySetException(exception);
                 }
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
             operationThread.Start();
             return operationThread;
         }
