@@ -1195,13 +1195,22 @@ namespace Nethermind.Network
 
                 if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
                 {
-                    if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
+                    bool isStaleSession = activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId;
+                    if (isStaleSession)
                     {
+                        // Abandoned outbound dial (primary) that never completed handshake – don't penalize the
+                        // successful fallback peer that may have just been established
+                        if (session.BestStateReached < SessionState.Initialized)
+                        {
+                            if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
+                            return;
+                        }
+
+                        _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
                         if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
                         return;
                     }
 
-                    //we want to update reputation always for the active session
                     _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
 
                     DeactivatePeerIfDisconnected(activePeer, "session disconnected");

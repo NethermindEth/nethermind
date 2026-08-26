@@ -141,6 +141,14 @@ public class NodeRecord
            || TryGetEndpoint(EnrContentKey.Ip6, EnrContentKey.Udp, out endpoint);
 
     /// <summary>
+    /// Tries to get the IPv4 RLPx endpoint from the <c>ip</c> address entry and the <c>tcp</c> port entry.
+    /// </summary>
+    /// <param name="endpoint">The IPv4 TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
+    /// <returns><see langword="true"/> when a usable IPv4 TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetV4Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Ip, EnrContentKey.Tcp, out endpoint);
+
+    /// <summary>
     /// Tries to get the IPv6 RLPx endpoint from the <c>ip6</c> address entry and the <c>tcp6</c> port entry,
     /// falling back to the shared <c>tcp</c> port as allowed by EIP-778 for records advertising one port
     /// for both families.

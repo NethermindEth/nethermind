@@ -162,6 +162,52 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
+        [Test]
+        public void PromoteAlternateEndpoint_swaps_primary_and_updates_discovery()
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            IPEndPoint v4 = node!.Address;
+            IPEndPoint v6 = node.V6Address!;
+
+            node.PromoteAlternateEndpoint(v6);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address, Is.EqualTo(v6));
+                Assert.That(node.V6Address, Is.EqualTo(v4));
+                Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30306)));
+            }
+        }
+
+        [Test]
+        public void PromoteAlternateEndpoint_is_noop_when_endpoint_equals_primary()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            IPEndPoint original = node.Address;
+
+            node.PromoteAlternateEndpoint(original);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address, Is.EqualTo(original));
+                Assert.That(node.V6Address, Is.Null);
+            }
+        }
+
+        [Test]
+        public void PromoteAlternateEndpoint_alternate_survives_enr_refresh()
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            node!.PromoteAlternateEndpoint(node.V6Address!);
+
+            // Simulate discovery refresh with same ENR
+            node.Enr = enr;
+
+            Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
+        }
+
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
         public void TryRequestEnrSequence_tracks_active_request(
             ulong initialSequence,

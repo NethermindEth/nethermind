@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable annotations
-
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -68,7 +66,9 @@ namespace Nethermind.Stats.Model
         /// After a successful fallback dial this holds the previously tried primary endpoint so the
         /// next dial can retry the other family.
         /// </summary>
+#nullable enable annotations
         public IPEndPoint? V6Address { get; private set; }
+#nullable restore
 
         /// <summary>
         /// UDP discovery port part of the network node.
@@ -369,14 +369,27 @@ namespace Nethermind.Stats.Model
 
         private void TrySetIpv6Endpoint(NodeRecord enr)
         {
-            IPAddress address = Address.Address;
             V6Address = null;
-            if ((address.AddressFamily != AddressFamily.InterNetworkV6 || address.IsIPv4MappedToIPv6) &&
-                enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
-                // A 4-in-6 mapped value repeats the primary dial target, so it is no fallback.
-                !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+            IPAddress address = Address.Address;
+            if (address.IsIPv4MappedToIPv6)
             {
-                V6Address = ipv6Endpoint;
+                return;
+            }
+
+            if (address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
+                    !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+                {
+                    V6Address = ipv6Endpoint;
+                }
+            }
+            else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (enr.TryGetV4Endpoint(out IPEndPoint v4Endpoint))
+                {
+                    V6Address = v4Endpoint;
+                }
             }
         }
 
@@ -394,6 +407,35 @@ namespace Nethermind.Stats.Model
             IPEndPoint oldPrimary = Address;
             SetIPEndPoint(successfulEndpoint);
             V6Address = oldPrimary;
+
+            if (Enr is not null)
+            {
+                IPEndPoint expectedDiscovery = null;
+                if (Address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    if (Enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(Address.Address))
+                    {
+                        expectedDiscovery = disc;
+                    }
+                }
+                else if (Enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(Address.Address))
+                {
+                    expectedDiscovery = disc6;
+                }
+
+                if (expectedDiscovery is not null)
+                {
+                    DiscoveryPort = expectedDiscovery.Port;
+                }
+                else
+                {
+                    ClearDiscoveryEndpoint();
+                }
+            }
+            else
+            {
+                ClearDiscoveryEndpoint();
+            }
         }
 
         private static string FormatHost(IPAddress address)

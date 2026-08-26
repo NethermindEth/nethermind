@@ -139,6 +139,8 @@ public class RlpxHostIntegrationTests
             {
                 Assert.That(session.RemoteHost, Is.EqualTo("::1"));
                 Assert.That(session.RemotePort, Is.EqualTo(listeningPort));
+                Assert.That(node.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, refusedPort)));
             }
         }
         finally

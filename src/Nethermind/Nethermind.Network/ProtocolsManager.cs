@@ -118,6 +118,11 @@ namespace Nethermind.Network
             PublicKey sessionKey = session.Node?.Id;
             if (sessionKey is not null && sessionKey != handlerKey)
             {
+                // The abandoned primary dial's delayed disconnect (1s after channel close) races
+                // with the fallback dial's handshake. If the fallback hasn't yet added its sync
+                // handler, hasActiveSyncPeer is false but RemovePeer is a no-op because the peer
+                // isn't in the tx pool yet. If the fallback has already registered, we skip
+                // removal to preserve the live peer's TxBroadcaster entry.
                 bool hasActiveSyncPeer = false;
                 foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
                 {
@@ -130,7 +135,7 @@ namespace Nethermind.Network
 
                 if (!hasActiveSyncPeer)
                 {
-                    _txPool.RemovePeer(session.Node.Id);
+                    _txPool.RemovePeer(sessionKey);
                 }
             }
         }
