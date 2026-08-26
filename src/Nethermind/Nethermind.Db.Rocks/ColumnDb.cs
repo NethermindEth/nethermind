@@ -13,13 +13,14 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
+    private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
     private readonly RocksDbReader _reader;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
@@ -31,6 +32,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Name = name;
 
         _iteratorManager = _mainDb.CreateLazyReadAheadIteratorManager(_columnFamily);
+        _seekIteratorManager = _mainDb.CreateLazySeekIteratorManager(_columnFamily);
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
@@ -38,6 +40,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         _reader.Dispose();
         _iteratorManager?.Dispose();
+        _seekIteratorManager.Dispose();
     }
 
     public string Name { get; }
@@ -126,6 +129,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
+    public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.RemoveRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.ReclaimRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
     public void Compact() =>
@@ -170,6 +179,19 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+
+    public bool TryGetCeiling(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+    )
+    {
+        _mainDb.ThrowIfDisposing();
+
+        return DbOnTheRocks.TryGetCeilingWithIterator(
+            lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength
+        );
+    }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
