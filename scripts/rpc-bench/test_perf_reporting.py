@@ -309,12 +309,49 @@ class PerfReportingTests(unittest.TestCase):
         self.assertEqual(commands[0], "stat --event cycles:u -- true")
         self.assertIn("record --event cycles:u --freq 99 --call-graph fp --pid 4321", commands[1])
         self.assertIn(
-            '  perf record --event cycles:u --freq "$frequency" --call-graph fp --pid "$node_pid" \\\n'
+            '  perf record --event "$PERF_SAMPLING_EVENT" --freq "$frequency" --call-graph fp --pid "$node_pid" \\\n'
             '    --output "$output" \\\n'
             '    > "$record_log" 2>&1 &\n'
             "  PERF_RECORDER_PID=$!",
             RPC_LIB.read_text(encoding="utf-8"),
         )
+
+    def test_perf_preflight_falls_back_to_cpu_clock_when_cycles_are_unavailable(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-} ${3:-}\" in\n"
+            "  'stat cycles:u') exit 1 ;;\n"
+            "  'stat cpu-clock:u') exit 0 ;;\n"
+            "  record*) exit 0 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library(
+            """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_perf_recorder 99 4321 ignored.data ignored.log
+            wait "$PERF_RECORDER_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("perf sampling event: cpu-clock:u", result.stdout)
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(commands[:2], ["stat --event cycles:u -- true", "stat --event cpu-clock:u -- true"])
+        self.assertIn("record --event cpu-clock:u --freq 99 --call-graph fp --pid 4321", commands[2])
+        self.assertEqual(len(commands), 3, "the probed event is cached; the recorder must not probe again")
 
     def test_perf_preflight_rejects_non_root_without_running_perf(self) -> None:
         fake_bin = self.directory / "bin"
@@ -363,8 +400,11 @@ class PerfReportingTests(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("perf cannot sample cycles:u as root", result.stderr)
-        self.assertEqual(command_log.read_text(encoding="utf-8").splitlines(), ["stat --event cycles:u -- true"])
+        self.assertIn("perf can sample neither cycles:u nor cpu-clock:u as root", result.stderr)
+        self.assertEqual(
+            command_log.read_text(encoding="utf-8").splitlines(),
+            ["stat --event cycles:u -- true", "stat --event cpu-clock:u -- true"],
+        )
 
     def test_perf_recorder_identity_rejects_pid_reuse_without_signaling(self) -> None:
         proc_root = self.directory / "proc"
@@ -436,7 +476,7 @@ class PerfReportingTests(unittest.TestCase):
             start_node,
         )
         self.assertNotIn("itself rather than startup and warm-up", start_node)
-        self.assertIn("perf record --event cycles:u", RPC_LIB.read_text(encoding="utf-8"))
+        self.assertIn('perf record --event "$PERF_SAMPLING_EVENT"', RPC_LIB.read_text(encoding="utf-8"))
         self.assertIn('bash "$HERE/../validate-folded-profile.sh" "$folded_tmp"', stop_node)
         self.assertIn('signal_perf_recorder_if_matches INT', stop_node)
         self.assertIn('signal_perf_recorder_if_matches KILL', stop_node)

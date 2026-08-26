@@ -47,16 +47,32 @@ require_perf_access() {
   if ! command -v perf >/dev/null 2>&1; then
     die "perf profiling requires the host perf executable; install the kernel's linux-tools package on this runner"
   fi
-  if ! perf stat --event cycles:u -- true >/dev/null 2>&1; then
-    die "perf cannot sample cycles:u as root; check kernel perf support, kernel.perf_event_paranoid, and perf_event access restrictions"
-  fi
+  perf_sampling_event \
+    || die "perf can sample neither cycles:u nor cpu-clock:u as root; check kernel perf support, kernel.perf_event_paranoid, and perf_event access restrictions"
+  echo "perf sampling event: ${PERF_SAMPLING_EVENT}"
+}
+
+# Sets PERF_SAMPLING_EVENT to the first event this host can open: hardware cycles where the PMU is
+# exposed, otherwise the cpu-clock software timer (cloud ARM VMs typically virtualise no PMU). Both
+# attribute CPU time by stack; only the sample source differs.
+perf_sampling_event() {
+  [[ -n "${PERF_SAMPLING_EVENT:-}" ]] && return 0
+  local event
+  for event in cycles:u cpu-clock:u; do
+    if perf stat --event "$event" -- true >/dev/null 2>&1; then
+      PERF_SAMPLING_EVENT="$event"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # Start the recorder directly and expose its actual PID to the caller through
 # PERF_RECORDER_PID. The caller must invoke require_perf_access first.
 start_perf_recorder() {
   local frequency="$1" node_pid="$2" output="$3" record_log="$4"
-  perf record --event cycles:u --freq "$frequency" --call-graph fp --pid "$node_pid" \
+  perf_sampling_event || return 1
+  perf record --event "$PERF_SAMPLING_EVENT" --freq "$frequency" --call-graph fp --pid "$node_pid" \
     --output "$output" \
     > "$record_log" 2>&1 &
   PERF_RECORDER_PID=$!
