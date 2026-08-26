@@ -60,7 +60,15 @@ class RpcSweepTests(unittest.TestCase):
             fake_bin = root / "bin"
             fake_bin.mkdir()
             (fake_bin / "docker").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-            (fake_bin / "sudo").write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
+            (fake_bin / "sudo").write_text(
+                "#!/usr/bin/env bash\n"
+                "if [[ \"$1\" == mkdir && \"${!#}\" == \"$SUDO_ROOT\" ]]; then\n"
+                "  echo \"unexpected privileged SCRATCH_ROOT creation\" >&2\n"
+                "  exit 1\n"
+                "fi\n"
+                "exec \"$@\"\n",
+                encoding="utf-8",
+            )
             for path in (
                 runner / "run-rpc-sweep.sh", runner / "start-node.sh",
                 runner / "stop-node.sh", fake_bin / "docker", fake_bin / "sudo",
@@ -68,7 +76,6 @@ class RpcSweepTests(unittest.TestCase):
                 path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
             scratch = root / "scratch"
-            scratch.mkdir()
             snapshots = root / "snapshots"
             (snapshots / "nethermind-flat-1").mkdir(parents=True)
             capture = root / "capture.txt"
@@ -87,6 +94,7 @@ class RpcSweepTests(unittest.TestCase):
                 "CLIENTS": f"nethermind@repo:image+{first_flags} nethermind@repo:image+{second_flags}",
                 "RPS_LIST": "",
                 "CAPTURE": str(capture),
+                "SUDO_ROOT": str(scratch),
                 "JB_ETH_CALL_CORPUS": "false",
             }
             result = subprocess.run(

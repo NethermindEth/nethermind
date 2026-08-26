@@ -203,7 +203,7 @@ the workflow's defensive-cleanup step).
 | `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 serves Nethermind only). |
 | `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner. For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
-| `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
+| `snapshot_block` | Snapshot set tag (`<snapshot root>/<client>-<tag>`, or `<snapshot root>/nethermind-flat-<tag>` for Nethermind's flat set); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |

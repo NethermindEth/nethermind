@@ -180,7 +180,7 @@ for ctype in "${!SWEEP_CTYPES[@]}"; do
     "$snap_real"/*) echo "::error::SCRATCH_ROOT must not be inside the ${ctype} snapshot"; exit 1 ;;
   esac
 done
-if [[ ! -d "$SCRATCH_ROOT" ]] && ! as_root mkdir -p -- "$SCRATCH_ROOT"; then
+if [[ ! -d "$SCRATCH_ROOT" ]] && ! mkdir -p -- "$SCRATCH_ROOT" 2>/dev/null && ! as_root mkdir -p -- "$SCRATCH_ROOT"; then
   echo "::error::failed to create SCRATCH_ROOT '$SCRATCH_ROOT'"; exit 1
 fi
 [[ -d "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT '$SCRATCH_ROOT' is not a directory"; exit 1; }
