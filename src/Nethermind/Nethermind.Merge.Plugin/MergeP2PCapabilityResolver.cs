@@ -30,8 +30,8 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     {
         // TransitionFinished alone is insufficient on a live TTD transition: it only flips true later in
         // PoSSwitcher.ForkchoiceUpdated, which raises no event, so the TerminalBlockReached-driven cache
-        // rebuild would still see it false. HasEverReachedTerminalBlock() (set when TerminalBlockReached
-        // fires) mirrors the pre-resolver behaviour of advertising as soon as the terminal block is reached.
+        // rebuild would still see it false. HasEverReachedTerminalBlock() also derives durable local TTD
+        // evidence when no TerminalBlockReached event was raised.
         if (!_poSSwitcher.TransitionFinished && !_poSSwitcher.HasEverReachedTerminalBlock()) return;
 
         capabilities.Add(new Capability(Protocol.Eth, 69));

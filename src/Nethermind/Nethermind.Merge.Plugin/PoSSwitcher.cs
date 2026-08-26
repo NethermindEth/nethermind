@@ -118,9 +118,8 @@ namespace Nethermind.Merge.Plugin
         /// Config-declared <see cref="IMergeConfig.FinalTotalDifficulty"/> (shipped in archive configs for
         /// post-merge TD bookkeeping and gossip policy) means the network merged, not that this node's chain
         /// crossed TTD — a fresh archive DB must still full-sync the pre-merge range without a CL. Only local
-        /// evidence counts here: a post-TTD sync pivot, a merged-at-genesis chain, or a processed local head
-        /// at or above TTD. A best suggestion is considered only for the current answer because it can be
-        /// invalidated before becoming durable.
+        /// durable evidence counts here: a post-TTD sync pivot, a merged-at-genesis chain, or a processed
+        /// local head at or above TTD.
         /// </remarks>
         private bool HasDurableTerminalTotalDifficultyEvidence()
         {
@@ -131,15 +130,8 @@ namespace Nethermind.Merge.Plugin
             if (HasPostTerminalTotalDifficultyPivot(terminalTotalDifficulty.Value) || HasPostTerminalTotalDifficultyGenesis(terminalTotalDifficulty.Value))
                 return true;
 
-            // Head is processed and durable; a suggestion is only current evidence and may be invalidated.
+            // Head is processed and durable, so it remains valid evidence after restart.
             return _blockTree.Head?.Header.TotalDifficulty >= terminalTotalDifficulty;
-        }
-
-        private bool HasCurrentSuggestedTerminalTotalDifficultyEvidence()
-        {
-            UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
-            return terminalTotalDifficulty is not null &&
-                   _blockTree.BestSuggestedHeader?.TotalDifficulty >= terminalTotalDifficulty;
         }
 
         private bool HasPostTerminalTotalDifficultyPivot(UInt256 terminalTotalDifficulty) =>
@@ -295,7 +287,7 @@ namespace Nethermind.Merge.Plugin
         // Use chain-spec TTD, not effective spec-provider TTD, so MergeConfig test overrides
         // do not change genesis classification.
         private bool IsPostMergeGenesis(BlockHeader header) =>
-            header.IsGenesis && header.Difficulty == UInt256.Zero && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
+            header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
         /// <summary>
         /// Returns whether this switcher has observed local TTD evidence or concrete terminal PoW metadata.
@@ -313,7 +305,7 @@ namespace Nethermind.Merge.Plugin
                 return true;
             }
 
-            return HasCurrentSuggestedTerminalTotalDifficultyEvidence();
+            return false;
         }
 
         /// <summary>
