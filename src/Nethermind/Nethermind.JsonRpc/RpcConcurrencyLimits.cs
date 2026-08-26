@@ -40,10 +40,12 @@ public static class RpcConcurrencyLimits
     public static int GetProofMaxQueueWaitMs(this IJsonRpcConfig config) =>
         Math.Max(0, config.ProofMaxQueueWaitMs ?? GetRequestTimeoutWaitBudget(config));
 
-    // A negative Timeout means Timeout.Infinite for the request and its module rental, so it must not collapse into
-    // the zero budget that disables queueing.
+    // Wait budget substituted for a negative (infinite) Timeout: the Timeout default, because an unbounded wait would
+    // let an unseeded gate queue every arrival indefinitely, while zero would disable queueing altogether.
+    internal const int InfiniteTimeoutWaitBudgetMs = 20_000;
+
     private static int GetRequestTimeoutWaitBudget(IJsonRpcConfig config) =>
-        config.Timeout < 0 ? int.MaxValue : config.Timeout;
+        config.Timeout < 0 ? InfiniteTimeoutWaitBudgetMs : config.Timeout;
 
     internal static int ClampDerived(int derivedConcurrency) =>
         Math.Clamp(derivedConcurrency, MinDerivedConcurrency, MaxDerivedConcurrency);

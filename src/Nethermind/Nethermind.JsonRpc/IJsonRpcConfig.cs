@@ -29,6 +29,9 @@ public interface IJsonRpcConfig : IConfig
             - `eth_uninstallFilter`
 
             Calls beyond the limit return HTTP 503 immediately. `0` to lift the limit.
+
+            Also caps, per admission cost class, the requests waiting for an execution slot (see
+            `EvmExecutionConcurrency`, `TracingConcurrency` and `ProofConcurrency`).
             """,
         DefaultValue = "500")]
     int RequestQueueLimit { get; set; }

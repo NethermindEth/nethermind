@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
         [CounterMetric]
-        [Description("Number of gated JSON RPC requests shed up front because the predicted queue wait exceeded the class's wait budget (JsonRpc.MaxQueueWaitMs, TracingMaxQueueWaitMs or ProofMaxQueueWaitMs), or because that budget is zero, per cost class.")]
+        [Description("Number of gated JSON RPC requests shed up front because the predicted queue wait exceeded the class's wait budget (JsonRpc.MaxQueueWaitMs, TracingMaxQueueWaitMs or ProofMaxQueueWaitMs), because that budget is zero, or because JsonRpc.RequestQueueLimit requests of the class were already queued, per cost class.")]
         [KeyIsLabel("cost_class")]
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionPredictedWaitRejections { get; } = new();
 

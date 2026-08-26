@@ -24,6 +24,7 @@ public class RpcAdmissionControllerTests
 {
     private const int EvmPermits = 2;
     private const int MaxQueueWaitMs = 5_000;
+    private const int QueueLimit = 3;
     private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(10);
 
     [ThreadStatic]
@@ -115,11 +116,11 @@ public class RpcAdmissionControllerTests
     [TestCase(RpcMethodCostClass.EvmExecution, null, 20_000, 500, TestName = "Evm: MaxQueueWaitMs, not the request timeout")]
     [TestCase(RpcMethodCostClass.EvmExecution, -1, 20_000, 0, TestName = "Evm: negative is clamped to zero")]
     [TestCase(RpcMethodCostClass.Tracing, null, 20_000, 20_000, TestName = "Tracing: defaults to the request timeout")]
-    [TestCase(RpcMethodCostClass.Tracing, null, -1, int.MaxValue, TestName = "Tracing: an infinite request timeout keeps the wait unbounded")]
+    [TestCase(RpcMethodCostClass.Tracing, null, -1, RpcConcurrencyLimits.InfiniteTimeoutWaitBudgetMs, TestName = "Tracing: an infinite request timeout falls back to a finite budget")]
     [TestCase(RpcMethodCostClass.Tracing, 750, 750, 750, TestName = "Tracing: explicit value wins")]
     [TestCase(RpcMethodCostClass.Tracing, -1, 20_000, 0, TestName = "Tracing: negative is clamped to zero")]
     [TestCase(RpcMethodCostClass.Proof, null, 20_000, 20_000, TestName = "Proof: defaults to the request timeout")]
-    [TestCase(RpcMethodCostClass.Proof, null, -1, int.MaxValue, TestName = "Proof: an infinite request timeout keeps the wait unbounded")]
+    [TestCase(RpcMethodCostClass.Proof, null, -1, RpcConcurrencyLimits.InfiniteTimeoutWaitBudgetMs, TestName = "Proof: an infinite request timeout falls back to a finite budget")]
     [TestCase(RpcMethodCostClass.Proof, 0, 20_000, 0, TestName = "Proof: zero disables queueing")]
     public void Wait_budget_default_chain_per_class(RpcMethodCostClass costClass, int? configured, int timeout, int expected)
     {
@@ -262,6 +263,45 @@ public class RpcAdmissionControllerTests
             Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
         }
         fresh.Result.Dispose();
+    }
+
+    [TestCase(QueueLimit, TestName = "RequestQueueLimit caps the waiters queued per class")]
+    [TestCase(0, TestName = "RequestQueueLimit zero lifts the cap")]
+    public async Task Queued_waiters_are_capped_by_the_request_queue_limit(int requestQueueLimit)
+    {
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = MaxQueueWaitMs, RequestQueueLimit = requestQueueLimit }, LimboLogs.Instance);
+        ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
+        long rejectionsBefore = Metrics.RpcAdmissionPredictedWaitRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
+        // With the EWMA unseeded every arrival predicts a zero wait, so only the cap can stop the queue from growing.
+        RpcAdmissionController.Lease held = await controller.AdmitAsync(ethCall, 0);
+        List<ValueTask<RpcAdmissionController.Lease>> queued = [];
+        for (int i = 0; i < QueueLimit; i++)
+        {
+            queued.Add(controller.AdmitAsync(ethCall, 0));
+        }
+        Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(QueueLimit), "waiters up to the limit must be queued");
+
+        if (requestQueueLimit == 0)
+        {
+            queued.Add(controller.AdmitAsync(ethCall, 0));
+            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(QueueLimit + 1));
+        }
+        else
+        {
+            Assert.Throws<LimitExceededException>(() => controller.AdmitAsync(ethCall, 0), "the waiter over the limit must be shed synchronously");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.RpcAdmissionPredictedWaitRejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(rejectionsBefore));
+                Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(QueueLimit));
+            }
+        }
+
+        held.Dispose();
+        foreach (ValueTask<RpcAdmissionController.Lease> waiter in queued)
+        {
+            (await waiter.AsTask().WaitAsync(WaitBudget)).Dispose();
+        }
+        Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
     }
 
     [TestCase(1)]
