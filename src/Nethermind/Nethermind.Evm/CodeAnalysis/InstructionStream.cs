@@ -26,7 +26,7 @@ internal enum StreamOpKind : byte
 
 /// <summary>
 /// Virtual opcodes for fused PUSH+op pairs, placed in byte values the EVM does not define
-/// (0x0C..0x0F and 0x21..0x2F gaps). The fingerprint gate keeps new forks (which might define
+/// (0x0C..0x0F, 0x21..0x2F, and 0xA5..0xAF gaps). The fingerprint gate keeps new forks (which might define
 /// one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
@@ -50,6 +50,7 @@ internal static class FusedOpcode
     public const byte Shr = 0x2D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
+    public const byte DupBinary = 0xAC;
 
     /// <summary>Binary ops a preceding in-block PUSH folds into; must match the executor's fused cases exactly.</summary>
     public static bool TryMap(Instruction instruction, out byte fused)
@@ -80,7 +81,7 @@ internal static class FusedOpcode
 }
 
 /// <summary>
-/// One pre-decoded instruction (or fused PUSH+op pair). Hot-first layout: dispatch fields fit
+/// One pre-decoded instruction (or fused PUSH+op or DUP+binary pair). Hot-first layout: dispatch fields fit
 /// the first 8 bytes; <see cref="Operand"/> is loaded only by the cases that need it.
 /// </summary>
 internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
@@ -98,7 +99,7 @@ internal readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ush
 
 /// <summary>
 /// Bytecode preprocessed into a flat instruction stream with per-basic-block static gas sums
-/// and fused PUSH+op superinstructions, built once per <see cref="CodeInfo"/> and shared by
+/// and fused stack superinstructions, built once per <see cref="CodeInfo"/> and shared by
 /// every execution of that code.
 /// </summary>
 /// <remarks>
@@ -189,6 +190,23 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && IsFusedStackBinaryInstruction(instruction)
+                    && TryTakePrecedingDup(ops, out StreamOp dup))
+                {
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    StreamOpKind fusedKind = dup.Kind == StreamOpKind.BlockFirst
+                        ? StreamOpKind.FusedBlockFirst
+                        : StreamOpKind.FusedInBlock;
+                    ops[^1] = new StreamOp(
+                        FusedOpcode.DupBinary,
+                        fusedKind,
+                        dup.Pc,
+                        dup.BlockIndex,
+                        (byte)(dup.Advance + size),
+                        (byte)(dup.Opcode - (byte)Instruction.DUP1 + 1) | ((ulong)(byte)instruction << 8));
+                }
+                else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -291,8 +309,8 @@ internal sealed class InstructionStream
 
     /// <summary>
     /// The static-cost op set run unmetered; must match the executor's in-block switch exactly.
-    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH1 and PUSH3..PUSH32 are included. DUP9+/SWAP9+
-    /// excluded to keep the switch within the size the JIT inlines.
+    /// PUSH2 excluded (keeps fused PUSH2+JUMP); PUSH1 and PUSH3..PUSH32 are included. SWAP9+
+    /// remains excluded to keep the switch within the size the JIT inlines.
     /// </summary>
     public const ulong NotInBlock = ulong.MaxValue;
 
@@ -303,7 +321,7 @@ internal sealed class InstructionStream
             or Instruction.ISZERO or Instruction.NOT or Instruction.SHL or Instruction.SHR
             or Instruction.PUSH1
             or (>= Instruction.PUSH3 and <= Instruction.PUSH32)
-            or (>= Instruction.DUP1 and <= Instruction.DUP8)
+            or (>= Instruction.DUP1 and <= Instruction.DUP16)
             or (>= Instruction.SWAP1 and <= Instruction.SWAP8) => GasCostOf.VeryLow,
         Instruction.MUL or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD => GasCostOf.Low,
         Instruction.POP or Instruction.PUSH0 => GasCostOf.Base,
@@ -332,6 +350,28 @@ internal sealed class InstructionStream
         push = last;
         return true;
     }
+
+    private static bool TryTakePrecedingDup(List<StreamOp> ops, out StreamOp dup)
+    {
+        dup = default;
+        if (ops.Count == 0)
+            return false;
+
+        StreamOp last = ops[^1];
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
+            return false;
+        if ((Instruction)last.Opcode is not (>= Instruction.DUP1 and <= Instruction.DUP16))
+            return false;
+
+        dup = last;
+        return true;
+    }
+
+    private static bool IsFusedStackBinaryInstruction(Instruction instruction) =>
+        instruction is Instruction.ADD or Instruction.SUB or Instruction.MUL
+            or Instruction.DIV or Instruction.SDIV or Instruction.MOD or Instruction.SMOD
+            or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT
+            or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR;
 
     private static ulong ReadImmediate(ReadOnlySpan<byte> immediates)
     {

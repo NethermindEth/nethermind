@@ -49,6 +49,25 @@ public class InstructionStreamTests
         }
     }
 
+    [TestCase(Instruction.DUP1, 1)]
+    [TestCase(Instruction.DUP16, 16)]
+    public void TryBuild_DupBinaryPair_BecomesSingleEntry(Instruction dup, int depth)
+    {
+        byte[] code = [(byte)dup, (byte)Instruction.SUB, (byte)Instruction.STOP];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.DupBinary));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(2));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)depth | ((ulong)(byte)Instruction.SUB << 8)));
+            Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow));
+        }
+    }
+
     [Test]
     public void TryBuild_MaxSizeTypicalContract_StaysWithinRetainedCap()
     {
@@ -186,6 +205,7 @@ public class InstructionStreamTests
     [TestCase(Instruction.PUSH0, GasCostOf.Base, TestName = "Push0")]
     [TestCase(Instruction.SHL, GasCostOf.VeryLow, TestName = "Shl")]
     [TestCase(Instruction.DUP8, GasCostOf.VeryLow, TestName = "Dup8")]
+    [TestCase(Instruction.DUP16, GasCostOf.VeryLow, TestName = "Dup16")]
     [TestCase(Instruction.SWAP8, GasCostOf.VeryLow, TestName = "Swap8")]
     [TestCase(Instruction.PUSH32, GasCostOf.VeryLow, TestName = "Push32_ViaConstantPool")]
     public void GetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, ulong expectedCost)
@@ -193,7 +213,6 @@ public class InstructionStreamTests
             "block sums diverging from GasCostOf is a consensus bug");
 
     [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
-    [TestCase(Instruction.DUP9, TestName = "Dup9_OutsideExecutorSwitch")]
     [TestCase(Instruction.SWAP9, TestName = "Swap9_OutsideExecutorSwitch")]
     [TestCase(Instruction.MLOAD, TestName = "MLoad_DynamicMemoryGas")]
     [TestCase(Instruction.SLOAD, TestName = "SLoad_DynamicAccessGas")]
@@ -219,6 +238,23 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .Op(Instruction.POP)
         .Op(Instruction.STOP)
         .Done;
+
+    private static readonly byte[] DupBinaryAdd = Prepare.EvmCode
+        .PushData(7).Op(Instruction.DUP1).Op(Instruction.ADD)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] DupBinarySubOrder = Prepare.EvmCode
+        .PushData(3).PushData(10).Op(Instruction.DUP2).Op(Instruction.SUB)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] DupBinaryUnderflow =
+        [(byte)Instruction.DUP2, (byte)Instruction.ADD, (byte)Instruction.STOP];
+
+    private static readonly byte[] FullStackDupBinary = BuildFullStackDupBinary();
 
     private static readonly byte[] JumpLoop = Prepare.EvmCode
         .PushData(5)                                  // counter
@@ -275,6 +311,16 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     ];
 
     private static readonly byte[] DeepStackToTheLimit = BuildDeepStackCode();
+
+    private static byte[] BuildFullStackDupBinary()
+    {
+        byte[] code = new byte[1027];
+        code.AsSpan(0, 1024).Fill((byte)Instruction.PUSH0);
+        code[1024] = (byte)Instruction.DUP1;
+        code[1025] = (byte)Instruction.ADD;
+        code[1026] = (byte)Instruction.STOP;
+        return code;
+    }
 
     private static byte[] BuildDeepStackCode()
     {
@@ -349,6 +395,10 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public static IEnumerable<TestCaseData> DifferentialCases()
     {
         yield return new TestCaseData(ArithmeticChain) { TestName = "ArithmeticChain" };
+        yield return new TestCaseData(DupBinaryAdd) { TestName = "FusedDupBinaryAdd" };
+        yield return new TestCaseData(DupBinarySubOrder) { TestName = "FusedDupBinarySubPreservesOrder" };
+        yield return new TestCaseData(DupBinaryUnderflow) { TestName = "FusedDupBinaryUnderflow" };
+        yield return new TestCaseData(FullStackDupBinary) { TestName = "FusedDupBinaryOverflow" };
         yield return new TestCaseData(JumpLoop) { TestName = "JumpLoopWithFusedPush" };
         yield return new TestCaseData(StoreAndReturn) { TestName = "MemoryBoundaryOpsAndReturn" };
         yield return new TestCaseData(StackUnderflow) { TestName = "StackUnderflowFailure" };
@@ -462,7 +512,89 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)
+    [Test]
+    public void StreamInterpreter_DupBinary_OpcodeCountMatchesOnFailureAndSuccess()
+    {
+        RunWithInterpreter(DupBinaryUnderflow, useStream: false);
+        int baselineUnderflow = Machine.OpCodeCount;
+
+        Setup();
+        RunWithInterpreter(DupBinaryUnderflow, useStream: true);
+        int streamUnderflow = Machine.OpCodeCount;
+
+        Setup();
+        RunWithInterpreter(DupBinaryAdd, useStream: false);
+        int baselineSuccess = Machine.OpCodeCount;
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        RunWithInterpreter(DupBinaryAdd, useStream: true);
+        int streamSuccess = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineUnderflow, Is.EqualTo(1), "a failed DUP must be the only completed opcode");
+            Assert.That(streamUnderflow, Is.EqualTo(baselineUnderflow));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+            Assert.That(streamSuccess, Is.EqualTo(baselineSuccess));
+        }
+    }
+
+    [TestCase(0, false)]
+    [TestCase(1, true)]
+    public void StreamInterpreter_DupBinary_PollsBeforeSecondOpcodeOnlyAfterDupSucceeds(int stackDepth, bool shouldCancel)
+    {
+        byte[] code = BuildDupBinaryAtCancellationBoundary(stackDepth);
+        bool hasFusedPair = false;
+        foreach (StreamOp op in InstructionStream.TryBuild(code)!.Ops)
+            hasFusedPair |= op.Opcode == FusedOpcode.DupBinary;
+        Assert.That(hasFusedPair, Is.True);
+
+        PollingCancellationTracer baselineTracer = new();
+        int baselineCount = AssertCancellationOutcome(code, useStream: false, shouldCancel, baselineTracer);
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        PollingCancellationTracer streamTracer = new();
+        int streamCount = AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(streamTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1));
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore));
+            Assert.That(streamCount, Is.EqualTo(baselineCount));
+        }
+    }
+
+    private static byte[] BuildDupBinaryAtCancellationBoundary(int stackDepth)
+    {
+        const int instructionsBeforePair = 1023;
+        byte[] code = new byte[instructionsBeforePair + 3];
+        int jumpDestCount = instructionsBeforePair - stackDepth;
+        code.AsSpan(0, jumpDestCount).Fill((byte)Instruction.JUMPDEST);
+        code.AsSpan(jumpDestCount, stackDepth).Fill((byte)Instruction.PUSH0);
+        code[instructionsBeforePair] = (byte)(stackDepth == 0 ? Instruction.DUP2 : Instruction.DUP1);
+        code[instructionsBeforePair + 1] = (byte)Instruction.ADD;
+        code[instructionsBeforePair + 2] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private int AssertCancellationOutcome(byte[] code, bool useStream, bool shouldCancel, Evm.Tracing.ITxTracer tracer)
+    {
+        if (shouldCancel)
+            Assert.Throws<OperationCanceledException>(() => RunWithInterpreter(code, useStream, tracer: tracer));
+        else
+            Assert.DoesNotThrow(() => RunWithInterpreter(code, useStream, tracer: tracer));
+
+        return Machine.OpCodeCount;
+    }
+
+    private ReceiptCaptureTracer RunWithInterpreter(
+        byte[] code,
+        bool useStream,
+        ulong gasLimit = 8_000_000,
+        Evm.Tracing.ITxTracer? tracer = null)
     {
         TestState.CreateAccount(CalleeAddress, 1000000);
         TestState.InsertCode(CalleeAddress, CalleeCode, Spec);
@@ -491,9 +623,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
                     Assert.Fail("the stream did not build within the timeout");
             }
 
-            ReceiptCaptureTracer tracer = new();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-            return tracer;
+            ReceiptCaptureTracer receiptTracer = new();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer ?? receiptTracer);
+            return receiptTracer;
         }
         finally
         {
@@ -501,6 +633,15 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             StreamInterpreter.BuildThreshold = thresholdBefore;
             StreamInterpreter.ForceAllContexts = forceBefore;
         }
+    }
+
+    private sealed class PollingCancellationTracer : Evm.Tracing.TxTracer, Evm.Tracing.ITxTracer
+    {
+        private int _cancellationPollCount;
+
+        public int CancellationPollCount => _cancellationPollCount;
+        public bool IsCancelable => true;
+        public bool IsCancelled => _cancellationPollCount++ > 0;
     }
 
     private sealed class ReceiptCaptureTracer : Evm.Tracing.TxTracer
