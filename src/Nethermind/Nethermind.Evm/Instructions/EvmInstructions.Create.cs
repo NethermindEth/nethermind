@@ -135,7 +135,7 @@ public static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
