@@ -498,7 +498,10 @@ corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix 
 rejected; default `60s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
 N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `400`, so the
 window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
-time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
+time; it is a floor, so a run measuring a higher rate warms at that rate instead, and
+`corpus_warmup_rps_max` caps that pace — json-bench pre-generates rps x duration request rows
+that k6 parses whole, so a long warm-up ahead of a high-rate cell would exceed what the fixture
+can hold): a k6 cell
 when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
 fixture-free mode stays fixture-free.
 
