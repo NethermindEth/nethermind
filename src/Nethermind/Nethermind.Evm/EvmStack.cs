@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1535,6 +1536,10 @@ public ref struct EvmStack
                 head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, EvmWord>(ref convert), shuffle);
             }
         }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            head = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value)).ByteSwap();
+        }
         else
         {
             ulong u3 = BinaryPrimitives.ReverseEndianness(value.u3);
@@ -1630,6 +1635,10 @@ public ref struct EvmStack
                 result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
             }
         }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            Unsafe.As<UInt256, EvmWord>(ref result) = Unsafe.ReadUnaligned<EvmWord>(ref bytes).ByteSwap();
+        }
         else
         {
 #if ZK_EVM
@@ -1698,6 +1707,11 @@ public ref struct EvmStack
                 EvmWord aShuf = Avx2.Shuffle(aData, shuffle);
                 Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
+        }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            Unsafe.As<UInt256, EvmWord>(ref b) = Unsafe.ReadUnaligned<EvmWord>(ref bytes).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref a) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 32)).ByteSwap();
         }
         else
         {
@@ -1786,6 +1800,12 @@ public ref struct EvmStack
                 EvmWord aShuf = Avx2.Shuffle(aData, shuffle);
                 Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
+        }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            Unsafe.As<UInt256, EvmWord>(ref c) = Unsafe.ReadUnaligned<EvmWord>(ref bytes).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref b) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 32)).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref a) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 64)).ByteSwap();
         }
         else
         {
@@ -1894,6 +1914,13 @@ public ref struct EvmStack
                 EvmWord aShuf = Avx2.Shuffle(aData, shuffle);
                 Unsafe.As<UInt256, Vector256<ulong>>(ref a) = Avx2.Permute4x64(aShuf.AsUInt64(), SwapHalves);
             }
+        }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            Unsafe.As<UInt256, EvmWord>(ref d) = Unsafe.ReadUnaligned<EvmWord>(ref bytes).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref c) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 32)).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref b) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 64)).ByteSwap();
+            Unsafe.As<UInt256, EvmWord>(ref a) = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, 96)).ByteSwap();
         }
         else
         {
