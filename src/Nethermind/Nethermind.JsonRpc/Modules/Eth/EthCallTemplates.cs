@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -27,20 +28,23 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// read instead of EVM execution.
 /// </summary>
 /// <remarks>
-/// A template for a (to, selector) pair is derived from two recorded executions with different arguments:
-/// both must perform the same storage-read sequence except for exactly one slot, whose position must equal
-/// <c>keccak(pad32(arg) ++ pad32(k))</c> for the same mapping index <c>k</c> in both traces, and whose value
-/// must equal the 32-byte call output. All other reads become value-guards that are re-checked against the
-/// requested block before a template answer is served; any guard or code-hash change invalidates the entry.
-/// Recording runs as a dedicated extra execution (at most twice per pair) so the user's request always stays
-/// on the normal path while learning. In shadow mode the normal path also runs on template hits and its
-/// result is served; the template answer is only compared and mismatches blacklist the entry.
+/// A template for a (to, selector) pair is derived from two recorded executions with different arguments and
+/// different outputs: both must perform the same storage-read sequence except for exactly one slot, whose
+/// position must equal <c>keccak(pad32(arg) ++ pad32(k))</c> for the same mapping index <c>k</c> in both
+/// traces, and whose value must equal the 32-byte call output. All other reads become value-guards that are
+/// re-checked against the requested block before a template answer is served; a guard or code-hash change at
+/// the current head invalidates the entry (historical queries just fall through). Recording runs as a
+/// dedicated extra execution so the user's request always stays on the normal path while learning: two
+/// recordings per learning cycle, at most one in flight per pair, and a head-block guard invalidation starts
+/// a new cycle. In shadow mode the normal path also runs on template hits and its result is served; the
+/// template answer is only compared and mismatches blacklist the entry.
 /// Thread-safe: the store is a bounded <see cref="LruCache{TKey,TValue}"/> holding immutable entries.
 /// </remarks>
 public sealed class EthCallTemplates(
     IShareableTxProcessorSource txProcessorSource,
     IStateReader stateReader,
     ISpecProvider specProvider,
+    IBlockTree blockTree,
     IJsonRpcConfig rpcConfig)
 {
     private const int StoreCapacity = 4096;
@@ -50,37 +54,20 @@ public sealed class EthCallTemplates(
     private const int WordSize = 32;
     private const int SelectorSize = 4;
     private const int QualifyingCallDataLength = SelectorSize + WordSize;
+    private const ulong MinQualifyingGasLimit = 100_000;
 
     private readonly LruCache<TemplateKey, Entry> _store = new(StoreCapacity, "eth_call templates");
+    private readonly ConcurrentDictionary<TemplateKey, bool> _learningInFlight = new();
     private readonly bool _shadowMode = rpcConfig.EthCallTemplatesShadowMode;
-
-    private long _derived;
-    private long _blacklisted;
-    private long _hits;
-    private long _shadowMatches;
-    private long _shadowMismatches;
-    private long _guardInvalidations;
-
-    /// <summary>Number of templates derived by this instance.</summary>
-    public long TemplatesDerived => Volatile.Read(ref _derived);
-    /// <summary>Number of (to, selector) pairs blacklisted by this instance.</summary>
-    public long TemplatesBlacklisted => Volatile.Read(ref _blacklisted);
-    /// <summary>Number of calls answered directly from a template (non-shadow mode only).</summary>
-    public long TemplateHits => Volatile.Read(ref _hits);
-    /// <summary>Number of shadow-mode template answers that matched the EVM result.</summary>
-    public long TemplateShadowMatches => Volatile.Read(ref _shadowMatches);
-    /// <summary>Number of shadow-mode template answers that diverged from the EVM result.</summary>
-    public long TemplateShadowMismatches => Volatile.Read(ref _shadowMismatches);
-    /// <summary>Number of template entries invalidated because a guard or code hash changed.</summary>
-    public long GuardInvalidations => Volatile.Read(ref _guardInvalidations);
 
     /// <summary>Creates the engine when <see cref="IJsonRpcConfig.EthCallTemplates"/> is enabled, otherwise <c>null</c>.</summary>
     public static EthCallTemplates? CreateIfEnabled(
         IJsonRpcConfig config,
         IShareableTxProcessorSource txProcessorSource,
         IStateReader stateReader,
-        ISpecProvider specProvider) =>
-        config.EthCallTemplates ? new EthCallTemplates(txProcessorSource, stateReader, specProvider, config) : null;
+        ISpecProvider specProvider,
+        IBlockTree blockTree) =>
+        config.EthCallTemplates ? new EthCallTemplates(txProcessorSource, stateReader, specProvider, blockTree, config) : null;
 
     /// <summary>Executes an <c>eth_call</c> request, serving or learning a template when the call qualifies.</summary>
     /// <param name="call">The call request; only single-word-argument calls to a contract with zero value qualify.</param>
@@ -88,7 +75,9 @@ public sealed class EthCallTemplates(
     /// <param name="executeCall">The normal execution path, invoked at most once.</param>
     public ResultWrapper<HexBytes> Execute(TransactionForRpc call, BlockHeader header, Func<ResultWrapper<HexBytes>> executeCall)
     {
-        if (!TryQualify(call, out Address? to, out uint selector, out UInt256 arg))
+        // The state check must precede any template state read: the normal path reports missing state
+        // (pruned historical blocks) as a clean ResourceUnavailable, which template reads must not preempt.
+        if (!TryQualify(call, out Address? to, out uint selector, out UInt256 arg) || !stateReader.HasStateForBlock(header))
         {
             return executeCall();
         }
@@ -108,13 +97,23 @@ public sealed class EthCallTemplates(
                 return ServeTemplate(key, templateOutput, executeCall);
             }
 
-            Interlocked.Increment(ref _guardInvalidations);
+            // Guards legitimately mismatch on historical blocks; only a mismatch at the current head
+            // means the template is stale, so historical queries never invalidate or relearn.
+            if (blockTree.Head?.Hash != header.Hash)
+            {
+                return executeCall();
+            }
+
+            Interlocked.Increment(ref Metrics.EthCallTemplateGuardInvalidations);
             _store.Delete(key);
             entry = null;
         }
 
+        // Started before the normal execution so learning shares the request's time budget instead of
+        // getting a fresh full-length one after the call already ran.
+        using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
         ResultWrapper<HexBytes> result = executeCall();
-        Learn(call, header, key, arg, (entry as FirstTrace)?.Trace, result);
+        Learn(call, header, key, arg, (entry as FirstTrace)?.Trace, result, timeout.Token);
         return result;
     }
 
@@ -122,7 +121,6 @@ public sealed class EthCallTemplates(
     {
         if (!_shadowMode)
         {
-            Interlocked.Increment(ref _hits);
             Interlocked.Increment(ref Metrics.EthCallTemplateHits);
             return ResultWrapper<HexBytes>.Success(new HexBytes(templateOutput));
         }
@@ -132,7 +130,6 @@ public sealed class EthCallTemplates(
         {
             if (normal.Data.Bytes.Span.SequenceEqual(templateOutput))
             {
-                Interlocked.Increment(ref _shadowMatches);
                 Interlocked.Increment(ref Metrics.EthCallTemplateShadowMatches);
             }
             else
@@ -152,12 +149,11 @@ public sealed class EthCallTemplates(
 
     private void ReportShadowMismatch(in TemplateKey key)
     {
-        Interlocked.Increment(ref _shadowMismatches);
         Interlocked.Increment(ref Metrics.EthCallTemplateShadowMismatches);
         Blacklist(key);
     }
 
-    private void Learn(TransactionForRpc call, BlockHeader header, in TemplateKey key, in UInt256 arg, CallTrace? firstTrace, ResultWrapper<HexBytes> result)
+    private void Learn(TransactionForRpc call, BlockHeader header, in TemplateKey key, in UInt256 arg, CallTrace? firstTrace, ResultWrapper<HexBytes> result, CancellationToken cancellationToken)
     {
         // Only deterministic 32-byte successes fit the single-mapping-read model.
         if (result.Result.ResultType != ResultType.Success || result.Data.Bytes.Length != WordSize)
@@ -171,39 +167,80 @@ public sealed class EthCallTemplates(
             return;
         }
 
-        CallTrace? trace = RecordTrace(call, header, key.To.Value, arg);
-        // A recorded output diverging from the normal path signals recording-path drift — never template such a call.
-        if (trace is null || trace.Output != new UInt256(result.Data.Bytes.Span, isBigEndian: true))
+        // Concurrent misses for the same pair would each pay a recording execution; only one learns at a time.
+        if (!_learningInFlight.TryAdd(key, true))
         {
-            Blacklist(key);
             return;
         }
 
-        if (firstTrace is null)
+        try
         {
-            _store.Set(key, new FirstTrace(trace));
-            return;
-        }
+            CallTrace? trace = RecordTrace(call, header, key.To.Value, arg, cancellationToken);
+            // A recorded output diverging from the normal path signals recording-path drift — never template such a call.
+            if (trace is null || trace.Output != new UInt256(result.Data.Bytes.Span, isBigEndian: true))
+            {
+                Blacklist(key);
+                return;
+            }
 
-        Template? template = TryDerive(firstTrace, trace, key.To.Value);
-        if (template is null)
+            // A concurrent shadow mismatch may have just blacklisted the pair; never resurrect it.
+            if (IsBlacklisted(key))
+            {
+                return;
+            }
+
+            if (firstTrace is null)
+            {
+                _store.Set(key, new FirstTrace(trace));
+                return;
+            }
+
+            Template? template = TryDerive(firstTrace, trace, key.To.Value);
+            if (template is null)
+            {
+                Blacklist(key);
+                return;
+            }
+
+            if (IsBlacklisted(key))
+            {
+                return;
+            }
+
+            _store.Set(key, new Templated(template));
+            Interlocked.Increment(ref Metrics.EthCallTemplatesDerived);
+        }
+        finally
         {
-            Blacklist(key);
-            return;
+            _learningInFlight.TryRemove(key, out _);
         }
-
-        _store.Set(key, new Templated(template));
-        Interlocked.Increment(ref _derived);
-        Interlocked.Increment(ref Metrics.EthCallTemplatesDerived);
     }
+
+    private bool IsBlacklisted(in TemplateKey key) => _store.TryGet(key, out Entry? current) && current is Blacklisted;
 
     private void Blacklist(in TemplateKey key)
     {
         _store.Set(key, Blacklisted.Instance);
-        Interlocked.Increment(ref _blacklisted);
         Interlocked.Increment(ref Metrics.EthCallTemplatesBlacklisted);
     }
 
+    /// <summary>Decides whether a call is eligible for templating and extracts its (to, selector, arg) shape.</summary>
+    /// <remarks>
+    /// Beyond the 4-byte-selector + one-word-argument calldata shape, qualification is deliberately narrow:
+    /// <list type="bullet">
+    /// <item><c>From</c> must be absent — sender-dependent code paths (e.g. a whitelist read keyed by CALLER)
+    /// would be learned as value-guards pinned to the learning sender and then served to other senders.</item>
+    /// <item><c>Value</c>, <c>GasPrice</c>, <c>MaxFeePerGas</c>, <c>MaxPriorityFeePerGas</c> and <c>Nonce</c>
+    /// must be absent or zero, and <c>Gas</c> absent or at least <see cref="MinQualifyingGasLimit"/>. This is a
+    /// cheap conservative stand-in for the executor's input validation (intrinsic gas, fee payability), which a
+    /// template hit skips; it also keeps GASPRICE/BASEFEE-visible inputs uniform between learning and serving.
+    /// A deliberately low explicit gas limit in [<see cref="MinQualifyingGasLimit"/>, actual need) could still
+    /// diverge (EVM out-of-gas vs template answer); the exposure is bounded by <see cref="MaxReads"/> and
+    /// caught by shadow mode.</item>
+    /// <item>Blob and set-code calls never qualify — versioned hashes and authorization lists carry semantics
+    /// the template model does not observe.</item>
+    /// </list>
+    /// </remarks>
     private static bool TryQualify(TransactionForRpc call, [NotNullWhen(true)] out Address? to, out uint selector, out UInt256 arg)
     {
         to = null;
@@ -211,8 +248,14 @@ public sealed class EthCallTemplates(
         arg = default;
 
         if (call is not LegacyTransactionForRpc legacy
+            || call is BlobTransactionForRpc or SetCodeTransactionForRpc
             || legacy.To is null
+            || legacy.From is not null
+            || legacy.Nonce is > 0
+            || legacy.Gas is < MinQualifyingGasLimit
             || legacy.Value is { IsZero: false }
+            || legacy.GasPrice is { IsZero: false }
+            || call is EIP1559TransactionForRpc { MaxFeePerGas.IsZero: false } or EIP1559TransactionForRpc { MaxPriorityFeePerGas.IsZero: false }
             || legacy.Input is not { Length: QualifyingCallDataLength } input)
         {
             return false;
@@ -309,7 +352,8 @@ public sealed class EthCallTemplates(
 
         StorageRead firstDiff = firstReads[diffPosition];
         StorageRead secondDiff = secondReads[diffPosition];
-        if (first.Output != firstDiff.Value || second.Output != secondDiff.Value)
+        // Identical outputs (e.g. both zero) are no evidence the output tracks the differing slot.
+        if (first.Output == second.Output || first.Output != firstDiff.Value || second.Output != secondDiff.Value)
         {
             return null;
         }
@@ -342,7 +386,7 @@ public sealed class EthCallTemplates(
 
     /// <summary>Runs a dedicated recording execution of the call, mirroring the shareable-scope bridge path.</summary>
     /// <returns>The trace, or <c>null</c> when the call cannot be recorded faithfully (side effects, failure, overflow).</returns>
-    private CallTrace? RecordTrace(TransactionForRpc call, BlockHeader header, Address to, in UInt256 arg)
+    private CallTrace? RecordTrace(TransactionForRpc call, BlockHeader header, Address to, in UInt256 arg, CancellationToken cancellationToken)
     {
         IReleaseSpec spec = specProvider.GetSpec(header);
         Result<Transaction> prepared = call.ToTransaction(validateUserInput: true, gasCap: rpcConfig.GasCap, spec: spec);
@@ -383,10 +427,9 @@ public sealed class EthCallTemplates(
         RecordingTxTracer tracer = new();
         try
         {
-            using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
             using IReadOnlyTxProcessingScope processingScope = txProcessorSource.Build(header);
             TransactionResult transactionResult = processingScope.TransactionProcessor.CallAndRestore(
-                tx, in blockExecutionContext, tracer.WithCancellation(timeout.Token));
+                tx, in blockExecutionContext, tracer.WithCancellation(cancellationToken));
             if (!transactionResult.TransactionExecuted)
             {
                 return null;

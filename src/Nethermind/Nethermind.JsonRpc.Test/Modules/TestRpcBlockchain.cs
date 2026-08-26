@@ -188,13 +188,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this =>
         {
-            @this.EthCallTemplates = @this.RpcConfig.EthCallTemplates
-                ? EthCallTemplates.CreateIfEnabled(
-                    @this.RpcConfig,
-                    @this.Container.Resolve<IShareableTxProcessorSource>(),
-                    @this.StateReader,
-                    @this.SpecProvider)
-                : null;
+            @this.EthCallTemplates = EthCallTemplates.CreateIfEnabled(
+                @this.RpcConfig,
+                @this.Container.Resolve<IShareableTxProcessorSource>(),
+                @this.StateReader,
+                @this.SpecProvider,
+                @this.BlockTree);
             return new EthRpcModule(
                 @this.RpcConfig,
                 @this.Bridge,

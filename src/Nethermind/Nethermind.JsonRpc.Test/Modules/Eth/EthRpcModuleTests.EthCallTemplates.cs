@@ -28,6 +28,9 @@ public partial class EthRpcModuleTests
     // return pad32(CALLDATALOAD(4) * 2) — no storage reads, so derivation must blacklist.
     private const string DoublerCode = "60043560020260005260206000f3";
 
+    // Reads (and discards) the arg-keyed mapping slot, then always returns the constant 0x2a.
+    private const string ConstantAfterMappingReadCode = "600435600052600060205260406000205450602a60005260206000f3";
+
     private const uint BalanceOfSelector = 0x70a08231;
     private static readonly Address TemplateContract = new("0xc0de000000000000000000000000000000000001");
     private static readonly UInt256 GuardSlot = 1;
@@ -45,15 +48,15 @@ public partial class EthRpcModuleTests
         return new UInt256(ValueKeccak.Compute(material).Bytes, isBigEndian: true);
     }
 
-    private static async Task<TestRpcBlockchain> CreateTemplatesChain(string codeHex, bool enabled = true, bool shadowMode = true) =>
+    private static async Task<TestRpcBlockchain> CreateTemplatesChain(string codeHex, bool enabled = true, bool shadowMode = true, UInt256? balanceA = null, UInt256? balanceB = null) =>
         await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EthCallTemplates = enabled, EthCallTemplatesShadowMode = shadowMode })
             .Build(builder => builder.WithGenesisPostProcessor((_, state, specProvider) =>
             {
                 state.CreateAccount(TemplateContract, 0);
                 state.InsertCode(TemplateContract, Bytes.FromHexString(codeHex), specProvider.GenesisSpec);
-                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgA, 0)), BalanceA.ToBigEndian());
-                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgB, 0)), BalanceB.ToBigEndian());
+                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgA, 0)), (balanceA ?? BalanceA).ToBigEndian());
+                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgB, 0)), (balanceB ?? BalanceB).ToBigEndian());
                 state.Set(new StorageCell(TemplateContract, GuardSlot), ((UInt256)0xAA).ToBigEndian());
             }));
 
@@ -70,54 +73,69 @@ public partial class EthRpcModuleTests
     private static string SuccessResponse(in UInt256 value) =>
         $"{{\"jsonrpc\":\"2.0\",\"result\":\"{value.ToBigEndian().ToHexString(true)}\",\"id\":67}}";
 
+    private readonly record struct TemplateMetricsSnapshot(long Derived, long Blacklisted, long Hits, long ShadowMatches, long ShadowMismatches, long GuardInvalidations)
+    {
+        public static TemplateMetricsSnapshot Capture() => new(
+            Metrics.EthCallTemplatesDerived,
+            Metrics.EthCallTemplatesBlacklisted,
+            Metrics.EthCallTemplateHits,
+            Metrics.EthCallTemplateShadowMatches,
+            Metrics.EthCallTemplateShadowMismatches,
+            Metrics.EthCallTemplateGuardInvalidations);
+    }
+
     [Test]
     public async Task Eth_call_templates_two_executions_with_different_args_derive_template()
     {
         using TestRpcBlockchain rpc = await CreateTemplatesChain(BalanceOfBody);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(BalanceA)));
         Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(BalanceB)));
 
-        Assert.That(rpc.EthCallTemplates!.TemplatesDerived, Is.EqualTo(1));
-        Assert.That(rpc.EthCallTemplates.TemplatesBlacklisted, Is.EqualTo(0));
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived + 1));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted));
     }
 
     [Test]
     public async Task Eth_call_templates_shadow_mode_serves_evm_result_and_records_match()
     {
         using TestRpcBlockchain rpc = await CreateTemplatesChain(BalanceOfBody);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
         await CallTemplateContract(rpc, ArgA);
         await CallTemplateContract(rpc, ArgB);
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(BalanceA)));
 
-        Assert.That(rpc.EthCallTemplates!.TemplateShadowMatches, Is.EqualTo(1));
-        Assert.That(rpc.EthCallTemplates.TemplateShadowMismatches, Is.EqualTo(0));
-        Assert.That(rpc.EthCallTemplates.TemplateHits, Is.EqualTo(0));
+        Assert.That(Metrics.EthCallTemplateShadowMatches, Is.EqualTo(before.ShadowMatches + 1));
+        Assert.That(Metrics.EthCallTemplateShadowMismatches, Is.EqualTo(before.ShadowMismatches));
+        Assert.That(Metrics.EthCallTemplateHits, Is.EqualTo(before.Hits));
     }
 
     [Test]
     public async Task Eth_call_templates_non_shadow_mode_serves_template_answer()
     {
         using TestRpcBlockchain rpc = await CreateTemplatesChain(BalanceOfBody, shadowMode: false);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
         await CallTemplateContract(rpc, ArgA);
         await CallTemplateContract(rpc, ArgB);
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(BalanceA)));
         Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(BalanceB)));
 
-        Assert.That(rpc.EthCallTemplates!.TemplateHits, Is.EqualTo(2));
-        Assert.That(rpc.EthCallTemplates.TemplateShadowMatches, Is.EqualTo(0));
+        Assert.That(Metrics.EthCallTemplateHits, Is.EqualTo(before.Hits + 2));
+        Assert.That(Metrics.EthCallTemplateShadowMatches, Is.EqualTo(before.ShadowMatches));
     }
 
     [Test]
     public async Task Eth_call_templates_changed_guard_slot_invalidates_template()
     {
         using TestRpcBlockchain rpc = await CreateTemplatesChain(GuardedBalanceOfCode, shadowMode: false);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
         await CallTemplateContract(rpc, ArgA);
         await CallTemplateContract(rpc, ArgB);
-        Assert.That(rpc.EthCallTemplates!.TemplatesDerived, Is.EqualTo(1));
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived + 1));
 
         // An empty-calldata transaction takes the contract's write path, bumping the guarded slot.
         Transaction bumpGuard = Build.A.Transaction
@@ -129,27 +147,44 @@ public partial class EthRpcModuleTests
         await rpc.AddBlock(bumpGuard);
 
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(BalanceA)));
-        Assert.That(rpc.EthCallTemplates.GuardInvalidations, Is.EqualTo(1));
-        Assert.That(rpc.EthCallTemplates.TemplateHits, Is.EqualTo(0));
+        Assert.That(Metrics.EthCallTemplateGuardInvalidations, Is.EqualTo(before.GuardInvalidations + 1));
+        Assert.That(Metrics.EthCallTemplateHits, Is.EqualTo(before.Hits));
 
         // Relearning from the post-change state derives a fresh template.
         Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(BalanceB)));
-        Assert.That(rpc.EthCallTemplates.TemplatesDerived, Is.EqualTo(2));
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived + 2));
     }
 
     [Test]
     public async Task Eth_call_templates_computed_output_contract_is_blacklisted()
     {
         using TestRpcBlockchain rpc = await CreateTemplatesChain(DoublerCode);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(ArgA * 2)));
         Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(ArgB * 2)));
 
-        Assert.That(rpc.EthCallTemplates!.TemplatesBlacklisted, Is.EqualTo(1));
-        Assert.That(rpc.EthCallTemplates.TemplatesDerived, Is.EqualTo(0));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted + 1));
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived));
 
         Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(ArgA * 2)));
-        Assert.That(rpc.EthCallTemplates.TemplatesBlacklisted, Is.EqualTo(1));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted + 1));
+    }
+
+    [Test]
+    public async Task Eth_call_templates_equal_outputs_give_no_derivation_evidence()
+    {
+        // The contract reads m[arg] but always returns 0x2a; with both mapping slots also holding 0x2a the
+        // outputs match the differing reads, so only the equal-outputs rejection prevents a bogus template.
+        UInt256 constant = 0x2a;
+        using TestRpcBlockchain rpc = await CreateTemplatesChain(ConstantAfterMappingReadCode, balanceA: constant, balanceB: constant);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
+
+        Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(constant)));
+        Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(constant)));
+
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted + 1));
     }
 
     [Test]

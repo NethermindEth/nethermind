@@ -90,6 +90,10 @@ namespace Nethermind.JsonRpc
         public static long EthCallTemplatesBlacklisted;
 
         [CounterMetric]
+        [Description("Number of eth_call templates invalidated because a guard or code hash changed at the head block.")]
+        public static long EthCallTemplateGuardInvalidations;
+
+        [CounterMetric]
         [Description("Number of eth_getBalance requests served from the balance response cache.")]
         public static long EthBalanceCacheHits;
 
