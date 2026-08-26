@@ -147,12 +147,26 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (tracer.IsTracingStorage)
         {
             trace = [];
-            CommitChanges<OnFlag>(changes, toUpdateRoots, trace);
+            if (_destroyedThisRound.Count == 0)
+            {
+                CommitChanges<OnFlag, OffFlag>(changes, toUpdateRoots, trace);
+            }
+            else
+            {
+                CommitChanges<OnFlag, OnFlag>(changes, toUpdateRoots, trace);
+            }
         }
         else
         {
             trace = null;
-            CommitChanges<OffFlag>(changes, toUpdateRoots, null);
+            if (_destroyedThisRound.Count == 0)
+            {
+                CommitChanges<OffFlag, OffFlag>(changes, toUpdateRoots, null);
+            }
+            else
+            {
+                CommitChanges<OffFlag, OnFlag>(changes, toUpdateRoots, null);
+            }
         }
 
         foreach (AddressAsKey address in toUpdateRoots)
@@ -203,13 +217,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private void CommitChanges<TStorageTracing>(
+    private void CommitChanges<TStorageTracing, HasDestroyedAccounts>(
         ReadOnlySpan<Change> changes,
         HashSet<AddressAsKey> toUpdateRoots,
         Dictionary<StorageCell, StorageChangeTrace>? trace)
         where TStorageTracing : struct, IFlag
+        where HasDestroyedAccounts : struct, IFlag
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
+        Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
 
         for (int i = changes.Length - 1; i >= 0; i--)
         {
@@ -227,7 +243,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 // A SaveChange would resurrect the dead value over the Clear() marker;
                 // tracers still see the cell zeroed, as the journaled path reported it.
-                if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
+                if (HasDestroyedAccounts.IsActive && _destroyedThisRound.Contains(change.StorageCell.Address))
                 {
                     if (TStorageTracing.IsActive)
                     {
