@@ -142,14 +142,74 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
-        bool isTracing = tracer.IsTracingStorage;
-        Dictionary<StorageCell, StorageChangeTrace>? trace = null;
-        if (isTracing)
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        Dictionary<StorageCell, StorageChangeTrace>? trace;
+        if (tracer.IsTracingStorage)
         {
             trace = [];
+            CommitChanges<OnFlag>(changes, currentPosition, toUpdateRoots, trace);
+        }
+        else
+        {
+            trace = null;
+            CommitChanges<OffFlag>(changes, currentPosition, toUpdateRoots, trace);
         }
 
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        foreach (AddressAsKey address in toUpdateRoots)
+        {
+            // since the accounts could be empty accounts that are removing (EIP-158)
+            if (_stateProvider.AccountExists(address))
+            {
+                _toUpdateRoots[address] = true;
+                // Add storage tree, will accessed later, which may be in parallel
+                // As we can't add a new storage tries in parallel to the _storages Dict do it here
+                GetOrCreateStorage(address).EnsureStorageTree();
+            }
+            else
+            {
+                _toUpdateRoots.Remove(address);
+                if (_storages.TryGetValue(address, out PerContractState? storage))
+                {
+                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
+                    storage.RemoveStorageTree();
+                }
+            }
+        }
+        toUpdateRoots.Clear();
+
+        if (trace is not null)
+        {
+            foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
+            {
+                if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
+                {
+                    trace[cell] = new StorageChangeTrace(originalValue, changeTrace.After);
+                }
+                else
+                {
+                    tracer.ReportStorageRead(cell);
+                }
+            }
+        }
+
+        base.CommitCore(tracer);
+        EndOriginalsRound();
+        _committedThisRound.ClearAndTrim();
+        _destroyedThisRound.ClearAndTrim();
+
+        if (trace is not null)
+        {
+            ReportChanges(tracer, trace);
+        }
+    }
+
+    private void CommitChanges<TStorageTracing>(
+        ReadOnlySpan<Change> changes,
+        int currentPosition,
+        HashSet<AddressAsKey> toUpdateRoots,
+        Dictionary<StorageCell, StorageChangeTrace>? trace)
+        where TStorageTracing : struct, IFlag
+    {
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];
@@ -168,7 +228,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 // tracers still see the cell zeroed, as the journaled path reported it.
                 if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
                 {
-                    if (isTracing)
+                    if (TStorageTracing.IsActive)
                     {
                         trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
                     }
@@ -194,58 +254,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                         .SaveChange(change.StorageCell, change.Value);
                 }
 
-                if (isTracing)
+                if (TStorageTracing.IsActive)
                 {
                     trace![change.StorageCell] = new StorageChangeTrace(change.Value);
                 }
             }
-        }
-
-        foreach (AddressAsKey address in toUpdateRoots)
-        {
-            // since the accounts could be empty accounts that are removing (EIP-158)
-            if (_stateProvider.AccountExists(address))
-            {
-                _toUpdateRoots[address] = true;
-                // Add storage tree, will accessed later, which may be in parallel
-                // As we can't add a new storage tries in parallel to the _storages Dict do it here
-                GetOrCreateStorage(address).EnsureStorageTree();
-            }
-            else
-            {
-                _toUpdateRoots.Remove(address);
-                if (_storages.TryGetValue(address, out PerContractState? storage))
-                {
-                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
-                    storage.RemoveStorageTree();
-                }
-            }
-        }
-        toUpdateRoots.Clear();
-
-        if (isTracing)
-        {
-            foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
-            {
-                if (trace!.TryGetValue(cell, out StorageChangeTrace changeTrace))
-                {
-                    trace[cell] = new StorageChangeTrace(originalValue, changeTrace.After);
-                }
-                else
-                {
-                    tracer.ReportStorageRead(cell);
-                }
-            }
-        }
-
-        base.CommitCore(tracer);
-        EndOriginalsRound();
-        _committedThisRound.ClearAndTrim();
-        _destroyedThisRound.ClearAndTrim();
-
-        if (isTracing)
-        {
-            ReportChanges(tracer!, trace!);
         }
     }
 
