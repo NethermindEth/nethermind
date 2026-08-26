@@ -35,6 +35,17 @@ public class BaseFlatPersistenceReaderTests
     }
 
     [Test]
+    public void HashedReader_DefaultGetAccounts_FallsBackToSingleAccountReads()
+    {
+        BasePersistence.IHashedFlatReader reader = new FallbackHashedReader();
+        byte[]?[] accounts = new byte[]?[2];
+
+        reader.GetAccounts([default, new ValueHash256(Enumerable.Repeat((byte)1, ValueHash256.MemorySize).ToArray())], accounts);
+
+        Assert.That(accounts, Is.EqualTo(new byte[]?[] { null, [0x42] }));
+    }
+
+    [Test]
     public void GetStorages_UsesSingleMultiGetWithEncodedKeys()
     {
         ValueHash256 firstAddress = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)i).ToArray());
@@ -137,6 +148,25 @@ public class BaseFlatPersistenceReaderTests
         public byte[]? LastKey => null;
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
             throw new NotSupportedException();
+    }
+
+    private readonly struct FallbackHashedReader : BasePersistence.IHashedFlatReader
+    {
+        public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
+        {
+            if (address.Equals(default(ValueHash256))) return 0;
+
+            outBuffer[0] = 0x42;
+            return 1;
+        }
+
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue) => false;
+
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+
+        public bool IsPreimageMode => false;
     }
 
     private sealed class TrackingMultiGetStore : ISortedKeyValueStore

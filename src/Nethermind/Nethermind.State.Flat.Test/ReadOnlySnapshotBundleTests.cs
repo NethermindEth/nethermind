@@ -162,7 +162,7 @@ public class ReadOnlySnapshotBundleTests
             FlatTestHelpers.SnapshotList(MakeSnapshot(c =>
                 c.Storages[new HashedKey<(Address, UInt256)>((snapshotCell.Address, snapshotCell.Index))] = snapshotValue)),
             reader);
-        byte[]?[] slots = new byte[]?[3];
+        byte[]?[] slots = [[0xFF], [0xFF], [0xFF]];
 
         bundle.GetSlots(
             [snapshotCell, persistenceCell, selfDestructedCell],

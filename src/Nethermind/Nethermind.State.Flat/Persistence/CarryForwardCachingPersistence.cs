@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -178,8 +179,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 return;
             }
 
-            Address[] missingAddresses = new Address[addresses.Length];
-            int[] missingIndices = new int[addresses.Length];
+            using ArrayPoolListRef<Address> missingAddresses = new(addresses.Length);
+            using ArrayPoolListRef<int> missingIndices = new(addresses.Length);
             int missingCount = 0;
             for (int i = 0; i < addresses.Length; i++)
             {
@@ -190,15 +191,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                     continue;
                 }
 
-                missingAddresses[missingCount] = address;
-                missingIndices[missingCount] = i;
+                missingAddresses.Add(address);
+                missingIndices.Add(i);
                 missingCount++;
             }
 
             if (missingCount == 0) return;
 
-            Account?[] missingAccounts = new Account?[missingCount];
-            inner.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+            using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+            inner.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
             for (int i = 0; i < missingCount; i++)
             {
                 Address address = missingAddresses[i];
@@ -235,8 +236,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 return;
             }
 
-            StorageCell[] missingCells = new StorageCell[storageCells.Length];
-            int[] missingIndices = new int[storageCells.Length];
+            using ArrayPoolListRef<StorageCell> missingCells = new(storageCells.Length);
+            using ArrayPoolListRef<int> missingIndices = new(storageCells.Length);
             int missingCount = 0;
             for (int i = 0; i < storageCells.Length; i++)
             {
@@ -248,16 +249,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                     continue;
                 }
 
-                missingCells[missingCount] = cell;
-                missingIndices[missingCount] = i;
+                missingCells.Add(cell);
+                missingIndices.Add(i);
                 missingCount++;
             }
 
             if (missingCount == 0) return;
 
-            SlotValue[] missingSlots = new SlotValue[missingCount];
-            bool[] missingFound = new bool[missingCount];
-            inner.GetSlots(missingCells.AsSpan(0, missingCount), missingSlots, missingFound);
+            using ArrayPoolListRef<SlotValue> missingSlots = new(missingCount, missingCount);
+            using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
+            inner.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
             for (int i = 0; i < missingCount; i++)
             {
                 StorageCell cell = missingCells[i];

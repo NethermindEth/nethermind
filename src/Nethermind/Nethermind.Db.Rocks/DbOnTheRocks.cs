@@ -955,24 +955,30 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             for (int i = 0; i < keys.Length; i++)
                 keyBytesLength = checked(keyBytesLength + keys[i].Length);
 
-            byte[] keyBytes = new byte[keyBytesLength];
-            IntPtr[] keyPointers = new IntPtr[keys.Length];
-            UIntPtr[] keyLengths = new UIntPtr[keys.Length];
-            IntPtr[] valueHandles = new IntPtr[keys.Length];
-            IntPtr[] errors = new IntPtr[keys.Length];
+            using ArrayPoolListRef<byte> keyBytes = new(keyBytesLength, keyBytesLength);
+            using ArrayPoolListRef<IntPtr> keyPointers = new(keys.Length, keys.Length);
+            using ArrayPoolListRef<UIntPtr> keyLengths = new(keys.Length, keys.Length);
+            using ArrayPoolListRef<IntPtr> valueHandles = new(keys.Length, keys.Length);
+            using ArrayPoolListRef<IntPtr> errors = new(keys.Length, keys.Length);
 
-            fixed (byte* keyBytesPtr = keyBytes)
-            fixed (IntPtr* keyPointersPtr = keyPointers)
-            fixed (UIntPtr* keyLengthsPtr = keyLengths)
-            fixed (IntPtr* valueHandlesPtr = valueHandles)
+            Span<byte> keyBytesSpan = keyBytes.AsSpan();
+            Span<IntPtr> keyPointersSpan = keyPointers.AsSpan();
+            Span<UIntPtr> keyLengthsSpan = keyLengths.AsSpan();
+            Span<IntPtr> valueHandlesSpan = valueHandles.AsSpan();
+            Span<IntPtr> errorsSpan = errors.AsSpan();
+
+            fixed (byte* keyBytesPtr = keyBytesSpan)
+            fixed (IntPtr* keyPointersPtr = keyPointersSpan)
+            fixed (UIntPtr* keyLengthsPtr = keyLengthsSpan)
+            fixed (IntPtr* valueHandlesPtr = valueHandlesSpan)
             {
                 int offset = 0;
                 for (int i = 0; i < keys.Length; i++)
                 {
                     byte[] key = keys[i];
-                    key.CopyTo(keyBytes, offset);
-                    keyPointers[i] = (IntPtr)(keyBytesPtr + offset);
-                    keyLengths[i] = (UIntPtr)key.Length;
+                    key.CopyTo(keyBytesSpan[offset..]);
+                    keyPointersSpan[i] = (IntPtr)(keyBytesPtr + offset);
+                    keyLengthsSpan[i] = (UIntPtr)key.Length;
                     offset += key.Length;
                 }
 
@@ -984,14 +990,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     (IntPtr)keyPointersPtr,
                     (IntPtr)keyLengthsPtr,
                     (IntPtr)valueHandlesPtr,
-                    errors,
+                    errors.UnsafeGetInternalArray(),
                     0);
             }
 
             IntPtr firstError = IntPtr.Zero;
-            for (int i = 0; i < errors.Length; i++)
+            for (int i = 0; i < errorsSpan.Length; i++)
             {
-                IntPtr error = errors[i];
+                IntPtr error = errorsSpan[i];
                 if (error == IntPtr.Zero) continue;
 
                 if (firstError == IntPtr.Zero)
@@ -999,16 +1005,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 else
                     Native.Instance.rocksdb_free(error);
 
-                errors[i] = IntPtr.Zero;
+                errorsSpan[i] = IntPtr.Zero;
             }
 
             try
             {
                 if (firstError != IntPtr.Zero) ThrowRocksDbException(firstError);
 
-                for (int i = 0; i < valueHandles.Length; i++)
+                for (int i = 0; i < valueHandlesSpan.Length; i++)
                 {
-                    IntPtr handle = valueHandles[i];
+                    IntPtr handle = valueHandlesSpan[i];
                     if (handle == IntPtr.Zero)
                     {
                         values[i] = null;
@@ -1023,10 +1029,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             finally
             {
-                for (int i = 0; i < valueHandles.Length; i++)
+                for (int i = 0; i < valueHandlesSpan.Length; i++)
                 {
-                    if (valueHandles[i] != IntPtr.Zero)
-                        Native.Instance.rocksdb_pinnableslice_destroy(valueHandles[i]);
+                    if (valueHandlesSpan[i] != IntPtr.Zero)
+                        Native.Instance.rocksdb_pinnableslice_destroy(valueHandlesSpan[i]);
                 }
             }
         }
@@ -1064,45 +1070,38 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         UpdateReadMetrics();
 
-        const int StackAllocationLimit = 256;
-        Span<RocksDbSlice> keySlices = values.Length <= StackAllocationLimit
-            ? stackalloc RocksDbSlice[values.Length]
-            : new RocksDbSlice[values.Length];
-        Span<IntPtr> valueHandles = values.Length <= StackAllocationLimit
-            ? stackalloc IntPtr[values.Length]
-            : new IntPtr[values.Length];
-        Span<IntPtr> errors = values.Length <= StackAllocationLimit
-            ? stackalloc IntPtr[values.Length]
-            : new IntPtr[values.Length];
-        valueHandles.Clear();
-        errors.Clear();
+        using ArrayPoolListRef<RocksDbSlice> keySlices = new(values.Length, values.Length);
+        using ArrayPoolListRef<IntPtr> valueHandles = new(values.Length, values.Length);
+        using ArrayPoolListRef<IntPtr> errors = new(values.Length, values.Length);
+        Span<RocksDbSlice> keySlicesSpan = keySlices.AsSpan();
+        Span<IntPtr> valueHandlesSpan = valueHandles.AsSpan();
+        Span<IntPtr> errorsSpan = errors.AsSpan();
 
         try
         {
             // All slices point into the pinned key span and remain valid for the duration of the native call.
             fixed (byte* keysPtr = keys)
-            fixed (RocksDbSlice* keySlicesPtr = keySlices)
-            fixed (IntPtr* valueHandlesPtr = valueHandles)
-            fixed (IntPtr* errorsPtr = errors)
+            fixed (RocksDbSlice* keySlicesPtr = keySlicesSpan)
+            fixed (IntPtr* valueHandlesPtr = valueHandlesSpan)
             {
-                for (int i = 0; i < keySlices.Length; i++)
-                    keySlices[i] = new RocksDbSlice(keysPtr + (i * keyLength), keyLength);
+                for (int i = 0; i < keySlicesSpan.Length; i++)
+                    keySlicesSpan[i] = new RocksDbSlice(keysPtr + (i * keyLength), keyLength);
 
-                RocksDbNativeMethods.BatchedMultiGetColumnFamilySlices(
+                Native.Instance.rocksdb_batched_multi_get_cf_slice(
                     _db.Handle,
                     readOptions.Handle,
                     cf.Handle,
                     (UIntPtr)values.Length,
-                    keySlicesPtr,
-                    valueHandlesPtr,
-                    errorsPtr,
+                    (IntPtr)keySlicesPtr,
+                    (IntPtr)valueHandlesPtr,
+                    errors.UnsafeGetInternalArray(),
                     0);
             }
 
             IntPtr firstError = IntPtr.Zero;
-            for (int i = 0; i < errors.Length; i++)
+            for (int i = 0; i < errorsSpan.Length; i++)
             {
-                IntPtr error = errors[i];
+                IntPtr error = errorsSpan[i];
                 if (error == IntPtr.Zero) continue;
 
                 if (firstError == IntPtr.Zero)
@@ -1110,14 +1109,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 else
                     Native.Instance.rocksdb_free(error);
 
-                errors[i] = IntPtr.Zero;
+                errorsSpan[i] = IntPtr.Zero;
             }
 
             if (firstError != IntPtr.Zero) ThrowRocksDbException(firstError);
 
-            for (int i = 0; i < valueHandles.Length; i++)
+            for (int i = 0; i < valueHandlesSpan.Length; i++)
             {
-                IntPtr handle = valueHandles[i];
+                IntPtr handle = valueHandlesSpan[i];
                 if (handle == IntPtr.Zero)
                 {
                     values[i] = null;
@@ -1137,10 +1136,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
-            for (int i = 0; i < valueHandles.Length; i++)
+            for (int i = 0; i < valueHandlesSpan.Length; i++)
             {
-                if (valueHandles[i] != IntPtr.Zero)
-                    Native.Instance.rocksdb_pinnableslice_destroy(valueHandles[i]);
+                if (valueHandlesSpan[i] != IntPtr.Zero)
+                    Native.Instance.rocksdb_pinnableslice_destroy(valueHandlesSpan[i]);
             }
         }
 
@@ -1153,20 +1152,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         public readonly byte* Data = data;
         public readonly UIntPtr Length = (UIntPtr)length;
-    }
-
-    private static unsafe class RocksDbNativeMethods
-    {
-        [DllImport("rocksdb", EntryPoint = "rocksdb_batched_multi_get_cf_slice", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void BatchedMultiGetColumnFamilySlices(
-            IntPtr db,
-            IntPtr readOptions,
-            IntPtr columnFamily,
-            UIntPtr keyCount,
-            RocksDbSlice* keys,
-            IntPtr* values,
-            IntPtr* errors,
-            byte sortedInput);
     }
 
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)

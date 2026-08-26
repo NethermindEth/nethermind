@@ -266,7 +266,18 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
-        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts);
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            Span<byte> accountBuffer = stackalloc byte[256];
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                int responseSize = GetAccount(addresses[i], accountBuffer);
+                accounts[i] = responseSize == 0 ? null : accountBuffer[..responseSize].ToArray();
+            }
+        }
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
         public void GetStorages(
             ReadOnlySpan<ValueHash256> addresses,
@@ -440,14 +451,14 @@ public static class BasePersistence
             if (addresses.Length != accounts.Length)
                 throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-            ValueHash256[] addressHashes = new ValueHash256[addresses.Length];
-            byte[]?[] encodedAccounts = new byte[]?[addresses.Length];
+            using ArrayPoolListRef<ValueHash256> addressHashes = new(addresses.Length, addresses.Length);
+            using ArrayPoolListRef<byte[]?> encodedAccounts = new(addresses.Length, addresses.Length);
             for (int i = 0; i < addresses.Length; i++)
                 addressHashes[i] = addresses[i].ToAccountPath;
 
-            _flatReader.GetAccounts(addressHashes, encodedAccounts);
+            _flatReader.GetAccounts(addressHashes.AsSpan(), encodedAccounts.AsSpan());
 
-            for (int i = 0; i < encodedAccounts.Length; i++)
+            for (int i = 0; i < encodedAccounts.Count; i++)
             {
                 byte[]? encodedAccount = encodedAccounts[i];
                 if (encodedAccount is null or { Length: 0 })
@@ -474,16 +485,16 @@ public static class BasePersistence
             if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
                 throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
 
-            ValueHash256[] addressHashes = new ValueHash256[storageCells.Length];
-            ValueHash256[] slotHashes = new ValueHash256[storageCells.Length];
+            using ArrayPoolListRef<ValueHash256> addressHashes = new(storageCells.Length, storageCells.Length);
+            using ArrayPoolListRef<ValueHash256> slotHashes = new(storageCells.Length, storageCells.Length);
             for (int i = 0; i < storageCells.Length; i++)
             {
                 StorageCell cell = storageCells[i];
                 addressHashes[i] = cell.Address.ToAccountPath;
-                StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHashes[i]);
+                StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHashes.GetRef(i));
             }
 
-            _flatReader.GetStorages(addressHashes, slotHashes, slots, found);
+            _flatReader.GetStorages(addressHashes.AsSpan(), slotHashes.AsSpan(), slots, found);
         }
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)

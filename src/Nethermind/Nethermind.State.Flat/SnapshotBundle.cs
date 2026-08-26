@@ -114,8 +114,8 @@ public sealed class SnapshotBundle : IDisposable
         if (addresses.Length != accounts.Length)
             throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-        Address[] missingAddresses = new Address[addresses.Length];
-        int[] missingIndices = new int[addresses.Length];
+        using ArrayPoolListRef<Address> missingAddresses = new(addresses.Length);
+        using ArrayPoolListRef<int> missingIndices = new(addresses.Length);
         int missingCount = 0;
 
         for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
@@ -141,15 +141,15 @@ public sealed class SnapshotBundle : IDisposable
 
             if (found) continue;
 
-            missingAddresses[missingCount] = address;
-            missingIndices[missingCount] = addressIndex;
+            missingAddresses.Add(address);
+            missingIndices.Add(addressIndex);
             missingCount++;
         }
 
         if (missingCount == 0) return;
 
-        Account?[] missingAccounts = new Account?[missingCount];
-        _readOnlySnapshotBundle.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+        using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+        _readOnlySnapshotBundle.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
         for (int i = 0; i < missingCount; i++)
             accounts[missingIndices[i]] = missingAccounts[i];
     }
@@ -213,9 +213,9 @@ public sealed class SnapshotBundle : IDisposable
         if (storageCells.Length != selfDestructStateIdxs.Length || storageCells.Length != slots.Length)
             throw new ArgumentException("Storage cells, self-destruct indices, and slots must have the same length.", nameof(slots));
 
-        StorageCell[] missingCells = new StorageCell[storageCells.Length];
-        int[] missingSelfDestructStateIdxs = new int[storageCells.Length];
-        int[] missingIndices = new int[storageCells.Length];
+        using ArrayPoolListRef<StorageCell> missingCells = new(storageCells.Length);
+        using ArrayPoolListRef<int> missingSelfDestructStateIdxs = new(storageCells.Length);
+        using ArrayPoolListRef<int> missingIndices = new(storageCells.Length);
         int missingCount = 0;
 
         for (int cellIndex = 0; cellIndex < storageCells.Length; cellIndex++)
@@ -231,7 +231,10 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+            {
+                slots[cellIndex] = null;
                 continue;
+            }
 
             int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
             bool resolved = false;
@@ -246,6 +249,7 @@ public sealed class SnapshotBundle : IDisposable
 
                 if (snapshotIndex <= currentBundleSelfDestructIdx)
                 {
+                    slots[cellIndex] = null;
                     resolved = true;
                     break;
                 }
@@ -253,19 +257,19 @@ public sealed class SnapshotBundle : IDisposable
 
             if (resolved) continue;
 
-            missingCells[missingCount] = cell;
-            missingSelfDestructStateIdxs[missingCount] = selfDestructStateIdx;
-            missingIndices[missingCount] = cellIndex;
+            missingCells.Add(cell);
+            missingSelfDestructStateIdxs.Add(selfDestructStateIdx);
+            missingIndices.Add(cellIndex);
             missingCount++;
         }
 
         if (missingCount == 0) return;
 
-        byte[]?[] missingSlots = new byte[]?[missingCount];
+        using ArrayPoolListRef<byte[]?> missingSlots = new(missingCount, missingCount);
         _readOnlySnapshotBundle.GetSlots(
-            missingCells.AsSpan(0, missingCount),
-            missingSelfDestructStateIdxs.AsSpan(0, missingCount),
-            missingSlots);
+            missingCells.AsSpan(),
+            missingSelfDestructStateIdxs.AsSpan(),
+            missingSlots.AsSpan());
         for (int i = 0; i < missingCount; i++)
             slots[missingIndices[i]] = missingSlots[i];
     }

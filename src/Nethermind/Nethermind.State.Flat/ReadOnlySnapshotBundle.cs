@@ -91,8 +91,8 @@ public sealed class ReadOnlySnapshotBundle(
         if (addresses.Length != accounts.Length)
             throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-        Address[] missingAddresses = new Address[addresses.Length];
-        int[] missingIndices = new int[addresses.Length];
+        using ArrayPoolListRef<Address> missingAddresses = new(addresses.Length);
+        using ArrayPoolListRef<int> missingIndices = new(addresses.Length);
         int missingCount = 0;
 
         for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
@@ -118,15 +118,15 @@ public sealed class ReadOnlySnapshotBundle(
                 continue;
             }
 
-            missingAddresses[missingCount] = address;
-            missingIndices[missingCount] = addressIndex;
+            missingAddresses.Add(address);
+            missingIndices.Add(addressIndex);
             missingCount++;
         }
 
         if (missingCount == 0) return;
 
-        Account?[] missingAccounts = new Account?[missingCount];
-        persistenceReader.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+        using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+        persistenceReader.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
         for (int i = 0; i < missingCount; i++)
             accounts[missingIndices[i]] = missingAccounts[i];
     }
@@ -156,8 +156,8 @@ public sealed class ReadOnlySnapshotBundle(
         if (storageCells.Length != selfDestructStateIdxs.Length || storageCells.Length != slots.Length)
             throw new ArgumentException("Storage cells, self-destruct indices, and slots must have the same length.", nameof(slots));
 
-        StorageCell[] missingCells = new StorageCell[storageCells.Length];
-        int[] missingIndices = new int[storageCells.Length];
+        using ArrayPoolListRef<StorageCell> missingCells = new(storageCells.Length);
+        using ArrayPoolListRef<int> missingIndices = new(storageCells.Length);
         int missingCount = 0;
 
         for (int cellIndex = 0; cellIndex < storageCells.Length; cellIndex++)
@@ -178,6 +178,7 @@ public sealed class ReadOnlySnapshotBundle(
 
                 if (_persistedSnapshotCount + snapshotIndex <= selfDestructStateIdx)
                 {
+                    slots[cellIndex] = null;
                     resolved = true;
                     break;
                 }
@@ -197,16 +198,16 @@ public sealed class ReadOnlySnapshotBundle(
                 continue;
             }
 
-            missingCells[missingCount] = cell;
-            missingIndices[missingCount] = cellIndex;
+            missingCells.Add(cell);
+            missingIndices.Add(cellIndex);
             missingCount++;
         }
 
         if (missingCount == 0) return;
 
-        SlotValue[] missingSlots = new SlotValue[missingCount];
-        bool[] missingFound = new bool[missingCount];
-        persistenceReader.GetSlots(missingCells.AsSpan(0, missingCount), missingSlots, missingFound);
+        using ArrayPoolListRef<SlotValue> missingSlots = new(missingCount, missingCount);
+        using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
+        persistenceReader.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
         for (int i = 0; i < missingCount; i++)
             slots[missingIndices[i]] = missingSlots[i].ToEvmBytes();
     }

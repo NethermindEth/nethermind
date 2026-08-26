@@ -864,6 +864,14 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
         Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
         Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+
+        byte[]?[] batchedSlots = [[0xFF]];
+        int selfDestructStateIdx = ctx.SnapshotBundle.DetermineSelfDestructSnapshotIdx(addr);
+        ctx.SnapshotBundle.GetSlots(
+            [new StorageCell(addr, slotBefore)],
+            [selfDestructStateIdx],
+            batchedSlots);
+        Assert.That(batchedSlots[0], Is.Null, "Batched slot reads must clear stale output for self-destructed slots");
     }
 
     [Test]

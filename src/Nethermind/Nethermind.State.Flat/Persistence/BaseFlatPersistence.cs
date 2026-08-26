@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -146,11 +147,11 @@ public static class BaseFlatPersistence
             if (addresses.Length != accounts.Length)
                 throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-            byte[] keys = new byte[addresses.Length * AccountKeyLength];
+            using ArrayPoolListRef<byte> keys = new(addresses.Length * AccountKeyLength, addresses.Length * AccountKeyLength);
             for (int i = 0; i < addresses.Length; i++)
-                EncodeAccountKeyHashed(keys.AsSpan(i * AccountKeyLength, AccountKeyLength), addresses[i]);
+                EncodeAccountKeyHashed(keys.AsSpan().Slice(i * AccountKeyLength, AccountKeyLength), addresses[i]);
 
-            state.MultiGet(keys, AccountKeyLength, accounts, ReadFlags.HintCacheMiss);
+            state.MultiGet(keys.AsSpan(), AccountKeyLength, accounts, ReadFlags.HintCacheMiss);
         }
 
         [SkipLocalsInit]
@@ -175,13 +176,13 @@ public static class BaseFlatPersistence
             if (addresses.Length != slots.Length || addresses.Length != values.Length || addresses.Length != found.Length)
                 throw new ArgumentException("Addresses, slots, values, and found flags must have the same length.", nameof(values));
 
-            byte[] keys = new byte[addresses.Length * StorageKeyLength];
+            using ArrayPoolListRef<byte> keys = new(addresses.Length * StorageKeyLength, addresses.Length * StorageKeyLength);
             for (int i = 0; i < addresses.Length; i++)
-                EncodeStorageKeyHashedWithShortPrefix(keys.AsSpan(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i]);
+                EncodeStorageKeyHashedWithShortPrefix(keys.AsSpan().Slice(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i]);
 
-            byte[]?[] encodedValues = new byte[]?[addresses.Length];
-            storage.MultiGet(keys, StorageKeyLength, encodedValues, ReadFlags.HintCacheMiss);
-            for (int i = 0; i < encodedValues.Length; i++)
+            using ArrayPoolListRef<byte[]?> encodedValues = new(addresses.Length, addresses.Length);
+            storage.MultiGet(keys.AsSpan(), StorageKeyLength, encodedValues.AsSpan(), ReadFlags.HintCacheMiss);
+            for (int i = 0; i < encodedValues.Count; i++)
             {
                 byte[]? encodedValue = encodedValues[i];
                 if (encodedValue is null or { Length: 0 })
