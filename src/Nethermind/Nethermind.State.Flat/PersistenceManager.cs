@@ -488,27 +488,29 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            try
             {
-                if (toSelfDestructStorage.Value)
+                foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
                 {
-                    continue;
+                    if (toSelfDestructStorage.Value)
+                    {
+                        continue;
+                    }
+
+                    batch.SelfDestruct(toSelfDestructStorage.Key.Key);
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
-            }
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                {
+                    batch.SetAccount(kv.Key.Key, kv.Value);
+                }
 
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
-            {
-                batch.SetAccount(kv.Key.Key, kv.Value);
-            }
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
 
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
-            {
-                (Address addr, UInt256 slot) = kv.Key.Key;
-
-                batch.SetStorage(addr, slot, kv.Value);
-            }
+                    batch.SetStorage(addr, slot, kv.Value);
+                }
 
             // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
             // faster; the rare non-compacted persist enumerates unordered, which is still correct.
@@ -557,8 +559,15 @@ public class PersistenceManager(
                 node.PrunePersistedRecursively(1);
             }
 
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+                Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
+                Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+            }
+            catch
+            {
+                if (batch is IAbortableWriteBatch abortable)
+                    abortable.Abandon();
+                throw;
+            }
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -581,28 +590,37 @@ public class PersistenceManager(
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
-            // same per-address inner table, so one outer pass + TryResolveAll resolves all
-            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
-            // is preserved within the row; cross-address ordering is irrelevant to the
-            // write batch.
-            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+            try
             {
-                if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+                // same per-address inner table, so one outer pass + TryResolveAll resolves all
+                // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+                // is preserved within the row; cross-address ordering is irrelevant to the
+                // write batch.
+                foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+                {
+                    if (entry.SelfDestructFlag is false)
+                        batch.SelfDestruct(entry.Address);
 
-                if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    if (entry.HasAccount)
+                        batch.SetAccount(entry.Address, entry.Account);
 
-                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                        batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                }
+
+                foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
+                    batch.SetStateTrieNode(entry.Path, entry.Rlp);
+
+                foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
+                    batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
             }
-
-            foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
-
-            foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
+            catch
+            {
+                if (batch is IAbortableWriteBatch abortable)
+                    abortable.Abandon();
+                throw;
+            }
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

@@ -9,12 +9,22 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
+internal interface IAbortableWriteBatch
+{
+    void Abandon();
+}
+
 /// <summary>
 /// <see cref="IPersistence"/> decorator that caches flat account/slot reads across heads, so a new head
 /// does not re-read the serving working set from the database on its first eth_calls. Wraps the reader
-/// (serve/fill) and the write batch (drops the committed write-set; clears on self-destruct or any
-/// raw/range write). Generation-gated: a reader behind the cache basis bypasses it rather than serving stale data.
+/// (serve/fill) and the write batch: committed accounts are refreshed or admitted when capacity permits,
+/// committed slots are invalidated, and self-destruct or raw account/slot and range writes clear the cache.
+/// Generation-gated: a reader behind the cache basis bypasses it rather than serving stale data.
 /// </summary>
+/// <remarks>
+/// There is no per-entry account eviction. Account residency grows until the entry cap forces a wholesale
+/// wipe, so the account-count gauge and wipe counter form a sawtooth under sustained churn.
+/// </remarks>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
     private const int DefaultMaxEntriesPerKind = 262144;
@@ -87,10 +97,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _accounts.Clear();
                 _accountCount = 0;
-                Metrics.CarryForwardWipes++;
+                Metrics.IncrementCarryForwardWipes();
             }
             if (_accounts.TryAdd(address, account)) _accountCount++;
-            Metrics.CarryForwardAccountCount = _accountCount;
+            Metrics.PublishCarryForwardAccountCount(_accountCount);
         }
     }
 
@@ -105,10 +115,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
-                Metrics.CarryForwardWipes++;
+                Metrics.IncrementCarryForwardWipes();
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
-            Metrics.CarryForwardSlotCount = _slotCount;
+            Metrics.PublishCarryForwardSlotCount(_slotCount);
         }
     }
 
@@ -136,7 +146,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                     if (_accounts.ContainsKey(written.Key)) _accounts[written.Key] = written.Value;
                     else if (_accountCount < _maxEntriesPerKind && _accounts.TryAdd(written.Key, written.Value)) _accountCount++;
                 }
-                Metrics.CarryForwardAccountCount = _accountCount;
+                Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
 
             if (writtenSlots is not null)
@@ -145,6 +155,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 {
                     if (_slots.TryRemove(key, out _)) _slotCount--;
                 }
+                Metrics.PublishCarryForwardSlotCount(_slotCount);
             }
         }
     }
@@ -155,8 +166,18 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _accountCount = 0;
         _slots.Clear();
         _slotCount = 0;
-        Metrics.CarryForwardAccountCount = 0;
-        Metrics.CarryForwardSlotCount = 0;
+        Metrics.PublishCarryForwardAccountCount(0);
+        Metrics.PublishCarryForwardSlotCount(0);
+    }
+
+    private void Abort()
+    {
+        // Do not call IPersistence.Clear here: it clears the database, not just this decorator's cache.
+        using (_lock.EnterScope())
+        {
+            _generation++;
+            ClearAllNoLock();
+        }
     }
 
     private readonly struct CachedSlot(bool found, SlotValue value)
@@ -168,22 +189,26 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
         : IPersistence.IPersistenceReader
     {
-        // A reader is shared by every thread reading its state, so the hit/miss counters go straight to the
-        // atomic globals. Captured once per reader to keep the increments off the hot path when disabled.
+        // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
+        // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
+        // cost. Existing readers retain that captured value if the flag later changes.
         private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
 
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            if (!current)
+                return inner.GetAccount(address);
+
+            if (parent._accounts.TryGetValue(address, out Account? account))
             {
-                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountHits);
-                return cached;
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
+                return account;
             }
 
-            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardAccountMisses);
-            Account? account = inner.GetAccount(address);
-            if (current) parent.TryCacheAccount(address, account, generation);
+            if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
+            account = inner.GetAccount(address);
+            parent.TryCacheAccount(address, account, generation);
             return account;
         }
 
@@ -191,16 +216,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
-            if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
+            if (!current)
+                return inner.TryGetSlot(address, slot, ref outValue);
+
+            if (parent._slots.TryGetValue(key, out CachedSlot cachedSlot))
             {
-                if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotHits);
-                if (cached.Found) outValue = cached.Value;
-                return cached.Found;
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
+                if (cachedSlot.Found) outValue = cachedSlot.Value;
+                return cachedSlot.Found;
             }
 
-            if (_recordDetailedMetrics) Interlocked.Increment(ref Metrics.CarryForwardSlotMisses);
+            if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
             bool found = inner.TryGetSlot(address, slot, ref outValue);
-            if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
+            parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
         }
 
@@ -216,63 +244,186 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
-        : IPersistence.IWriteBatch
+        : IPersistence.IWriteBatch, IAbortableWriteBatch
     {
         private Dictionary<Address, Account?>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
+        private bool _abandoned;
 
         public void SelfDestruct(Address addr)
         {
-            _clearAll = true;
-            inner.SelfDestruct(addr);
+            try
+            {
+                inner.SelfDestruct(addr);
+                _clearAll = true;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= [])[addr] = account;
-            inner.SetAccount(addr, account);
+            try
+            {
+                inner.SetAccount(addr, account);
+                (_writtenAccounts ??= [])[addr] = account;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
-            inner.SetStorage(addr, slot, value);
+            try
+            {
+                inner.SetStorage(addr, slot, value);
+                (_writtenSlots ??= []).Add((addr, slot));
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
-            _clearAll = true;
-            inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+            try
+            {
+                inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+                _clearAll = true;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
-            _clearAll = true;
-            inner.SetAccountRaw(addrHash, account);
+            try
+            {
+                inner.SetAccountRaw(addrHash, account);
+                _clearAll = true;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
         {
-            _clearAll = true;
-            inner.DeleteAccountRange(fromPath, toPath);
+            try
+            {
+                inner.DeleteAccountRange(fromPath, toPath);
+                _clearAll = true;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
         {
-            _clearAll = true;
-            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+            try
+            {
+                inner.DeleteStorageRange(addressHash, fromPath, toPath);
+                _clearAll = true;
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
         }
 
-        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
-        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
+        {
+            try
+            {
+                inner.SetStateTrieNode(path, rlp);
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
+        }
+
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
+        {
+            try
+            {
+                inner.SetStorageTrieNode(address, path, rlp);
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
+        }
+
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to)
+        {
+            try
+            {
+                inner.DeleteStateTrieNodeRange(from, to);
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
+        }
+
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
+        {
+            try
+            {
+                inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
+        }
 
         public void Dispose()
         {
-            inner.Dispose();
-            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            try
+            {
+                inner.Dispose();
+            }
+            catch
+            {
+                Abandon();
+                throw;
+            }
+
+            if (!_abandoned)
+                parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+        }
+
+        void IAbortableWriteBatch.Abandon() => Abandon();
+
+        private void Abandon()
+        {
+            if (_abandoned) return;
+            _abandoned = true;
+            parent.Abort();
         }
     }
 }

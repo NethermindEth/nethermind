@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Threading;
 using NonBlocking;
 
 
@@ -97,34 +99,48 @@ public static class Metrics
     [DetailedMetric]
     [CounterMetric]
     [Description("Carry-forward account cache hits")]
-    public static long CarryForwardAccountHits;
+    public static long CarryForwardAccountHits => _carryForwardAccountHits.Sum;
+    private static readonly StripedLong _carryForwardAccountHits = new();
+    internal static void IncrementCarryForwardAccountHits() => _carryForwardAccountHits.Increment();
 
     [DetailedMetric]
     [CounterMetric]
     [Description("Carry-forward account cache misses")]
-    public static long CarryForwardAccountMisses;
+    public static long CarryForwardAccountMisses => _carryForwardAccountMisses.Sum;
+    private static readonly StripedLong _carryForwardAccountMisses = new();
+    internal static void IncrementCarryForwardAccountMisses() => _carryForwardAccountMisses.Increment();
 
     [DetailedMetric]
     [CounterMetric]
     [Description("Carry-forward slot cache hits")]
-    public static long CarryForwardSlotHits;
+    public static long CarryForwardSlotHits => _carryForwardSlotHits.Sum;
+    private static readonly StripedLong _carryForwardSlotHits = new();
+    internal static void IncrementCarryForwardSlotHits() => _carryForwardSlotHits.Increment();
 
     [DetailedMetric]
     [CounterMetric]
     [Description("Carry-forward slot cache misses")]
-    public static long CarryForwardSlotMisses;
+    public static long CarryForwardSlotMisses => _carryForwardSlotMisses.Sum;
+    private static readonly StripedLong _carryForwardSlotMisses = new();
+    internal static void IncrementCarryForwardSlotMisses() => _carryForwardSlotMisses.Increment();
 
     [CounterMetric]
     [Description("Times the carry-forward cache was cleared wholesale because the per-kind entry cap was reached")]
-    public static long CarryForwardWipes;
+    public static long CarryForwardWipes => Volatile.Read(ref _carryForwardWipes.Value);
+    private static CacheLinePaddedLong _carryForwardWipes;
+    internal static void IncrementCarryForwardWipes() => Interlocked.Increment(ref _carryForwardWipes.Value);
 
     [GaugeMetric]
     [Description("Accounts currently held by the carry-forward cache")]
-    public static long CarryForwardAccountCount;
+    public static long CarryForwardAccountCount => Volatile.Read(ref _carryForwardAccountCount);
+    private static long _carryForwardAccountCount;
+    internal static void PublishCarryForwardAccountCount(long count) => Volatile.Write(ref _carryForwardAccountCount, count);
 
     [GaugeMetric]
     [Description("Slots currently held by the carry-forward cache")]
-    public static long CarryForwardSlotCount;
+    public static long CarryForwardSlotCount => Volatile.Read(ref _carryForwardSlotCount);
+    private static long _carryForwardSlotCount;
+    internal static void PublishCarryForwardSlotCount(long count) => Volatile.Write(ref _carryForwardSlotCount, count);
 
     [DetailedMetric]
     [Description("Time spend compacting snapshots")]
