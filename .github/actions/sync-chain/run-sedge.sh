@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+
 case "${SYNC_MODE,,}" in
   halfpath) flatdb_enabled=false ;;
   flat)     flatdb_enabled=true ;;
@@ -42,10 +45,9 @@ if [[ "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
     exit 1
   fi
 
-  [[ "$NETWORK" == world-* ]] && extra_param+=(--chain worldchain)
+  is_worldchain "$NETWORK" && extra_param+=(--chain worldchain)
 
-  stripped_network="${NETWORK#op-}"
-  stripped_network="${stripped_network#world-}"
+  stripped_network=$(resolve_l1_network "$NETWORK")
   echo "network=${NETWORK} resolved to L1 network=${stripped_network}"
 
   mkdir -p execution-data-op/logs/configs

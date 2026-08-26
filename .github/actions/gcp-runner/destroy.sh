@@ -38,21 +38,34 @@ if [ -n "$ZONE" ]; then
     # Confirm against the end state rather than the exit code; only a VM that is still
     # there afterwards is a genuine leak worth failing over.
     echo "delete call failed, checking whether ${INSTANCE_NAME} is gone anyway"
-    still_there=""
+    # resolve_zone separates "absent" (success, empty) from "lookup failed" (non-zero).
+    # Collapsing the two would let a transient API error be reported as a deleted VM.
+    present=unconfirmed
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
-      still_there=$(gcloud compute instances describe "$INSTANCE_NAME" --project="$PROJECT_ID" \
-        --zone="$ZONE" --format='value(name)' 2>/dev/null || true)
-      [ -z "$still_there" ] && break
+      if zone_now=$(resolve_zone "$INSTANCE_NAME"); then
+        [ -z "$zone_now" ] && { present=no; break; }
+        present=yes
+      else
+        present=unconfirmed
+      fi
       sleep 5
     done
-    if [ -z "$still_there" ]; then
-      TERMINATED_BY=deleted-concurrently
-      echo "${INSTANCE_NAME} was already being deleted and is now gone"
-    else
-      DELETE_FAILED=true
-      TERMINATED_BY=delete-failed
-      echo "::error title=GCP runner::failed to delete ${INSTANCE_NAME} in ${ZONE}; --max-run-duration will reap it"
-    fi
+    case "$present" in
+      no)
+        TERMINATED_BY=deleted-concurrently
+        echo "${INSTANCE_NAME} was already being deleted and is now gone"
+        ;;
+      yes)
+        DELETE_FAILED=true
+        TERMINATED_BY=delete-failed
+        echo "::error title=GCP runner::failed to delete ${INSTANCE_NAME} in ${ZONE}; --max-run-duration will reap it"
+        ;;
+      *)
+        DELETE_FAILED=true
+        TERMINATED_BY=lookup-failed
+        echo "::error title=GCP runner::could not confirm whether ${INSTANCE_NAME} was deleted; --max-run-duration will reap it"
+        ;;
+    esac
   fi
 else
   # The instance is already gone. Every in-guest preemption signal died with it, but zone

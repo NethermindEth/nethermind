@@ -75,7 +75,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          sparse-checkout: scripts/config
+          sparse-checkout: |
+            scripts/config
+            scripts/sync
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
       - name: Set Matrix
@@ -131,13 +133,7 @@ jobs:
                 })
               | . + { max_run_duration: (((.timeout + 60) | tostring) + "m") }]')
 
-          # Apply chain_filter if provided
-          if [ -n "$CHAIN_FILTER" ]; then
-            matrix=$(echo "$matrix" | jq --arg filter "$CHAIN_FILTER" '
-              [.[] | select(.network == $filter)] as $exact
-              | if ($exact | length) > 0 then $exact
-                else [.[] | select(.network | contains($filter))] end')
-          fi
+          matrix=$(echo "$matrix" | scripts/sync/select-networks.sh "$CHAIN_FILTER")
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 

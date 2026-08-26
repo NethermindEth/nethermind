@@ -124,7 +124,7 @@ outputs:
   terminated_by:
     description: >-
       One of deleted-by-action, deleted-by-self, deleted-concurrently, preempted,
-      terminated, delete-failed or unknown.
+      terminated, delete-failed, lookup-failed or unknown.
     value: ${{ steps.destroy.outputs.terminated_by }}
 
 runs:

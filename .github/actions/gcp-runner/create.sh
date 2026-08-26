@@ -21,7 +21,11 @@ cleanup_failed() {
   local zone="${1:-}"
   # A create call can fail after the instance exists (timeout, partial failure), so fall
   # back to a lookup rather than leaving it for --max-run-duration to reap hours later.
-  [ -n "$zone" ] || zone=$(resolve_zone "$INSTANCE_NAME")
+  # The lookup must not be fatal: the runner registration and credential file below still
+  # have to be cleaned up even when it fails.
+  if [ -z "$zone" ]; then
+    zone=$(resolve_zone "$INSTANCE_NAME") || zone=""
+  fi
   if [ -n "$zone" ]; then
     echo "::group::serial console output"
     gcloud compute instances get-serial-port-output "$INSTANCE_NAME" \
