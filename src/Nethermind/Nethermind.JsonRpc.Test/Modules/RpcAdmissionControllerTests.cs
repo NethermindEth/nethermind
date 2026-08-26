@@ -577,23 +577,42 @@ public class RpcAdmissionControllerTests
     }
 
     [Test]
-    public async Task Heavy_waiter_is_shed_at_its_wait_budget()
+    public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
     {
         const int budgetMs = 200;
         ManualTimeProvider timeProvider = new();
         RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs }, LimboLogs.Instance, timeProvider);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
-        using RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
+        RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
         Task<RpcAdmissionController.Lease> heavy = controller.AdmitAsync(ethCall, ParamsLengthForWeight(RpcRequestWeight.MaxWeight)).AsTask();
 
-        Assert.That(heavy.IsCompleted, Is.False);
-        timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
-
-        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
-            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
+            Assert.That(heavy.IsCompleted, Is.False);
+            int lightServed = 0;
+            while (lightServed < 2)
+            {
+                Task<RpcAdmissionController.Lease> light = controller.AdmitAsync(ethCall, 0).AsTask();
+                Assert.That(light.IsCompleted, Is.False);
+                holder.ReleaseWithoutSampling();
+                holder = await light;
+                lightServed++;
+            }
+
+            Assert.That(heavy.IsCompleted, Is.False);
+            timeProvider.AdvanceAndFireTimers(TimeSpan.FromMilliseconds(budgetMs));
+
+            Assert.ThrowsAsync<LimitExceededException>(() => heavy);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lightServed, Is.EqualTo(2));
+                Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+                Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            holder.Dispose();
         }
     }
 

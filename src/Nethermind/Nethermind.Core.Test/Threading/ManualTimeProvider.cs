@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ public sealed class ManualTimeProvider : TimeProvider
 
     private static readonly NoopTimer SharedTimer = new();
     private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly List<(TimerCallback Callback, object? State)> _timers = [];
     private TimerCallback? _timerCallback;
     private object? _timerState;
     private long _elapsedTicks;
@@ -35,6 +37,11 @@ public sealed class ManualTimeProvider : TimeProvider
     {
         _timerCallback = callback;
         _timerState = state;
+        lock (_timers)
+        {
+            _timers.Add((callback, state));
+        }
+
         _timerCreated.TrySetResult();
         return SharedTimer;
     }
@@ -51,5 +58,20 @@ public sealed class ManualTimeProvider : TimeProvider
     {
         Advance(elapsed);
         _timerCallback?.Invoke(_timerState);
+    }
+
+    public void AdvanceAndFireTimers(TimeSpan elapsed)
+    {
+        Advance(elapsed);
+        (TimerCallback Callback, object? State)[] timers;
+        lock (_timers)
+        {
+            timers = [.. _timers];
+        }
+
+        foreach ((TimerCallback callback, object? state) in timers)
+        {
+            callback(state);
+        }
     }
 }

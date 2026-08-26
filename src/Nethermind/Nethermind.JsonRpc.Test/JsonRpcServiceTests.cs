@@ -635,11 +635,15 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(false, Build.A.Block.WithWithdrawals(null).TestObject);
     }
 
-    [Test]
-    public async Task Unhandled_operation_cancellation_without_request_cancellation_returns_InternalError()
+    [TestCase(false, TestName = "Unhandled_exception_returns_InternalError")]
+    [TestCase(true, TestName = "Unhandled_operation_cancellation_without_request_cancellation_returns_InternalError")]
+    public async Task Unhandled_exception_without_request_cancellation_returns_InternalError(bool operationCancellation)
     {
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
-        moduleProvider.Resolve(Arg.Any<string>()).Throws(new OperationCanceledException("module stopped"));
+        Exception exception = operationCancellation
+            ? new OperationCanceledException("module stopped")
+            : new Exception("test");
+        moduleProvider.Resolve(Arg.Any<string>()).Throws(exception);
 
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _admissionController);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");

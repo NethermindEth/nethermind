@@ -50,9 +50,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
                 .AddScoped<ITracer, Tracer>());
 
-            // The tracer need a in memory receipts while the proof RPC does not.
-            // Eh, its a good idea to separate what need block processing and what does not anyway.
-            // IWitnessGeneratingBlockProcessingEnvFactory used by proof_call is resolved from the parent scope.
+                // The tracer need a in memory receipts while the proof RPC does not.
+                // Eh, its a good idea to separate what need block processing and what does not anyway.
+                // IWitnessGeneratingBlockProcessingEnvFactory used by proof_call is resolved from the parent
+                // scope.
                 proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                     .AddSingleton<IOverridableEnv<ITracer>>(tracerScope.Resolve<IOverridableEnv<ITracer>>()));
 
