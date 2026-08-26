@@ -44,6 +44,9 @@ PERF="${PERF:-false}"
 # perf samples on the host: it is absent from the client images and links against
 # libLLVM/libpython/libtraceevent, so the host binary cannot be mounted in.
 PERF_FREQUENCY="${PERF_FREQUENCY:-99}"
+# true = leave perf unstarted and dotTrace launched with data collection off; the workflow runs
+# start-profilers.sh once the warm-up is done, so the profiles cover only the measured phase.
+PROFILE_AFTER_WARMUP="${PROFILE_AFTER_WARMUP:-false}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
 # No Personal/Admin (or geth admin) by default — the RPC port is only ever
 # served for the local load generator; administrative modules are not benchmarked.
@@ -69,6 +72,12 @@ case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
   *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
 esac
+case "$PROFILE_AFTER_WARMUP" in
+  true|false) ;;
+  *) die "PROFILE_AFTER_WARMUP must be true or false (got '$PROFILE_AFTER_WARMUP')" ;;
+esac
+DOTTRACE_DEFERRED="false"
+[[ "$DOTTRACE" == "true" && "$PROFILE_AFTER_WARMUP" == "true" ]] && DOTTRACE_DEFERRED="true"
 
 if [[ "$PERF" == "true" ]]; then
   require_perf_access
@@ -99,6 +108,7 @@ log "Isolation:  $DB_ISOLATION"
 log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"
 log "perf:       $PERF (${PERF_FREQUENCY}Hz)"
+[[ "$PROFILE_AFTER_WARMUP" == "true" ]] && log "profilers:  deferred until start-profilers.sh runs after the warm-up"
 log "RPC port:   $RPC_PORT  (network: $NETWORK)"
 # Snapshot sets carry provenance sidecars (capture head + client version) — log
 # them so a mismatched snapshot/image pairing is visible in the run log.
@@ -206,7 +216,10 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
+  echo "DOTTRACE_DEFERRED=$DOTTRACE_DEFERRED"
   echo "PERF=$PERF"
+  echo "PERF_FREQUENCY=$PERF_FREQUENCY"
+  echo "PROFILE_AFTER_WARMUP=$PROFILE_AFTER_WARMUP"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
 
@@ -318,7 +331,16 @@ if [[ "$DOTTRACE" == "true" ]]; then
   # Timeline snapshots carry dotTrace's .dtt extension; keeping .dtp for them would let
   # Reporter.exe's .dtp glob pick up a snapshot it cannot convert.
   snapshot_ext="$([[ "$DOTTRACE_MODE" == "timeline" ]] && echo dtt || echo dtp)"
-  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.${snapshot_ext}" --propagate-exit-code --)
+  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.${snapshot_ext}" --propagate-exit-code)
+  if [[ "$DOTTRACE_DEFERRED" == "true" ]]; then
+    # Keep the `start` wrapper (attach cannot do tracing) but hold data collection until
+    # start_profilers appends ##dotTrace["start"] to the control file; the launcher must find the
+    # file at launch, so it exists (empty) before docker run. SIGINT finalization is unchanged.
+    : > "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
+    chmod a+rw "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
+    entry_args+=(--collect-data-from-start=off --service-output=on "--service-input=/dottrace-output/$DOTTRACE_CONTROL_FILE_NAME")
+  fi
+  entry_args+=(--)
   if [[ "$PERF" == "true" ]]; then
     # The dotTrace launcher is itself .NET; only the client may write a perf map.
     entry_args+=(/usr/bin/env "${perf_client_env[@]}")
@@ -341,40 +363,10 @@ docker run "${docker_args[@]}" "$NODE_IMAGE" ${entry_args[@]+"${entry_args[@]}"}
 wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="
 
-# 6) Start perf once the node serves RPC, so it excludes startup but includes
-#    the benchmark warm-up.
-if [[ "$PERF" == "true" ]]; then
-  # docker top reports HOST pids, which is what perf needs. Under dotTrace the
-  # client is a child of the profiler launcher, so pick the client explicitly.
-  node_pid="$(docker top "$CONTAINER_NAME" -eo pid,args 2>/dev/null \
-    | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace/ {print $1; exit}')"
-  if [[ -z "$node_pid" ]]; then
-    die "could not find the client process for perf"
-  fi
-  container_pid="$(awk '/^NSpid:/{print $NF}' "/proc/$node_pid/status" 2>/dev/null || true)"
-  if ! [[ "$container_pid" =~ ^[0-9]+$ ]]; then
-    die "could not resolve the container PID for perf client process $node_pid"
-  fi
-  start_perf_recorder "$PERF_FREQUENCY" "$node_pid" "$DIAG_DIR/perf/perf$SUFFIX.data" \
-    "$DIAG_DIR/perf/perf-record$SUFFIX.log"
-  perf_pid="$PERF_RECORDER_PID"
-  sleep 1
-  if ! kill -0 "$perf_pid" 2>/dev/null; then
-    log "ERROR: perf exited immediately:"
-    sed 's/^/    /' "$DIAG_DIR/perf/perf-record$SUFFIX.log" || true
-    die "perf did not start"
-  else
-    IFS=$'\t' read -r perf_recorder_start_time perf_recorder_comm perf_recorder_executable \
-      < <(perf_recorder_identity "$perf_pid") \
-      || die "could not record perf recorder identity"
-    {
-      printf 'PERF_PID=%q\n' "$perf_pid"
-      printf 'PERF_NODE_PID=%q\n' "$node_pid"
-      printf 'PERF_CONTAINER_PID=%q\n' "$container_pid"
-      printf 'PERF_RECORDER_START_TIME=%q\n' "$perf_recorder_start_time"
-      printf 'PERF_RECORDER_COMM=%q\n' "$perf_recorder_comm"
-      printf 'PERF_RECORDER_EXE=%q\n' "$perf_recorder_executable"
-    } >> "$STATE_DIR/node$SUFFIX.env"
-    log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
-  fi
+# 6) Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the
+#    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.
+if [[ "$PROFILE_AFTER_WARMUP" == "true" ]]; then
+  log "profilers deferred: run start-profilers.sh after the warm-up"
+elif [[ "$PERF" == "true" ]]; then
+  start_profilers "$STATE_DIR/node$SUFFIX.env"
 fi

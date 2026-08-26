@@ -119,6 +119,110 @@ signal_perf_recorder_if_matches() {
   kill "-$signal" "$pid"
 }
 
+# dotTrace's service-message file (--service-input=<file>): the container reads it at this path
+# under the bind-mounted diag dir, and the host appends messages to the same file.
+DOTTRACE_CONTROL_FILE_NAME="control.svc"
+DOTTRACE_START_TIMEOUT="${DOTTRACE_START_TIMEOUT:-60}"
+
+# Append one dotTrace service message. The protocol requires each message to start on a new
+# line and end with a carriage return, so the framing is written explicitly here.
+dottrace_send_message() {
+  local control_file="$1" message="$2"
+  printf '\n##dotTrace["%s"]\r\n' "$message" >> "$control_file"
+}
+
+# Count the dotTrace service-output lines of kind $2 ("connected", "started", ...) the container
+# $1 has printed so far — the launcher is PID 1, so they land in `docker logs`.
+dottrace_event_count() {
+  local container="$1" event="$2"
+  docker logs "$container" 2>&1 | grep -cF "##dotTrace[\"$event\"" || true
+}
+
+# Switch on data collection in a dotTrace launcher started with --collect-data-from-start=off,
+# and fail unless it acknowledges: a SIGINT to a profiler that never collected ends with
+# "No snapshots have been collected", which would only surface after the measured run.
+start_dottrace_collection() {
+  local container="$1" control_file="$2" started_before elapsed=0
+  [[ -f "$control_file" ]] || die "dotTrace control file $control_file is missing — was the node started with deferred collection?"
+  if (( $(dottrace_event_count "$container" connected) == 0 )); then
+    die "dotTrace never reported ##dotTrace[\"connected\"] for $container — the launcher is not in service-message mode"
+  fi
+  started_before="$(dottrace_event_count "$container" started)"
+  dottrace_send_message "$control_file" start
+  log "dotTrace: start message sent, waiting for ##dotTrace[\"started\"] (timeout ${DOTTRACE_START_TIMEOUT}s)..."
+  while (( $(dottrace_event_count "$container" started) <= started_before )); do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed >= DOTTRACE_START_TIMEOUT )); then
+      die "dotTrace did not acknowledge the start message within ${DOTTRACE_START_TIMEOUT}s — the snapshot would be empty; check the message framing in $control_file and the launcher output in docker logs"
+    fi
+  done
+  log "dotTrace: data collection started"
+}
+
+# Start perf against the client process of container $1 and append the recorder's identity to
+# the node env file $2 (suffix $3 selects the instance's files under $DIAG_DIR/perf), so that
+# stop-node.sh signals only the recorder it started. The caller must invoke require_perf_access
+# first. RPC_BENCH_PROC_ROOT lets the unit test resolve PIDs without a live container.
+start_perf_for_container() {
+  local container="$1" env_file="$2" suffix="$3" proc_root="${RPC_BENCH_PROC_ROOT:-/proc}"
+  local node_pid container_pid perf_pid perf_recorder_start_time perf_recorder_comm perf_recorder_executable
+  # docker top reports HOST pids, which is what perf needs. Under dotTrace the
+  # client is a child of the profiler launcher, so pick the client explicitly.
+  node_pid="$(docker top "$container" -eo pid,args 2>/dev/null \
+    | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace/ {print $1; exit}')"
+  if [[ -z "$node_pid" ]]; then
+    die "could not find the client process for perf"
+  fi
+  container_pid="$(awk '/^NSpid:/{print $NF}' "$proc_root/$node_pid/status" 2>/dev/null || true)"
+  if ! [[ "$container_pid" =~ ^[0-9]+$ ]]; then
+    die "could not resolve the container PID for perf client process $node_pid"
+  fi
+  start_perf_recorder "$PERF_FREQUENCY" "$node_pid" "$DIAG_DIR/perf/perf$suffix.data" \
+    "$DIAG_DIR/perf/perf-record$suffix.log"
+  perf_pid="$PERF_RECORDER_PID"
+  sleep 1
+  if ! kill -0 "$perf_pid" 2>/dev/null; then
+    log "ERROR: perf exited immediately:"
+    sed 's/^/    /' "$DIAG_DIR/perf/perf-record$suffix.log" || true
+    die "perf did not start"
+  fi
+  IFS=$'\t' read -r perf_recorder_start_time perf_recorder_comm perf_recorder_executable \
+    < <(perf_recorder_identity "$perf_pid") \
+    || die "could not record perf recorder identity"
+  {
+    printf 'PERF_PID=%q\n' "$perf_pid"
+    printf 'PERF_NODE_PID=%q\n' "$node_pid"
+    printf 'PERF_CONTAINER_PID=%q\n' "$container_pid"
+    printf 'PERF_RECORDER_START_TIME=%q\n' "$perf_recorder_start_time"
+    printf 'PERF_RECORDER_COMM=%q\n' "$perf_recorder_comm"
+    printf 'PERF_RECORDER_EXE=%q\n' "$perf_recorder_executable"
+  } >> "$env_file"
+  log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
+}
+
+# Start every requested profiler against a node that already serves RPC: perf, and dotTrace data
+# collection when start-node.sh launched the profiler with collection deferred. Reads the node
+# state start-node.sh persisted to $1 and records the start there, so a second call is refused —
+# a second recorder would orphan the first, which teardown could then neither stop nor fold.
+# start-node.sh calls this right after RPC is ready; with a warm-up the workflow calls
+# start-profilers.sh between the warm-up and the measured cell instead.
+start_profilers() {
+  local env_file="$1"
+  # shellcheck disable=SC1090
+  source "$env_file"
+  if [[ -n "${PROFILERS_STARTED_AT:-}" ]]; then
+    die "profilers were already started for ${CONTAINER_NAME} at ${PROFILERS_STARTED_AT} — refusing to start a second recorder"
+  fi
+  if [[ "${DOTTRACE:-false}" == "true" && "${DOTTRACE_DEFERRED:-false}" == "true" ]]; then
+    start_dottrace_collection "$CONTAINER_NAME" "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
+  fi
+  if [[ "${PERF:-false}" == "true" ]]; then
+    start_perf_for_container "$CONTAINER_NAME" "$env_file" "${INSTANCE_SUFFIX:-}"
+  fi
+  printf 'PROFILERS_STARTED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_file"
+}
+
 # Reject paths unsafe for recursive deletion (absolute, no '..', not '/', >=2 deep).
 #   $1 = path, $2 = label for error messages.
 assert_sane_dir() {

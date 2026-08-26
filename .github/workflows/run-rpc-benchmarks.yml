@@ -340,6 +340,33 @@ jobs:
               exit 1
             fi
           fi
+          # Single-node jsonbench warm-up (discarded load before the measured cell, after which the
+          # profilers start). The sweep reads the same key itself (default 240s there); here the
+          # default stays 0 so an unconfigured run measures what it always did.
+          warmup_seconds="0"
+          warmup_rps="400"
+          if [[ "${benchmark_tool}" == "jsonbench" && "${comparison}" != "true" ]]; then
+            warmup_raw="$(echo "${tool_config}" | jq -r '.corpus_warmup_duration // empty')"
+            if [[ -n "${warmup_raw}" ]]; then
+              if ! [[ "${warmup_raw}" =~ ^[0-9]+s?$ ]]; then
+                echo "::error::corpus_warmup_duration must be integer seconds (optional 's' suffix), got '${warmup_raw}'."
+                exit 1
+              fi
+              warmup_seconds="$(( 10#${warmup_raw%s} ))"
+            fi
+            warmup_rps_raw="$(echo "${tool_config}" | jq -r '.corpus_warmup_rps // empty')"
+            if [[ -n "${warmup_rps_raw}" ]]; then
+              if ! [[ "${warmup_rps_raw}" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::corpus_warmup_rps must be a positive integer, got '${warmup_rps_raw}'."
+                exit 1
+              fi
+              warmup_rps="${warmup_rps_raw}"
+            fi
+          elif [[ "${benchmark_tool}" != "jsonbench-sweep" ]] \
+              && [[ "$(echo "${tool_config}" | jq -r 'has("corpus_warmup_duration") or has("corpus_warmup_rps")')" == "true" ]]; then
+            echo "::error::corpus_warmup_duration/corpus_warmup_rps apply to benchmark_tool=jsonbench (benchmark mode, no reference_client) and jsonbench-sweep only."
+            exit 1
+          fi
           [[ -z "${node_config}" ]] && node_config="{}"
           if ! echo "${node_config}" | jq -e . >/dev/null 2>&1; then
             echo "node_config is not valid JSON: ${node_config}"
@@ -552,12 +579,14 @@ jobs:
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "warmup_seconds=${warmup_seconds}"
+            echo "warmup_rps=${warmup_rps}"
             echo "tool_config<<TOOLCFG"
             echo "${tool_config}"
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
 
-          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf}"
+          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
@@ -620,6 +649,7 @@ jobs:
           echo "dotTrace:    ${{ needs.resolve.outputs.dottrace }}"
           echo "dotTrace mode: ${{ needs.resolve.outputs.dottrace_mode || 'none' }}"
           echo "perf:        ${{ needs.resolve.outputs.perf }}"
+          echo "Warm-up:     ${{ needs.resolve.outputs.warmup_seconds }}s at ${{ needs.resolve.outputs.warmup_rps }} rps (single-node jsonbench; 0 = none, profilers start once RPC is ready)"
           echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
           echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
           echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
@@ -753,6 +783,8 @@ jobs:
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          # With a warm-up the profilers start in 'Start profilers' below, after it, so they cover only the measured cell.
+          PROFILE_AFTER_WARMUP: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
@@ -806,6 +838,49 @@ jobs:
             export REFERENCE_LABEL="${REFERENCE_CLIENT}"
           fi
           ./scripts/rpc-bench/run-flood.sh
+
+      - name: Warm up node
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0'
+        env:
+          RPC_URL: http://localhost:8545
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
+          CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
+          WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
+          WARMUP_RPS: ${{ needs.resolve.outputs.warmup_rps }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
+          get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          # A fresh node answers eth_blockNumber long before it serves eth_call warm: snapshot
+          # persistence still writes for minutes and the JIT has not tiered up. This discarded cell
+          # replays the measured cell's workload first; only workload identity is taken from
+          # tool_config — report/gate knobs are forced off because nothing here is published.
+          jb_ref="$(get '.ref')";                        [[ -n "${jb_ref}" ]] && export JB_REF="${jb_ref}"
+          export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"
+          jb_vus="$(get '.vus')";                        [[ -n "${jb_vus}" ]] && export JB_VUS="${jb_vus}"
+          export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"
+          jb_corpus="$(get '.corpus_file')"
+          [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
+          [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
+          max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          export JB_EXTRA_ARGS="$(get '.extra_args')"
+          # Discarded output stays OUT of OUT_DIR so it is never staged or published; the
+          # fail-rate gate is lifted because absorbing the cold failures is the point of this cell.
+          export OUT_DIR="${SCRATCH_ROOT}/warmup-cell/single"
+          export JB_MODE="benchmark" JB_RPS="${WARMUP_RPS}" JB_DURATION="${WARMUP_SECONDS}s"
+          export JB_DEEP_CHECK="false" JB_HTML_REPORT="false" JB_MAX_FAIL_RATE_PCT="100"
+          echo "-- WARMUP @ rps=${WARMUP_RPS} for ${WARMUP_SECONDS}s (discarded) --"
+          ./scripts/rpc-bench/run-jsonbench.sh \
+            || echo "::warning::warm-up failed — the measured cell and its profiles may be cold"
+
+      - name: Start profilers
+        # Only after the warm-up: without one, start-node.sh started them when RPC became ready.
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' && (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true')
+        run: ./scripts/rpc-bench/start-profilers.sh
 
       - name: Run json-bench benchmark
         id: run-jsonbench

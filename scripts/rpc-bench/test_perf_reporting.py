@@ -21,6 +21,7 @@ RPC_WORKFLOW = ROOT / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
 START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
+START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
@@ -435,6 +436,186 @@ class PerfReportingTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
 
+    def profiler_environment(self) -> tuple[dict[str, str], Path, Path]:
+        """Fake perf (its `record` publishes its own identity under a fake /proc and stays alive), a
+        fake /proc entry for the client process, and an empty diag dir."""
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 0 ;;\n"
+            "  record)\n"
+            "    mkdir -p \"$RPC_BENCH_PROC_ROOT/$$\"\n"
+            "    printf '%s (perf) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4243 0\\n' \"$$\" > \"$RPC_BENCH_PROC_ROOT/$$/stat\"\n"
+            "    printf 'perf\\n' > \"$RPC_BENCH_PROC_ROOT/$$/comm\"\n"
+            "    : > \"$RPC_BENCH_PROC_ROOT/$$/exe\"\n"
+            "    sleep 4 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        proc_root = self.directory / "proc"
+        (proc_root / "1300").mkdir(parents=True)
+        (proc_root / "1300" / "status").write_text("Name:\tnethermind\nNSpid:\t1300\t42\n", encoding="utf-8")
+        command_log = self.directory / "perf-commands.log"
+        diag = self.directory / "diag"
+        (diag / "perf").mkdir(parents=True)
+        (diag / "dottrace").mkdir()
+        (diag / "dottrace" / "control.svc").write_bytes(b"")
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+        environment["RPC_BENCH_PROC_ROOT"] = str(proc_root)
+        environment["DOTTRACE_START_TIMEOUT"] = "2"
+        environment["DIAG"] = diag.as_posix()
+        return environment, diag, command_log
+
+    def write_node_env(self, diag: Path) -> Path:
+        values = {
+            "CLIENT": "nethermind",
+            "INSTANCE_SUFFIX": "",
+            "CONTAINER_NAME": "rpcbench-primary",
+            # Forward slashes: the file is `source`d, and unquoted backslashes would not survive.
+            "DIAG_DIR": diag.as_posix(),
+            "DOTTRACE": "true",
+            "DOTTRACE_DEFERRED": "true",
+            "PERF": "true",
+            "PERF_FREQUENCY": "99",
+            "PROFILE_AFTER_WARMUP": "true",
+        }
+        env_file = self.directory / "node.env"
+        env_file.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+        return env_file
+
+    # `docker top` lists the dotTrace launcher and the client; `docker logs` acknowledges a start
+    # message only once it has been appended to the control file, as the real launcher would.
+    FAKE_DOCKER = """
+        docker() {
+          case "$1" in
+            top) printf '%s\\n' 'PID ARGS' '1200 /opt/dottrace/dottrace start --framework=NetCore' '1300 /nethermind/nethermind --datadir=/execution-data' ;;
+            logs)
+              printf '##dotTrace["connected", {pid: 1300, path: "/nethermind/nethermind"}]\\n'
+              if [[ "${DOTTRACE_ACK:-true}" == "true" ]] && grep -qF '##dotTrace["start"]' "$DIAG/dottrace/control.svc" 2>/dev/null; then
+                printf '##dotTrace["started", {pid: 1300, path: "/nethermind/nethermind"}]\\n'
+              fi ;;
+            *) return 64 ;;
+          esac
+        }
+    """
+
+    def test_start_profilers_records_the_recorder_identity_and_refuses_to_run_twice(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        environment["NODE_ENV"] = str(env_file)
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            if (start_profilers "$NODE_ENV"); then echo "second start accepted"; exit 1; fi
+            source "$NODE_ENV"
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("refusing to start a second recorder", result.stderr)
+        self.assertIn("dotTrace: data collection started", result.stdout)
+        self.assertEqual(
+            (diag / "dottrace" / "control.svc").read_bytes(),
+            b'\n##dotTrace["start"]\r\n',
+            "service messages must start on a new line and end with a carriage return",
+        )
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        records = [c for c in commands if c.startswith("record ")]
+        self.assertEqual(len(records), 1, commands)
+        self.assertIn("--pid 1300", records[0])
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertIn("PERF_NODE_PID=1300\n", node_env)
+        self.assertIn("PERF_CONTAINER_PID=42\n", node_env)
+        self.assertIn("PERF_RECORDER_START_TIME=4243\n", node_env)
+        self.assertIn("PERF_RECORDER_COMM=perf\n", node_env)
+        self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
+
+    def test_start_profilers_fails_when_dottrace_never_acknowledges_the_start(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTTRACE_ACK"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not acknowledge the start message", result.stderr)
+        self.assertFalse(
+            command_log.exists() and "record" in command_log.read_text(encoding="utf-8"),
+            "perf must not start when dotTrace collection could not be started",
+        )
+        self.assertNotIn("PROFILERS_STARTED_AT=", env_file.read_text(encoding="utf-8"))
+
+    def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
+        start_node = START_NODE.read_text(encoding="utf-8")
+        start_profilers = START_PROFILERS.read_text(encoding="utf-8")
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        # No warm-up: as before — perf starts right after RPC is ready and dotTrace collects from launch.
+        self.assertIn(
+            'if [[ "$PROFILE_AFTER_WARMUP" == "true" ]]; then\n'
+            '  log "profilers deferred: run start-profilers.sh after the warm-up"\n'
+            'elif [[ "$PERF" == "true" ]]; then\n'
+            '  start_profilers "$STATE_DIR/node$SUFFIX.env"\n'
+            "fi",
+            start_node,
+        )
+        self.assertIn(
+            '[[ "$DOTTRACE" == "true" && "$PROFILE_AFTER_WARMUP" == "true" ]] && DOTTRACE_DEFERRED="true"',
+            start_node,
+        )
+        self.assertIn(
+            'entry_args+=(--collect-data-from-start=off --service-output=on "--service-input=/dottrace-output/$DOTTRACE_CONTROL_FILE_NAME")',
+            start_node,
+        )
+        self.assertNotIn("perf record", start_node)
+        self.assertIn('start_profilers "$NODE_ENV_FILE"', start_profilers)
+        self.assertIn('"${PROFILE_AFTER_WARMUP:-false}" != "true"', start_profilers)
+
+        job = workflow_job_body(rpc_workflow, "benchmark")
+        order = [
+            "- name: Start node\n",
+            "- name: Warm up node\n",
+            "- name: Start profilers\n",
+            "- name: Run json-bench benchmark\n",
+            "- name: Stop node and verify DB integrity\n",
+        ]
+        positions = [job.index(step) for step in order]
+        self.assertEqual(positions, sorted(positions), "profilers must start after the warm-up and before the measured cell")
+        self.assertIn(
+            "PROFILE_AFTER_WARMUP: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Start node"),
+        )
+        warmup = workflow_named_step_body(rpc_workflow, "benchmark", "Warm up node")
+        self.assertIn('export OUT_DIR="${SCRATCH_ROOT}/warmup-cell/single"', warmup)
+        self.assertIn('JB_MAX_FAIL_RATE_PCT="100"', warmup)
+        self.assertEqual(
+            workflow_named_step_if(rpc_workflow, "benchmark", "Start profilers"),
+            "needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' "
+            "&& (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true')",
+        )
+
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
@@ -472,7 +653,8 @@ class PerfReportingTests(unittest.TestCase):
             start_node.index('mkdir -p "$STATE_DIR"'),
         )
         self.assertIn(
-            "# 6) Start perf once the node serves RPC, so it excludes startup but includes\n#    the benchmark warm-up.",
+            "# 6) Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
+            "#    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
             start_node,
         )
         self.assertNotIn("itself rather than startup and warm-up", start_node)
