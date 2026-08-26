@@ -52,6 +52,7 @@ MANIFEST_LINE_PATTERN = re.compile(
     rf"(?P<prefix>iso\|{_LABEL}\|{_LABEL}\|{_LABEL}|mix\|{_LABEL}\|{_LABEL})=(?P<path>.+jsonbench-summary\.md)$")
 COMMENT_METRICS = (("avg", "avg"), ("med", "median"), ("p(90)", "p90"), ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max"))
 NOISE_FLOOR_PCT = 2.5
+REQUEST_MISMATCH_PCT = 1.0
 RECORD_SHIFT_PCT = 5.0
 BOOTSTRAP_ROUNDS = 2000
 
@@ -462,8 +463,9 @@ def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
         lines.append(f"@ `{slot}` rps: missing a client, cannot compare.")
         return
     runs = f"n={len(base['summaries'])}/{len(cand['summaries'])} runs"
-    requests = int(_mean([m["http_reqs"]["values"]["count"] for m in cand["summaries"]]))
-    lines += [f"@ `{slot}` rps · {runs} · {requests} requests/run", "",
+    b_requests = int(_mean([m["http_reqs"]["values"]["count"] for m in base["summaries"]]))
+    c_requests = int(_mean([m["http_reqs"]["values"]["count"] for m in cand["summaries"]]))
+    lines += [f"@ `{slot}` rps · {runs} · {b_requests}/{c_requests} requests/run", "",
               "| metric | master | PR | delta | A/A spread |", "|---|---|---|---|---|"]
 
     def row(name: str, base_values: list[float], cand_values: list[float], unit: str) -> None:
@@ -480,7 +482,12 @@ def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
             [m["http_req_duration"]["values"][key] for m in cand["summaries"]], " ms")
     b_fail = _mean([m["http_req_failed"]["values"]["rate"] for m in base["summaries"]]) * 100
     c_fail = _mean([m["http_req_failed"]["values"]["rate"] for m in cand["summaries"]]) * 100
-    lines += ["", f"Failure rate — master {b_fail:.2f}%, PR {c_fail:.2f}%.", ""]
+    lines += ["", f"Failure rate — master {b_fail:.2f}%, PR {c_fail:.2f}%."]
+    dropped = sum(int(m["dropped_iterations"]["values"]["count"]) for m in base["summaries"] + cand["summaries"])
+    if dropped or abs(b_requests - c_requests) > REQUEST_MISMATCH_PCT / 100 * max(b_requests, c_requests):
+        lines.append(f"⚠️ Unequal load — master {b_requests} vs PR {c_requests} requests/run, {dropped} iteration(s) dropped by k6: "
+                     "the arms did not see the same sample, so the deltas above are not like for like.")
+    lines.append("")
 
     base_classes = [m["classes"] for m in base["summaries"] if "classes" in m]
     cand_classes = [m["classes"] for m in cand["summaries"] if "classes" in m]

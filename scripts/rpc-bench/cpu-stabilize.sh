@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # apply: disable turbo boost, set the performance governor and cap scaling_max_freq (CPU_MAX_FREQ_KHZ, optional),
-#        saving the original sysfs values under STATE_DIR. restore: write them back. Best effort — a box without
-#        cpufreq sysfs (e.g. a cloud ARM VM) is logged and skipped.
+#        saving the original sysfs values under STATE_DIR (keep it outside RUNNER_TEMP so a killed run's state survives
+#        job cleanup). restore: write them back. Best effort — a box without cpufreq sysfs (e.g. a cloud ARM VM) is
+#        logged and skipped.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +24,11 @@ turbo_path() {
 }
 
 apply() {
-  mkdir -p "$STATE_DIR"; : > "$SAVED"
+  mkdir -p "$STATE_DIR"
+  # A run killed between apply and restore leaves the box capped; restoring first keeps the cap from being
+  # recorded as the "original" and made permanent.
+  [[ -s "$SAVED" ]] && { log "::warning::stale saved cpu state from an earlier run — restoring it first"; restore; }
+  : > "$SAVED"
   local path off governors freqs
   read -r path off <<< "$(turbo_path)"
   if [[ -n "${path:-}" ]]; then

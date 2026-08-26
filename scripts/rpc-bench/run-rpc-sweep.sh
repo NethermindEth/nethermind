@@ -64,14 +64,17 @@ require_positive_int CORPUS_WARMUP_RPS "$CORPUS_WARMUP_RPS"
 for _rps in $RPS_LIST; do require_positive_int "rps_list entry" "$_rps"; done
 [[ -z "$CORPUS_REQUESTS" || -z "$CORPUS_PASSES" ]] || { echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1; }
 [[ "$CORPUS_TIMINGS_RPS" =~ ^[0-9]+$ ]] || { echo "::error::timings_rps must be a non-negative integer, got '$CORPUS_TIMINGS_RPS'"; exit 1; }
+[[ "$CORPUS_WARMUP_RPS_MAX" =~ ^[0-9]+$ ]] || { echo "::error::corpus_warmup_rps_max must be a non-negative integer, got '$CORPUS_WARMUP_RPS_MAX'"; exit 1; }
 [[ "$JB_SEED" =~ ^[0-9]+$ ]] || { echo "::error::seed must be a non-negative integer, got '$JB_SEED'"; exit 1; }
 [[ "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]] || { echo "::error::corpus_warmup_duration must be integer seconds, got '$CORPUS_WARMUP_DURATION'"; exit 1; }
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
+WARMUP_SEED=$(( JB_SEED + 1000 ))   # a measured cell must never replay exactly the sequence the warm-up just ran
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
 esac
 for entry in $CLIENTS; do
+  entry="${entry%%#*}"
   [[ "${entry%%@*}" == "nethermind" ]] || { echo "::error::sweep mode resolves one Nethermind snapshot set; client '${entry%%@*}' cannot run here (use benchmark_tool=jsonbench with reference_client)"; exit 1; }
 done
 [[ "$STATE_LAYOUT" == "flat" ]] || { echo "::error::sweep mode resolves a flat snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1; }
@@ -134,7 +137,7 @@ warm_node() {
   local warm_cell="$SCRATCH_ROOT/warmup-cell/$1/$2"   # outside OUT_DIR so it is never staged
   echo "-- WARMUP $1 $2 @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
   if [[ -n "$RPS_LIST" ]]; then
-    if ! JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" "$warm_cell" "$4" "$2" "$3" ""; then
+    if ! JB_MAX_FAIL_RATE_PCT=100 JB_SEED="$WARMUP_SEED" run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" "$warm_cell" "$4" "$2" "$3" ""; then
       echo "::warning::warmup for $2 failed — measured cells may be cold"; return 0
     fi
     WARMED_SECONDS="$WARMUP_SECONDS"
@@ -233,7 +236,7 @@ scan_node_log() {
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=() LABELS=() CORPORA=() PARITY_ROWS=()
 declare -A CORPUS_RECORDS=() LABEL_SEEN=()
-node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0
+node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; baseline_fail=0
 BASELINE_LABEL=""
 
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
@@ -266,7 +269,7 @@ for entry in "${schedule[@]}"; do
   arm_env=""; spec="$entry"
   if [[ "$spec" == *#* ]]; then arm_env="${spec#*#}"; spec="${spec%%#*}"; fi
   ctype="${spec%%@*}"
-  if [[ "$spec" == *@* ]]; then img="${spec#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+  if [[ "$spec" == *@* ]]; then img="${spec#*@}"; label="$(arm_label "$ctype" "$img")"
   else img="$NM_IMAGE"; label="$ctype"; fi
   if [[ -n "$arm_env" ]]; then
     label="${label}_$(printf '%s' "$arm_env" | sed -E 's/NETHERMIND_[A-Z]+CONFIG_//g' | tr -c 'a-zA-Z0-9' '_' | tr -s '_' | sed 's/_$//')"
@@ -284,7 +287,12 @@ for entry in "${schedule[@]}"; do
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
-    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
+    if [[ "$JB_ETH_CALL_CORPUS" == "true" && -z "$BASELINE_LABEL" ]]; then
+      echo "::error::${label} failed to start — it was to capture the parity baseline, so later arms are compared against a substitute"; baseline_fail=1
+    else
+      echo "::warning::${label} failed to start — skipping its cells"
+    fi
+    echo "::endgroup::"; continue
   fi
   LABELS+=("$label")
 
@@ -364,4 +372,5 @@ fail=0
 [[ "$cell_fail" -eq 0 ]] || { echo "::error::${cell_fail} load-test cell(s) failed — the matrix is incomplete"; fail=1; }
 [[ "$stop_fail" -eq 0 ]] || { echo "::error::stop-node reported a DB-integrity/teardown failure"; fail=1; }
 [[ "$parity_fail" -eq 0 ]] || { echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline or a replay failed"; fail=1; }
+[[ "$baseline_fail" -eq 0 ]] || { echo "::error::the configured parity baseline failed to start — parity was measured against a substitute arm"; fail=1; }
 exit "$fail"

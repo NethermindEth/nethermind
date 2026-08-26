@@ -402,10 +402,16 @@ serializes every other job behind it. What makes the number trustworthy:
 - **CPU frequency cap** (`node_config.cpu_max_freq_khz`, default 3.8 GHz on amd64): turbo boost is
   off and the governor is `performance` for the whole job, restored afterwards.
 
-`corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders all of
-that from the **staged** tree, pooling `_rN` repeats into one arm per side. Read it correctly:
-a parity divergence is a correctness regression regardless of latency; a delta inside the A/A
-spread (or under ~2.5% when no repeat ran) is noise.
+The workflow's `Render corpus comparison` step runs `corpus_results.py comment --baseline
+nethermind_<baseline tag> --candidate nethermind_<candidate tag>` against the **staged** tree
+(labels derived from `baseline_image` / `docker_image` the way the sweep derives them, `_rN`
+repeats pooled into one arm per side), appends it to the step summary and, on a
+label-triggered PR run, posts it as a PR comment. Rendering is best-effort — the artifact is the
+record — and a `tool_config.clients` override that names other arms is rendered by hand from
+the downloaded artifact. Read it correctly: a parity divergence is a correctness regression
+regardless of latency; a delta inside the A/A spread (or under ~2.5% when no repeat ran) is
+noise; an "Unequal load" line means the arms did not receive the same request count (k6 dropped
+iterations), so the deltas are not like for like.
 
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 
@@ -502,7 +508,8 @@ time; it is a floor, so a run measuring a higher rate warms at that rate instead
 `corpus_warmup_rps_max` caps that pace — json-bench pre-generates rps x duration request rows
 that k6 parses whole, so a long warm-up ahead of a high-rate cell would exceed what the fixture
 can hold): a k6 cell
-when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+when `rps_list` is non-empty (seeded with `seed + 1000`, so a measured cell never replays exactly
+the sequence the warm-up just ran), otherwise a paced `corpus_parity.py timings` replay so the
 fixture-free mode stays fixture-free.
 
 The request count is the point, and the rate is a request for one, not a guarantee of one — so

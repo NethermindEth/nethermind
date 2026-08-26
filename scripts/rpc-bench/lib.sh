@@ -7,6 +7,10 @@
 log() { printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Sweep arm label for a client entry with an image: <ctype>_<image tag, non-alphanumerics as _>. Shared with the
+# workflow's comment step so both sides derive the same label from the same image ref.
+arm_label() { printf '%s_%s' "$1" "$(printf '%s' "${2##*:}" | tr -c 'a-zA-Z0-9' '_')"; }
+
 log_system_provenance() {
   log "=== host provenance ==="
   log "  kernel:      $(uname -r 2>/dev/null || echo unknown)"

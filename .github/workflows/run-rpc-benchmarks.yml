@@ -67,7 +67,7 @@ on:
         type: number
         default: 60
       corpus:
-        description: corpus-ab — corpus filename (glob) in the runner's rpc-bench dir. Empty = every eth-call-corpus*.jsonl.gz.
+        description: corpus-ab — corpus filename (glob) in the runner's rpc-bench dir; widen it (eth-call-corpus*.jsonl.gz) to sweep every corpus.
         required: false
         default: eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz
       duration:
@@ -151,6 +151,7 @@ jobs:
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
+      baseline_image: ${{ steps.resolve.outputs.baseline_image }}
       ref_image_ref: ${{ steps.resolve.outputs.ref_image_ref }}
       db_source: ${{ steps.resolve.outputs.db_source }}
       ref_db_source: ${{ steps.resolve.outputs.ref_db_source }}
@@ -214,7 +215,7 @@ jobs:
           rounds="${IN_ROUNDS:-2}"
           timings_passes="${IN_TIMINGS_PASSES:-40}"
           warmup="${IN_WARMUP:-60}"
-          corpus="${IN_CORPUS-eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz}"
+          corpus="${IN_CORPUS:-eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz}"
           duration="${IN_DURATION:-60}"
           snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
           dottrace="${IN_DOTTRACE:-false}"
@@ -399,6 +400,7 @@ jobs:
             echo "dottrace_mode=${dottrace_mode}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
+            echo "baseline_image=${baseline_image}"
             echo "ref_image_ref=${ref_image_ref}"
             echo "db_source=${db_source}"
             echo "ref_db_source=${ref_db_source}"
@@ -431,6 +433,9 @@ jobs:
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
       CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
@@ -552,9 +557,12 @@ jobs:
           REF_IMAGE: ${{ needs.resolve.outputs.ref_image_ref }}
         run: docker pull "${REF_IMAGE}" || echo "Pull failed — assuming ${REF_IMAGE} is a local image."
 
+      # The saved sysfs values live on the scratch disk, not under RUNNER_TEMP: a killed run must leave them for the
+      # next apply to restore, or the frequency cap becomes permanent and leaks into every other benchmark on the box.
       - name: Stabilize CPU frequency
         env:
           CPU_MAX_FREQ_KHZ: ${{ needs.resolve.outputs.cpu_max_freq_khz }}
+          STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
         run: ./scripts/rpc-bench/cpu-stabilize.sh apply
 
       - name: Start node
@@ -739,6 +747,8 @@ jobs:
 
       - name: Restore CPU frequency
         if: always()
+        env:
+          STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
         run: ./scripts/rpc-bench/cpu-stabilize.sh restore || true
 
       - name: Collect dotTrace snapshots
@@ -864,6 +874,38 @@ jobs:
           path: ${{ runner.temp }}/rpcbench-corpus-results/
           retention-days: 30
           if-no-files-found: error
+
+      # Rendered from the staged tree only (aggregates, no call data). Arm labels are derived from the two image refs
+      # exactly as run-rpc-sweep.sh derives them; a tool_config.clients override that names other arms renders nothing.
+      - name: Render corpus comparison
+        id: corpus-comment
+        if: always() && needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep' && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          BASELINE_IMAGE: ${{ needs.resolve.outputs.baseline_image }}
+          CANDIDATE_IMAGE: ${{ needs.resolve.outputs.image_ref }}
+          STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
+          COMMENT_FILE: ${{ runner.temp }}/rpcbench-corpus-comment.md
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          source scripts/rpc-bench/lib.sh
+          python3 scripts/rpc-bench/corpus_results.py comment "${STAGE_ROOT}" \
+            --baseline "$(arm_label nethermind "${BASELINE_IMAGE}")" --candidate "$(arm_label nethermind "${CANDIDATE_IMAGE}")" > "${COMMENT_FILE}"
+          printf '\n<sub>master `%s` vs PR `%s` — [run](%s)</sub>\n' "${BASELINE_IMAGE}" "${CANDIDATE_IMAGE}" "${RUN_URL}" >> "${COMMENT_FILE}"
+          { echo; cat "${COMMENT_FILE}"; echo; } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Post corpus comparison on the PR
+        if: always() && github.event_name == 'pull_request' && steps.corpus-comment.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_FILE: ${{ runner.temp }}/rpcbench-corpus-comment.md
+        run: gh pr comment "${PR_NUMBER}" --body-file "${COMMENT_FILE}"
 
       - name: Upload dotTrace snapshot
         if: always() && needs.resolve.outputs.dottrace == 'true'

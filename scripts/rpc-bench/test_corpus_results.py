@@ -207,13 +207,14 @@ class CommentRenderingTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _cell(self, label, avg, p99, fail=0.0, slot="100", cpu=None, classes=None):
+    def _cell(self, label, avg, p99, fail=0.0, slot="100", cpu=None, classes=None, requests=12000, dropped=0):
         cell = self.root / "corpus" / "corpus-a" / label / slot
         cell.mkdir(parents=True)
         metrics = {
             "http_req_duration": {"values": {"avg": avg, "med": avg, "p(90)": avg * 2, "p(95)": avg * 2.2, "p(99)": p99, "max": p99 * 3}},
-            "http_reqs": {"values": {"count": 12000}},
-            "http_req_failed": {"values": {"rate": fail}}}
+            "http_reqs": {"values": {"count": requests}},
+            "http_req_failed": {"values": {"rate": fail}},
+            "dropped_iterations": {"values": {"count": dropped}}}
         if classes:
             metrics["classes"] = {name: {"values": {"avg": v, "med": v, "p(90)": v, "p(95)": v, "p(99)": v * 2, "max": v * 3, "count": 100}}
                                   for name, v in classes.items()}
@@ -293,6 +294,20 @@ class CommentRenderingTests(unittest.TestCase):
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
         self.assertIn("0 records slower and 0 faster", body)
         self.assertRegex(body, r"median delta .* -\d+\.\d%")
+
+    def test_flags_unequal_sample_sizes_and_dropped_iterations(self):
+        self._cell("nethermind_master", 20.0, 100.0, requests=20000)
+        self._cell("nethermind", 20.0, 100.0, requests=12000, dropped=8000)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("20000/12000 requests/run", body)
+        self.assertIn("Unequal load — master 20000 vs PR 12000 requests/run, 8000 iteration(s) dropped", body)
+
+    def test_equal_sample_sizes_are_not_flagged(self):
+        self._cell("nethermind_master", 20.0, 100.0, requests=20000)
+        self._cell("nethermind", 20.0, 100.0, requests=19900)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("20000/19900 requests/run", body)
+        self.assertNotIn("Unequal load", body)
 
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)
