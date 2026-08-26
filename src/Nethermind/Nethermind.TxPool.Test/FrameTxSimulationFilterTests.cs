@@ -52,22 +52,24 @@ public class FrameTxSimulationFilterTests
         }
     }
 
-    [Test]
-    public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer()
+    // The pre-validated assertion has to come from what actually ran: a filter chain that has not
+    // verified the signatures must make the simulation verify them rather than trust a stranger's.
+    [TestCase(true, TestName = "Verified signatures are not re-verified by the simulation")]
+    [TestCase(false, TestName = "Unverified signatures are re-verified by the simulation")]
+    public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer(bool signaturesVerified)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
         simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
 
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            // Asserted, not defaulted: FrameTxSignatureFilter has already verified this transaction's entries.
-            simulator.Received(1).Simulate(tx, Arg.Any<CancellationToken>(), signaturesPreValidated: true);
+            simulator.Received(1).Simulate(tx, Arg.Any<CancellationToken>(), signaturesPreValidated: signaturesVerified);
         }
     }
 
@@ -150,10 +152,10 @@ public class FrameTxSimulationFilterTests
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

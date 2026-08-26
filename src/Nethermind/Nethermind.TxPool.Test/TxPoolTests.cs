@@ -2603,6 +2603,30 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void Frame_transaction_prefix_simulation_is_told_the_signatures_are_already_verified()
+        {
+            // Pins the guarantee, not the registration order: whatever the chain looks like, the prefix
+            // may only be told "pre-validated" when the signature filter has actually accepted this tx.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            // The verify-gas bound is out of scope here; disable it so the tx reaches the simulation filter.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                simulator.Received(1).Simulate(tx, Arg.Any<CancellationToken>(), signaturesPreValidated: true);
+            }
+        }
+
+        [Test]
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
