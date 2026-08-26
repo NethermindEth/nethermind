@@ -2608,6 +2608,43 @@ namespace Nethermind.TxPool.Test
             Assert.That(readyForSender, Has.Length.EqualTo(keyed.Length));
         }
 
+        /// <summary>
+        /// Keyed sequences start at 0 per key while account nonces grow, so the bucket's nonce ordering puts a keyed
+        /// frame transaction ahead of the sender's ordinary ones. The whole bucket is then admitted on that entry's
+        /// keyed currency, which is why a consumer cannot read the first survivor as the next account nonce.
+        /// </summary>
+        [Test]
+        public void Keyed_frame_tx_heads_the_bucket_ahead_of_an_ordinary_tx_at_the_account_nonce()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sender, UInt256.MaxValue, AccountNonceAheadOfKeyedSequences);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Transaction atAccountNonce = Build.A.Transaction
+                .WithNonce(AccountNonceAheadOfKeyedSequences)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(atAccountNonce, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true);
+
+            Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readyForSender[0].Hash, Is.EqualTo(keyed.Hash), "the keyed sequence number sorts ahead of the account nonce");
+                Assert.That(readyForSender[1].Hash, Is.EqualTo(atAccountNonce.Hash));
+            }
+        }
+
+        /// <summary>An account nonce past the keyed sequences, which is the ordinary shape once a sender has sent anything.</summary>
+        private const ulong AccountNonceAheadOfKeyedSequences = 100;
+
         /// <summary>The sender's account nonce, deliberately unequal to the sequence the keyed transactions declare.</summary>
         private const ulong AccountNonceUnrelatedToKeyedSequences = 7;
 
