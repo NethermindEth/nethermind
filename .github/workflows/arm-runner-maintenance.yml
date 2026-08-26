@@ -81,7 +81,15 @@ jobs:
             # behind, and state the next overlay would silently layer on top of. The paths come
             # from the kernel's own mount options; anything outside the data dir is refused.
             while IFS= read -r d; do
-              [[ "${d}" == "${EXPB_DATA_DIR}"/* ]] && as_root rm -rf -- "${d}" && echo "removed ${d}"
+              if [[ "${d}" == "${EXPB_DATA_DIR}"/* && "${d}" != *..* ]]; then
+                if as_root rm -rf -- "${d}"; then
+                  echo "removed ${d}"
+                else
+                  echo "::warning::failed to remove ${d}"
+                fi
+              else
+                echo "::warning::refusing unsafe overlay scratch path: ${d}"
+              fi
             done < <(printf '%s\n' "${opts}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p')
           done < <(awk -v d="${EXPB_DATA_DIR}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' /proc/self/mounts | sort -r)
           if [[ "${reaped}" -eq 0 ]]; then
