@@ -37,6 +37,30 @@ therefore differs, so **never read a cross-type disk-read delta as a code
 difference** — within one type it is uniform, which is what a version comparison
 needs.
 
+Sweep arms run sequentially. This is safe for overlay-backed clients, but reth's
+direct isolation intentionally opens its snapshot read-write: each arm and each
+later dispatch inherits the startup writes left by the previous one. Consequently
+reth multi-arm results are order-dependent and are **not a clean A/B comparison**;
+the direct reth path does not refresh the cross-run fingerprint anchor. If an old anchor exists,
+it is diagnostic only: it cannot monitor the accumulated writes, restore isolation, or make those timings
+comparable. Use separate fresh reth
+snapshots/runs when a clean A/B is required.
+
+### Per-arm flags
+
+`tool_config.clients` entries use `client[@image][+flag;flag;...]`. The semicolon
+is the flag separator, so comma-valued flags remain intact; for example:
+
+```json
+{"clients":"nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth,Debug;--Pruning.Mode=None nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth"}
+```
+
+Entries and flags must be non-empty, and each flag must start with `--` and have
+no whitespace or semicolon. `{ARM_SCRATCH}` is replaced with a freshly recreated
+host directory for that arm and bind-mounted at the same absolute path inside
+the node container, so a flag can direct client-owned scratch state there without
+sharing a predecessor's files.
+
 ## Goals
 
 1. **A CI to check current node RPC performance** with any of three tools.
@@ -143,11 +167,11 @@ no longer byte-identical — acceptable for read-only benchmarks (no transaction
 no `newPayload`), where the only writes are engine startup housekeeping.
 
 **`direct` caveats:** (1) the tamper tripwire records the diff and warns instead
-of failing (below); (2) never point two nodes at the same `direct` snapshot
-concurrently (DB lock conflict) — comparison runs are fine, each client uses its
-own snapshot; (3) if a snapshot is shared with another consumer (e.g. expb reuses
-the nethermind sets), don't put that client on `direct` — hence nethermind/geth
-stay on `overlay`.
+of failing (below); it is a diagnostic, not an isolation mechanism; (2) never
+point two nodes at the same `direct` snapshot concurrently (DB lock conflict) —
+comparison runs are fine only when each client uses its own fresh snapshot; (3) if
+a snapshot is shared with another consumer (e.g. expb reuses the nethermind sets),
+don't put that client on `direct` — hence nethermind/geth stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
@@ -157,12 +181,13 @@ size, mtime, mode, owner, symlink target) plus a sha256 of the small RocksDB
 control files rewritten the instant a DB is opened read-write (`CURRENT`,
 `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). Any difference **fails the job** — except
 under `direct`, where changes are expected: it warns, logs the changed-line
-count, and does not update the cross-run anchor. Hashing only the control files
+count, and does not update the cross-run anchor. The direct reth path therefore
+does not refresh an old anchor; any anchor it finds is diagnostic only. Hashing only the control files
 keeps the check fast on a multi-TB DB; listing errors are fatal rather than
-producing a partial fingerprint. After a clean verify the fingerprint persists
-(`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next run warns
-if the snapshot changed in between (e.g. a hard-interrupted run whose verify
-never ran).
+producing a partial fingerprint. After a clean non-direct verify the fingerprint
+persists (`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next
+non-direct run warns if the snapshot changed in between (e.g. a hard-interrupted
+run whose verify never ran).
 
 Path safety is layered: `resolve` validates `db_source`/`scratch_root` shape, and
 every script canonicalizes them (`realpath`, symlink-proof), rejects shallow

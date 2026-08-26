@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # Cross-client sweep, one node per client pinned to the same SNAPSHOT_BLOCK: ISOLATED
-# (each scenario alone) and MIXED (all together). A node that fails to start is skipped.
+# (each scenario alone) and MIXED (all together). A node that fails to start has its cells skipped,
+# but the incomplete matrix still fails the sweep.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
@@ -107,13 +108,56 @@ snap_path() {
   esac
 }
 
+# Each entry is whitespace-delimited. A `+` segment contains semicolon-delimited flags; commas
+# remain part of a flag value (for example, `--JsonRpc.EnabledModules=Eth,Debug`). Validate every
+# entry before any node starts so a malformed arm cannot leave a one-arm matrix looking successful.
+if [[ "$CLIENTS" == *$'\n'* || "$CLIENTS" == *$'\r'* ]]; then
+  echo "::error::clients must be a single line of whitespace-delimited entries"; exit 1
+fi
+read -r -a SWEEP_ENTRIES <<< "$CLIENTS"
+if [[ "${#SWEEP_ENTRIES[@]}" -eq 0 ]]; then
+  echo "::error::clients must contain at least one entry"; exit 1
+fi
+declare -a SWEEP_SPECS=()
+declare -a SWEEP_FLAG_SPECS=()
+declare -A SWEEP_CTYPES=()
+for entry in "${SWEEP_ENTRIES[@]}"; do
+  spec="${entry%%+*}"
+  arm_flag_spec=""
+  [[ "$entry" == *+* ]] && arm_flag_spec="${entry#*+}"
+  ctype="${spec%%@*}"
+  if [[ -z "$spec" || -z "$ctype" ]]; then
+    echo "::error::malformed sweep client entry '${entry}'"; exit 1
+  fi
+  if [[ "$spec" == *@* && -z "${spec#*@}" ]]; then
+    echo "::error::sweep client entry '${entry}' has an empty image"; exit 1
+  fi
+  if [[ "$arm_flag_spec" == *';'* ]]; then
+    if [[ "$arm_flag_spec" == ';'* || "$arm_flag_spec" == *';' || "$arm_flag_spec" == *';;'* ]]; then
+      echo "::error::malformed flag list in '${entry}' — use one non-empty flag per ';'"; exit 1
+    fi
+  fi
+  if [[ -n "$arm_flag_spec" ]]; then
+    IFS=';' read -r -a parsed_arm_flags <<< "$arm_flag_spec"
+    for arm_flag in "${parsed_arm_flags[@]}"; do
+      if [[ ! "$arm_flag" =~ ^--[^[:space:]\;]+$ ]]; then
+        echo "::error::malformed arm flag '${arm_flag}' in '${entry}' — flags must start with '--' and contain no whitespace or ';'"; exit 1
+      fi
+    done
+  elif [[ "$entry" == *+* ]]; then
+    echo "::error::empty arm flag list in '${entry}'"; exit 1
+  fi
+  SWEEP_SPECS+=("$spec")
+  SWEEP_FLAG_SPECS+=("$arm_flag_spec")
+  SWEEP_CTYPES["$ctype"]=1
+done
 # A client whose snapshot set is absent reaches start-node.sh with a DB_SOURCE that does not exist,
 # and that is only a per-client `::warning::` — the sweep would report a two-thirds-empty matrix as
 # success, and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Check
 # every requested type up front instead, and only the state_layout axis the request actually uses
 # (a reth-only sweep resolves no Nethermind path, so the flat pin does not apply to it).
-declare -A SWEEP_CTYPES=()
-for entry in $CLIENTS; do spec="${entry%%+*}"; SWEEP_CTYPES["${spec%%@*}"]=1; done
+SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
+assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 for ctype in "${!SWEEP_CTYPES[@]}"; do
   case "$ctype" in
     nethermind|geth|reth) ;;
@@ -125,7 +169,22 @@ for ctype in "${!SWEEP_CTYPES[@]}"; do
     ls -1d "${SNAPSHOT_ROOT}"/*-"${SNAPSHOT_BLOCK}" 2>/dev/null | sed 's|^|::error::  |' || true
     exit 1
   fi
+  snap_real="$(realpath -e -- "$(snap_path "$ctype")")" || {
+    echo "::error::cannot canonicalize ${ctype} snapshot at $(snap_path "$ctype")"; exit 1
+  }
+  [[ "$snap_real" != "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT must not equal the ${ctype} snapshot"; exit 1; }
+  case "$snap_real/" in
+    "$SCRATCH_ROOT"/*) echo "::error::SCRATCH_ROOT must not contain the ${ctype} snapshot"; exit 1 ;;
+  esac
+  case "$SCRATCH_ROOT/" in
+    "$snap_real"/*) echo "::error::SCRATCH_ROOT must not be inside the ${ctype} snapshot"; exit 1 ;;
+  esac
 done
+if [[ ! -d "$SCRATCH_ROOT" ]] && ! as_root mkdir -p -- "$SCRATCH_ROOT"; then
+  echo "::error::failed to create SCRATCH_ROOT '$SCRATCH_ROOT'"; exit 1
+fi
+[[ -d "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT '$SCRATCH_ROOT' is not a directory"; exit 1; }
+SCRATCH_ROOT="$(realpath -e -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
 if [[ -n "${SWEEP_CTYPES[nethermind]:-}" && "$STATE_LAYOUT" != "flat" ]]; then
   echo "::error::sweep mode resolves a flat Nethermind snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
 fi
@@ -244,6 +303,7 @@ declare -a LABELS=()
 declare -a CORPORA=()
 declare -a PARITY_ROWS=()
 node_issue=0
+start_fail=0  # requested arm failed to start; an incomplete matrix must fail the sweep
 cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
@@ -285,7 +345,7 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
 fi
 
-# Each entry is `ctype[@image][+flag,flag,...]` (e.g. nethermind@nethermindeth/nethermind:master) for
+# Each entry is `ctype[@image][+flag;flag;...]` (e.g. nethermind@nethermindeth/nethermind:master) for
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
@@ -296,29 +356,66 @@ fi
 # two arms neither collide nor need reading from the config to tell apart. `{ARM_SCRATCH}` in a flag
 # expands to an empty per-arm directory (wiped here, not inherited from an earlier arm or dispatch) —
 # a flag pointing a node's storage there measures every arm against the same starting state instead
-# of the state its predecessor left behind. Image tags cannot contain `+`, so the split is unambiguous.
+# of the state its predecessor left behind. Semicolons separate flags; commas are preserved in values.
+# Image tags cannot contain `+`, so the split is unambiguous.
 log_system_provenance
 
 declare -A LABEL_SEEN=()
-for entry in $CLIENTS; do
-  spec="${entry%%+*}"
+for arm_index in "${!SWEEP_ENTRIES[@]}"; do
+  entry="${SWEEP_ENTRIES[$arm_index]}"
+  spec="${SWEEP_SPECS[$arm_index]}"
+  arm_flag_spec="${SWEEP_FLAG_SPECS[$arm_index]}"
   arm_flags=""
-  [[ "$entry" == *+* ]] && arm_flags="${entry#*+}"
-  arm_flags="${arm_flags//,/ }"
+  if [[ -n "$arm_flag_spec" ]]; then
+    IFS=';' read -r -a parsed_arm_flags <<< "$arm_flag_spec"
+    arm_flags="${parsed_arm_flags[*]}"
+  fi
   ctype="${spec%%@*}"
   if [[ "$spec" == *@* ]]; then
     img="${spec#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else
     img="$NM_IMAGE"; label="$ctype"
   fi
-  [[ -n "$arm_flags" ]] && label="${label}_$(printf '%s' "$arm_flags" | tr -c 'a-zA-Z0-9' '_' | cut -c1-24)"
+  arm_scratch_dir=""
+  if [[ -n "$arm_flag_spec" ]]; then
+    # Keep a readable prefix, but derive uniqueness from the complete unexpanded specification.
+    # A prefix alone made flags sharing their first 24 characters collide and become _rN repeats.
+    arm_flag_hash="$(printf '%s' "$arm_flag_spec" | sha256sum | cut -c1-12)"
+    arm_flag_prefix="$(printf '%s' "$arm_flag_spec" | tr -c 'a-zA-Z0-9' '_' | cut -c1-24)"
+    label="${label}_${arm_flag_prefix}_${arm_flag_hash}"
+  fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
-  if [[ "$arm_flags" == *"{ARM_SCRATCH}"* ]]; then
-    arm_scratch="$SCRATCH_ROOT/arm/$label"
-    assert_no_mounts_under "$arm_scratch"
-    rm -rf "$arm_scratch"; mkdir -p "$arm_scratch"
-    arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch}"
+  if [[ "$arm_flag_spec" == *"{ARM_SCRATCH}"* ]]; then
+    arm_root="$SCRATCH_ROOT/arm"
+    if [[ -L "$arm_root" ]]; then
+      echo "::error::per-arm scratch root '$arm_root' must not be a symlink"; exit 1
+    fi
+    if [[ ! -d "$arm_root" ]] && ! as_root mkdir -p -- "$arm_root"; then
+      echo "::error::failed to create per-arm scratch root '$arm_root'"; exit 1
+    fi
+    [[ -d "$arm_root" && ! -L "$arm_root" ]] || {
+      echo "::error::per-arm scratch root '$arm_root' is not a directory"; exit 1
+    }
+    arm_root="$(realpath -e -- "$arm_root")" || {
+      echo "::error::cannot canonicalize per-arm scratch root"; exit 1
+    }
+    [[ "$arm_root/" == "$SCRATCH_ROOT/"* ]] || {
+      echo "::error::per-arm scratch root must be inside SCRATCH_ROOT"; exit 1
+    }
+    arm_scratch_dir="$arm_root/$label"
+    assert_sane_dir "$arm_scratch_dir" "ARM_SCRATCH_DIR"
+    assert_no_mounts_under "$arm_scratch_dir"
+    if ! as_root rm -rf -- "$arm_scratch_dir"; then
+      echo "::error::failed to wipe per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if ! as_root mkdir -p -- "$arm_scratch_dir"; then
+      echo "::error::failed to recreate per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if [[ ! -d "$arm_scratch_dir" || -L "$arm_scratch_dir" ]]; then
+      echo "::error::per-arm scratch path '$arm_scratch_dir' is not a directory after recreation"; exit 1
+    fi
+    arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch_dir}"
   fi
   [[ -n "$arm_flags" ]] && echo "arm flags: $arm_flags"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
@@ -330,11 +427,12 @@ for entry in $CLIENTS; do
        DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
-       ADDITIONAL_FLAGS="$arm_flags" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       ADDITIONAL_FLAGS="$arm_flags" ARM_SCRATCH_DIR="$arm_scratch_dir" \
+       HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
-    echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
+    echo "::warning::${label} failed to start — skipping its cells"; start_fail=$((start_fail + 1)); echo "::endgroup::"; continue
   fi
   LABELS+=("$label")
 
@@ -589,6 +687,12 @@ if [[ "${#LABELS[@]}" -ge 2 ]]; then
   done
 fi
 fail=0
+if [[ "${#LABELS[@]}" -eq 0 ]]; then
+  echo "::error::no sweep arms started successfully — refusing to report an empty matrix as success"; fail=1
+fi
+if [[ "$start_fail" -gt 0 ]]; then
+  echo "::error::${start_fail} sweep arm(s) failed to start — the matrix is incomplete, failing"; fail=1
+fi
 if [[ "$node_issue" -eq 1 ]]; then
   echo "::error::node health issue (Exception / invalid block / missing shutdown marker) in a sweep node log — failing"; fail=1
 fi

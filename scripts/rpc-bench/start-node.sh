@@ -51,6 +51,7 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+ARM_SCRATCH_DIR="${ARM_SCRATCH_DIR:-}"               # optional host directory mounted at this same absolute path
 NODE_ENV_VARS="${NODE_ENV_VARS:-}"                 # extra docker -e assignments, e.g. "DOTNET_TieredCompilation=0"
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
@@ -75,6 +76,13 @@ mkdir -p "$STATE_DIR"
 # Canonicalize (symlink-proof) and enforce DB_SOURCE / SCRATCH_ROOT sanity and
 # disjointness — scratch is wiped on teardown and must never reach the snapshot.
 guard_paths
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  ARM_SCRATCH_DIR="$(realpath -e -- "$ARM_SCRATCH_DIR")" || die "cannot canonicalize ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR'"
+  assert_sane_dir "$ARM_SCRATCH_DIR" "ARM_SCRATCH_DIR"
+  [[ -d "$ARM_SCRATCH_DIR" ]] || die "ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR' is not a directory"
+  [[ "$ARM_SCRATCH_DIR" != "$SCRATCH_ROOT" && "$ARM_SCRATCH_DIR/" == "$SCRATCH_ROOT/"* ]] \
+    || die "ARM_SCRATCH_DIR must be a child of SCRATCH_ROOT"
+fi
 
 log "=== RPC benchmark node startup ==="
 log "Client:     $CLIENT  (instance: $INSTANCE)"
@@ -103,10 +111,14 @@ db_fingerprint "$DB_SOURCE" "$BASELINE_FILE"
 log "  baseline: $(wc -l < "$BASELINE_FILE") lines, sha256=$(sha256sum "$BASELINE_FILE" | cut -d' ' -f1)"
 
 # Compare against the last cleanly-verified run's fingerprint so a mutation during a
-# hard-interrupted run isn't silently adopted as baseline; drift warns (snapshots get refreshed).
+# hard-interrupted run isn't silently adopted as baseline; direct mode never refreshes this anchor,
+# so any warning there is diagnostic only.
 ANCHOR_DIR="$SCRATCH_ROOT/fingerprints"
 ANCHOR_FILE="$ANCHOR_DIR/$(basename "$DB_SOURCE").txt"
 mkdir -p "$ANCHOR_DIR"
+if [[ "$DB_ISOLATION" == "direct" && -f "$ANCHOR_FILE" ]]; then
+  log "::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only."
+fi
 if [[ -f "$ANCHOR_FILE" ]]; then
   if [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "$BASELINE_FILE")" ]] \
       && ! diff -q "$ANCHOR_FILE" "$BASELINE_FILE" >/dev/null 2>&1; then
@@ -191,6 +203,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DB_ISOLATION=$DB_ISOLATION"
   echo "RUN_SCRATCH=$RUN_SCRATCH"
   echo "SCRATCH_ROOT=$SCRATCH_ROOT"
+  echo "ARM_SCRATCH_DIR=$ARM_SCRATCH_DIR"
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
@@ -250,8 +263,12 @@ case "$CLIENT" in
     )
     ;;
 esac
-# shellcheck disable=SC2206
-node_args+=($ADDITIONAL_FLAGS)
+if [[ -n "$ADDITIONAL_FLAGS" ]]; then
+  # Flags are whitespace-delimited by the caller; read into an array so values cannot undergo
+  # pathname expansion before Docker receives them.
+  read -r -a additional_args <<< "$ADDITIONAL_FLAGS"
+  node_args+=("${additional_args[@]}")
+fi
 
 docker_args=(
   -d --name "$CONTAINER_NAME"
@@ -262,6 +279,11 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  # Keep the host and container paths identical: per-arm flags can point at this path without
+  # accidentally writing into the container's datadir or another arm's scratch.
+  docker_args+=(--mount "type=bind,source=$ARM_SCRATCH_DIR,target=$ARM_SCRATCH_DIR")
+fi
 # Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
