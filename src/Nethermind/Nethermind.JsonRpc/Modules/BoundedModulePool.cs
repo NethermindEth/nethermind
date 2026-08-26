@@ -78,8 +78,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore = new(exclusiveCapacity);
         private readonly Lock _sharedLock = new();
-        private T? _shared;
-        private Task<T>? _sharedAsTask;
+        // Published under _sharedLock, read lock-free on the rental and return paths.
+        private volatile Task<T>? _sharedAsTask;
         private int _createdExclusive;
 
         public void Preload()
@@ -115,13 +115,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             lock (_sharedLock)
             {
-                if (_sharedAsTask is null)
-                {
-                    _shared = Factory.Create();
-                    _sharedAsTask = Task.FromResult(_shared);
-                }
-
-                return _sharedAsTask;
+                return _sharedAsTask ??= Task.FromResult(Factory.Create());
             }
         }
 
@@ -155,7 +149,9 @@ namespace Nethermind.JsonRpc.Modules
 
         public void ReturnModule(T module)
         {
-            if (_shared is not null && ReferenceEquals(module, _shared))
+            // Only ever a completed task, so Result is a plain read.
+            Task<T>? shared = _sharedAsTask;
+            if (shared is not null && ReferenceEquals(module, shared.Result))
             {
                 RpcLimits.DecrementSharedCalls();
                 return;

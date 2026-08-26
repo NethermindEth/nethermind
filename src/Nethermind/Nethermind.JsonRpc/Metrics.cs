@@ -46,9 +46,14 @@ namespace Nethermind.JsonRpc
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionQueued { get; } = new();
 
         [GaugeMetric]
-        [Description("Number of gated JSON RPC requests currently executing, per cost class.")]
+        [Description("Number of gated JSON RPC requests currently executing, per cost class. A value pinned at the class's permit count while RpcAdmissionQueued stays zero is the signature of a leaked permit.")]
         [KeyIsLabel("cost_class")]
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionInFlight { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of surplus JSON RPC admission permit releases (a lease released more than once) that were ignored instead of raising the class's effective permit count, per cost class. Any nonzero value is a bug in a call site.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionReleaseAnomalies { get; } = new();
 
         [GaugeMetric]
         [Description("Exponentially weighted moving average of the per-unit-weight service time of gated JSON RPC requests, in milliseconds, per cost class.")]

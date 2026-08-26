@@ -11,6 +11,7 @@ using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
@@ -37,7 +38,7 @@ public class RpcAdmissionControllerTests
         TracingConcurrency = 1,
         ProofConcurrency = 1,
         MaxQueueWaitMs = MaxQueueWaitMs,
-    });
+    }, LimboLogs.Instance);
 
     [TestCase("eth_call", RpcMethodCostClass.EvmExecution)]
     [TestCase("eth_estimateGas", RpcMethodCostClass.EvmExecution)]
@@ -134,7 +135,7 @@ public class RpcAdmissionControllerTests
                 break;
         }
 
-        Assert.That(new RpcAdmissionController(config).GetMaxQueueWaitMs(costClass), Is.EqualTo(expected));
+        Assert.That(new RpcAdmissionController(config, LimboLogs.Instance).GetMaxQueueWaitMs(costClass), Is.EqualTo(expected));
     }
 
     [TestCase(null, 7, 7, TestName = "Trace module instances follow TracingConcurrency")]
@@ -228,7 +229,7 @@ public class RpcAdmissionControllerTests
     [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
     public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
     {
-        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = maxQueueWaitMs });
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = maxQueueWaitMs }, LimboLogs.Instance);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
         ConcurrentDictionary<RpcMethodCostClass, long> rejections = maxQueueWaitMs == 0
             ? Metrics.RpcAdmissionPredictedWaitRejections
@@ -304,6 +305,28 @@ public class RpcAdmissionControllerTests
             Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
             Assert.That(_controller.GetServiceTimeMs(RpcMethodCostClass.EvmExecution), serviceTime);
         }
+    }
+
+    [Test]
+    public async Task Surplus_release_is_ignored_and_counted_instead_of_raising_the_permits()
+    {
+        long anomaliesBefore = Metrics.RpcAdmissionReleaseAnomalies.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
+        RpcAdmissionController.Lease lease = await AdmitEthCall();
+        lease.Dispose();
+        lease.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
+            Assert.That(Metrics.RpcAdmissionReleaseAnomalies[RpcMethodCostClass.EvmExecution], Is.EqualTo(anomaliesBefore + 1));
+        }
+
+        RpcAdmissionController.Lease[] held = [await AdmitEthCall(), await AdmitEthCall()];
+        ValueTask<RpcAdmissionController.Lease> overCapacity = AdmitEthCall();
+        Assert.That(overCapacity.IsCompleted, Is.False, "the surplus release must not have added a permit");
+
+        held[0].Dispose();
+        held[1].Dispose();
+        (await overCapacity.AsTask().WaitAsync(WaitBudget)).Dispose();
     }
 
     [Test]
@@ -443,7 +466,7 @@ public class RpcAdmissionControllerTests
     public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
     {
         const int budgetMs = 200;
-        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs });
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = budgetMs }, LimboLogs.Instance);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
         RpcAdmissionController.Lease holder = await controller.AdmitAsync(ethCall, 0);
         Task<RpcAdmissionController.Lease> heavy = controller.AdmitAsync(ethCall, ParamsLengthForWeight(RpcRequestWeight.MaxWeight)).AsTask();
@@ -476,7 +499,7 @@ public class RpcAdmissionControllerTests
     public async Task Timeouts_racing_grants_neither_leak_nor_double_release_permits()
     {
         const int requests = 2_000;
-        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, MaxQueueWaitMs = 1 });
+        RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, MaxQueueWaitMs = 1 }, LimboLogs.Instance);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
         long timeoutsBefore = Metrics.RpcAdmissionWaitTimeoutRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
         int admitted = 0;

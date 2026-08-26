@@ -299,7 +299,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
-        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, new RpcAdmissionController(jsonRpcConfig)), new(RpcEndpoint.Http), new(), executionPayload);
+        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, new RpcAdmissionController(jsonRpcConfig, LimboLogs.Instance)), new(RpcEndpoint.Http), new(), executionPayload);
     }
 
     [Test]

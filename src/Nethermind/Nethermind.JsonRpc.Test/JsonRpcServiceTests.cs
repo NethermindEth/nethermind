@@ -53,7 +53,7 @@ public class JsonRpcServiceTests
         _context = new JsonRpcContext(RpcEndpoint.Http);
         _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
         EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
-        _admissionController = new RpcAdmissionController(_configurationProvider.GetConfig<IJsonRpcConfig>());
+        _admissionController = new RpcAdmissionController(_configurationProvider.GetConfig<IJsonRpcConfig>(), _logManager);
     }
 
     [TearDown]
@@ -228,7 +228,7 @@ public class JsonRpcServiceTests
     private IJsonRpcService CreateService<T>(T module) where T : IRpcModule =>
         CreateService(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
 
-    private void UseAdmissionController(JsonRpcConfig config) => _admissionController = new RpcAdmissionController(config);
+    private void UseAdmissionController(JsonRpcConfig config) => _admissionController = new RpcAdmissionController(config, _logManager);
 
     [TestCase(false, 2UL, TestName = "Number")]
     [TestCase(true, 513UL, TestName = "Size")]
