@@ -474,7 +474,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    /// <summary>Reclaims the receipts of <c>[from, to)</c> except the ones still answered for, and returns the
+    /// <summary>Reclaims <c>[from, to)</c> except the heights still answered for, and returns the
     /// height it reached - <paramref name="to"/> unless the budget ran out between two slices.</summary>
     private ulong RetainSlicedAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken)
     {
@@ -557,14 +557,19 @@ public class HistoryPruner : IHistoryPruner
             // range is what lets whole files be unlinked instead of waiting for compaction.
             candidates.Sort();
 
+            List<(ulong FromInclusive, ulong ToExclusive)> gaps = new(candidates.Count + 1);
             ulong gapStart = fromInclusive;
             foreach (ulong height in candidates)
             {
-                if (height > gapStart) ReclaimBoth(gapStart, height);
+                if (height > gapStart) gaps.Add((gapStart, height));
                 gapStart = height + 1;
             }
 
-            if (gapStart < toExclusive) ReclaimBoth(gapStart, toExclusive);
+            if (gapStart < toExclusive) gaps.Add((gapStart, toExclusive));
+            if (gaps.Count == 0) return;
+
+            _receiptStorage.RemoveReceiptsRanges(gaps);
+            _blockTree.DeleteOldBlockRanges(gaps);
         }
         finally
         {
@@ -572,8 +577,6 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    /// <summary>A retained height keeps its body, so its receipts resolve through it and need no re-encoding - which
-    /// is what was paying a signature recovery per transaction on most heights of a busily sliced span.</summary>
     private void ReclaimBoth(ulong fromInclusive, ulong toExclusive)
     {
         _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);

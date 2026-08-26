@@ -184,6 +184,13 @@ namespace Nethermind.Blockchain
         /// their hashes and whether or not a chain level lists them.</summary>
         void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive);
 
+        /// <summary>Drops many ranges in one call, so the block store can invalidate its hash-keyed cache once
+        /// instead of once per range. The default loops <see cref="DeleteOldBlockRange"/>.</summary>
+        void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges) DeleteOldBlockRange(fromInclusive, toExclusive);
+        }
+
         /// <summary>Drops one old block's body, for a caller keeping some of the heights in a range it is reclaiming.
         /// </summary>
         void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);

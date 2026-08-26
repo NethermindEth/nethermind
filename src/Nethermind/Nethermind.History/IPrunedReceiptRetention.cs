@@ -7,8 +7,8 @@ using Nethermind.Core;
 namespace Nethermind.History;
 
 /// <summary>
-/// Decides whether a block the history pruner is about to delete must keep its receipts because something on this
-/// node still answers queries for it. Keeps the pruner free of any one backend's retention rules: the default
+/// Decides whether a block the history pruner is about to delete must keep its receipts and body because something
+/// on this node still answers queries for it. Keeps the pruner free of any one backend's retention rules: the default
 /// implementation never retains, so a node that configures no such backend pays nothing and carries no coupling.
 /// </summary>
 public interface IPrunedReceiptRetention
@@ -17,7 +17,7 @@ public interface IPrunedReceiptRetention
     bool ShouldRetainReceipts(BlockHeader header);
 
     /// <summary>
-    /// Heights in <c>[fromInclusive, toExclusive)</c> whose receipts must survive, answered without reading a header.
+    /// Heights in <c>[fromInclusive, toExclusive)</c> whose receipts and body must survive, answered without reading a header.
     /// </summary>
     /// <remarks>
     /// The pruner reclaims by range, so it needs the answer for a span rather than for one height at a time. An

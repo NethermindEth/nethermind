@@ -945,6 +945,34 @@ namespace Nethermind.Blockchain.Receipts
             if (fromInclusive < toExclusive) _receiptsCache.Clear();
         }
 
+        /// <summary>One cache invalidation for the whole batch: the cache is keyed by hash, so it cannot be narrowed
+        /// to a range, and clearing it per range would keep it cold for as long as a caller has ranges to hand over.</summary>
+        public void RemoveReceiptsRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            bool removedAny = false;
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                if (fromInclusive >= toExclusive) continue;
+                removedAny = true;
+
+                if (_pendingReceipts is not null)
+                {
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                }
+                else
+                {
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                }
+            }
+
+            if (!removedAny) return;
+            _receiptsCache.Clear();
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+            }
+        }
+
         [SkipLocalsInit]
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {

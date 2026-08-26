@@ -124,14 +124,17 @@ public sealed class HistoryWindowPruner(
     }
 
     /// <summary>Advances a bounded slice's own floor toward <c>watermark - retention</c>, raise-only.</summary>
-    private void MaintainBoundedSliceFloors(ulong watermark)
+    private bool MaintainBoundedSliceFloors(ulong watermark)
     {
         _configuredSlices ??= SliceScopeConfig.Parse(config.HistorySliceAddresses);
+        bool raised = false;
         foreach (SliceScopeEntry entry in _configuredSlices)
         {
             if (entry.RetentionBlocks is not { } retention || watermark <= retention) continue;
-            availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
+            raised |= availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
         }
+
+        return raised;
     }
 
     private static byte[] AccountKeyOf(Address address) =>
@@ -165,9 +168,11 @@ public sealed class HistoryWindowPruner(
                 return;
             }
 
+            long passStartedAt = Stopwatch.GetTimestamp();
             try
             {
                 yielded = !RunOnePass(token);
+                pauseAfterYield = Stopwatch.GetElapsedTime(passStartedAt);
             }
             catch (OperationCanceledException)
             {
@@ -215,14 +220,18 @@ public sealed class HistoryWindowPruner(
         // whatever the watermark happened to be when the first floor published - on a node that starts deep,
         // that sweep outlives every later advance and the node keeps history it was configured to drop.
         ulong watermark = writer.LastCapturedBlock;
-        MaintainBoundedSliceFloors(watermark);
+        bool scopeFloorRaised = MaintainBoundedSliceFloors(watermark);
 
-        if (watermark > retention && availability.TryRaiseGlobalFloor(watermark - retention))
+        bool globalFloorRaised = watermark > retention && availability.TryRaiseGlobalFloor(watermark - retention);
+        if (globalFloorRaised)
         {
             Metrics.FlatHistoryFloor = (long)(watermark - retention);
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
+        }
 
-            // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
+        // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
+        if (globalFloorRaised || scopeFloorRaised)
+        {
             long drainGeneration = scopeGate.BeginFloorAdvance();
             if (!scopeGate.TryDrain(drainGeneration, passBudget, token))
             {
@@ -252,16 +261,16 @@ public sealed class HistoryWindowPruner(
         bool completedBlocks = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
 
         bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
-        if (completed) Volatile.Write(ref _deletesOwed, false);
 
         if (_logger.IsInfo)
         {
             long deleted = Metrics.FlatHistoryPrunedRows - rowsBefore;
+            string scopeNote = markersAndClearsFloor == floor ? "" : $" Clears and markers kept down to #{markersAndClearsFloor} for slice scopes.";
             _logger.Info(completed
-                ? $"Flat history pruning caught up below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass."
+                ? $"Flat history sweep finished below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass.{scopeNote}"
                 : $"Flat history pruning below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass, "
                   + $"accounts {SweepProgress(completedAccount, AccountCursorKey)}, storage {SweepProgress(completedStorage, StorageCursorKey)}, "
-                  + $"clears {(completedClears ? "done" : "running")}, markers {(completedBlocks ? "done" : "running")}.");
+                  + $"clears {(completedClears ? "done" : "running")}, markers {(completedBlocks ? "done" : "running")}.{scopeNote}");
         }
 
         return completed;
@@ -458,12 +467,6 @@ public sealed class HistoryWindowPruner(
         batch = column.StartWriteBatch();
         return 0;
     }
-
-    private bool HasAnyPendingCursor() =>
-        _availableBlocks.Get(AccountCursorKey) is not null ||
-        _availableBlocks.Get(StorageCursorKey) is not null ||
-        _availableBlocks.Get(ClearsCursorKey) is not null ||
-        _availableBlocks.Get(BlocksCursorKey) is not null;
 
     /// <summary>Both versioned columns are keyed by a hash, so the cursor's leading bytes are a uniform position in
     /// the keyspace and give the sweep an honest percentage rather than a row count with no denominator.</summary>

@@ -119,6 +119,39 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
+    public void RemoveReceiptsRanges_TakesEveryRangeAndKeepsTheHeightsBetween()
+    {
+        Dictionary<ulong, Block> blocks = [];
+        for (ulong number = 1; number <= 5; number++)
+        {
+            (Block block, _) = InsertBlock(Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject);
+            blocks[number] = block;
+        }
+
+        _storage.RemoveReceiptsRanges([(1, 3), (4, 5)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(1, blocks[1].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(2, blocks[2].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(3, blocks[3].Hash!), Is.True, "the height between the ranges survives");
+            Assert.That(_storage.HasBlock(4, blocks[4].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(5, blocks[5].Hash!), Is.True, "the upper bound is exclusive");
+        }
+    }
+
+    [Test]
+    public void RemoveReceiptsRanges_StopsServingACachedBlockInsideARange()
+    {
+        (Block block, _) = InsertBlock();
+        Assert.That(_storage.Get(block), Is.Not.Empty, "priming the cache");
+
+        _storage.RemoveReceiptsRanges([((ulong)block.Number, (ulong)block.Number + 1)]);
+
+        Assert.That(_storage.Get(block), Is.Empty);
+    }
+
+    [Test]
     public void SweepTransactionIndex_DropsOnlyEntriesNamingReclaimedBlocks()
     {
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System;
 using System.Buffers;
 using Autofac.Features.AttributeFilters;
@@ -138,6 +139,33 @@ public class BlockStore : IBlockStore, IClearableCache
         // disk must stop being served whatever the reclaim does.
         _blockCache.Clear();
         _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+    }
+
+    public void DeleteRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+    {
+        bool removedAny = false;
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (fromInclusive >= toExclusive) continue;
+            removedAny = true;
+
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+            }
+            else
+            {
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+            }
+        }
+
+        if (!removedAny) return;
+
+        _blockCache.Clear();
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        }
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)

@@ -9,8 +9,8 @@ using Nethermind.Db.LogIndex;
 
 namespace Nethermind.History;
 
-/// <summary>Retains the receipts of blocks that touched a per-contract history slice, so those addresses stay
-/// queryable after the general history pruner has deleted the block. The bloom is only a first filter; where the
+/// <summary>Retains the receipts and body of blocks that touched a per-contract history slice, so those addresses
+/// stay queryable where the general history pruner reclaims. The bloom is only a first filter; where the
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
 public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage) : IPrunedReceiptRetention
 {
