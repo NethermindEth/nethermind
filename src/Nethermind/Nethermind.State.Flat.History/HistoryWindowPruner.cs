@@ -202,33 +202,24 @@ public sealed class HistoryWindowPruner(
         ulong retention = config.HistoryRetentionBlocks;
         if (retention == 0) return true;
 
-        ulong floor;
-        if (HasAnyPendingCursor() || Volatile.Read(ref _deletesOwed))
+        // A drain owed by an earlier advance finishes first, on the generation that failed: bumping a fresh one
+        // would demote readers already safe under it.
+        if (Volatile.Read(ref _deletesOwed))
         {
-            // Deletes are still owed for an already-published floor. A fresh comparison would see no advance
-            // and skip the pass, abandoning them.
-            if (!availability.TryGetGlobalFloor(out floor)) return true;
-
-            // Wait on the generation the failed drain used: a fresh bump would also demote readers already safe.
-            if (Volatile.Read(ref _deletesOwed)
-                && !scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token))
-            {
-                return false;
-            }
+            if (!scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token)) return false;
+            Volatile.Write(ref _deletesOwed, false);
         }
-        else
+
+        // The floor advances on the watermark alone. Gating it on an idle sweep instead pins the window to
+        // whatever the watermark happened to be when the first floor published - on a node that starts deep,
+        // that sweep outlives every later advance and the node keeps history it was configured to drop.
+        ulong watermark = writer.LastCapturedBlock;
+        MaintainBoundedSliceFloors(watermark);
+
+        if (watermark > retention && availability.TryRaiseGlobalFloor(watermark - retention))
         {
-            ulong watermark = writer.LastCapturedBlock;
-            MaintainBoundedSliceFloors(watermark);
-            if (watermark <= retention) return true;
-
-            ulong newFloor = watermark - retention;
-
-            if (!availability.TryRaiseGlobalFloor(newFloor)) return true;
-
-            Metrics.FlatHistoryFloor = (long)newFloor;
+            Metrics.FlatHistoryFloor = (long)(watermark - retention);
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
-            floor = newFloor;
 
             // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
             long drainGeneration = scopeGate.BeginFloorAdvance();
@@ -241,6 +232,10 @@ public sealed class HistoryWindowPruner(
                 return false;
             }
         }
+
+        // Whatever the floor is now, including one an earlier pass published: a resumed sweep deletes against the
+        // current floor, and anything it passed over is taken by the next sweep.
+        if (!availability.TryGetGlobalFloor(out ulong floor)) return true;
 
         // Its own budget per column, so a slow account column cannot starve the other three of all progress.
         bool hasScopes = availability.GetScopesArray().Length > 0;

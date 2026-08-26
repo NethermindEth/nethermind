@@ -137,6 +137,34 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void RunOnePass_WithASweepStillPending_StillAdvancesTheFloorToTheCurrentWatermark()
+    {
+        for (ulong block = 0; block <= 60; block += 5)
+        {
+            HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, block, new Account(block, block * 10));
+        }
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        HistoryWindowPruner first = CreatePruner(retentionBlocks: 8);
+        first.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
+        first.Dispose();
+
+        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "precondition: the first pass published floor 12 and yielded mid-column");
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 60);
+        HistoryWindowPruner second = CreatePruner(retentionBlocks: 8);
+        second.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
+        second.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsPrunedBelowFloor(51), Is.True,
+                "a sweep that has not finished must not pin the window: the floor follows the watermark, or a node that starts deep never reaches the retention it was configured with");
+            Assert.That(_reader.IsPrunedBelowFloor(52), Is.False, "and it must land exactly at watermark minus retention, not past it");
+        }
+    }
+
+    [Test]
     public void RunOnePass_AfterADrainTimeout_StillOwesAndPerformsTheDeletesForTheAlreadyPublishedFloor()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
