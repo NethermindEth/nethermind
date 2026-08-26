@@ -376,7 +376,7 @@ baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is w
 {"clients": "nethermind@<a> nethermind@<b> nethermind@<c>", "seed": 7, "corpus_passes": 40,
  "timings_rps": 100, "timings_concurrency": 16, "corpus_warmup_rps": 400,
  "parity_diffs": true, "max_corpus_records": 50000, "max_divergence_indexes": 500,
- "db_isolation_all": "copy", "node_env_vars": "NETHERMIND_EXPERIMENTAL_X=1", "resource_sampling": true,
+ "db_isolation_all": "copy", "node_env_vars": "NETHERMIND_EXPERIMENTAL_X=1", "resource_sampling": true, "perf_stat": false,
  "benchmark_config": "config/benchmark/ethcallchaos-percategory-validated.yaml", "iso_configs": "", "iso_duration": "20s",
  "ref": "<json-bench sha>", "state_layout": "flat", "snapshot_block": "25490000", "corpus_dir": ""}
 ```
@@ -393,6 +393,21 @@ baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is w
 ```
 
 `node_config` template: see [`node_config` JSON](#node_config-json).
+
+**Experiment #1 host measurements.** Resource sampling adds optional `cpu_frequency_khz` entries
+for `scaling_cur_freq` and `cpuinfo_cur_freq`; each source contains sample/observation counts and
+average/min/max kHz. Missing sysfs sources are omitted. After normalization,
+`estimated_cycles_per_request` reports CPU-ms/request multiplied by each available average kHz.
+
+`tool_config.perf_stat` is a strict JSON boolean and must be `true` only for an AMD64
+`jsonbench-sweep` private `eth_call` corpus run. It attaches host `perf stat` to the node for the
+same observation window as the cgroup sampler: immediately before the private-corpus `docker run`
+and stopped immediately after it, with only `task-clock:u`, `cycles:u`, and `instructions:u`.
+`perf stat -p` observes the existing node process and its thread map; it is not a separate workload.
+Cleanup uses start-time-checked pidfd signaling and a bounded 10-second escalation if perf does not reap.
+`resources.json` receives fixed numeric raw/per-request counts, IPC, and effective GHz; raw perf
+output, stderr, PIDs, commands, and corpus data are never staged. Required unavailable or malformed
+counters fail the opted-in cell. Leave it `false` on ARM (the Axion runner has no PMU counters).
 
 ## Fixed corpus A/B against master
 
@@ -585,7 +600,8 @@ validated line-by-line with its paths rewritten artifact-relative — and being 
 files that are themselves validated, a malformed manifest drops only itself with a warning
 rather than failing the artifact): `summary.json`, `parity.json`, `timings.csv`
 (indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
-run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
+run parameters, including `warmup_seconds`), `resources.json` (cgroup counters, optional CPU-frequency
+aggregates, and opt-in AMD perf aggregates),
 `parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
 the one artifact derived from response bytes: **opt-in** (`parity_diffs`, default
 off) and reduced to word positions plus a higher/lower direction — no operands, no

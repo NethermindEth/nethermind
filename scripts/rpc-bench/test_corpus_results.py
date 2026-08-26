@@ -5,6 +5,7 @@
 import contextlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,18 @@ import corpus_results  # noqa: E402
 
 SENTINEL = "SENTINEL_PRIVATE_DATA"
 DURATION = {"avg": 1.0, "med": 1.0, "p(90)": 2.0, "p(95)": 3.0, "p(99)": 4.0, "max": 5.0}
+
+
+def perf_json(**values):
+    records = []
+    defaults = {"task-clock": "1000.0", "cycles": "3800000000", "instructions": "1900000000"}
+    defaults.update(values)
+    for event in corpus_results.PERF_STAT_EVENTS:
+        records.append(json.dumps({"counter-value": defaults[event],
+                                   "unit": "msec" if event == "task-clock" else "",
+                                   "event": event + ":u", "event-runtime": 1_000_000,
+                                   "pcnt-running": 100.0}))
+    return "\n".join(records) + "\n"
 
 
 def raw_summary(**overrides):
@@ -106,6 +119,59 @@ class CorpusResultsTests(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(corpus_results.CorpusResultsError):
                     corpus_results.sanitize_data(raw)
+
+    def test_perf_normalize_publishes_only_fixed_numeric_aggregates(self):
+        data = corpus_results.normalize_perf_data(perf_json(), 1000)
+        self.assertEqual(data["cycles_per_request"], 3_800_000.0)
+        self.assertEqual(data["instructions_per_request"], 1_900_000.0)
+        self.assertEqual(data["ipc"], 0.5)
+        self.assertEqual(data["effective_ghz"], 3.8)
+        self.assertEqual(set(data), corpus_results.PERF_STAT_FIELDS)
+
+    def test_perf_normalize_accepts_top_level_json_array(self):
+        records = [json.loads(line) for line in perf_json().splitlines()]
+        data = corpus_results.normalize_perf_data(json.dumps(records), 1000)
+        self.assertEqual(data["cycles"], 3_800_000_000.0)
+
+    def test_perf_normalize_rejects_missing_or_unavailable_required_counter(self):
+        for event in corpus_results.PERF_STAT_EVENTS:
+            with self.subTest(event=event):
+                records = [line for line in perf_json().splitlines() if f'"event": "{event}:u"' not in line]
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results.normalize_perf_data("\n".join(records), 1000)
+                unavailable = perf_json(**{event: "<not supported>"})
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results.normalize_perf_data(unavailable, 1000)
+
+    def test_perf_normalize_rejects_duplicate_or_injected_records(self):
+        raw = perf_json() + perf_json().splitlines()[0] + "\n"
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.normalize_perf_data(raw, 1000)
+        injected = json.loads(perf_json().splitlines()[0])
+        injected["pid"] = 123
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.normalize_perf_data("\n".join([json.dumps(injected)] + perf_json().splitlines()[1:]), 1000)
+
+    def test_resources_validator_accepts_frequency_and_perf_extensions(self):
+        resources = {
+            "requests": 1000,
+            "cpu_ms_per_request": 1.0,
+            "cpu_frequency_khz": {"scaling_cur_freq": {
+                "sample_count": 2, "observation_count": 4, "avg_khz": 3_800_000,
+                "min_khz": 3_700_000, "max_khz": 3_900_000}},
+            "estimated_cycles_per_request": {"scaling_cur_freq": 3_800_000.0},
+            "perf_stat": corpus_results.normalize_perf_data(perf_json(), 1000),
+        }
+        corpus_results._validate_resources(self.write_json(self.dir / "resources.json", resources))
+        resources["perf_stat"]["cycles_per_request"] = "leak"
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results._validate_resources(self.write_json(self.dir / "bad-resources.json", resources))
+
+    def test_pidfd_preflight_roundtrip_when_supported(self):
+        if not (hasattr(os, "pidfd_open") and hasattr(corpus_results.signal, "pidfd_send_signal")
+                and Path("/proc").is_dir()):
+            self.skipTest("Linux pidfd APIs are unavailable")
+        corpus_results.validate_perf_pidfd_support()
 
     def test_sanitize_cli_reports_content_free_error_for_missing_raw(self):
         result = subprocess.run(

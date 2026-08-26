@@ -57,7 +57,7 @@ class SamplerArithmeticTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _run(self, ticks):
+    def _run(self, ticks, frequencies=None):
         """Drive the loop for len(ticks) iterations, applying each tick's mutations."""
         state = {"i": 0}
 
@@ -74,12 +74,16 @@ class SamplerArithmeticTests(unittest.TestCase):
         sample_resources._cgroup_dir = lambda _cid: self.dir
         original_id = sample_resources._container_id
         sample_resources._container_id = lambda _name: "cid"
+        original_frequencies = sample_resources._frequency_observations
+        readings = iter(frequencies or ({source: [] for source in sample_resources.CPU_FREQ_SOURCES},) * len(ticks))
+        sample_resources._frequency_observations = lambda: next(readings)
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 sample_resources.sample("node", str(self.out), 0.0, should_stop)
         finally:
             sample_resources._cgroup_dir = original
             sample_resources._container_id = original_id
+            sample_resources._frequency_observations = original_frequencies
         return json.loads(self.out.read_text(encoding="utf-8"))
 
     def test_throttling_is_a_delta_not_the_cgroup_lifetime_value(self):
@@ -103,6 +107,19 @@ class SamplerArithmeticTests(unittest.TestCase):
         summary = self._run([lambda c: setattr(c, "cpu_usec", 1000)])
         self.assertEqual(summary["requests"], 0)
         self.assertNotIn("cpu_ms_per_request", summary)
+
+    def test_frequency_aggregation_omits_missing_sources(self):
+        summary = self._run(
+            [lambda c: setattr(c, "cpu_usec", 1000), lambda c: setattr(c, "cpu_usec", 2000)],
+            frequencies=[
+                {"scaling_cur_freq": [3_700_000, 3_800_000], "cpuinfo_cur_freq": []},
+                {"scaling_cur_freq": [3_900_000], "cpuinfo_cur_freq": []},
+            ])
+        self.assertEqual(summary["cpu_frequency_khz"]["scaling_cur_freq"], {
+            "sample_count": 2, "observation_count": 3, "avg_khz": 3_800_000,
+            "min_khz": 3_700_000, "max_khz": 3_900_000})
+        self.assertNotIn("cpuinfo_cur_freq", summary["cpu_frequency_khz"])
+        self.assertNotIn("estimated_cycles_per_request", summary)
 
 
 class NormalizeTests(unittest.TestCase):
@@ -136,6 +153,22 @@ class NormalizeTests(unittest.TestCase):
             sample_resources.normalize(str(self.path), 500)
         summary = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(summary["cpu_ms_per_request"], 90.0)
+
+    def test_normalize_derives_cycles_per_request_for_available_frequency_sources(self):
+        self._write(cpu_frequency_khz={
+            "scaling_cur_freq": {"sample_count": 2, "observation_count": 4, "avg_khz": 3_800_000,
+                                  "min_khz": 3_700_000, "max_khz": 3_900_000}})
+        with contextlib.redirect_stdout(io.StringIO()):
+            sample_resources.normalize(str(self.path), 1000)
+        summary = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["estimated_cycles_per_request"], {"scaling_cur_freq": 171_000_000.0})
+
+    def test_normalize_does_not_invent_cycle_estimates_without_frequency(self):
+        self._write()
+        with contextlib.redirect_stdout(io.StringIO()):
+            sample_resources.normalize(str(self.path), 1000)
+        summary = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertNotIn("estimated_cycles_per_request", summary)
 
     def test_a_non_summary_file_is_rejected_without_a_traceback(self):
         self.path.write_text(json.dumps({"not": "a summary"}), encoding="utf-8")

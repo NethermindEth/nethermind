@@ -22,6 +22,9 @@ from typing import Sequence
 CGROUP_ROOTS = ("/sys/fs/cgroup/system.slice/docker-{cid}.scope",
                 "/sys/fs/cgroup/docker/{cid}",
                 "/sys/fs/cgroup/kubepods/docker-{cid}.scope")
+CPU_FREQ_ROOT = Path("/sys/devices/system/cpu")
+CPU_FREQ_SOURCES = ("scaling_cur_freq", "cpuinfo_cur_freq")
+MAX_CPU_FREQ_KHZ = 10_000_000
 
 
 class ResourceSampleError(Exception):
@@ -92,6 +95,46 @@ def _io_totals(path: Path) -> tuple[int, int]:
     return read, write
 
 
+def _cpu_frequency_values(source: str) -> list[int]:
+    """Read positive, plausible kHz values for one cpufreq source.
+
+    Frequency sysfs files are host-dependent: a source may be absent, unreadable, or exposed
+    only for a subset of CPUs.  The sampler treats each readable file independently and never
+    turns an unavailable source into a zero-valued measurement.
+    """
+    values: list[int] = []
+    try:
+        paths = sorted(CPU_FREQ_ROOT.glob(f"cpu[0-9]*/cpufreq/{source}"))
+    except OSError:
+        return values
+    for path in paths:
+        value = _read_int(path)
+        if value is not None and 0 < value <= MAX_CPU_FREQ_KHZ:
+            values.append(value)
+    return values
+
+
+def _frequency_observations() -> dict[str, list[int]]:
+    return {source: _cpu_frequency_values(source) for source in CPU_FREQ_SOURCES}
+
+
+def _frequency_summary(observations: dict[str, dict[str, int | float]]) -> dict[str, dict[str, int | float]]:
+    """Return bounded aggregate values for sources that produced at least one observation."""
+    result: dict[str, dict[str, int | float]] = {}
+    for source, stats in observations.items():
+        count = stats["observation_count"]
+        if not isinstance(count, int) or count < 1:
+            continue
+        result[source] = {
+            "sample_count": stats["sample_count"],
+            "observation_count": count,
+            "avg_khz": round(float(stats["total_khz"]) / count, 3),
+            "min_khz": stats["min_khz"],
+            "max_khz": stats["max_khz"],
+        }
+    return result
+
+
 def sample(container: str, out_path: str, interval: float, should_stop=None) -> None:
     """Sample until should_stop() (default: SIGTERM/SIGINT). Every figure is a delta or a sample inside the window."""
     cgroup = _cgroup_dir(_container_id(container))
@@ -110,6 +153,16 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
     io_start = _io_totals(cgroup / "io.stat")
     psi_start = {name: _pressure_total(cgroup / f"{name}.pressure") for name in ("cpu", "io", "memory")}
     memory_samples: list[int] = []
+    frequency_stats: dict[str, dict[str, int | float]] = {
+        source: {
+            "sample_count": 0,
+            "observation_count": 0,
+            "total_khz": 0,
+            "min_khz": MAX_CPU_FREQ_KHZ,
+            "max_khz": 0,
+        }
+        for source in CPU_FREQ_SOURCES
+    }
     peak_cores = 0.0
     last_t, last_cpu = started, cpu_start
     while not should_stop():
@@ -118,6 +171,15 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         current = _read_int(cgroup / "memory.current")
         if current is not None:
             memory_samples.append(current)
+        for source, values in _frequency_observations().items():
+            if not values:
+                continue
+            stats = frequency_stats[source]
+            stats["sample_count"] += 1
+            stats["observation_count"] += len(values)
+            stats["total_khz"] += sum(values)
+            stats["min_khz"] = min(stats["min_khz"], min(values))
+            stats["max_khz"] = max(stats["max_khz"], max(values))
         cpu_now = cpu_usec()
         span = now - last_t
         if span > 0:
@@ -149,16 +211,31 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         "stall_memory_usec": psi_delta("memory"),
         "requests": 0,  # filled in by `normalize` once the cell reports its delivered count
     }
+    frequency = _frequency_summary(frequency_stats)
+    if frequency:
+        summary["cpu_frequency_khz"] = frequency
     _write(out_path, _with_rates(summary))
 
 
 def _with_rates(summary: dict) -> dict:
     summary.pop("cpu_ms_per_request", None)
     summary.pop("io_read_bytes_per_request", None)
+    summary.pop("estimated_cycles_per_request", None)
     requests = summary.get("requests", 0)
     if isinstance(requests, int) and requests > 0:
         summary["cpu_ms_per_request"] = round(summary["cpu_seconds"] * 1000 / requests, 4)
         summary["io_read_bytes_per_request"] = round(summary["io_read_bytes"] / requests, 1)
+        frequency = summary.get("cpu_frequency_khz")
+        if isinstance(frequency, dict):
+            estimates: dict[str, float] = {}
+            for source, values in frequency.items():
+                if not isinstance(values, dict):
+                    continue
+                average = values.get("avg_khz")
+                if isinstance(average, (int, float)) and not isinstance(average, bool) and average > 0:
+                    estimates[source] = round(summary["cpu_ms_per_request"] * average, 3)
+            if estimates:
+                summary["estimated_cycles_per_request"] = estimates
     return summary
 
 

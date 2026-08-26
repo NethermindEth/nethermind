@@ -41,6 +41,7 @@ CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 CORPUS_WARMUP_RPS_MAX="${CORPUS_WARMUP_RPS_MAX:-0}"   # 0 = no cap on the warm-up rate
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
+CORPUS_PERF_STAT="${CORPUS_PERF_STAT:-false}"
 CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per node per corpus; 0 = measure cold
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"             # floor; a higher measured rate warms at that rate
 CORPUS_BASELINE="${CORPUS_BASELINE:-none}"                # save: persist this run's parity baseline on the runner; use: compare against the saved one
@@ -75,6 +76,13 @@ case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
 esac
+case "$CORPUS_PERF_STAT" in
+  true|false) ;;
+  *) echo "::error::CORPUS_PERF_STAT must be true or false"; exit 1 ;;
+esac
+if [[ "$CORPUS_PERF_STAT" == "true" && "$JB_ETH_CALL_CORPUS" != "true" ]]; then
+  echo "::error::perf_stat is supported only for private eth_call corpus sweep cells"; exit 1
+fi
 case "$CORPUS_BASELINE" in
   none|save|use) ;;
   *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
@@ -92,15 +100,43 @@ DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
 
 # $1 config $2 rps $3 duration $4 cell dir $5 ctype $6 label [$7 corpus file] [$8 node container to sample]
 run_cell() {
-  local corpus="${7:-}" node="${8:-}" sampler_container="" sampler_out=""
+  local corpus="${7:-}" node="${8:-}" sampler_container="" sampler_out="" perf_resources=""
   mkdir -p "$4"
   [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]] && { sampler_container="$node"; sampler_out="$4/resources.json"; }
+  [[ -n "$corpus" && -n "$node" && "$CORPUS_PERF_STAT" == "true" ]] && perf_resources="$4/resources.json"
   OUT_DIR="$4" RPC_URL="$RPC" CLIENT_TYPE="$5" LABEL="$6" SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$1" JB_RPS="$2" JB_DURATION="$3" JB_SEED="$JB_SEED" JB_HTML_REPORT="false" \
     JB_DEEP_CHECK="$([[ -n "$corpus" ]] && echo false || echo true)" \
     JB_ETH_CALL_CORPUS="$([[ -n "$corpus" ]] && echo true || echo false)" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
+    PERF_STAT_CONTAINER="$([[ -n "$corpus" && "$CORPUS_PERF_STAT" == "true" ]] && echo "$node" || true)" \
+    PERF_STAT_RESOURCES="$perf_resources" \
     "$here/run-jsonbench.sh"
+}
+
+preflight_perf_stat() {
+  local perf_bin raw
+  perf_bin="$(command -v perf 2>/dev/null)" || {
+    echo "::error::perf_stat requires host perf with task-clock, cycles, and instructions support"; return 1;
+  }
+  raw="$SCRATCH_ROOT/perf-stat-preflight.json"
+  rm -f -- "$raw"; mkdir -p "$SCRATCH_ROOT"; : > "$raw"; chmod 600 "$raw"
+  if ! as_root env LC_ALL=C LANG=C "$perf_bin" stat --json-output --no-big-num --timeout 50 \
+      --output "$raw" -e task-clock:u -e cycles:u -e instructions:u -- /bin/sleep 0.05 \
+      >/dev/null 2>/dev/null; then
+    rm -f -- "$raw"
+    echo "::error::perf_stat preflight failed: required host counters are unavailable"; return 1
+  fi
+  if ! python3 "$here/corpus_results.py" perf-validate "$raw" \
+      >/dev/null 2>/dev/null; then
+    rm -f -- "$raw"
+    echo "::error::perf_stat preflight produced unusable required counter data"; return 1
+  fi
+  if ! as_root python3 "$here/corpus_results.py" perf-pidfd-preflight >/dev/null 2>/dev/null; then
+    rm -f -- "$raw"
+    echo "::error::perf_stat preflight failed: identity-safe host signaling is unavailable"; return 1
+  fi
+  rm -f -- "$raw" "$SCRATCH_ROOT/perf-stat-preflight-resources.json"
 }
 
 # Percentiles above the failure rate describe failures, not latency — say so per cell.
@@ -292,6 +328,10 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     done
     [[ "$USING_SAVED_BASELINE" == "true" ]] && echo "Parity baseline: saved responses under $CORPUS_BASELINE_DIR"
   fi
+fi
+
+if [[ "$CORPUS_PERF_STAT" == "true" ]]; then
+  preflight_perf_stat || exit 1
 fi
 
 read -ra entries <<< "$CLIENTS"

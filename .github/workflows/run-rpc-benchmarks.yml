@@ -354,6 +354,13 @@ jobs:
             case "${benchmark_tool}" in jsonbench|jsonbench-sweep) ;; *) fail "eth_call_corpus requires benchmark_tool=jsonbench or jsonbench-sweep." ;; esac
             [[ "${comparison}" != "true" ]] || fail "eth_call_corpus is benchmark-only; leave reference_client=none."
           fi
+          perf_raw="$(echo "${tool_config}" | jq -r 'if has("perf_stat") then (.perf_stat|type) else "absent" end')"
+          case "${perf_raw}" in absent|boolean) ;; *) fail "perf_stat must be a JSON boolean, got ${perf_raw}." ;; esac
+          perf_stat="$(echo "${tool_config}" | jq -r 'if .perf_stat == true then "true" else "false" end')"
+          if [[ "${perf_stat}" == "true" ]]; then
+            [[ "${arch}" == "amd64" && "${benchmark_tool}" == "jsonbench-sweep" && "${eth_call_corpus}" == "true" ]] \
+              || fail "perf_stat=true requires arch=amd64, benchmark_tool=jsonbench-sweep, and eth_call_corpus=true."
+          fi
           [[ -n "${node_config}" ]] || node_config="{}"
           echo "${node_config}" | jq -e . >/dev/null 2>&1 || fail "node_config is not valid JSON: ${node_config}"
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
@@ -461,6 +468,7 @@ jobs:
             echo "node_memory=${node_memory}"
             echo "cpu_max_freq_khz=${cpu_max_freq_khz}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "perf_stat=${perf_stat}"
             echo "tool_config<<TOOLCFG"
             echo "${tool_config}"
             echo "TOOLCFG"
@@ -783,7 +791,7 @@ jobs:
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \
-                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
+                      perf_stat:CORPUS_PERF_STAT vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
             v="$(getb ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           # An absent rps_list means the default; an explicitly empty one means no k6 cells.
