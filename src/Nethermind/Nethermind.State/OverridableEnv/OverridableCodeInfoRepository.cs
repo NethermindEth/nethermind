@@ -15,6 +15,9 @@ namespace Nethermind.State.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, ICodeCache codeCache) : IOverridableCodeInfoRepository
 {
+    public OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState)
+        : this(codeInfoRepository, worldState, NoopCodeCache.Instance) { }
+
     private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = [];
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
 
