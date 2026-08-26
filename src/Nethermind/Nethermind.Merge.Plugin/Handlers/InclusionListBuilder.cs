@@ -14,7 +14,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
+internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -28,40 +28,45 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
-    /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
-    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
+    /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
+    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs()
     {
         const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
+        UInt256 baseFee = NextBlockBaseFee();
 
-        using ArrayPoolListRef<Transaction[]> senders = new(capacity);
+        // Reservoir over senders rather than over their runs, so the pool's size costs no allocation and no
+        // state read: only the drawn senders below pay for one.
+        using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
         int seen = 0;
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
         {
-            // Dropped before the draw rather than at encode time, so an unenforceable transaction never
-            // takes a sender slot and leaves the list shorter than it needed to be.
-            Transaction[] bySender = WithoutFrameTxs(pending);
-            if (bySender.Length == 0 || !IsAnchoredAtNextAccountNonce(pending, bySender)) continue;
-
-            if (senders.Count < capacity)
+            if (drawn.Count < capacity)
             {
-                senders.Add(bySender);
+                drawn.Add(pending);
             }
             else
             {
                 int j = rnd.Next(seen + 1);
-                if (j < capacity) senders[j] = bySender;
+                if (j < capacity) drawn[j] = pending;
             }
             seen++;
         }
 
         // The byte-cap loop below treats position as priority, so shuffle: membership alone isn't enough.
-        for (int i = senders.Count - 1; i > 0; i--)
+        for (int i = drawn.Count - 1; i > 0; i--)
         {
             int j = rnd.Next(i + 1);
-            (senders[i], senders[j]) = (senders[j], senders[i]);
+            (drawn[i], drawn[j]) = (drawn[j], drawn[i]);
+        }
+
+        using ArrayPoolListRef<Transaction[]> runs = new(capacity);
+        foreach (Transaction[] pending in drawn)
+        {
+            Transaction[] run = AppendableRun(pending, in baseFee);
+            if (run.Length > 0) runs.Add(run);
         }
 
         // Take one nonce per sender per round rather than draining each run in turn, so a single account
@@ -70,20 +75,38 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         for (int round = 0; ; round++)
         {
             bool advanced = false;
-            foreach (Transaction[] bySender in senders)
+            foreach (Transaction[] run in runs)
             {
-                if (round >= bySender.Length) continue;
-                Transaction tx = bySender[round];
-                // Buckets are nonce-ordered, so once a gap breaks this offset it can never realign: the
-                // run ends there, because nothing behind a gap can be appended either.
-                if (tx.Nonce != bySender[0].Nonce + (ulong)round) continue;
+                if (round >= run.Length) continue;
 
-                sample.Add(tx);
+                sample.Add(run[round]);
                 advanced = true;
                 if (sample.Count == capacity) return sample;
             }
             if (!advanced) return sample;
         }
+    }
+
+    /// <summary>The leading transactions of <paramref name="pending"/> the next block could append, in order.</summary>
+    /// <remarks>The pool vouches for its first entry alone, so the rest is re-checked here: frame transactions
+    /// removed, anchored at the account's next nonce, cut at the first nonce gap or unpayable base fee.</remarks>
+    private Transaction[] AppendableRun(Transaction[] pending, in UInt256 baseFee)
+    {
+        Transaction[] bySender = WithoutFrameTxs(pending);
+        if (bySender.Length == 0 || !IsAnchoredAtNextAccountNonce(pending, bySender)) return [];
+
+        ulong anchor = bySender[0].Nonce;
+        int length = 0;
+        // Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a gap is appendable,
+        // and nothing behind an entry the next block would price out is worth the byte cap either.
+        while (length < bySender.Length
+            && bySender[length].Nonce == anchor + (ulong)length
+            && bySender[length].CanPayBaseFee(baseFee))
+        {
+            length++;
+        }
+
+        return length == bySender.Length ? bySender : bySender[..length];
     }
 
     /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>

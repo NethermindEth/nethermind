@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -23,13 +26,15 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class InclusionListBuilderTests
 {
-    private static Transaction TxOfSize(int payloadBytes, int nonce = 0, PrivateKey? sender = null)
+    private static Transaction TxOfSize(int payloadBytes, int nonce = 0, PrivateKey? sender = null, UInt256? maxFeePerGas = null)
     {
         byte[] data = new byte[payloadBytes];
         return Build.A.Transaction
             .WithNonce((ulong)nonce)
             .WithTo(TestItem.AddressA)
             .WithData(data)
+            // Legacy type, so MaxFeePerGas reads back as GasPrice.
+            .WithGasPrice(maxFeePerGas ?? UInt256.Zero)
             .SignedAndResolved(sender ?? TestItem.PrivateKeyA)
             .TestObject;
     }
@@ -146,6 +151,101 @@ public class InclusionListBuilderTests
             accountNonces: [(TestItem.AddressA, 100)]).GetInclusionList();
 
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { atAccountNonce.Hash, next.Hash }));
+    }
+
+    // The pool checks CanPayBaseFee on the bucket's first entry alone, so a transaction behind a paying head can
+    // sit below the next block's base fee. The validator excuses omitting it, so listing it burns the cap.
+    [Test]
+    public void Truncates_a_sender_run_at_the_first_transaction_below_the_next_base_fee()
+    {
+        Transaction paying = TxOfSize(50, 0, maxFeePerGas: 100);
+        Transaction belowBaseFee = TxOfSize(50, 1, maxFeePerGas: 5);
+        Transaction behindIt = TxOfSize(50, 2, maxFeePerGas: 100);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(paying, belowBaseFee, behindIt), baseFee: 10).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { paying.Hash }));
+    }
+
+    // The fee twin of the promotion hole: the keyed frame head is what satisfied CanPayBaseFee, so the ordinary
+    // transaction promoted behind it has never been priced against the next block at all.
+    [Test]
+    public void Drops_an_ordinary_transaction_below_the_next_base_fee_promoted_by_a_keyed_frame_head()
+    {
+        Transaction keyedHead = FrameTx(TestItem.AddressA, nonce: 0, nonceKeys: [1]);
+        Transaction belowBaseFee = TxOfSize(50, 100, maxFeePerGas: 5);
+
+        using InclusionListBytes il = BuildBuilder(
+            PoolOf(keyedHead, belowBaseFee),
+            baseFee: 10,
+            accountNonces: [(TestItem.AddressA, 100)]).GetInclusionList();
+
+        Assert.That(il, Is.Empty);
+    }
+
+    // Worst case for the state read: every sender's bucket is headed by a keyed frame transaction, so the cheap
+    // anchor comparison never decides. The reservoir must bound the reads whatever the pool size.
+    private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) KeyedHeadSetup(int senderCount)
+    {
+        Transaction[] txs = new Transaction[senderCount * 2];
+        for (int i = 0; i < senderCount; i++)
+        {
+            Address sender = SenderAt(i);
+            txs[i * 2] = FrameTx(sender, nonce: 0, nonceKeys: [1]);
+            // A nonce the account is not at, so every drawn sender is dropped after its read and nothing encodes.
+            txs[i * 2 + 1] = Build.A.Transaction.WithNonce(500).WithTo(TestItem.AddressA).WithSenderAddress(sender).TestObject;
+        }
+
+        ITxPool pool = PoolOf(txs);
+        IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.TestObject);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
+        return (pool, headState, new InclusionListBuilder(pool, blockTree, specProvider, headState));
+    }
+
+    private static Address SenderAt(int index)
+    {
+        byte[] bytes = new byte[Address.Size];
+        BinaryPrimitives.WriteInt32BigEndian(new Span<byte>(bytes, Address.Size - sizeof(int), sizeof(int)), index + 1);
+        return new Address(bytes);
+    }
+
+    // A default pool holds 2,048 transactions, so reading state per sender rather than per drawn sender would
+    // cost roughly 1,024 trie lookups per request. Bound it at the reservoir instead.
+    [Test]
+    public void State_reads_are_bounded_by_the_sender_sample_capacity()
+    {
+        const int senderCount = 1024;
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+
+        builder.GetInclusionList().Dispose();
+
+        int reads = headState.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(IAccountStateProvider.GetNonce));
+        Assert.That(reads, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList / 32),
+            "a larger pool must not buy more trie reads than the reservoir draws senders");
+    }
+
+    /// <summary>Reports the worst-case cost of one inclusion-list request against a full default-size pool.</summary>
+    [Explicit("measurement harness")]
+    [Test]
+    public void Measure_worst_case_inclusion_list_cost()
+    {
+        const int senderCount = 1024;
+        const int iterations = 50;
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+
+        builder.GetInclusionList().Dispose();  // warm
+        long before = headState.ReceivedCalls().Count();
+        Stopwatch sw = Stopwatch.StartNew();
+        for (int i = 0; i < iterations; i++) builder.GetInclusionList().Dispose();
+        sw.Stop();
+
+        long reads = headState.ReceivedCalls().Count() - before;
+        TestContext.Out.WriteLine($"senders={senderCount} iterations={iterations}");
+        TestContext.Out.WriteLine($"per_request_ms={(double)sw.Elapsed.TotalMilliseconds / iterations:F3}");
+        TestContext.Out.WriteLine($"per_request_state_reads={(double)reads / iterations:F1}");
     }
 
     private static Transaction FrameTx(Address sender, ulong nonce, UInt256[]? nonceKeys = null) => new()
