@@ -218,16 +218,19 @@ public class CarryForwardCachingPersistenceTests
         try
         {
             cache.Clear();
-            long wipesBefore = Metrics.CarryForwardWipes;
+            long wipesBefore = GetWipes(kind);
+            long otherWipesBefore = GetWipes(GetOtherKind(kind));
 
             Read(kind, cache, 1);
             Read(kind, cache, 2);
 
-            long wipesDelta = Metrics.CarryForwardWipes - wipesBefore;
+            long wipesDelta = GetWipes(kind) - wipesBefore;
+            long otherWipesDelta = GetWipes(GetOtherKind(kind)) - otherWipesBefore;
             long countAfterRefill = GetCount(kind);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(wipesDelta, Is.EqualTo(1));
+                Assert.That(otherWipesDelta, Is.Zero);
                 Assert.That(countAfterRefill, Is.EqualTo(1), "the gauge is published after the overflowing fill");
             }
         }
@@ -353,6 +356,14 @@ public class CarryForwardCachingPersistenceTests
     private static long GetCount(CacheKind kind) => kind == CacheKind.Account
         ? Metrics.CarryForwardAccountCount
         : Metrics.CarryForwardSlotCount;
+
+    private static long GetWipes(CacheKind kind) => kind == CacheKind.Account
+        ? Metrics.CarryForwardAccountWipes
+        : Metrics.CarryForwardSlotWipes;
+
+    private static CacheKind GetOtherKind(CacheKind kind) => kind == CacheKind.Account
+        ? CacheKind.Slot
+        : CacheKind.Account;
 
     private static int GetInnerReads(CacheKind kind, FakePersistence inner) => kind == CacheKind.Account
         ? inner.AccountReads

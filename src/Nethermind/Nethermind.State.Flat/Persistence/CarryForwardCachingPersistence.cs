@@ -87,7 +87,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _accounts.Clear();
                 _accountCount = 0;
-                Metrics.IncrementCarryForwardWipes();
+                Metrics.IncrementCarryForwardAccountWipes();
             }
             if (_accounts.TryAdd(address, account)) _accountCount++;
             Metrics.PublishCarryForwardAccountCount(_accountCount);
@@ -105,7 +105,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
-                Metrics.IncrementCarryForwardWipes();
+                Metrics.IncrementCarryForwardSlotWipes();
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
             Metrics.PublishCarryForwardSlotCount(_slotCount);

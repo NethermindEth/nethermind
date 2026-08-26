@@ -64,25 +64,24 @@ public class StorageProviderTests(bool useFlat)
 
     [Test]
     [NonParallelizable]
-    public void Commit_ClearStorage_IncrementsStorageClearedMetric()
+    public void ClearStorage_IncrementsStorageClearedMetric_ButEmptyStorageFastPathDoesNot()
     {
-        Assume.That(useFlat, Is.False);
-
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
         long storageClearedBefore = Db.Metrics.StorageCleared;
 
+        Assert.That(provider.IsStorageEmpty(ctx.Address1), Is.True);
         provider.Set(cell, _values[1]);
         provider.Commit(Frontier.Instance);
-        long storageClearedAfterStorageCommit = Db.Metrics.StorageCleared;
+        long storageClearedAfterEmptyStorageReadAndWrite = Db.Metrics.StorageCleared;
 
         provider.ClearStorage(ctx.Address1);
         provider.Commit(Frontier.Instance);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storageClearedAfterStorageCommit, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedAfterEmptyStorageReadAndWrite, Is.EqualTo(storageClearedBefore));
             Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
         }
     }

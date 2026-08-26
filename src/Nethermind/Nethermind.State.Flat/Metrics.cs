@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
-using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
@@ -93,8 +92,8 @@ public static class Metrics
     //
     // Hit/miss counters are the cross-block state-cache signal: they count only reads that already
     // fell through the pre-block caches and the whole snapshot chain, so the hit rate here is the
-    // share of otherwise-cold reads a cross-block cache answers. Wipes indicate the entry cap is
-    // binding (the cache clears wholesale rather than evicting).
+    // share of otherwise-cold reads a cross-block cache answers. Account/slot wipes indicate which
+    // per-kind entry cap is binding (the cache clears that kind wholesale rather than evicting).
 
     [DetailedMetric]
     [CounterMetric]
@@ -125,10 +124,16 @@ public static class Metrics
     internal static void IncrementCarryForwardSlotMisses() => _carryForwardSlotMisses.Increment();
 
     [CounterMetric]
-    [Description("Times the carry-forward cache was cleared wholesale because the per-kind entry cap was reached")]
-    public static long CarryForwardWipes => Volatile.Read(ref _carryForwardWipes.Value);
-    private static CacheLinePaddedLong _carryForwardWipes;
-    internal static void IncrementCarryForwardWipes() => Interlocked.Increment(ref _carryForwardWipes.Value);
+    [Description("Times the carry-forward account cache was cleared wholesale because its entry cap was reached")]
+    public static long CarryForwardAccountWipes => Volatile.Read(ref _carryForwardAccountWipes.Value);
+    private static CacheLinePaddedLong _carryForwardAccountWipes;
+    internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
+
+    [CounterMetric]
+    [Description("Times the carry-forward slot cache was cleared wholesale because its entry cap was reached")]
+    public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);
+    private static CacheLinePaddedLong _carryForwardSlotWipes;
+    internal static void IncrementCarryForwardSlotWipes() => Interlocked.Increment(ref _carryForwardSlotWipes.Value);
 
     [GaugeMetric]
     [Description("Accounts currently held by the carry-forward cache")]
