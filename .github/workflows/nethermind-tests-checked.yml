@@ -124,9 +124,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -180,9 +177,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
