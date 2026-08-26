@@ -141,19 +141,29 @@ class CorpusResultsTests(unittest.TestCase):
         self.assertEqual(staged, ["corpus/a/nm/100/summary.json",
                                   "corpus/warmup-heavy/nm/100/summary.json"])
 
-    def test_timings_meta_schema_requires_warmup_seconds(self):
-        """The matrix must say whether it was measured warm — cold p99 runs ~60% high and a cold
-        matrix is otherwise indistinguishable from a warm one."""
+    def test_timings_meta_schema_requires_warmup_fields(self):
+        """The matrix must say whether it was measured warm, and at what rate — cold p99 runs ~60%
+        high, and the same seconds at a different rate is a different warm state. The key set is
+        compared exactly, so a writer that adds a field without the schema fails staging and drops
+        the whole corpus artifact."""
         meta = {"head": 100, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": 3,
                 "passes": 2, "requests": 6, "target_rps": 50.0, "achieved_rps": 49.9,
-                "concurrency": 4, "warmup_seconds": 240, "outcomes": {"ok": 6}}
+                "concurrency": 4, "warmup_seconds": 60, "warmup_rps": 383.5,
+                "outcomes": {"ok": 6}}
         path = self.write_json(self.dir / "timings.meta.json", meta)
         corpus_results._validate_timings_meta(path)  # complete schema passes
 
-        legacy = {k: v for k, v in meta.items() if k != "warmup_seconds"}
-        path2 = self.write_json(self.dir / "legacy" / "timings.meta.json", legacy)
+        for missing in ("warmup_seconds", "warmup_rps"):
+            legacy = {k: v for k, v in meta.items() if k != missing}
+            path2 = self.write_json(self.dir / missing / "timings.meta.json", legacy)
+            with self.assertRaises(corpus_results.CorpusResultsError):
+                corpus_results._validate_timings_meta(path2)
+
+        # A float rate must pass; a negative one must not.
+        bad = dict(meta, warmup_rps=-1.0)
+        path3 = self.write_json(self.dir / "negative" / "timings.meta.json", bad)
         with self.assertRaises(corpus_results.CorpusResultsError):
-            corpus_results._validate_timings_meta(path2)
+            corpus_results._validate_timings_meta(path3)
 
     def test_manifest_is_validated_and_relativized(self):
         """The staged manifest must not leak runner-absolute paths, and garbage must not stage."""

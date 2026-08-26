@@ -123,7 +123,7 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -143,12 +143,11 @@ on:
 # The self-hosted runner serializes benchmark jobs naturally.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -194,7 +193,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_LABEL: ${{ github.event.label.name }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
           IN_CLIENT: ${{ inputs.client }}
@@ -226,23 +224,6 @@ jobs:
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
-          elif [[ "${PR_LABEL}" == "performance is good" ]]; then
-            # PR labeled 'performance is good': fixed eth_call corpus A/B against master. The
-            # config is hard-coded rather than read from an input so every PR is measured
-            # identically and results stay comparable across PRs and over time.
-            branch="${PR_HEAD_BRANCH}"
-            benchmark_tool="jsonbench-sweep"
-            client="nethermind"
-            reference_client="none"
-            snapshot_block="25490000"
-            docker_image=""
-            dottrace="false"
-            perf="false"
-            dotnet_trace="false"
-            state_layout="flat"
-            additional_flags=""
-            tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master nethermind","rps_list":"100","duration":"120s","corpus_glob":"eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
-            node_config=""
           else
             # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
@@ -1077,6 +1058,8 @@ jobs:
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"
           # 0 measures a cold node deliberately — the cold/warm gap is itself a result worth having.
           corpus_warmup="$(get '.corpus_warmup_duration')"; [[ -n "${corpus_warmup}" ]] && export CORPUS_WARMUP_DURATION="${corpus_warmup}"
+          # Warming faster than the cells are measured at keeps the window short at a fixed request count.
+          corpus_warmup_rps="$(get '.corpus_warmup_rps')"; [[ -n "${corpus_warmup_rps}" ]] && export CORPUS_WARMUP_RPS="${corpus_warmup_rps}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
@@ -1275,24 +1258,6 @@ jobs:
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true'
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
-
-      # Built from the STAGED tree, so everything in a public PR comment has already passed the
-      # aggregate-only validator. Never posts raw output.
-      - name: Comment corpus comparison on the PR
-        if: always() && github.event_name == 'pull_request' && github.event.label.name == 'performance is good' && steps.stage-corpus-results.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          python3 scripts/rpc-bench/corpus_results.py comment \
-            "${RUNNER_TEMP}/rpcbench-corpus-results" \
-            --baseline nethermind_master --candidate nethermind > comment.md
-          {
-            echo
-            echo "<sub>[workflow run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})</sub>"
-          } >> comment.md
-          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file comment.md
 
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
