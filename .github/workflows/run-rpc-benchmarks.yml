@@ -744,7 +744,7 @@ jobs:
         if: needs.resolve.outputs.baseline_mode == 'cache'
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/rpcbench-corpus-baseline
+          path: rpcbench-corpus-baseline
           key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-lookup-${{ github.run_id }}
           restore-keys: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-
 
@@ -930,7 +930,7 @@ jobs:
         if: always() && needs.resolve.outputs.baseline_mode == 'cache' && steps.baseline-cache.outputs.cache-matched-key != '' && steps.stage-corpus-results.outcome == 'success'
         shell: bash
         env:
-          BASELINE_DIR: ${{ runner.temp }}/rpcbench-corpus-baseline
+          BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
           STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
         run: |
           set -euo pipefail
@@ -940,7 +940,9 @@ jobs:
           cp "${BASELINE_DIR}/baseline.json" "${STAGE_ROOT}/baseline.json"
           echo "baseline: $(cat "${STAGE_ROOT}/baseline.json")"
 
-      - name: Describe this run as the master baseline
+      # Assembled under the SAME path the restore step reads: actions/cache folds the path list into the cache's
+      # identity, so saving and restoring different directories matches the key but never the entry.
+      - name: Assemble this run as the master baseline
         if: always() && needs.resolve.outputs.preset == 'corpus-baseline' && steps.run-sweep.outcome == 'success' && steps.stage-corpus-results.outcome == 'success'
         shell: bash
         env:
@@ -948,20 +950,24 @@ jobs:
           ARCH: ${{ needs.resolve.outputs.arch }}
           CORPUS_KEY: ${{ needs.resolve.outputs.corpus_key }}
           STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
+          BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           source scripts/rpc-bench/lib.sh
+          rm -rf "${BASELINE_DIR}"; mkdir -p "${BASELINE_DIR}"
+          cp -r "${STAGE_ROOT}/." "${BASELINE_DIR}/"
           jq -n --arg label "$(arm_label nethermind "${IMAGE}")" --arg image "${IMAGE}" --arg arch "${ARCH}" --arg corpus "${CORPUS_KEY}" \
             --arg date "$(date -u +%Y-%m-%dT%H:%MZ)" --arg run "${RUN_URL}" \
-            '{label: $label, image: $image, arch: $arch, corpus_key: $corpus, date: $date, run_url: $run}' > "${STAGE_ROOT}/baseline.json"
-          cat "${STAGE_ROOT}/baseline.json"
+            '{label: $label, image: $image, arch: $arch, corpus_key: $corpus, date: $date, run_url: $run}' > "${BASELINE_DIR}/baseline.json"
+          cp "${BASELINE_DIR}/baseline.json" "${STAGE_ROOT}/baseline.json"
+          cat "${BASELINE_DIR}/baseline.json"
 
       - name: Save this run as the master baseline
         if: always() && needs.resolve.outputs.preset == 'corpus-baseline' && steps.run-sweep.outcome == 'success' && steps.stage-corpus-results.outcome == 'success'
         uses: actions/cache/save@v4
         with:
-          path: ${{ runner.temp }}/rpcbench-corpus-results
+          path: rpcbench-corpus-baseline
           key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ github.run_id }}
 
       - name: Upload private corpus results
