@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -18,6 +19,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -48,7 +50,8 @@ public sealed class EthCallTemplates(
     IStateReader stateReader,
     ISpecProvider specProvider,
     IBlockTree blockTree,
-    IJsonRpcConfig rpcConfig)
+    IJsonRpcConfig rpcConfig,
+    ILogManager logManager)
 {
     private const int StoreCapacity = 4096;
     private const int MaxGuards = 8;
@@ -59,10 +62,12 @@ public sealed class EthCallTemplates(
     private const int QualifyingCallDataLength = SelectorSize + WordSize;
     private const ulong MinQualifyingGasLimit = 100_000;
     private const int MaxDerivationAttempts = 16;
+    private const int MaxLoggedEvmOutputLength = 64;
 
     private readonly LruCache<TemplateKey, Entry> _store = new(StoreCapacity, "eth_call templates");
     private readonly ConcurrentDictionary<TemplateKey, bool> _learningInFlight = new();
     private readonly bool _shadowMode = rpcConfig.EthCallTemplatesShadowMode;
+    private readonly ILogger _logger = logManager.GetClassLogger<EthCallTemplates>();
 
     /// <summary>Creates the engine when <see cref="IJsonRpcConfig.EthCallTemplates"/> is enabled, otherwise <c>null</c>.</summary>
     public static EthCallTemplates? CreateIfEnabled(
@@ -70,8 +75,9 @@ public sealed class EthCallTemplates(
         IShareableTxProcessorSource txProcessorSource,
         IStateReader stateReader,
         ISpecProvider specProvider,
-        IBlockTree blockTree) =>
-        config.EthCallTemplates ? new EthCallTemplates(txProcessorSource, stateReader, specProvider, blockTree, config) : null;
+        IBlockTree blockTree,
+        ILogManager logManager) =>
+        config.EthCallTemplates ? new EthCallTemplates(txProcessorSource, stateReader, specProvider, blockTree, config, logManager) : null;
 
     /// <summary>Executes an <c>eth_call</c> request, serving or learning a template when the call qualifies.</summary>
     /// <param name="call">The call request; only single-word-argument calls to a contract with zero value qualify.</param>
@@ -98,7 +104,7 @@ public sealed class EthCallTemplates(
         {
             if (TryReadThroughTemplate(templated.Template, header, arg, out byte[]? templateOutput))
             {
-                return ServeTemplate(key, templateOutput, executeCall);
+                return ServeTemplate(key, arg, header, templateOutput, executeCall);
             }
 
             // Guards legitimately mismatch on historical blocks; only a mismatch at the current head
@@ -121,7 +127,7 @@ public sealed class EthCallTemplates(
         return result;
     }
 
-    private ResultWrapper<HexBytes> ServeTemplate(in TemplateKey key, byte[] templateOutput, Func<ResultWrapper<HexBytes>> executeCall)
+    private ResultWrapper<HexBytes> ServeTemplate(in TemplateKey key, in UInt256 arg, BlockHeader header, byte[] templateOutput, Func<ResultWrapper<HexBytes>> executeCall)
     {
         if (!_shadowMode)
         {
@@ -138,23 +144,26 @@ public sealed class EthCallTemplates(
             }
             else
             {
-                ReportShadowMismatch(key);
+                ReadOnlySpan<byte> evmBytes = normal.Data.Bytes.Span;
+                ReportShadowMismatch(key, arg, header, templateOutput, evmBytes[..Math.Min(evmBytes.Length, MaxLoggedEvmOutputLength)].ToHexString(true));
             }
         }
         else if (normal.ErrorCode == ErrorCodes.ExecutionReverted)
         {
             // A guarded template can never revert, so a reverting EVM result is a divergence.
             // Other failures (timeout, unavailable state) say nothing about the template.
-            ReportShadowMismatch(key);
+            ReportShadowMismatch(key, arg, header, templateOutput, "<reverted>");
         }
 
         return normal;
     }
 
-    private void ReportShadowMismatch(in TemplateKey key)
+    private void ReportShadowMismatch(in TemplateKey key, in UInt256 arg, BlockHeader header, byte[] templateOutput, string evmOutput)
     {
+        if (_logger.IsWarn) _logger.Warn(
+            $"EthCallTemplates shadow mismatch: contract={key.To.Value}|selector=0x{key.Selector:x8}|arg={arg.ToBigEndian().ToHexString(true)}|template={templateOutput.ToHexString(true)}|evm={evmOutput}|block={header.Number}|hash={header.Hash}");
         Interlocked.Increment(ref Metrics.EthCallTemplateShadowMismatches);
-        Blacklist(key);
+        Blacklist(key, BlacklistReason.ShadowMismatch);
     }
 
     private void Learn(TransactionForRpc call, BlockHeader header, in TemplateKey key, in UInt256 arg, FirstTrace? firstEntry, ResultWrapper<HexBytes> result, CancellationToken cancellationToken)
@@ -179,11 +188,17 @@ public sealed class EthCallTemplates(
 
         try
         {
-            CallTrace? trace = RecordTrace(call, header, key.To.Value, arg, cancellationToken);
-            // A recorded output diverging from the normal path signals recording-path drift — never template such a call.
-            if (trace is null || trace.Output != new UInt256(result.Data.Bytes.Span, isBigEndian: true))
+            CallTrace? trace = RecordTrace(call, header, key.To.Value, arg, cancellationToken, out BlacklistReason recordingFailure);
+            if (trace is null)
             {
-                Blacklist(key);
+                Blacklist(key, recordingFailure);
+                return;
+            }
+
+            // A recorded output diverging from the normal path signals recording-path drift — never template such a call.
+            if (trace.Output != new UInt256(result.Data.Bytes.Span, isBigEndian: true))
+            {
+                Blacklist(key, BlacklistReason.RecordingFailed);
                 return;
             }
 
@@ -199,15 +214,15 @@ public sealed class EthCallTemplates(
                 return;
             }
 
-            switch (TryDerive(firstEntry.Trace, trace, key.To.Value, out Template? template))
+            switch (TryDerive(firstEntry.Trace, trace, key.To.Value, out Template? template, out BlacklistReason rejection))
             {
                 case DerivationOutcome.Rejected:
-                    Blacklist(key);
+                    Blacklist(key, rejection);
                     break;
                 case DerivationOutcome.EqualOutputs when firstEntry.FailedAttempts + 1 >= MaxDerivationAttempts:
                     // A genuinely constant function keeps producing equal outputs; each retry costs a
                     // recorded execution, so give up after a bounded number of attempts.
-                    Blacklist(key);
+                    Blacklist(key, BlacklistReason.EqualOutputExhausted);
                     break;
                 case DerivationOutcome.EqualOutputs:
                     // Keep the fresher of the two equally informative traces so learning is never
@@ -217,6 +232,8 @@ public sealed class EthCallTemplates(
                 case DerivationOutcome.Derived:
                     _store.Set(key, new Templated(template!));
                     Interlocked.Increment(ref Metrics.EthCallTemplatesDerived);
+                    if (_logger.IsDebug) _logger.Debug(
+                        $"EthCallTemplates derived: contract={key.To.Value}|selector=0x{key.Selector:x8}|mappingSlotIndex={template!.MappingSlotIndex}|guards={template.Guards.Length}");
                     break;
             }
         }
@@ -228,11 +245,49 @@ public sealed class EthCallTemplates(
 
     private bool IsBlacklisted(in TemplateKey key) => _store.TryGet(key, out Entry? current) && current is Blacklisted;
 
-    private void Blacklist(in TemplateKey key)
+    private void Blacklist(in TemplateKey key, BlacklistReason reason)
     {
-        _store.Set(key, Blacklisted.Instance);
+        _store.Set(key, new Blacklisted(reason));
         Interlocked.Increment(ref Metrics.EthCallTemplatesBlacklisted);
+        if (_logger.IsDebug) _logger.Debug(
+            $"EthCallTemplates blacklisted: contract={key.To.Value}|selector=0x{key.Selector:x8}|reason={ReasonString(reason)}");
     }
+
+    /// <summary>Why a (to, selector) pair was blacklisted, for audit logging.</summary>
+    private enum BlacklistReason
+    {
+        /// <summary>Trace structures are incompatible: code hash, read count, read addresses, or no differing slot.</summary>
+        ShapeMismatch,
+        /// <summary>More than one storage-read position differs between the traces.</summary>
+        MultiSlot,
+        /// <summary>The call output does not equal the differing slot's value.</summary>
+        OutputNotSlot,
+        /// <summary>The differing slot is not keccak(pad32(arg) ++ pad32(k)) for any k, or k differs between traces.</summary>
+        NoKeccakMatch,
+        /// <summary><see cref="MaxDerivationAttempts"/> derivation attempts all failed on equal outputs.</summary>
+        EqualOutputExhausted,
+        /// <summary>A shadow-mode comparison against the EVM result diverged.</summary>
+        ShadowMismatch,
+        /// <summary>The recorded execution wrote storage or touched transient storage.</summary>
+        WriteDetected,
+        /// <summary>The recorded execution performed more than <see cref="MaxReads"/> storage reads, or would need more than <see cref="MaxGuards"/> guards.</summary>
+        TooManyReads,
+        /// <summary>The recording execution failed, produced a non-32-byte output, or diverged from the normal path.</summary>
+        RecordingFailed,
+    }
+
+    private static string ReasonString(BlacklistReason reason) => reason switch
+    {
+        BlacklistReason.ShapeMismatch => "shape-mismatch",
+        BlacklistReason.MultiSlot => "multi-slot",
+        BlacklistReason.OutputNotSlot => "output-not-slot",
+        BlacklistReason.NoKeccakMatch => "no-keccak-match",
+        BlacklistReason.EqualOutputExhausted => "equal-output-exhausted",
+        BlacklistReason.ShadowMismatch => "shadow-mismatch",
+        BlacklistReason.WriteDetected => "write-detected",
+        BlacklistReason.TooManyReads => "too-many-reads",
+        _ => "recording-failed",
+    };
 
     /// <summary>Decides whether a call is eligible for templating and extracts its (to, selector, arg) shape.</summary>
     /// <remarks>
@@ -334,9 +389,10 @@ public sealed class EthCallTemplates(
         EqualOutputs,
     }
 
-    private static DerivationOutcome TryDerive(CallTrace first, CallTrace second, Address to, out Template? template)
+    private static DerivationOutcome TryDerive(CallTrace first, CallTrace second, Address to, out Template? template, out BlacklistReason rejection)
     {
         template = null;
+        rejection = BlacklistReason.ShapeMismatch;
 
         if (first.CodeHash != second.CodeHash)
         {
@@ -345,8 +401,14 @@ public sealed class EthCallTemplates(
 
         StorageRead[] firstReads = first.Reads;
         StorageRead[] secondReads = second.Reads;
-        if (firstReads.Length != secondReads.Length || firstReads.Length == 0 || firstReads.Length - 1 > MaxGuards)
+        if (firstReads.Length != secondReads.Length || firstReads.Length == 0)
         {
+            return DerivationOutcome.Rejected;
+        }
+
+        if (firstReads.Length - 1 > MaxGuards)
+        {
+            rejection = BlacklistReason.TooManyReads;
             return DerivationOutcome.Rejected;
         }
 
@@ -358,8 +420,14 @@ public sealed class EthCallTemplates(
                 continue;
             }
 
-            if (!firstReads[i].Address.Equals(secondReads[i].Address) || diffPosition >= 0)
+            if (!firstReads[i].Address.Equals(secondReads[i].Address))
             {
+                return DerivationOutcome.Rejected;
+            }
+
+            if (diffPosition >= 0)
+            {
+                rejection = BlacklistReason.MultiSlot;
                 return DerivationOutcome.Rejected;
             }
 
@@ -375,12 +443,14 @@ public sealed class EthCallTemplates(
         StorageRead secondDiff = secondReads[diffPosition];
         if (first.Output != firstDiff.Value || second.Output != secondDiff.Value)
         {
+            rejection = BlacklistReason.OutputNotSlot;
             return DerivationOutcome.Rejected;
         }
 
         int slotIndex = FindMappingSlotIndex(first.Arg, firstDiff.Index);
         if (slotIndex < 0 || ComputeMappingSlot(second.Arg, (byte)slotIndex) != secondDiff.Index)
         {
+            rejection = BlacklistReason.NoKeccakMatch;
             return DerivationOutcome.Rejected;
         }
 
@@ -414,8 +484,9 @@ public sealed class EthCallTemplates(
 
     /// <summary>Runs a dedicated recording execution of the call, mirroring the shareable-scope bridge path.</summary>
     /// <returns>The trace, or <c>null</c> when the call cannot be recorded faithfully (side effects, failure, overflow).</returns>
-    private CallTrace? RecordTrace(TransactionForRpc call, BlockHeader header, Address to, in UInt256 arg, CancellationToken cancellationToken)
+    private CallTrace? RecordTrace(TransactionForRpc call, BlockHeader header, Address to, in UInt256 arg, CancellationToken cancellationToken, out BlacklistReason failureReason)
     {
+        failureReason = BlacklistReason.RecordingFailed;
         IReleaseSpec spec = specProvider.GetSpec(header);
         Result<Transaction> prepared = call.ToTransaction(validateUserInput: true, gasCap: rpcConfig.GasCap, spec: spec);
         if (!prepared.Success(out Transaction? tx, out _))
@@ -468,7 +539,19 @@ public sealed class EthCallTemplates(
             return null;
         }
 
-        if (!tracer.Success || tracer.HasSideEffects || tracer.ReadOverflow || tracer.Output is not { Length: WordSize } output)
+        if (tracer.HasSideEffects)
+        {
+            failureReason = BlacklistReason.WriteDetected;
+            return null;
+        }
+
+        if (tracer.ReadOverflow)
+        {
+            failureReason = BlacklistReason.TooManyReads;
+            return null;
+        }
+
+        if (!tracer.Success || tracer.Output is not { Length: WordSize } output)
         {
             return null;
         }
@@ -506,9 +589,9 @@ public sealed class EthCallTemplates(
         public Template Template { get; } = template;
     }
 
-    private sealed class Blacklisted : Entry
+    private sealed class Blacklisted(BlacklistReason reason) : Entry
     {
-        public static readonly Blacklisted Instance = new();
+        public BlacklistReason Reason { get; } = reason;
     }
 
     private sealed class CallTrace

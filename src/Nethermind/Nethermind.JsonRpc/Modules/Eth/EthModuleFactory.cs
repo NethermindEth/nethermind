@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         // Caches shared by all pooled module instances, so repeats hit regardless of which instance serves them.
         private readonly EthResponseCache<HexBytes>? _ethCallCache = EthResponseCache.CreateCallCacheIfEnabled(config);
         private readonly EthResponseCache<UInt256?>? _ethBalanceCache = EthResponseCache.CreateBalanceCacheIfEnabled(config);
-        private readonly EthCallTemplates? _ethCallTemplates = EthCallTemplates.CreateIfEnabled(config, shareableTxProcessorSource, stateReader, specProvider, blockTree);
+        private readonly EthCallTemplates? _ethCallTemplates = EthCallTemplates.CreateIfEnabled(config, shareableTxProcessorSource, stateReader, specProvider, blockTree, logManager);
 
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,

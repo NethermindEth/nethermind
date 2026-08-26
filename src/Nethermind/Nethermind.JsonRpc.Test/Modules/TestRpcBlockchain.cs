@@ -193,7 +193,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 @this.Container.Resolve<IShareableTxProcessorSource>(),
                 @this.StateReader,
                 @this.SpecProvider,
-                @this.BlockTree);
+                @this.BlockTree,
+                LimboLogs.Instance);
             return new EthRpcModule(
                 @this.RpcConfig,
                 @this.Bridge,
