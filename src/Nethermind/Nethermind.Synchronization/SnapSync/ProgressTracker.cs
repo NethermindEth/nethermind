@@ -462,6 +462,10 @@ namespace Nethermind.Synchronization.SnapSync
             AccountRangeReadyForRequest.Clear();
             SetupAccountRangePartition();
             _pivot.UpdatedStorages.Clear();
+
+            _largeStorageProgress.Clear();
+            _estimatedStorageRemaining = null;
+            _shouldStartLoggingLargeStorage = false;
         }
 
         public void LoadProgress()

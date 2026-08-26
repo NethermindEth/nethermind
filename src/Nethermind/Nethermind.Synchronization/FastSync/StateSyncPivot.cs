@@ -27,6 +27,10 @@ namespace Nethermind.Synchronization.FastSync
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
+            else if (!blockTree.IsMainChain(_bestHeader))
+            {
+                TrySetNewBestHeader("pivot reorged out");
+            }
 
             return _bestHeader;
         }
