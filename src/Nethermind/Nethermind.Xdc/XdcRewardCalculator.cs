@@ -262,10 +262,11 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
     private static void IncrementSignerCount(Dictionary<Address, XdcRewardLog> signers, Address addr)
     {
-        if (signers.TryGetValue(addr, out XdcRewardLog? rewardLog))
+        ref XdcRewardLog? rewardLog = ref CollectionsMarshal.GetValueRefOrAddDefault(signers, addr, out _);
+        if (rewardLog is not null)
             rewardLog.Sign++;
         else
-            signers[addr] = new XdcRewardLog { Sign = 1 };
+            rewardLog = new XdcRewardLog { Sign = 1 };
     }
 
     private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
