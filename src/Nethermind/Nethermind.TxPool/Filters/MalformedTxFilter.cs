@@ -14,6 +14,7 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class MalformedTxFilter(
         ITxValidator txValidator,
+        ITxValidator specChangeTxValidator,
         IEthereumEcdsa ecdsa,
         ILogger logger)
         : IIncomingTxFilter
@@ -21,7 +22,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = state.HeadSpec;
-            ValidationResult result = txValidator.IsWellFormed(tx, spec);
+            ValidationResult result = Validate(tx, spec);
             bool retryAfterSenderRecovery = !result
                 && spec.IsEip2780Enabled
                 && tx.IsMessageCall
@@ -47,12 +48,20 @@ namespace Nethermind.TxPool.Filters
 
             // An unresolved sender is conservatively priced as non-self, so only a rejected
             // intrinsic result can become valid after recovery.
-            if (retryAfterSenderRecovery && !(result = txValidator.IsWellFormed(tx, spec)))
+            if (retryAfterSenderRecovery && !(result = Validate(tx, spec)))
             {
                 return RejectMalformed(tx, result);
             }
 
             return AcceptTxResult.Accepted;
+
+            ValidationResult Validate(Transaction transaction, IReleaseSpec releaseSpec)
+            {
+                ValidationResult validationResult = txValidator.IsWellFormed(transaction, releaseSpec);
+                return validationResult
+                    ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                    : validationResult;
+            }
         }
 
         private static bool CanSenderRecoveryFixIntrinsicGas(Transaction tx, IReleaseSpec spec)

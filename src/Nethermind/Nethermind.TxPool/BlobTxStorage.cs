@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,10 +17,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage : IBlobTxStorage
+public class BlobTxStorage : IBlobTxStorage, ISpecChangeValidationStorage
 {
     private const int MaxPooledKeys = 128;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static ReadOnlySpan<byte> SpecChangeValidationMarkerKey => "spec-change-validation"u8;
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
@@ -109,6 +111,24 @@ public class BlobTxStorage : IBlobTxStorage
 
         _fullBlobTxsDb.Remove(txHashPrefixed);
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
+    }
+
+    string? ISpecChangeValidationStorage.GetSpecChangeValidationMarker()
+    {
+        byte[]? marker = _fullBlobTxsDb.Get(SpecChangeValidationMarkerKey);
+        return marker is null ? null : Encoding.UTF8.GetString(marker);
+    }
+
+    void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string? marker)
+    {
+        if (marker is null)
+        {
+            _fullBlobTxsDb.Remove(SpecChangeValidationMarkerKey);
+        }
+        else
+        {
+            _fullBlobTxsDb.Set(SpecChangeValidationMarkerKey, Encoding.UTF8.GetBytes(marker));
+        }
     }
 
     public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)

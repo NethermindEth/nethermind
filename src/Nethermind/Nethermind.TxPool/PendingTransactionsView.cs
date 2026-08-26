@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -19,7 +20,8 @@ public readonly struct PendingTransactionsView(
     IDictionary<AddressAsKey, Transaction[]> blobTransactions,
     bool isRevalidated)
 {
-    private static readonly Dictionary<AddressAsKey, Transaction[]> _empty = [];
+    private static readonly IDictionary<AddressAsKey, Transaction[]> _empty =
+        new ReadOnlyDictionary<AddressAsKey, Transaction[]>(new Dictionary<AddressAsKey, Transaction[]>());
 
     private readonly IDictionary<AddressAsKey, Transaction[]>? _transactions = transactions;
     private readonly IDictionary<AddressAsKey, Transaction[]>? _blobTransactions = blobTransactions;

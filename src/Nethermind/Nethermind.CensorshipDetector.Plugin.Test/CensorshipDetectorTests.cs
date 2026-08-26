@@ -259,7 +259,7 @@ public class CensorshipDetectorTests
                 _stateProvider),
             new TxPoolConfig(),
                 new TxValidator(_specProvider.ChainId),
-                SpecChangeTxValidator.Instance,
+                new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 _comparer);
     }

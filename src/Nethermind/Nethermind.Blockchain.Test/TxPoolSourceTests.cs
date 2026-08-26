@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
@@ -12,6 +12,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Specs;
 using Nethermind.Core;
 using Nethermind.Core.Test;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Config;
@@ -214,6 +215,46 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void GetTransactions_should_apply_fork_sensitive_checks_when_pool_is_not_revalidated()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(transaction.SenderAddress!), [transaction] }
+        });
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig());
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
+
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Default_pending_view_does_not_expose_a_mutable_shared_dictionary()
+    {
+        PendingTransactionsView view = default;
+
+        Action mutate = () => view.Transactions.Add(TestItem.AddressA, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mutate, Throws.TypeOf<NotSupportedException>());
+            Assert.That(default(PendingTransactionsView).Transactions, Is.Empty);
+        }
     }
 
     [Test]

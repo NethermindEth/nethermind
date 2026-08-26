@@ -183,7 +183,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<IChainHeadInfoProvider>(),
                     ctx.Resolve<ITxPoolConfig>(),
                     ctx.Resolve<ITxValidator>(),
-                    SpecChangeTxValidator.Instance,
+                    new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),

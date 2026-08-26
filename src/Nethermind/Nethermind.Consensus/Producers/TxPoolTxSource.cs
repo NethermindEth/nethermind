@@ -40,6 +40,7 @@ namespace Nethermind.Consensus.Producers
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
         private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly ITxValidator _specChangeTxValidator = new SpecChangeTxValidator(specProvider?.ChainId ?? throw new ArgumentNullException(nameof(specProvider)));
         protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<Transaction> GetTransactions(
@@ -59,10 +60,10 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
-            // A revalidated pool has already rejected everything the target spec makes intrinsically invalid.
+            // A revalidated pool has already rejected everything whose validity changes with the target spec.
             Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
                 ? filter
-                : tx => filter(tx) && IsIntrinsicallyValid(tx, spec);
+                : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, pendingTxFilter, gasLimit);
@@ -187,7 +188,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
                         || !_txFilterPipeline.Execute(fullBlobTx, parent, spec)
-                        || !IsIntrinsicallyValid(fullBlobTx, spec))
+                        || !IsForkSensitiveStateValid(fullBlobTx, spec))
                     {
                         if (reachedConsiderationLimit)
                         {
@@ -425,8 +426,8 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        private static bool IsIntrinsicallyValid(Transaction tx, IReleaseSpec spec) =>
-            IntrinsicGasTxValidator.Instance.IsWellFormed(tx, spec);
+        private bool IsForkSensitiveStateValid(Transaction tx, IReleaseSpec spec) =>
+            _specChangeTxValidator.IsWellFormed(tx, spec);
 
         private bool TryUpdateFeePerBlobGas(BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {

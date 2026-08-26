@@ -98,7 +98,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             api.TxValidator!,
-            SpecChangeTxValidator.Instance,
+            new SpecChangeTxValidator(api.SpecProvider.ChainId),
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _txGossipPolicy,

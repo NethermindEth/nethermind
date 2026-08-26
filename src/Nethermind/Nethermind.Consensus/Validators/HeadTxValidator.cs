@@ -9,6 +9,7 @@ public sealed class HeadTxValidator() :
     CompositeTxValidator(Validators)
 {
     internal static readonly ITxValidator[] Validators = [
+        ReleaseSpecTxValidator.Instance,
         MaxBlobCountBlobTxValidator.Instance,
         GasLimitCapTxValidator.Instance,
         MempoolBlobTxProofVersionValidator.Instance

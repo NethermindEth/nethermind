@@ -19,3 +19,9 @@ public interface ITxStorage
     void Add(Transaction transaction);
     void Delete(in ValueHash256 hash, in UInt256 timestamp);
 }
+
+internal interface ISpecChangeValidationStorage
+{
+    string? GetSpecChangeValidationMarker();
+    void SetSpecChangeValidationMarker(string? marker);
+}
