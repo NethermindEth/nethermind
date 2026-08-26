@@ -70,7 +70,7 @@ public class FrameTxBlockProductionPickerTests
         ulong cumulativeStateGas,
         BlockProcessor.TxAction expectedAction)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
         BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
@@ -106,7 +106,7 @@ public class FrameTxBlockProductionPickerTests
     [Test]
     public void Execution_headroom_is_measured_from_cumulative_execution_not_the_block_maximum()
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
         BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.GetNonce(TestItem.AddressA).Returns(AccountNonce);

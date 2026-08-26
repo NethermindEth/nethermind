@@ -5,22 +5,32 @@ using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
+public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider) : IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create()
     {
         IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
+        // Mempool admission and the parallel BAL parent readers share these envs, so only add a recorder
+        // where a diff can actually be read.
+        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
+        bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
+            if (recordsTransactionDiffs)
+            {
+                // At scope level so the tx processor and the code repository share one slice.
+                builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
+            }
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();

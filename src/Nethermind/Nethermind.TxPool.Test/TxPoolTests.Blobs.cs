@@ -1797,7 +1797,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
+        private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Eip8141Prototype.Instance);
 
         // The pool holds a light record, not the full transaction, and UpdateBucket reads its nonce. Without the
         // keys that read is an account-nonce comparison, which a keyed sequence has no relation to.
