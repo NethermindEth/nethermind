@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
@@ -138,11 +139,18 @@ internal class EpochSwitchManager(
     {
         List<BlockRoundInfo> epochSwitchBlocks = [];
 
-        XdcBlockHeader iterator = end;
+        Hash256 iteratorHash = end.Hash!;
         ulong iteratorBlockNumber = end.Number;
 
+        // The previous epoch is stepped into by hash, so the walk stops without having to resolve the header it
+        // would have continued from
         while (iteratorBlockNumber > start.Number)
         {
+            if (Tree.FindHeader(iteratorHash) is not XdcBlockHeader iterator)
+            {
+                return null;
+            }
+
             if (FindEpochSwitchHeader(iterator) is not { } epochSwitchHeader)
             {
                 return null;
@@ -154,19 +162,13 @@ internal class EpochSwitchManager(
                 break;
             }
 
+            iteratorHash = parentBlock.Hash;
             iteratorBlockNumber = epochSwitchHeader.Number;
 
             if (iteratorBlockNumber >= start.Number)
             {
                 epochSwitchBlocks.Add(ToBlockRoundInfo(epochSwitchHeader));
             }
-
-            if (Tree.FindHeader(parentBlock.Hash) is not XdcBlockHeader parentHeader)
-            {
-                return null;
-            }
-
-            iterator = parentHeader;
         }
 
         epochSwitchBlocks.Reverse();

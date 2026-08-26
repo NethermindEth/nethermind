@@ -28,7 +28,7 @@ public class XdcStateSyncPivot(
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
-    private bool _loggedPending;
+    private string? _pendingReason;
 
     private readonly IXdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
 
@@ -99,11 +99,14 @@ public class XdcStateSyncPivot(
         if (_logger.IsInfo) _logger.Info($"State sync pivot {pivotNumber} ready with {gapBlockHeaders.Length} gap block(s) to sync first.");
     }
 
-    /// <summary>Reports the first wait only, so a node that never resolves is distinguishable from one that resolves late.</summary>
+    /// <summary>
+    /// Reports each distinct wait once, so a node that never resolves is distinguishable from one that resolves late,
+    /// and the pivot header arriving without its gap blocks still shows as a change of state.
+    /// </summary>
     private void LogPending(string reason)
     {
-        if (_loggedPending) return;
-        _loggedPending = true;
+        if (_pendingReason == reason) return;
+        _pendingReason = reason;
         if (_logger.IsInfo) _logger.Info($"Waiting for headers before state sync can start: {reason}.");
     }
 }
