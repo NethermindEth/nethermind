@@ -60,9 +60,10 @@ class RpcSweepTests(unittest.TestCase):
             fake_bin = root / "bin"
             fake_bin.mkdir()
             (fake_bin / "docker").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            (fake_bin / "sudo").write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
             for path in (
                 runner / "run-rpc-sweep.sh", runner / "start-node.sh",
-                runner / "stop-node.sh", fake_bin / "docker",
+                runner / "stop-node.sh", fake_bin / "docker", fake_bin / "sudo",
             ):
                 path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
