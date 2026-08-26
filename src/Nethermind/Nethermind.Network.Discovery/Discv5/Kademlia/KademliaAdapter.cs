@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Collections.Pooled;
+using FastEnumUtility;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -522,7 +523,7 @@ public sealed class KademliaAdapter(
         return HasDiscoveryEndpoint(record, endpoint) ? record.EnrSequence : 0UL;
     }
 
-    private static void RecordSent(Discv5Message message) => RecordSent(message.MessageType.ToString());
+    private static void RecordSent(Discv5Message message) => RecordSent(FastEnum.GetName(message.MessageType)!);
 
     private static void RecordSent(string messageType)
         => Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv5", messageType));
