@@ -426,8 +426,14 @@ public class ScopeProviderTests(bool useFlat)
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(farIndex, parentValue);
+                // Populate the path to farIndex so the assertion is deterministic even when trie
+                // verification would otherwise perform cold missing-slot reads.
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 201);
+                UInt256 index = start;
+                for (int i = 0; i <= 200; i++, index += stride)
+                {
+                    storageA.Set(index, parentValue);
+                }
             }
 
             scope.Commit(1);
