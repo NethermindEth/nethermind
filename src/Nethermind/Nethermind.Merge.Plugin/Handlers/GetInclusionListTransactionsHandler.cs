@@ -14,9 +14,11 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
-    ISpecProvider specProvider) : IHandler<InclusionListBytes>
+    ISpecProvider specProvider,
+    IChainHeadInfoProvider chainHeadInfo) : IHandler<InclusionListBytes>
 {
-    private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
+    private readonly InclusionListBuilder? _inclusionListBuilder =
+        txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider);
 
     public ResultWrapper<InclusionListBytes> Handle()
         => !specProvider.GetFinalSpec().IsEip7805Enabled

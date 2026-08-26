@@ -7,13 +7,14 @@ using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider)
+public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -106,11 +107,13 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>Whether <paramref name="bySender"/> still begins at the sender's next account nonce.</summary>
     /// <remarks>
-    /// The pool admits a whole bucket on <paramref name="pending"/>[0] being ready, so that entry alone names
-    /// the next account nonce — an EIP-8250 keyed one names none, and a run past it could never be appended.
+    /// The pool admits a whole bucket on <paramref name="pending"/>[0] being ready, so that entry alone names the
+    /// next account nonce — unless it is an EIP-8250 keyed one, which names a per-key sequence and so needs a read.
     /// </remarks>
-    private static bool IsAnchoredAtNextAccountNonce(Transaction[] pending, Transaction[] bySender) =>
-        !KeyedNonceManager.UsesKeyedNonce(pending[0]) && bySender[0].Nonce == pending[0].Nonce;
+    private bool IsAnchoredAtNextAccountNonce(Transaction[] pending, Transaction[] bySender) =>
+        KeyedNonceManager.UsesKeyedNonce(pending[0])
+            ? bySender[0].Nonce == headState.GetNonce(bySender[0].SenderAddress!)
+            : bySender[0].Nonce == pending[0].Nonce;
 
     /// <summary>The base fee the next block will charge.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's

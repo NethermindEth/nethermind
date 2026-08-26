@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -34,13 +35,15 @@ public class InclusionListBuilderTests
     }
 
     // Frontier leaves the parent's base fee unchanged, so the head header fixes the fee the builder asks for.
-    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default)
+    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default, (Address Sender, ulong Nonce)[]? accountNonces = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(baseFee).TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
-        return new InclusionListBuilder(pool, blockTree, specProvider);
+        IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
+        foreach ((Address sender, ulong nonce) in accountNonces ?? []) headState.GetNonce(sender).Returns(nonce);
+        return new InclusionListBuilder(pool, blockTree, specProvider, headState);
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
@@ -115,16 +118,34 @@ public class InclusionListBuilderTests
     [Test]
     public void Drops_a_sender_run_the_removed_frame_transaction_was_vouching_for()
     {
-        // A: an EIP-8250 keyed nonce names no account nonce at all, so nothing behind it can be placed.
+        // A: the keyed head names a per-key sequence, and the account puts its next nonce at 100, not 101.
         Transaction keyedHead = FrameTx(TestItem.AddressA, nonce: 0, nonceKeys: [1]);
         Transaction behindKeyed = TxOfSize(50, 101, TestItem.PrivateKeyA);
         // B: the frame holds the account's next nonce, so the transaction behind it is a nonce ahead.
         Transaction accountHead = FrameTx(TestItem.AddressB, nonce: 0);
         Transaction behindAccount = TxOfSize(50, 1, TestItem.PrivateKeyB);
 
-        using InclusionListBytes il = BuildBuilder(PoolOf(keyedHead, behindKeyed, accountHead, behindAccount)).GetInclusionList();
+        using InclusionListBytes il = BuildBuilder(
+            PoolOf(keyedHead, behindKeyed, accountHead, behindAccount),
+            accountNonces: [(TestItem.AddressA, 100)]).GetInclusionList();
 
         Assert.That(il, Is.Empty);
+    }
+
+    // Keyed sequences start at 0 per key, so a keyed frame transaction heads the bucket of any sender with a
+    // non-zero account nonce. Dropping those wholesale would cost ordinary transactions their coverage.
+    [Test]
+    public void Keeps_the_ordinary_run_behind_a_keyed_frame_transaction_the_account_says_is_next()
+    {
+        Transaction keyedHead = FrameTx(TestItem.AddressA, nonce: 0, nonceKeys: [1]);
+        Transaction atAccountNonce = TxOfSize(50, 100, TestItem.PrivateKeyA);
+        Transaction next = TxOfSize(50, 101, TestItem.PrivateKeyA);
+
+        using InclusionListBytes il = BuildBuilder(
+            PoolOf(keyedHead, atAccountNonce, next),
+            accountNonces: [(TestItem.AddressA, 100)]).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { atAccountNonce.Hash, next.Hash }));
     }
 
     private static Transaction FrameTx(Address sender, ulong nonce, UInt256[]? nonceKeys = null) => new()
