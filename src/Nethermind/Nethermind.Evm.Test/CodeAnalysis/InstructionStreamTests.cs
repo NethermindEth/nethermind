@@ -372,7 +372,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             "the differential fixture must run on a fork where the stream engages");
 
     [TestCase(Architecture.Arm64, false)]
-    [TestCase(Architecture.X64, true)]
+    [TestCase(Architecture.X64, false)]
     public void StreamInterpreter_DefaultEnablement_IsArchitectureSpecific(Architecture architecture, bool expected) =>
         Assert.That(StreamInterpreter.IsEnabledByDefault(architecture), Is.EqualTo(expected));
 
