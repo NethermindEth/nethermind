@@ -44,6 +44,15 @@ public class NetworkNodePortTests
         Assert.That(node.Port, Is.EqualTo(30303));
     }
 
+    [Test]
+    public void Node_created_from_enode_with_zero_discport_has_no_discovery_endpoint()
+    {
+        NetworkNode networkNode = new($"enode://{TestItem.PublicKeyA.ToString(false)}@192.0.2.1:30303?discport=0");
+        Node node = new(networkNode);
+
+        Assert.That(node.HasDiscoveryEndpoint, Is.False);
+    }
+
     [TestCase("enode://{0}@192.0.2.1:30303", 30303, 30303)]
     [TestCase("enode://{0}@192.0.2.1:30303?discport=30301", 30303, 30301)]
     [TestCase("enode://{0}@192.0.2.1:0?discport=30301", 0, 30301)]

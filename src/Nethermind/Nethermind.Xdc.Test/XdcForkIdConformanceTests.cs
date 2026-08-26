@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -65,8 +64,7 @@ public class XdcForkIdConformanceTests
 
     private static XdcForkInfo ForkInfo(string chainSpecFile, Hash256 genesisHash)
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains", chainSpecFile);
-        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(path);
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(chainSpecFile);
         XdcChainSpecEngineParameters engineParameters =
             chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
 

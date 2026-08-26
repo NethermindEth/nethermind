@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Api;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -32,8 +33,11 @@ public partial class EngineRpcModule(
     IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+    IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+    IInclusionListTxSource inclusionListTxSource,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
+    IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
     IEngineRequestsTracker engineRequestsTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,

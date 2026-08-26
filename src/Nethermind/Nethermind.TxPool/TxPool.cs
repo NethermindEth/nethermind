@@ -94,7 +94,7 @@ namespace Nethermind.TxPool
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         /// <param name="transactionsGossipPolicy"></param>
-        /// <param name="incomingTxFilter"></param>
+        /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
         public TxPool(IEthereumEcdsa ecdsa,
@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
             ILogManager? logManager,
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
-            IIncomingTxFilter? incomingTxFilter = null,
+            IIncomingTxFilter[]? incomingTxFilters = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false)
         {
@@ -174,9 +174,9 @@ namespace Nethermind.TxPool
                 new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
-            if (incomingTxFilter is not null)
+            if (incomingTxFilters is not null)
             {
-                postHashFilters.Add(incomingTxFilter);
+                postHashFilters.AddRange(incomingTxFilters);
             }
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));

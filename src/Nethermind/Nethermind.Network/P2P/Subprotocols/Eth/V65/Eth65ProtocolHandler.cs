@@ -6,6 +6,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -47,6 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
+        private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
@@ -126,7 +128,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
-            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
+            int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
+                ? PooledTransactionsResponseSoftLimit
+                : TransactionsMessage.MaxPacketSize;
             foreach (Hash256 hash in msg.Hashes.AsSpan())
             {
                 if (cancellationToken.IsCancellationRequested) break;
