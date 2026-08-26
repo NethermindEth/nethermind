@@ -7,6 +7,8 @@ namespace Nethermind.Core.Specs;
 
 public static partial class IReleaseSpecExtensions
 {
+    private static IReleaseSpec GetNoEip158Spec(IReleaseSpec spec) => new NoEip158Spec(spec);
+
     // Precompile membership as a bitmask instead of a FrozenSet hash+probe.
     // The set is fork-fixed, so it is built once per spec; a single slot suffices
     // because the zkVM guest validates one block (one spec).

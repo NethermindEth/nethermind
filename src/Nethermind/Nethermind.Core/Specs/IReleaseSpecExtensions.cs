@@ -57,5 +57,11 @@ public static partial class IReleaseSpecExtensions
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+
+        /// <summary>
+        /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
+        /// </summary>
+        public IReleaseSpec WithoutEip158() =>
+            spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;
     }
 }

@@ -57,6 +57,7 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         ulong blockNumber)
     {
+        spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
         state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);

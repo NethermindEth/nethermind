@@ -37,6 +37,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
+        releaseSpec = releaseSpec.WithoutEip158();
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
         TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
