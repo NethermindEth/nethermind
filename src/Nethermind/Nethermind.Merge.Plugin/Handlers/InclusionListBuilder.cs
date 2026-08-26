@@ -7,6 +7,7 @@ using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -41,7 +42,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             // Dropped before the draw rather than at encode time, so an unenforceable transaction never
             // takes a sender slot and leaves the list shorter than it needed to be.
             Transaction[] bySender = WithoutFrameTxs(pending);
-            if (bySender.Length == 0) continue;
+            if (bySender.Length == 0 || !IsAnchoredAtNextAccountNonce(pending, bySender)) continue;
 
             if (senders.Count < capacity)
             {
@@ -105,6 +106,16 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             if (!tx.SupportsFrames) result[j++] = tx;
         return result;
     }
+
+    /// <summary>Whether <paramref name="bySender"/> still begins at the sender's next account nonce.</summary>
+    /// <remarks>
+    /// The pool filters per bucket, not per transaction: it admits the whole run on <paramref name="pending"/>[0]
+    /// being ready, so that entry alone names the next account nonce — and an EIP-8250 keyed one names none at
+    /// all. Once a frame transaction is dropped from the head the rest has no anchor, and a run starting past
+    /// the account nonce could never be appended, spending the byte cap on entries no validator enforces.
+    /// </remarks>
+    private static bool IsAnchoredAtNextAccountNonce(Transaction[] pending, Transaction[] bySender) =>
+        !KeyedNonceManager.UsesKeyedNonce(pending[0]) && bySender[0].Nonce == pending[0].Nonce;
 
     /// <summary>The base fee the next block will charge.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's

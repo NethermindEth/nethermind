@@ -112,12 +112,30 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
     }
 
-    private static Transaction FrameTx(Address sender, ulong nonce) => new()
+    // The pool admits a whole bucket on its first entry's readiness alone, so a frame transaction at the
+    // head is what vouched for the run; once dropped, what remains need not sit at the next account nonce.
+    [Test]
+    public void Drops_a_sender_run_the_removed_frame_transaction_was_vouching_for()
+    {
+        // A: an EIP-8250 keyed nonce names no account nonce at all, so nothing behind it can be placed.
+        Transaction keyedHead = FrameTx(TestItem.AddressA, nonce: 0, nonceKeys: [1]);
+        Transaction behindKeyed = TxOfSize(50, 101, TestItem.PrivateKeyA);
+        // B: the frame holds the account's next nonce, so the transaction behind it is a nonce ahead.
+        Transaction accountHead = FrameTx(TestItem.AddressB, nonce: 0);
+        Transaction behindAccount = TxOfSize(50, 1, TestItem.PrivateKeyB);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(keyedHead, behindKeyed, accountHead, behindAccount)).GetInclusionList();
+
+        Assert.That(il, Is.Empty);
+    }
+
+    private static Transaction FrameTx(Address sender, ulong nonce, UInt256[]? nonceKeys = null) => new()
     {
         Type = TxType.FrameTx,
         ChainId = TestBlockchainIds.ChainId,
         SenderAddress = sender,
         Nonce = nonce,
+        NonceKeys = nonceKeys,
         Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasLimit = 100_000,
