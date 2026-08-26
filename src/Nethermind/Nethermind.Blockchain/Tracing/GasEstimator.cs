@@ -49,6 +49,8 @@ public class GasEstimator(
     public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
     private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
+    /// <summary>Message emitted when a frame transaction carries no frames to derive a budget from.</summary>
+    public const string FrameTxHasNoFrames = "frame transaction has no frames";
 
     public ulong Estimate(
         Transaction tx,
@@ -108,6 +110,10 @@ public class GasEstimator(
     /// </remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
+        // Reached on the transaction type alone, so the absent frames must be reported before the overflow path.
+        if (tx.Frames is null)
+            return EstimationResult.Failure(FrameTxHasNoFrames);
+
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
