@@ -199,7 +199,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
