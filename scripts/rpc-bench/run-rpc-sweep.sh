@@ -43,6 +43,8 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per node per corpus; 0 = measure cold
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"             # floor; a higher measured rate warms at that rate
+CORPUS_BASELINE="${CORPUS_BASELINE:-none}"                # save: persist this run's parity baseline on the runner; use: compare against the saved one
+CORPUS_BASELINE_DIR="${CORPUS_BASELINE_DIR:-$CORPUS_DIR/baselines}"
 CORPUS_RPC_GAS_CAP="1000000000000"
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
@@ -72,6 +74,10 @@ WARMUP_SEED=$(( JB_SEED + 1000 ))   # a measured cell must never replay exactly 
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
+esac
+case "$CORPUS_BASELINE" in
+  none|save|use) ;;
+  *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
 esac
 for entry in $CLIENTS; do
   entry="${entry%%#*}"
@@ -167,9 +173,27 @@ warm_node() {
   fi
 }
 
+# $1 clabel $2 label $3 corpus $4 baseline state $5 baseline label $6 "saved" when the state came from CORPUS_BASELINE_DIR
+parity_compare() {
+  local report_dir="$OUT_DIR/corpus/$1/$2" report status
+  mkdir -p "$report_dir"; report="$report_dir/parity.json"
+  echo "-- PARITY $1: $2 vs ${6:+saved }baseline $5 --"
+  python3 "$here/corpus_parity.py" compare --corpus "$3" --rpc-url "$RPC" --state "$4"     --report "$report" --baseline-client "$5" --candidate-client "$2"     $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json")
+  status=$?
+  if (( status == 0 )); then
+    PARITY_ROWS+=("$1|$2|$report")
+  elif (( status == 2 )) && [[ -n "$6" ]]; then
+    echo "::warning::saved baseline for corpus $1 is unusable (different snapshot head or unreadable) — parity not checked for $2; rerun the master baseline"
+    parity_skipped=$((parity_skipped + 1))
+  else
+    echo "::warning::parity defects for $2 vs $5 on corpus $1"; parity_fail=$((parity_fail + 1))
+    [[ -f "$report" ]] && PARITY_ROWS+=("$1|$2|$report")
+  fi
+}
+
 # $1 clabel $2 label $3 corpus $4 ctype $5 container
 run_corpus() {
-  local clabel="$1" label="$2" corpus="$3" ctype="$4" cname="$5" rps slot cell dur report_dir report
+  local clabel="$1" label="$2" corpus="$3" ctype="$4" cname="$5" rps slot cell dur report_dir
   warm_node "$clabel" "$label" "$corpus" "$ctype"
   declare -A rps_seen=()
   for rps in $RPS_LIST; do
@@ -183,20 +207,28 @@ run_corpus() {
     report_fail_rate "$cell" "$clabel/$label/$slot"
     [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|$clabel|$label|$slot=$cell/jsonbench-summary.md")
   done
-  if [[ -z "$BASELINE_LABEL" ]]; then
-    echo "-- PARITY $clabel: capturing baseline ($label) --"
-    python3 "$here/corpus_parity.py" baseline --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json" \
-      || { echo "::error::parity baseline capture failed for corpus $clabel on $label"; parity_fail=$((parity_fail + 1)); }
+  local saved="$CORPUS_BASELINE_DIR/$clabel.json.gz"
+  if [[ -n "${PARITY_BASE_STATE[$clabel]:-}" ]]; then
+    parity_compare "$clabel" "$label" "$corpus" "${PARITY_BASE_STATE[$clabel]}" "${PARITY_BASE_LABEL[$clabel]}" "${PARITY_BASE_SAVED[$clabel]}"
+  elif [[ "$CORPUS_BASELINE" == "use" && -s "$saved" ]]; then
+    PARITY_BASE_STATE[$clabel]="$saved"; PARITY_BASE_SAVED[$clabel]="saved"
+    PARITY_BASE_LABEL[$clabel]="$(cat "$CORPUS_BASELINE_DIR/$clabel.label" 2>/dev/null || echo master)"
+    parity_compare "$clabel" "$label" "$corpus" "$saved" "${PARITY_BASE_LABEL[$clabel]}" "saved"
   else
-    report_dir="$OUT_DIR/corpus/$clabel/$label"; mkdir -p "$report_dir"; report="$report_dir/parity.json"
-    echo "-- PARITY $clabel: $label vs baseline $BASELINE_LABEL --"
-    if python3 "$here/corpus_parity.py" compare --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json" \
-        --report "$report" --baseline-client "$BASELINE_LABEL" --candidate-client "$label" \
-        $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json"); then
-      PARITY_ROWS+=("$clabel|$label|$report")
+    [[ "$CORPUS_BASELINE" != "use" ]] || echo "::warning::no saved parity baseline for corpus $clabel — $label becomes the baseline for this run"
+    echo "-- PARITY $clabel: capturing baseline ($label) --"
+    if python3 "$here/corpus_parity.py" baseline --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json"; then
+      PARITY_BASE_STATE[$clabel]="$PARITY_STATE/$clabel.json"; PARITY_BASE_LABEL[$clabel]="$label"; PARITY_BASE_SAVED[$clabel]=""
+      if [[ "$CORPUS_BASELINE" == "save" ]]; then
+        if mkdir -p "$CORPUS_BASELINE_DIR" && cp "$PARITY_STATE/$clabel.json" "$saved" && printf '%s
+' "$label" > "$CORPUS_BASELINE_DIR/$clabel.label"; then
+          echo "   saved parity baseline for $clabel -> $saved"
+        else
+          echo "::warning::could not save the parity baseline for $clabel under $CORPUS_BASELINE_DIR"
+        fi
+      fi
     else
-      echo "::warning::parity defects for $label vs $BASELINE_LABEL on corpus $clabel"; parity_fail=$((parity_fail + 1))
-      [[ -f "$report" ]] && PARITY_ROWS+=("$clabel|$label|$report")
+      echo "::error::parity baseline capture failed for corpus $clabel on $label"; parity_fail=$((parity_fail + 1))
     fi
   fi
   if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
@@ -235,8 +267,8 @@ scan_node_log() {
 
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=() LABELS=() CORPORA=() PARITY_ROWS=()
-declare -A CORPUS_RECORDS=() LABEL_SEEN=()
-node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; baseline_fail=0
+declare -A CORPUS_RECORDS=() LABEL_SEEN=() PARITY_BASE_STATE=() PARITY_BASE_LABEL=() PARITY_BASE_SAVED=()
+node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; parity_skipped=0; baseline_fail=0
 BASELINE_LABEL=""
 
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
@@ -352,6 +384,7 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
         "$rfile" 2>/dev/null || echo "| $clabel | $plabel | report unreadable | - |"
     done
     [[ "$parity_fail" -gt 0 ]] && { echo; echo "> **⚠️ ${parity_fail} parity failure(s)** — see counters above; the job will fail."; }
+    [[ "$parity_skipped" -gt 0 ]] && { echo; echo "> **⚠️ parity not checked for ${parity_skipped} arm/corpus pair(s)** — the saved master baseline is unusable; rerun the master baseline job."; }
   } >> "$sink"
 fi
 

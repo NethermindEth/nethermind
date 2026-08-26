@@ -531,6 +531,8 @@ def _render_timings(lines: list[str], corpus: dict) -> None:
 
 
 def _render_parity(lines: list[str], reports: list[dict]) -> None:
+    if not reports:
+        lines.append("Response parity: not checked in this run (no baseline responses to compare against).")
     for data in reports:
         agree = data["matched"] + data.get("both_rpc_errors", 0)
         who = data.get("candidate_client", "PR")
