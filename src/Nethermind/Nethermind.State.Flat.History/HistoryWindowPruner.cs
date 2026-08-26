@@ -220,6 +220,8 @@ public sealed class HistoryWindowPruner(
         {
             Metrics.FlatHistoryFloor = (long)(watermark - retention);
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
+            if (_logger.IsInfo) _logger.Info(
+                $"Flat history window floor advanced to #{watermark - retention} (watermark #{watermark}, retaining {retention} blocks).");
 
             // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
             long drainGeneration = scopeGate.BeginFloorAdvance();
@@ -237,6 +239,8 @@ public sealed class HistoryWindowPruner(
         // current floor, and anything it passed over is taken by the next sweep.
         if (!availability.TryGetGlobalFloor(out ulong floor)) return true;
 
+        long rowsBefore = Metrics.FlatHistoryPrunedRows;
+
         // Its own budget per column, so a slow account column cannot starve the other three of all progress.
         bool hasScopes = availability.GetScopesArray().Length > 0;
 
@@ -250,6 +254,15 @@ public sealed class HistoryWindowPruner(
 
         bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
         if (completed) Volatile.Write(ref _deletesOwed, false);
+
+        long deleted = Metrics.FlatHistoryPrunedRows - rowsBefore;
+        if (_logger.IsInfo && (deleted > 0 || completed))
+        {
+            _logger.Info(completed
+                ? $"Completed flat history window pruning below #{floor}. Deleted {deleted} rows this pass."
+                : $"Pruned {deleted} flat history rows below #{floor}; the sweep resumes from its cursor next pass.");
+        }
+
         return completed;
     }
 
