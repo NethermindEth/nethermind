@@ -215,7 +215,14 @@ start_profilers() {
     die "profilers were already started for ${CONTAINER_NAME} at ${PROFILERS_STARTED_AT} — refusing to start a second recorder"
   fi
   if [[ "${DOTTRACE:-false}" == "true" && "${DOTTRACE_DEFERRED:-false}" == "true" ]]; then
-    start_dottrace_collection "$CONTAINER_NAME" "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
+    # Recorded on its own so a retry after a perf failure does not send a second start message to a
+    # profiler that is already collecting — it would never re-acknowledge, and the wait would time out.
+    if [[ -n "${DOTTRACE_STARTED_AT:-}" ]]; then
+      log "dotTrace: data collection already started at ${DOTTRACE_STARTED_AT}"
+    else
+      start_dottrace_collection "$CONTAINER_NAME" "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
+      printf 'DOTTRACE_STARTED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_file"
+    fi
   fi
   if [[ "${PERF:-false}" == "true" ]]; then
     start_perf_for_container "$CONTAINER_NAME" "$env_file" "${INSTANCE_SUFFIX:-}"

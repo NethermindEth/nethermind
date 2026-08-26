@@ -269,6 +269,9 @@ writing for minutes and the JIT has not tiered up. With a non-zero duration the 
 replays the same workload (same `benchmark_config`/corpus, `corpus_warmup_rps`, fail-rate gate
 lifted) into scratch — never staged or published — and **only then starts the profilers**
 (`start-profilers.sh`), so a `perf` or `dottrace` profile covers the measured cell alone. The
+measured cell reuses the json-bench checkout, runner image and corpus fixture the warm-up
+prepared (`JB_REUSE_PREPARED=true`), so its first request follows the profiler start within
+seconds rather than after a re-clone, rebuild and re-conversion. The
 sweep has its own warm-up with the same key (default 240 s there); here the default is 0 so an
 unconfigured run measures exactly what it always did, profilers starting as soon as RPC is up.
 

@@ -22,6 +22,7 @@ RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
 START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
+RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
 PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
@@ -541,6 +542,7 @@ class PerfReportingTests(unittest.TestCase):
         self.assertIn("PERF_CONTAINER_PID=42\n", node_env)
         self.assertIn("PERF_RECORDER_START_TIME=4243\n", node_env)
         self.assertIn("PERF_RECORDER_COMM=perf\n", node_env)
+        self.assertEqual(node_env.count("DOTTRACE_STARTED_AT="), 1)
         self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
 
     def test_start_profilers_fails_when_dottrace_never_acknowledges_the_start(self) -> None:
@@ -566,6 +568,129 @@ class PerfReportingTests(unittest.TestCase):
             "perf must not start when dotTrace collection could not be started",
         )
         self.assertNotIn("PROFILERS_STARTED_AT=", env_file.read_text(encoding="utf-8"))
+
+    def test_start_profilers_retry_after_a_perf_failure_leaves_the_collecting_dottrace_alone(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        # The first attempt got dotTrace collecting and then died on perf, so its start was recorded.
+        with env_file.open("a", encoding="utf-8") as f:
+            f.write("DOTTRACE_STARTED_AT=2026-08-26T00:00:00Z\n")
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTTRACE_ACK"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            source "$NODE_ENV"
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("dotTrace: data collection already started at 2026-08-26T00:00:00Z", result.stdout)
+        self.assertEqual((diag / "dottrace" / "control.svc").read_bytes(), b"", "no second start message")
+        self.assertEqual(len([c for c in command_log.read_text(encoding="utf-8").splitlines() if c.startswith("record ")]), 1)
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertEqual(node_env.count("DOTTRACE_STARTED_AT="), 1)
+        self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
+
+    FAKE_GIT = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$FAKE_STATE/git.log"
+if [[ "$1" == "init" ]]; then mkdir -p "${@: -1}/runner" && : > "${@: -1}/runner/Dockerfile"; fi
+"""
+
+    # `build` registers the tag `image inspect` answers for; `run` numbers its results.csv so a
+    # stale output republished by a later invocation is told apart from that invocation's own.
+    FAKE_DOCKER_CLI = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
+case "$1 $2" in
+  "build -q") prev=""; for a in "$@"; do [[ "$prev" == "-t" ]] && : > "$FAKE_STATE/images/${a//:/_}"; prev="$a"; done ;;
+  "image inspect") [[ -f "$FAKE_STATE/images/${3//:/_}" ]] ;;
+  "run --rm")
+    n=$(( $(cat "$FAKE_STATE/runs" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$FAKE_STATE/runs"
+    for a in "$@"; do [[ "$a" == *:/io ]] && printf 'run %s\n' "$n" > "${a%:/io}/out/results.csv"; done
+    true ;;
+esac
+"""
+
+    def run_jsonbench(self, environment: dict[str, str], out_dir: Path) -> subprocess.CompletedProcess[str]:
+        environment = dict(environment)
+        environment["OUT_DIR"] = out_dir.as_posix()
+        # Git Bash needs /c/... paths for the scripts' absolute-path guards, and the fakes must precede
+        # the real git/docker/sudo on its PATH; elsewhere cygpath is absent and the fallback is a no-op.
+        return subprocess.run(
+            [
+                BASH, "-c",
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH" SCRATCH_ROOT="$(to_posix "$SCRATCH_ROOT")" OUT_DIR="$(to_posix "$OUT_DIR")"; exec "$1"',
+                "bash", str(RUN_JSONBENCH),
+            ],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+
+    def test_run_jsonbench_reuses_the_preparation_only_when_asked_and_unchanged(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        state = self.directory / "state"
+        (state / "images").mkdir(parents=True)
+        self.write_executable("bin/sudo", '#!/bin/bash\nexec "$@"\n')
+        self.write_executable("bin/git", self.FAKE_GIT)
+        self.write_executable("bin/docker", self.FAKE_DOCKER_CLI)
+        environment = os.environ.copy()
+        environment["FAKE_BIN"] = fake_bin.as_posix()
+        environment["FAKE_STATE"] = state.as_posix()
+        environment["RPC_URL"] = "http://localhost:1"
+        environment["SCRATCH_ROOT"] = (self.directory / "scratch").as_posix()
+        environment["JB_REF"] = "testref"
+        environment["JB_REUSE_PREPARED"] = "true"
+
+        def preparations() -> tuple[int, int]:
+            git_log = (state / "git.log").read_text(encoding="utf-8").splitlines()
+            docker_log = (state / "docker.log").read_text(encoding="utf-8").splitlines()
+            return (
+                len([c for c in git_log if " fetch " in f" {c} "]),
+                len([c for c in docker_log if c.startswith("build ")]),
+            )
+
+        first = self.run_jsonbench(environment, self.directory / "out1")
+        self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
+        self.assertEqual(preparations(), (1, 1))
+        self.assertEqual((self.directory / "out1" / "results.csv").read_text(encoding="utf-8"), "run 1\n")
+        self.assertEqual(
+            (self.directory / "scratch" / "jsonbench" / "prepared").read_text(encoding="utf-8"),
+            "https://github.com/NethermindEth/json-bench.git@testref\n",
+        )
+
+        # Same repo/ref: the checkout and image are reused, the previous outputs are not.
+        second = self.run_jsonbench(environment, self.directory / "out2")
+        self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
+        self.assertEqual(preparations(), (1, 1))
+        self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
+        self.assertEqual((self.directory / "out2" / "results.csv").read_text(encoding="utf-8"), "run 2\n")
+
+        # Default (the sweep, a run without warm-up): wiped and prepared afresh as before.
+        environment["JB_REUSE_PREPARED"] = "false"
+        third = self.run_jsonbench(environment, self.directory / "out3")
+        self.assertEqual(third.returncode, 0, f"{third.stdout}\n{third.stderr}")
+        self.assertEqual(preparations(), (2, 2))
+        self.assertNotIn("Reusing", third.stdout)
+
+        # A different ref never reuses another ref's checkout.
+        environment["JB_REUSE_PREPARED"] = "true"
+        environment["JB_REF"] = "otherref"
+        fourth = self.run_jsonbench(environment, self.directory / "out4")
+        self.assertEqual(fourth.returncode, 0, f"{fourth.stdout}\n{fourth.stderr}")
+        self.assertEqual(preparations(), (3, 3))
+        self.assertNotIn("Reusing", fourth.stdout)
 
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
@@ -610,6 +735,11 @@ class PerfReportingTests(unittest.TestCase):
         warmup = workflow_named_step_body(rpc_workflow, "benchmark", "Warm up node")
         self.assertIn('export OUT_DIR="${SCRATCH_ROOT}/warmup-cell/single"', warmup)
         self.assertIn('JB_MAX_FAIL_RATE_PCT="100"', warmup)
+        self.assertIn('JB_REUSE_PREPARED: "true"', warmup)
+        self.assertIn(
+            "JB_REUSE_PREPARED: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Run json-bench benchmark"),
+        )
         self.assertEqual(
             workflow_named_step_if(rpc_workflow, "benchmark", "Start profilers"),
             "needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' "

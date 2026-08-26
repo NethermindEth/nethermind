@@ -113,7 +113,7 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/extra_args.
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
           All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
@@ -649,7 +649,7 @@ jobs:
           echo "dotTrace:    ${{ needs.resolve.outputs.dottrace }}"
           echo "dotTrace mode: ${{ needs.resolve.outputs.dottrace_mode || 'none' }}"
           echo "perf:        ${{ needs.resolve.outputs.perf }}"
-          echo "Warm-up:     ${{ needs.resolve.outputs.warmup_seconds }}s at ${{ needs.resolve.outputs.warmup_rps }} rps (single-node jsonbench; 0 = none, profilers start once RPC is ready)"
+          echo "Warm-up:     ${{ needs.resolve.outputs.warmup_seconds }}s at ${{ needs.resolve.outputs.warmup_rps }} rps (single-node jsonbench; 0 = none: perf starts once RPC is ready, dotTrace collects from launch)"
           echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
           echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
           echo "Isolation:   ${{ needs.resolve.outputs.db_isolation }}"
@@ -850,6 +850,8 @@ jobs:
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
           WARMUP_RPS: ${{ needs.resolve.outputs.warmup_rps }}
+          # Leave the json-bench checkout, runner image and corpus fixture for the measured cell.
+          JB_REUSE_PREPARED: "true"
         shell: bash
         run: |
           set -euo pipefail
@@ -895,6 +897,9 @@ jobs:
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
+          # After a warm-up the tool is already prepared; re-preparing it would leave the profilers
+          # started above recording an idle node for the re-clone, rebuild and corpus re-conversion.
+          JB_REUSE_PREPARED: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
