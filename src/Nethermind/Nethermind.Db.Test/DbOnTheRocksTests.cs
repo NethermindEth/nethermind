@@ -379,6 +379,236 @@ namespace Nethermind.Db.Test
             Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
         }
 
+        [Test]
+        public void RemoveRange_RemovesTheRangeAndNothingTouchingIt()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (byte i = 0; i < 10; i++)
+            {
+                db.PutSpan([i], [i], WriteFlags.None);
+            }
+
+            db.RemoveRange([3], [7]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(db, [2]), Is.EqualTo(new byte[] { 2 }), "the key below the lower bound must survive");
+                Assert.That(GetValue(db, [3]), Is.Null, "the lower bound is inclusive");
+                Assert.That(GetValue(db, [6]), Is.Null);
+                Assert.That(GetValue(db, [7]), Is.EqualTo(new byte[] { 7 }),
+                    "the upper bound is EXCLUSIVE - this is the block a pruning node still promises to serve");
+                Assert.That(GetValue(db, [8]), Is.EqualTo(new byte[] { 8 }));
+            }
+        }
+
+        [Test]
+        public void RemoveRange_OnAnEmptyRange_RemovesNothing()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            db.PutSpan([5], [5], WriteFlags.None);
+            db.RemoveRange([5], [5]);
+
+            Assert.That(GetValue(db, [5]), Is.EqualTo(new byte[] { 5 }),
+                "first == last is an empty half-open range and must be a no-op, not a one-key delete");
+        }
+
+        [Test]
+        public void RemoveRange_SurvivesReopen()
+        {
+            IDbConfig config = new DbConfig();
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                for (byte i = 0; i < 6; i++)
+                {
+                    db.PutSpan([i], [i], WriteFlags.None);
+                }
+
+                db.RemoveRange([1], [4]);
+            }
+
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, [0]), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(GetValue(reopened, [1]), Is.Null, "the tombstone has to reach the WAL, or a restart resurrects a range the node already stopped announcing");
+                Assert.That(GetValue(reopened, [3]), Is.Null);
+                Assert.That(GetValue(reopened, [4]), Is.EqualTo(new byte[] { 4 }));
+            }
+        }
+
+        [Test]
+        public void RemoveRange_OnBlockNumberPrefixedKeys_TakesEveryHashAtEveryHeightInRange()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (ulong number = 1; number <= 5; number++)
+            {
+                foreach (byte tag in new byte[] { 0xAA, 0xBB })
+                {
+                    db.PutSpan(BlockKey(number, tag), [tag], WriteFlags.None);
+                }
+            }
+
+            db.RemoveRange(BlockKey(2, 0x00), BlockKey(4, 0x00));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(db, BlockKey(1, 0xAA)), Is.Not.Null);
+                Assert.That(GetValue(db, BlockKey(2, 0xAA)), Is.Null);
+                Assert.That(GetValue(db, BlockKey(2, 0xBB)), Is.Null, "both hashes at a covered height must go, orphans included");
+                Assert.That(GetValue(db, BlockKey(3, 0xBB)), Is.Null);
+                Assert.That(GetValue(db, BlockKey(4, 0xAA)), Is.Not.Null, "the first retained height must be untouched");
+                Assert.That(GetValue(db, BlockKey(5, 0xBB)), Is.Not.Null);
+            }
+        }
+
+        [Test]
+        public void ReclaimRange_GivesBackTheDiskTheRemovedRangeStillHolds()
+        {
+            // Auto-compaction off so each flush stays its own file, as a real block-numbered bottom level is.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            for (ulong number = 1; number <= 8; number++)
+            {
+                for (byte tag = 0; tag < 32; tag++)
+                {
+                    db.PutSpan(BlockKey(number, tag), value, WriteFlags.None);
+                }
+
+                db.Flush();
+            }
+
+            long before = SstBytes(DbPath);
+            Assert.That(before, Is.GreaterThan(0), "the data has to be in SST files for there to be anything to give back");
+
+            db.RemoveRange(BlockKey(1, 0x00), BlockKey(5, 0x00));
+            long afterRemove = SstBytes(DbPath);
+
+            db.ReclaimRange(BlockKey(1, 0x00), BlockKey(5, 0x00));
+            long afterReclaim = SstBytes(DbPath);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterRemove, Is.GreaterThanOrEqualTo(before),
+                    "a range tombstone is a write: on its own it frees nothing, which is the whole reason this method exists");
+                Assert.That(afterReclaim, Is.LessThan(before * 2 / 3),
+                    "half the heights were reclaimed, so the disk has to come back now rather than whenever compaction next happens to run");
+                Assert.That(GetValue(db, BlockKey(5, 0x00)), Is.Not.Null,
+                    "the first retained height must survive: the upper bound is exclusive for the unlink too");
+                Assert.That(GetValue(db, BlockKey(8, 31)), Is.Not.Null);
+                Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Null);
+            }
+        }
+
+        [Test]
+        public void ReclaimRange_WithAnExclusiveBoundEndingInZero_StillGivesTheDiskBack()
+        {
+            // The bound is lowered before the inclusive native call, and lowering it by truncating trailing zeroes
+            // rather than borrowing through them drops it below every key sharing the removed bytes. At a bound of
+            // 512 that is all 256 heights below it - a pass that publishes a boundary and returns nothing.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            for (ulong number = 256; number < 512; number++)
+            {
+                db.PutSpan(BlockKey(number, 0xAA), value, WriteFlags.None);
+                db.Flush();
+            }
+
+            long before = SstBytes(DbPath);
+            Assert.That(before, Is.GreaterThan(0), "the data has to be in SST files for there to be anything to give back");
+
+            db.RemoveRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
+            db.ReclaimRange(BlockKey(256, 0x00), BlockKey(512, 0x00));
+
+            Assert.That(SstBytes(DbPath), Is.LessThan(before / 4),
+                "every height covered sits below a bound ending in a zero byte, so truncating instead of borrowing keeps all of them");
+        }
+
+        [Test]
+        public void ReclaimRange_LeavesAKeySittingOnTheExclusiveBound()
+        {
+            // The native call's include_end would reach a file whose largest key is the exclusive bound itself, so
+            // this pins the half-open contract for an arbitrary key rather than for the block-numbered callers, whose
+            // exclusive bound happens to be unreachable.
+            // Small target files and an explicit compaction so the two keys land in separate files. One flush puts
+            // both in the same SST, and a file straddling the bound is never entirely inside the range - the test
+            // would then pass without exercising the bound at all.
+            IDbConfig config = new DbConfig { AdditionalRocksDbOptions = "target_file_size_base=1024;" };
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] value = new byte[4096];
+            byte[] bound = [0x02];
+            db.PutSpan([0x01], value, WriteFlags.None);
+            db.PutSpan(bound, value, WriteFlags.None);
+            db.Flush();
+            db.Compact();
+
+            db.RemoveRange([0x01], bound);
+            db.ReclaimRange([0x01], bound);
+
+            Assert.That(GetValue(db, bound), Is.Not.Null,
+                "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
+        }
+
+        private static long SstBytes(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
+
+        private static byte[] BlockKey(ulong blockNumber, byte hashTag)
+        {
+            byte[] key = new byte[40];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, new ValueHash256(), key);
+            key[8] = hashTag;
+            return key;
+        }
+
+        // The column-family overload, which is the one every production receipt reclaim takes.
+        [Test]
+        public void RemoveRange_OnAColumn_HoldsTheBoundsAndLeavesOtherColumnsAlone()
+        {
+            IDbConfig config = new DbConfig();
+            using ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                _rocksdbConfigFactory, LimboLogs.Instance,
+                new List<ReceiptsColumns> { ReceiptsColumns.Blocks, ReceiptsColumns.Transactions });
+
+            IDb target = columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            IDb bystander = columnsDb.GetColumnDb(ReceiptsColumns.Transactions);
+
+            for (ulong number = 1; number <= 5; number++)
+            {
+                target.PutSpan(BlockKey(number, 0xAA), [(byte)number], WriteFlags.None);
+                bystander.PutSpan(BlockKey(number, 0xAA), [(byte)number], WriteFlags.None);
+            }
+
+            ((IRangeRemovableKeyValueStore)target).RemoveRange(BlockKey(2, 0x00), BlockKey(4, 0x00));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(target.Get(BlockKey(1, 0xAA)), Is.Not.Null);
+                Assert.That(target.Get(BlockKey(2, 0xAA)), Is.Null);
+                Assert.That(target.Get(BlockKey(3, 0xAA)), Is.Null);
+                Assert.That(target.Get(BlockKey(4, 0xAA)), Is.Not.Null, "the upper bound is exclusive on a column too");
+
+                for (ulong number = 1; number <= 5; number++)
+                {
+                    Assert.That(bystander.Get(BlockKey(number, 0xAA)), Is.Not.Null,
+                        $"height {number} of another column must be untouched - the tombstone has to be scoped to its column family");
+                }
+            }
+        }
+
+        private static byte[]? GetValue(DbOnTheRocks db, ReadOnlySpan<byte> key) => ((IReadOnlyKeyValueStore)db).Get(key);
+
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
@@ -429,10 +659,10 @@ namespace Nethermind.Db.Test
             {
                 if (_db is ColumnDb columnDb)
                 {
-                    return columnDb._mainDb._allocatedSpan.Value;
+                    return columnDb._mainDb._allocatedSpan.Sum;
                 }
 
-                return (_db as DbOnTheRocks)._allocatedSpan.Value;
+                return (_db as DbOnTheRocks)._allocatedSpan.Sum;
             }
         }
 
@@ -451,6 +681,64 @@ namespace Nethermind.Db.Test
 
             _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
+        }
+
+        [TestCase(1)]
+        [TestCase(1024)]
+        [TestCase(8192)]
+        public void Smoke_test_value_sizes(int valueSize)
+        {
+            byte[] value = new byte[valueSize];
+            new Random(valueSize).NextBytes(value);
+
+            _db[[1, 2, 3]] = value;
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], value);
+        }
+
+        [Test]
+        public void Missing_value_uses_existing_get_semantics()
+        {
+            byte[] output = [0xA5, 0xA5, 0xA5];
+            byte[]? value = _db.Get([1, 2, 3]);
+            int length = _db.Get([1, 2, 3], output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Null);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5, 0xA5, 0xA5 }));
+            }
+        }
+
+        [TestCase(0)]
+        [TestCase(3)]
+        public void C_style_get_rejects_undersized_output_without_modifying_it(int outputSize)
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [4, 5, 6, 7];
+            byte[] output = new byte[outputSize];
+            Array.Fill(output, (byte)0xA5);
+            byte[] expectedOutput = (byte[])output.Clone();
+
+            Assert.That(() => _db.Get(key, output), Throws.ArgumentException);
+            Assert.That(output, Is.EqualTo(expectedOutput));
+        }
+
+        [Test]
+        public void Empty_value_round_trips_without_modifying_output()
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [];
+            byte[] output = [0xA5];
+            byte[]? value = _db.Get(key);
+            int length = _db.Get(key, output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Empty);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5 }));
+            }
         }
 
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
