@@ -166,6 +166,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case (Instruction)FusedOpcode.Shr:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
                             break;
+                        case (Instruction)FusedOpcode.DupBinary:
+                        {
+                            opCodeCount--;
+                            int depth = (byte)entry.Operand;
+                            if (stack.Head >= depth && stack.Head < EvmStack.MaxStackSize - 1)
+                            {
+                                if (TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                                opCodeCount++;
+                            }
+
+                            exceptionType = EvmInstructions.FusedDupBinaryCore(ref stack, entry.Operand);
+                            break;
+                        }
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;
@@ -237,7 +253,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case >= Instruction.PUSH9 and <= Instruction.PUSH32:
                             exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
                             break;
-                        case >= Instruction.DUP1 and <= Instruction.DUP8:
+                        case >= Instruction.DUP1 and <= Instruction.DUP16:
                             exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
                             break;
                         case >= Instruction.SWAP1 and <= Instruction.SWAP8:

@@ -2229,6 +2229,32 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [UnscopedRef]
+    internal ref byte PeekTopForDupBinary(int depth, out EvmWord duplicate, out EvmExceptionType exceptionType)
+    {
+        Unsafe.SkipInit(out duplicate);
+        int head = Head;
+        if (head < depth)
+        {
+            exceptionType = EvmExceptionType.StackUnderflow;
+            return ref Unsafe.NullRef<byte>();
+        }
+        if (head >= MaxStackSize - 1)
+        {
+            exceptionType = EvmExceptionType.StackOverflow;
+            return ref Unsafe.NullRef<byte>();
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        duplicate = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5)));
+        exceptionType = EvmExceptionType.None;
+        return ref top;
+    }
+
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
