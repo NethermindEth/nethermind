@@ -2,7 +2,7 @@ name: Hive tests
 
 on:
   push:
-    tags: ['*']
+    tags: ['*', '!zisk-guest-*']
     branches: [master]
   workflow_dispatch:
     inputs:

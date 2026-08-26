@@ -25,8 +25,8 @@ public class OptimismBlockReceiptTracerTests
         OptimismBlockReceiptTracer tracer = BuildTracer();
         tracer.StartNewBlockTrace(block);
         tracer.StartNewTxTrace(frameTx);
-        tracer.ReportFrameTxReceipt(TestItem.AddressD, [new TxFrameReceipt(TxFrameReceipt.StatusFailure, 21_000, [frameLog])]);
-        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], [frameLog]);
+        tracer.ReportFrameTxReceipt(TestItem.AddressD, [new TxFrameReceipt(TxFrameReceipt.StatusFailure, 21_000, 4_000, [frameLog])]);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(25_000, 21_000, 21_000, 4_000, 25_000), [], [frameLog]);
         tracer.EndTxTrace();
 
         TxReceipt receipt = tracer.LastReceipt;
@@ -37,6 +37,8 @@ public class OptimismBlockReceiptTracerTests
             Assert.That(receipt.Payer, Is.EqualTo(TestItem.AddressD));
             Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(1));
             Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure), "status is aggregated from the frames");
+            Assert.That(receipt.BlockGasUsed, Is.EqualTo(21_000UL), "EIP-7778 execution dimension");
+            Assert.That(receipt.StorageGasUsed, Is.EqualTo(4_000UL), "EIP-8037 state dimension");
         }
     }
 
@@ -52,7 +54,7 @@ public class OptimismBlockReceiptTracerTests
         tracer.StartNewBlockTrace(block);
 
         tracer.StartNewTxTrace(frameTx);
-        tracer.ReportFrameTxReceipt(TestItem.AddressD, [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [frameLog])]);
+        tracer.ReportFrameTxReceipt(TestItem.AddressD, [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, [frameLog])]);
         tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], [frameLog]);
         tracer.EndTxTrace();
 

@@ -14,7 +14,8 @@ public static class RecentRootReferences
 {
     /// <summary>
     /// Checks every declared reference against the pre-state commitment in <c>RECENT_ROOT_ADDRESS</c> and
-    /// warms the predeploy and the keys read, which the intrinsic gas has already paid for.
+    /// warms the predeploy and the keys read, for which the intrinsic gas has paid the access-list pre-warm
+    /// rate; the reads themselves are uncharged.
     /// </summary>
     /// <remarks>
     /// A reference at or ahead of <paramref name="currentSlot"/> is not yet referenceable and one older than
