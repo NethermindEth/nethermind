@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -120,6 +121,8 @@ namespace Nethermind.Evm.Benchmark
         private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private IWorldState _stateProvider;
         private IDisposable _stateScope;
+        private bool _enabledBefore;
+        private bool _forceAllContextsBefore;
 
         [Params(InterpreterMode.ByteCodeLoop, InterpreterMode.Stream)]
         public InterpreterMode Mode { get; set; }
@@ -127,6 +130,8 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
+            _enabledBefore = StreamInterpreter.Enabled;
+            _forceAllContextsBefore = StreamInterpreter.ForceAllContexts;
             StreamInterpreter.Enabled = Mode != InterpreterMode.ByteCodeLoop;
             // These frames run non-cancelable, so force the stream past the call-context gate to measure it.
             StreamInterpreter.ForceAllContexts = Mode != InterpreterMode.ByteCodeLoop;
@@ -150,7 +155,7 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: new CodeInfo(ComputeLoop),
+                codeInfo: CreateWarmCodeInfo(ComputeLoop),
                 callDepth: 0,
                 value: 0,
                 inputData: default
@@ -160,7 +165,7 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: new CodeInfo(StraightLine),
+                codeInfo: CreateWarmCodeInfo(StraightLine),
                 callDepth: 0,
                 value: 0,
                 inputData: default
@@ -170,7 +175,7 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: new CodeInfo(MemoryHeavy),
+                codeInfo: CreateWarmCodeInfo(MemoryHeavy),
                 callDepth: 0,
                 value: 0,
                 inputData: default
@@ -184,16 +189,18 @@ namespace Nethermind.Evm.Benchmark
             _straightLineEnvironment.Dispose();
             _memoryHeavyEnvironment.Dispose();
             _stateScope.Dispose();
-            StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
-            StreamInterpreter.ForceAllContexts = false;
+            StreamInterpreter.Enabled = _enabledBefore;
+            StreamInterpreter.ForceAllContexts = _forceAllContextsBefore;
         }
 
         [Benchmark]
         public void ExecuteStraightLine()
         {
+            long framesBefore = StreamInterpreter.FramesExecuted;
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _straightLineEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
+            AssertStreamExecuted(framesBefore);
             _stateProvider.Reset();
         }
 
@@ -201,19 +208,38 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteComputeLoop()
         {
             // Fresh frame per invocation: a reused VmState resumes at end-of-code and measures nothing.
+            long framesBefore = StreamInterpreter.FramesExecuted;
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
+            AssertStreamExecuted(framesBefore);
             _stateProvider.Reset();
         }
 
         [Benchmark]
         public void ExecuteMemoryHeavy()
         {
+            long framesBefore = StreamInterpreter.FramesExecuted;
             using VmState<EthereumGasPolicy> evmState = VmState<EthereumGasPolicy>.RentTopLevel(
                 EthereumGasPolicy.FromULong(100_000_000), ExecutionType.TRANSACTION, _memoryHeavyEnvironment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
             _virtualMachine.ExecuteTransaction<OffFlag>(evmState, _stateProvider, _txTracer);
+            AssertStreamExecuted(framesBefore);
             _stateProvider.Reset();
+        }
+
+        private static CodeInfo CreateWarmCodeInfo(byte[] code)
+        {
+            CodeInfo codeInfo = new(code) { CodeHash = ValueKeccak.Compute(code) };
+            if (!SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
+                throw new InvalidOperationException("The stream benchmark code did not build an instruction stream.");
+
+            return codeInfo;
+        }
+
+        private void AssertStreamExecuted(long framesBefore)
+        {
+            if (Mode == InterpreterMode.Stream && StreamInterpreter.FramesExecuted <= framesBefore)
+                throw new InvalidOperationException("The stream benchmark did not execute a stream frame.");
         }
     }
 }
