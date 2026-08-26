@@ -60,7 +60,7 @@ public partial class BlockAccessListManager
             if (accountChanges.CodeChanges.Length > 0)
             {
                 // A predeploy installing code without a nonce is the only change that touches neither branch
-                // above, so the account may not exist yet.
+                // above, so the account may not exist yet. TODO: remove once every predeploy declares a nonce.
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
