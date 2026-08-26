@@ -76,7 +76,7 @@ public static class StateOverridesExtensions
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address, IStorageOverrideSink? storageOverrideSink)
     {
-        (Dictionary<UInt256, ValueHash256>? slots, bool replaceAll) = accountOverride.State is not null
+        (Dictionary<UInt256, Hash256>? slots, bool replaceAll) = accountOverride.State is not null
             ? (accountOverride.State, true)
             : (accountOverride.StateDiff, false);
 
@@ -90,7 +90,7 @@ public static class StateOverridesExtensions
             stateProvider.ClearStorage(address);
         }
 
-        foreach ((UInt256 index, ValueHash256 value) in slots)
+        foreach ((UInt256 index, Hash256 value) in slots)
         {
             stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
         }
@@ -170,4 +170,3 @@ public static class StateOverridesExtensions
         }
     }
 }
-

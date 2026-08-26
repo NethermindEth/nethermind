@@ -335,7 +335,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// the block-level change set: they survive transaction-level resets and are dropped with it in
     /// <see cref="Reset"/> and <see cref="ClearStorageMap"/>.
     /// </remarks>
-    public void SetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll) =>
+    public void SetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll) =>
         GetOrCreateStorage(address).SetOverrides(slots, replaceAll);
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
@@ -432,7 +432,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         // Lazily applied storage overrides (see IStorageOverrideSink): the caller's dictionary, consulted on a
         // miss and materialized into _dictionary at that point, so an untouched slot costs nothing.
-        private Dictionary<UInt256, ValueHash256>? _pendingOverrides;
+        private Dictionary<UInt256, Hash256>? _pendingOverrides;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
@@ -451,9 +451,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (_pendingOverrides is not null)
                 {
-                    foreach (ValueHash256 overridden in _pendingOverrides.Values)
+                    foreach (Hash256 overridden in _pendingOverrides.Values)
                     {
-                        if (overridden != default)
+                        if (!overridden.IsZero)
                         {
                             return true;
                         }
@@ -477,7 +477,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _dictionary.Clear();
         }
 
-        public void SetPendingOverrides(Dictionary<UInt256, ValueHash256> overrides)
+        public void SetPendingOverrides(Dictionary<UInt256, Hash256> overrides)
         {
             // An override replaces whatever was already read or installed for the slot.
             if (_dictionary.Count != 0)
@@ -494,8 +494,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 return;
             }
 
-            Dictionary<UInt256, ValueHash256> merged = new(_pendingOverrides);
-            foreach ((UInt256 index, ValueHash256 value) in overrides)
+            Dictionary<UInt256, Hash256> merged = new(_pendingOverrides);
+            foreach ((UInt256 index, Hash256 value) in overrides)
             {
                 merged[index] = value;
             }
@@ -508,11 +508,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
             if (!exists)
             {
-                if (_pendingOverrides is not null && _pendingOverrides.TryGetValue(storageCellIndex, out ValueHash256 overridden))
+                if (_pendingOverrides is not null && _pendingOverrides.TryGetValue(storageCellIndex, out Hash256 overridden))
                 {
                     // Before == After: the override is the block-level value, exactly what an eager write
                     // followed by a commit would have left here for GetOriginal and SSTORE metering.
-                    byte[] bytes = overridden == default ? StorageTree.ZeroBytes : overridden.Bytes.WithoutLeadingZeros().ToArray();
+                    ValueHash256 overriddenValue = overridden.ValueHash256;
+                    byte[] bytes = overridden.IsZero ? StorageTree.ZeroBytes : overriddenValue.Bytes.WithoutLeadingZeros().ToArray();
                     value = new StorageChangeTrace(bytes, bytes);
                     exists = true;
                 }
@@ -631,7 +632,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
-        public void SetOverrides(Dictionary<UInt256, ValueHash256> slots, bool replaceAll)
+        public void SetOverrides(Dictionary<UInt256, Hash256> slots, bool replaceAll)
         {
             // Counts as a block-level write so the change set is kept when the storage tree is created
             // (CreateStorageTree) and consulted by IsEmpty, as it would be after eager writes.
