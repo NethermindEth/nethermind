@@ -174,16 +174,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [Test]
     public void Chiado_discovery_bootnodes_are_correct()
     {
-        foreach (TestConfigProvider configProvider in GetConfigProviders("chiado"))
-        {
-            NetworkNode[] bootnodes = configProvider.GetConfig<IDiscoveryConfig>().Bootnodes;
-            Assert.That(bootnodes, Is.Not.Empty, configProvider.FileName);
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("chiado.json");
+        Assert.That(chainSpec.Bootnodes, Is.Not.Empty);
 
-            foreach (NetworkNode bootnode in bootnodes)
-            {
-                Assert.That(bootnode.IsEnr, Is.True, $"{configProvider.FileName}: {bootnode}");
-                Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, $"{configProvider.FileName}: {bootnode}");
-            }
+        foreach (NetworkNode bootnode in chainSpec.Bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
     }
 
