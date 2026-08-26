@@ -134,7 +134,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
         {
-            if (!source.IsWarmerResolved) return null;
+            if (source.NodeType == NodeType.Unknown) return null;
 
             CappedArray<byte> fullRlp = source.FullRlp;
             if (fullRlp.IsNull) return null;
@@ -210,7 +210,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }
 
-    // A hash-only Unknown node is not authoritative; the persistence writers skip the same shape.
     private static bool IsPlaceholder(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     /// <summary>

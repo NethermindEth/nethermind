@@ -262,77 +262,6 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Concurrent_owned_warmer_resolution_loads_once(bool storage)
-    {
-        Hash256 address = TestItem.KeccakC;
-        TreePath path = TreePath.FromHexString("12");
-        (byte[] rlp, Hash256 hash) = EncodedLeaf();
-        int loads = 0;
-
-        using ManualResetEventSlim loadStarted = new(false);
-        using ManualResetEventSlim allowLoad = new(false);
-        byte[] Load()
-        {
-            Interlocked.Increment(ref loads);
-            loadStarted.Set();
-            if (!allowLoad.Wait(BailOutTimeout)) throw new TimeoutException("owned resolver was not released");
-            return rlp;
-        }
-
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        if (storage)
-        {
-            reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => Load());
-        }
-        else
-        {
-            reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => Load());
-        }
-
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
-        TrieNode warmed = storage
-            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
-            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-
-        using ManualResetEventSlim start = new(false);
-        const int resolverCount = 4;
-        Task[] resolvers = new Task[resolverCount];
-        for (int i = 0; i < resolvers.Length; i++)
-        {
-            resolvers[i] = Task.Run(() =>
-            {
-                start.Wait();
-                TreePath resolvePath = path;
-                Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.True);
-            });
-        }
-
-        start.Set();
-        bool firstLoadStarted = loadStarted.Wait(BailOutTimeout);
-
-        // The shared instance is mid-resolution here and must stay invisible to live reads.
-        TrieNode midResolution = storage
-            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
-            : bundle.FindStateNodeOrUnknown(path, hash);
-
-        allowLoad.Set();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstLoadStarted, Is.True, "no resolver reached persistence");
-            Assert.That(midResolution, Is.Not.SameAs(warmed));
-            Assert.That(midResolution.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(Task.WaitAll(resolvers, BailOutTimeout), Is.True, "owned resolvers did not complete");
-            Assert.That(Volatile.Read(ref loads), Is.EqualTo(1));
-        }
-
-        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
-    }
-
     [Test]
     public void Hash_only_unknown_node_is_not_promoted()
     {
@@ -421,8 +350,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // The warmer's persistence read is path-keyed, so it can return another node; reader guards compare the node's
-    // own claimed Keccak, so publishing those bytes under the requested hash would poison live reads and the cache.
+    // The warmer's persistence read is path-keyed, so it can return another node; the warmer adapter must reject
+    // those bytes before the node stores them under the requested hash.
     [TestCase(false)]
     [TestCase(true)]
     public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads(bool storage)
@@ -464,6 +393,7 @@ public class SnapshotBundleWarmerTests
         {
             Assert.That(live, Is.Not.SameAs(warmed));
             Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(warmed.FullRlp.IsNull, Is.True);
             Assert.That(cache.TryGet(cacheAddress, in path, requestedHash, out _), Is.False,
                 "the mismatched persistence node was promoted under the requested hash");
         }
@@ -494,6 +424,7 @@ public class SnapshotBundleWarmerTests
 
         TreePath resolvePath = path;
         Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.False);
+        Assert.That(warmed.TryResolveNode(WarmerResolver(bundle, storage ? address : null), ref resolvePath), Is.False);
 
         TrieNode live = storage
             ? bundle.FindStorageNodeOrUnknown(address, path, hash)
@@ -507,8 +438,12 @@ public class SnapshotBundleWarmerTests
         {
             Assert.That(live, Is.Not.SameAs(warmed));
             Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(warmed.FullRlp.ToArray(), Is.EqualTo(invalidRlp));
             Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
         }
+
+        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
     private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)

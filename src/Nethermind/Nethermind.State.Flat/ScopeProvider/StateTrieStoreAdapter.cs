@@ -52,7 +52,10 @@ internal sealed class StateTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+        GetMatchingRlp(bundle.TryLoadStateRlp(path, hash, flags), hash);
+
+    internal static byte[]? GetMatchingRlp(byte[]? rlp, Hash256 hash) =>
+        rlp is null || ValueKeccak.Compute(rlp) == hash ? rlp : null;
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
@@ -106,5 +109,5 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+        StateTrieStoreWarmerAdapter.GetMatchingRlp(bundle.TryLoadStorageRlp(addressHash, in path, hash, flags), hash);
 }
