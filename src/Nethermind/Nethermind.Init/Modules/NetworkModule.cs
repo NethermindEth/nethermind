@@ -31,6 +31,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
@@ -99,6 +100,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
             .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
+            // Snap V2
+            .AddMessageSerializer<SnapV2.GetBlockAccessListsMessage, SnapV2.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<SnapV2.BlockAccessListsMessage, SnapV2.BlockAccessListsMessageSerializer>()
+
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
             .AddSingleton<IHeaderDecoder, HeaderDecoder>()
@@ -164,6 +169,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()

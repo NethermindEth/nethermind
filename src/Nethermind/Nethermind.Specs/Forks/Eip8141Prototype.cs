@@ -4,9 +4,9 @@
 namespace Nethermind.Specs.Forks;
 
 /// <summary>
-/// Prototype fork for EIP-8141 frame transactions. Not scheduled on any network; exists to gate
-/// the frame transaction prototype behind <c>IsEip8141Enabled</c>. Excluded from the Geth genesis
-/// fork mapping because it is not a real fork name.
+/// Prototype fork for EIP-8141 frame transactions. Not scheduled on any network; exists so a devnet
+/// can activate frame transactions on their own, through <c>eip8141TransitionTimestamp</c>, this
+/// label, or the Geth-genesis <c>eip8141PrototypeTime</c>, without joining a fork that means more.
 /// </summary>
 public class Eip8141Prototype() : NamedReleaseSpec<Eip8141Prototype>(Amsterdam.Instance)
 {

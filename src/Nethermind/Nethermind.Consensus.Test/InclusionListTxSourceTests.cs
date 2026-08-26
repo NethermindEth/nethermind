@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -53,7 +54,7 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
-    // Each build sees only its own IL (scoped by PayloadAttributes) — a concurrent FCU can't leak another's.
+    // Scoped by PayloadAttributes, so a concurrent FCU can't leak another build's IL.
     [Test]
     public void Inclusion_list_is_scoped_per_build()
     {
@@ -84,11 +85,28 @@ public class InclusionListTxSourceTests
         Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs), Is.Empty);
     }
 
+    // Decoding and sender recovery must stay off the engine thread: a forkchoice update that is about to be
+    // rejected, or that duplicates a build already under way, must cost nothing beyond retaining the list.
+    [Test]
+    public void Set_defers_sender_recovery_to_the_first_request()
+    {
+        CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][] il = [Encode(tx)];
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(ecdsa.Recoveries, Is.Zero);
+
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, Attributes(il)), Is.Not.Empty);
+        Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+    }
+
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
     [Test]
     public void SupportsBlobs_is_false() => Assert.That(CreateSource().SupportsBlobs, Is.False);
 
-    // FOCIL: a blob IL entry must be dropped, never forwarded into block production.
+    // A blob IL entry must be dropped, never forwarded into block production.
     [Test]
     public void Blob_transactions_are_filtered_out()
     {
@@ -116,5 +134,91 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
+    // A blob-carrying EIP-8141 frame transaction is type 6, so the type-3-only SupportsBlobs does not see it,
+    // yet it reaches production without a sidecar just the same. The blob-free frame transaction is the
+    // negative control: the filter must drop entries for carrying blobs, not for being frame transactions.
+    [Test]
+    public void Blob_carrying_frame_transactions_are_filtered_out()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
+        Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
+        byte[][] il = [Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EquivalentTo([1ul, 3ul]));
+    }
+
+    private static Transaction FrameTx(ulong nonce, byte[][] blobVersionedHashes) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = MainnetSpecProvider.Instance.ChainId,
+        Nonce = nonce,
+        SenderAddress = TestItem.AddressC,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasPrice = 1.GWei,
+        DecodedMaxFeePerGas = 30.GWei,
+        MaxFeePerBlobGas = blobVersionedHashes is null ? null : 1,
+        BlobVersionedHashes = blobVersionedHashes,
+    };
+
+    // The producer offers each IL tx once, so a shuffled list must still come out in ascending nonce order.
+    [Test]
+    public void Sender_nonces_are_ordered_ascending()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction nonce1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction nonce0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][] il = [Encode(nonce1), Encode(nonce0)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EqualTo([0ul, 1ul]));
+    }
+
+    // First-appearance order: sorting by address would favour low-address senders on a truncated list.
+    [Test]
+    public void Sender_order_of_first_appearance_is_preserved()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction b1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] il = [Encode(b1), Encode(a1), Encode(b0)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => (t.SenderAddress, t.Nonce)),
+            Is.EqualTo([
+                (TestItem.AddressB, 0ul),
+                (TestItem.AddressB, 1ul),
+                (TestItem.AddressA, 1ul)
+            ]));
+    }
+
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+    private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
+    {
+        public int Recoveries;
+        public ulong ChainId => inner.ChainId;
+
+        public Address RecoverAddress(Signature signature, in ValueHash256 message)
+        {
+            Recoveries++;
+            return inner.RecoverAddress(signature, in message);
+        }
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);
+        public PublicKey RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
+    }
 }

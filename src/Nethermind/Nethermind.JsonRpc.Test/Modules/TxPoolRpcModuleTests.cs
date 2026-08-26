@@ -36,18 +36,18 @@ public class TxPoolRpcModuleTests
             pending: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
+                    new AddressAsKey(TestItem.AddressA), new Dictionary<string, Transaction>
                     {
-                        { 1, txA }
+                        { "1", txA }
                     }
                 }
             },
             queued: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressB), new Dictionary<ulong, Transaction>
+                    new AddressAsKey(TestItem.AddressB), new Dictionary<string, Transaction>
                     {
-                        { 2, txB }
+                        { "2", txB }
                     }
                 }
             }
@@ -60,8 +60,8 @@ public class TxPoolRpcModuleTests
 
         TxPoolContent txpoolContent = txPoolRpcModule.txpool_content().Data;
 
-        LegacyTransactionForRpc? rpcTxA = txpoolContent.Pending[TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)][1] as LegacyTransactionForRpc;
-        AccessListTransactionForRpc? rpcTxB = txpoolContent.Queued[TestItem.AddressB.ToString(withZeroX: true, withEip55Checksum: true)][2] as AccessListTransactionForRpc;
+        LegacyTransactionForRpc? rpcTxA = txpoolContent.Pending[TestItem.AddressA.ToString(withZeroX: true, withEip55Checksum: true)]["1"] as LegacyTransactionForRpc;
+        AccessListTransactionForRpc? rpcTxB = txpoolContent.Queued[TestItem.AddressB.ToString(withZeroX: true, withEip55Checksum: true)]["2"] as AccessListTransactionForRpc;
 
         Assert.That(rpcTxA!.ChainId, Is.Null, "legacy txs without chainId must not have one injected");
         Assert.That(rpcTxB!.ChainId, Is.EqualTo(SomeChainId), "EIP-2930 txs without chainId should inherit it from the spec provider");
@@ -91,8 +91,8 @@ public class TxPoolRpcModuleTests
 
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
         txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(new TxPoolSenderInfo(
-            pending: new Dictionary<ulong, Transaction> { { 1, txA }, { 2, txB } },
-            queued: new Dictionary<ulong, Transaction>()));
+            pending: new Dictionary<string, Transaction> { { "1", txA }, { "2", txB } },
+            queued: new Dictionary<string, Transaction>()));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
@@ -102,8 +102,8 @@ public class TxPoolRpcModuleTests
         TxPoolContentFrom result = txPoolRpcModule.txpool_contentFrom(TestItem.AddressA).Data;
 
         Assert.That(result.Pending, Has.Count.EqualTo(2), "AddressA has exactly 2 pending transactions");
-        Assert.That(result.Pending.ContainsKey(1ul), Is.True, "nonce 1 belongs to AddressA");
-        Assert.That(result.Pending.ContainsKey(2ul), Is.True, "nonce 2 belongs to AddressA");
+        Assert.That(result.Pending.ContainsKey("1"), Is.True, "nonce 1 belongs to AddressA");
+        Assert.That(result.Pending.ContainsKey("2"), Is.True, "nonce 2 belongs to AddressA");
         Assert.That(result.Queued, Is.Empty, "no queued transactions were set up for AddressA");
     }
 
@@ -153,9 +153,9 @@ public class TxPoolRpcModuleTests
             pending: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
+                    new AddressAsKey(TestItem.AddressA), new Dictionary<string, Transaction>
                     {
-                        { 806, tx }
+                        { "806", tx }
                     }
                 }
             },
@@ -185,9 +185,9 @@ public class TxPoolRpcModuleTests
             pending: new()
             {
                 {
-                    new AddressAsKey(TestItem.AddressA), new Dictionary<ulong, Transaction>
+                    new AddressAsKey(TestItem.AddressA), new Dictionary<string, Transaction>
                     {
-                        { 0, tx }
+                        { "0", tx }
                     }
                 }
             },
@@ -219,8 +219,8 @@ public class TxPoolRpcModuleTests
 
         ITxPoolInfoProvider txPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
         txPoolInfoProvider.GetSenderInfo(TestItem.AddressA).Returns(new TxPoolSenderInfo(
-            pending: new Dictionary<ulong, Transaction> { { 806, tx } },
-            queued: new Dictionary<ulong, Transaction>()));
+            pending: new Dictionary<string, Transaction> { { "806", tx } },
+            queued: new Dictionary<string, Transaction>()));
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(1ul);

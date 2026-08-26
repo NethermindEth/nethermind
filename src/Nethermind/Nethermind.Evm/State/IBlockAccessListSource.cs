@@ -12,4 +12,11 @@ namespace Nethermind.Evm.State;
 public interface IBlockAccessListSource
 {
     BlockAccessListAtIndex? GeneratedBlockAccessList { get; }
+
+    /// <summary>Starts recording into <paramref name="bal"/>, or stops recording when it is null.</summary>
+    /// <remarks>Block processing installs one per block; simulation installs one per transaction that
+    /// reads its own diff, and stays idle otherwise. Defaulted so a source written against the
+    /// single-property contract still loads: it keeps reporting no slice, and callers that check
+    /// <see cref="GeneratedBlockAccessList"/> fall back to offering no diff at all.</remarks>
+    void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) { }
 }

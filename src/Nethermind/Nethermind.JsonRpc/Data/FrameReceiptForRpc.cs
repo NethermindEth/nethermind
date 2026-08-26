@@ -15,11 +15,13 @@ public class FrameReceiptForRpc
     public FrameReceiptForRpc(TxFrameReceipt frameReceipt)
     {
         Status = frameReceipt.Status;
-        GasUsed = frameReceipt.GasUsed;
+        ExecutionGasUsed = frameReceipt.ExecutionGasUsed;
+        StateGasUsed = frameReceipt.StateGasUsed;
         Logs = frameReceipt.Logs;
     }
 
     public byte Status { get; set; }
-    public ulong GasUsed { get; set; }
+    public ulong ExecutionGasUsed { get; set; }
+    public ulong StateGasUsed { get; set; }
     public LogEntry[] Logs { get; set; } = [];
 }

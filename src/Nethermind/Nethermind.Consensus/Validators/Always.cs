@@ -3,10 +3,8 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -43,7 +41,6 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? error, bool validateHashes = true) => Validate(out error);
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error) => Validate(out error);
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) => Validate(out error);
-    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) => _result;
 
     private bool Validate(out string? error)
     {

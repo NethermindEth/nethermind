@@ -120,12 +120,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        // FOCIL: with a non-empty IL we can't take the EmptyBlock shortcut — PrepareEmptyBlock bypasses
-        // tx selection entirely, so no IL transaction would ever reach the block.
-        IBlockProducer.Flags flags = payloadAttributes.InclusionListTransactions is { Length: > 0 }
-            ? IBlockProducer.Flags.DontSeal
-            : IBlockProducer.Flags.PrepareEmptyBlock;
-        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: flags).Result!;
+        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;

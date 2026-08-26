@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.PortfolioViewer.Plugin\Nethermind.PortfolioViewer.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.BalRecorder\Nethermind.BalRecorder.csproj" />
     <ProjectReference Include="..\Nethermind.BlockProfiler\Nethermind.BlockProfiler.csproj" />
     <ProjectReference Include="..\Nethermind.CensorshipDetector.Plugin\Nethermind.CensorshipDetector.Plugin.csproj" />

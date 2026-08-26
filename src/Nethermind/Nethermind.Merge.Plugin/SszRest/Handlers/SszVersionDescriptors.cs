@@ -87,6 +87,16 @@ public readonly struct NewPayloadWithWitnessDescriptorV5 : INewPayloadWithWitnes
     }
 }
 
+public readonly struct NewPayloadWithWitnessDescriptorV6 : INewPayloadWithWitnessVersion<NewPayloadV6RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.NewPayload.V6;
+    public static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in NewPayloadV6RequestWire wire)
+    {
+        ExecutionPayloadV4 ep = wire.ExecutionPayload.AsExecutionPayload();
+        return engine.engine_newPayloadWithWitnessV6(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests(), wire.InclusionListTransactions.ToExecutionRequests());
+    }
+}
+
 public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCodec<TWire>
 {
     static abstract int VersionNumber { get; }
@@ -103,15 +113,6 @@ internal static class ForkchoiceUpdatedHelpers
     public static ulong? FirstTimestamp<TAttr>(TAttr[]? attrs)
         where TAttr : struct, ISszPayloadAttributesWire
         => attrs is { Length: > 0 } a ? a[0].Timestamp : null;
-
-    /// <summary>Packs the optional custody-columns bitfield (EIP-7805 FCU V5) into its byte representation, or <c>null</c>.</summary>
-    public static byte[]? CustodyColumnsToBytes(SszCustodyColumns[]? custody)
-    {
-        if (custody is not { Length: > 0 } c || c[0].Bits is not { } bits) return null;
-        byte[] bytes = new byte[(bits.Length + 7) / 8];
-        bits.CopyTo(bytes, 0);
-        return bytes;
-    }
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV1RequestWire>

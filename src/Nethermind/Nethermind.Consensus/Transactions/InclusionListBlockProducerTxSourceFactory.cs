@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Transactions;
 
 public class InclusionListBlockProducerTxSourceFactory(
     IBlockProducerTxSourceFactory baseFactory,
-    InclusionListTxSource inclusionListTxSource) : IBlockProducerTxSourceFactory
+    IInclusionListTxSource inclusionListTxSource) : IBlockProducerTxSourceFactory
 {
     public ITxSource Create() => inclusionListTxSource.Then(baseFactory.Create());
 }

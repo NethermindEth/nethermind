@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System;
 using System.Buffers;
 using System.Threading.Tasks;
@@ -13,12 +14,9 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-/// <summary>
-/// Handles <c>POST /engine/v2/forkchoice</c> for Bogota (EIP-7805 / FOCIL), the SSZ-REST equivalent of
-/// <c>engine_forkchoiceUpdatedV5</c>. Dedicated rather than a <see cref="ForkchoiceUpdatedSszHandler{TVersion,TWire}"/>
-/// descriptor because V5 is the only forkchoiceUpdated version returning <see cref="ForkchoiceUpdatedV2Result"/>
-/// (with the inclusion-list-satisfied flag) instead of <see cref="ForkchoiceUpdatedV1Result"/>.
-/// </summary>
+/// <summary>SSZ-REST equivalent of <c>engine_forkchoiceUpdatedV5</c>.</summary>
+/// <remarks>Dedicated rather than a <see cref="ForkchoiceUpdatedSszHandler{TVersion,TWire}"/> descriptor
+/// because V5 alone returns <see cref="ForkchoiceUpdatedV2Result"/>.</remarks>
 public sealed class ForkchoiceUpdatedV5SszHandler(IEngineRpcModule engineModule, ISpecProvider specProvider) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
@@ -37,7 +35,7 @@ public sealed class ForkchoiceUpdatedV5SszHandler(IEngineRpcModule engineModule,
 
         ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
-        byte[]? custody = ForkchoiceUpdatedHelpers.CustodyColumnsToBytes(wire.CustodyColumns);
+        BitArray? custody = wire.CustodyColumns is { Length: > 0 } c ? c[0].Bits : null;
 
         ResultWrapper<ForkchoiceUpdatedV2Result> result = await engineModule.engine_forkchoiceUpdatedV5(state, attrs, custody);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponseV2);

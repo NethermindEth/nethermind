@@ -8,9 +8,12 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
+/// <summary>The encoded transactions <c>engine_getInclusionListV1</c> returns, held in pooled buffers.</summary>
+/// <remarks>Ownership passes to the JSON-RPC response, which disposes it after serialising:
+/// <c>JsonRpcResponse → ResultWrapper.TryDispose → Dispose</c>. Callers that never hand it over must
+/// dispose it themselves, and must not read it afterwards — the buffers go back to the pool.</remarks>
 public sealed class InclusionListBytes(int capacity) : IReadOnlyList<ArrayPoolList<byte>>, IDisposable
 {
-    // JsonRpc dispose chain: JsonRpcResponse → ResultWrapper.TryDispose → InclusionListBytes.Dispose → DisposeRecursive.
     private readonly ArrayPoolList<ArrayPoolList<byte>> _items = new(capacity);
 
     public void Add(ArrayPoolList<byte> item) => _items.Add(item);

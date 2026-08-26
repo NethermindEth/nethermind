@@ -63,15 +63,35 @@ namespace Nethermind.Evm.Test
         public void Nothing_to_commit()
         {
             using VmStateScope parent = CreateEvmStateScope();
-            using VmStateScope child = CreateEvmStateScope(parent.VmState);
-            child.VmState.CommitToParent(parent.VmState);
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
+            {
+                child.VmState.CommitToParent(parent.VmState);
+            }
+
+            AssertParentIsUntouched(parent.VmState);
         }
 
         [Test]
         public void Nothing_to_restore()
         {
             using VmStateScope parent = CreateEvmStateScope();
-            using VmStateScope _ = CreateEvmStateScope(parent.VmState);
+            using (VmStateScope _ = CreateEvmStateScope(parent.VmState))
+            {
+            }
+
+            AssertParentIsUntouched(parent.VmState);
+        }
+
+        // An empty commit or restore must not corrupt the parent state.
+        private static void AssertParentIsUntouched(VmState<EthereumGasPolicy> parent)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parent.Refund, Is.EqualTo(0));
+                Assert.That(parent.AccessTracker.Logs, Is.Empty);
+                Assert.That(parent.AccessTracker.DestroyList, Is.Empty);
+                Assert.That(parent.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+            }
         }
 
         [Test]
@@ -204,17 +224,21 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Can_dispose_without_init()
-        {
-            using VmStateScope scope = CreateEvmStateScope();
-        }
+        public void Can_dispose_without_init() =>
+            Assert.DoesNotThrow(static () =>
+            {
+                // Dispose must accept a state whose stacks were never initialized.
+                using VmStateScope _ = CreateEvmStateScope();
+            });
 
         [Test]
-        public void Can_dispose_after_init()
-        {
-            using VmStateScope scope = CreateEvmStateScope();
-            scope.VmState.InitializeStacks(default, out EvmStack _);
-        }
+        public void Can_dispose_after_init() =>
+            Assert.DoesNotThrow(static () =>
+            {
+                // Dispose must return the initialized stacks to the pool without an error.
+                using VmStateScope scope = CreateEvmStateScope();
+                scope.VmState.InitializeStacks(default, out EvmStack _);
+            });
 
         private static VmStateScope CreateEvmStateScope(VmState<EthereumGasPolicy> parentVmState = null) =>
             new(parentVmState is null

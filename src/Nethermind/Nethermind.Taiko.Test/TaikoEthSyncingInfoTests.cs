@@ -39,13 +39,20 @@ public class TaikoEthSyncingInfoTests
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
         TaikoEthSyncingInfo info = new(blockTree, inner);
 
-        Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.Zero), "first call: starts the stopwatch");
+        Assert.That((long)info.UpdateAndGetSyncTime().TotalSeconds, Is.EqualTo(0), "first call: starts the stopwatch");
         Thread.Sleep(10);
-        Assert.That(info.UpdateAndGetSyncTime(), Is.GreaterThan(TimeSpan.Zero), "subsequent call while syncing: elapsed");
+        TimeSpan whileSyncing = info.UpdateAndGetSyncTime();
+        Assert.That(whileSyncing, Is.GreaterThan(TimeSpan.Zero), "subsequent call while syncing: elapsed");
 
-        // Head catches the beacon pivot — decorator now reports not-syncing, stopwatch stops.
+        // Head catches the beacon pivot — decorator now reports not-syncing, stopwatch stops
+        // but retains the total so the final duration stays observable.
         blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1000UL).TestObject).TestObject);
-        Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.Zero), "after catch-up: stops");
+        TimeSpan afterCatchUp = info.UpdateAndGetSyncTime();
+        Assert.That(afterCatchUp, Is.GreaterThanOrEqualTo(whileSyncing), "after catch-up: stops but retains total");
+
+        // Falling behind again resumes (does not reset) the total — no false drop to zero.
+        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500UL).TestObject).TestObject);
+        Assert.That(info.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(afterCatchUp), "after falling behind again: resumes, retains total");
         inner.DidNotReceive().UpdateAndGetSyncTime();
     }
 

@@ -38,6 +38,16 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    protected override void ReleaseUnmanagedResources()
+    {
+        foreach (KeyValuePair<T, ColumnDb> column in _columnDbs)
+        {
+            column.Value.Dispose();
+        }
+
+        base.ReleaseUnmanagedResources();
+    }
+
     protected override long FetchTotalPropertyValue(string propertyName)
     {
         long total = 0;

@@ -226,12 +226,6 @@ public class NodeHealthTrackerTests
             remove { }
         }
 
-        public int Size
-        {
-            get
-            {
-                lock (AddCalls) return AddCalls.Count;
-            }
-        }
+        public RoutingTableOccupancy GetOccupancy() => throw new NotSupportedException();
     }
 }

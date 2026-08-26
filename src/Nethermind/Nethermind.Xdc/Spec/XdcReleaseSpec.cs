@@ -22,9 +22,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MaxProtectorNodes { get; set; }           // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }            // v2 max ObserverNodes
     public ulong SwitchRound { get; set; }               // v1 to v2 switch block number
-    public ulong MinePeriod { get; set; }                  // Miner mine period to mine a block
+    public ulong MinePeriod { get; set; }                // Minimum seconds between a parent block and its child
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
-    public int TimeoutPeriod { get; set; }               // Duration in ms
+    public int TimeoutPeriod { get; set; }               // Duration in seconds
     public double CertificateThreshold { get; set; }     // Necessary number of messages from master nodes to form a certificate
     public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
@@ -119,9 +119,9 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int MaxProtectorNodes { get; set; }           // v2 max ProtectorNodes
     public int MaxObserverNodes { get; set; }            // v2 max ObserverNodes
     public ulong SwitchRound { get; set; }               // v1 to v2 switch block number
-    public ulong MinePeriod { get; set; }                  // Miner mine period to mine a block
+    public ulong MinePeriod { get; set; }                // Minimum seconds between a parent block and its child
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
-    public int TimeoutPeriod { get; set; }               // Duration in ms
+    public int TimeoutPeriod { get; set; }               // Duration in seconds
     public double CertificateThreshold { get; set; }     // Necessary number of messages from master nodes to form a certificate
     public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei

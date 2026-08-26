@@ -26,6 +26,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // specs in eth_simulateV1) must not be retained forever by this process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
+    public object ReturnData { get; set; }
+
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
         OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());

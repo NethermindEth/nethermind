@@ -139,8 +139,8 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
-    // EIP-7805: set by BlockProcessor after the post-execution IL check. False means the block is
-    // valid and executable but didn't honour the inclusion list (INCLUSION_LIST_UNSATISFIED).
+    // Set after the post-execution check: false means the block is valid and executable but did not
+    // honour its inclusion list (EIP-7805).
     [JsonIgnore]
     public bool IsInclusionListSatisfied { get; set; } = true;
 
@@ -171,7 +171,8 @@ public class Block
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
         Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}  diff {Difficulty} | txs {Body.Transactions.Length,7:N0}",
-        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000.0,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
+        // decimal, not double: software integer math, keeping the zkEVM guest off the FPU.
+        Format.HashNumberMGasAndTx => $"{ToShortHashAndNumber()}  {GasUsed / 1_000_000m,9:N2} MGas | {Body.Transactions.Length,7:N0} txs",
         _ => ToShortHashAndNumber()
     };
 

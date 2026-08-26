@@ -62,24 +62,25 @@ namespace Nethermind.Stats.Model
             if (totalLength <= StackAllocThreshold)
             {
                 Span<byte> buffer = stackalloc byte[totalLength];
-                WriteToBuffer(writer, capability, buffer, protocolByteCount);
+                if (!TryWriteToBuffer(writer, capability, buffer, protocolByteCount))
+                {
+                    ThrowJsonException();
+                }
             }
             else
             {
                 byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
-                try
+                bool written = TryWriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
+                ArrayPool<byte>.Shared.Return(rented);
+                if (!written)
                 {
-                    WriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(rented);
+                    ThrowJsonException();
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void WriteToBuffer(Utf8JsonWriter writer, Capability capability, Span<byte> buffer, int protocolByteCount)
+        private static bool TryWriteToBuffer(Utf8JsonWriter writer, Capability capability, Span<byte> buffer, int protocolByteCount)
         {
             Encoding.UTF8.GetBytes(capability.ProtocolCode, buffer);
             buffer[protocolByteCount] = SeparatorByte;
@@ -87,11 +88,10 @@ namespace Nethermind.Stats.Model
             if (Utf8Formatter.TryFormat(capability.Version, buffer[(protocolByteCount + 1)..], out int versionBytes))
             {
                 writer.WriteStringValue(buffer[..(protocolByteCount + 1 + versionBytes)]);
+                return true;
             }
-            else
-            {
-                ThrowJsonException();
-            }
+
+            return false;
         }
 
         private static bool TryParseCapability(ref Utf8JsonReader reader, out Capability? capability)

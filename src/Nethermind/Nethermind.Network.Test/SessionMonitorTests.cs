@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
@@ -10,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,10 +69,77 @@ namespace Nethermind.Network.Test
             Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
         }
 
-        private ISession CreateSession()
+        [Test]
+        public async Task Disconnects_a_session_that_misses_every_pong_and_reports_a_timeout()
+        {
+            ISession responsive = CreateSession();
+            ISession unresponsive = CreateUnresponsiveSession();
+            DisconnectReason? reason = null;
+            unresponsive.Disconnected += (_, args) => reason = args.DisconnectReason;
+
+            NetworkConfig networkConfig = new();
+            networkConfig.P2PPingInterval = 200;
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+            sessionMonitor.AddSession(responsive);
+            sessionMonitor.AddSession(unresponsive);
+            responsive.LastPongUtc = DateTime.UtcNow;
+            unresponsive.LastPongUtc = DateTime.UtcNow;
+            sessionMonitor.Start();
+            try
+            {
+                await Task.Delay(600);
+                Assert.That(unresponsive.IsClosing, Is.False,
+                    "the window is measured from the last pong, so the first missed pongs have to be tolerated");
+
+                Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
+                Assert.That(() => reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout).After(5_000, 20),
+                    "the reason selects the reconnect delay and lets the privileged-node gate reap dead static sessions");
+                Assert.That(responsive.IsClosing, Is.False);
+            }
+            finally
+            {
+                sessionMonitor.Stop();
+            }
+        }
+
+        [Test]
+        public async Task Keeps_a_session_that_recovers_between_missed_pongs()
+        {
+            int calls = 0;
+            IPingSender flaky = Substitute.For<IPingSender>();
+            flaky.SendPing().Returns(_ => Task.FromResult(Interlocked.Increment(ref calls) % 3 == 0));
+            ISession session = CreateSession(flaky);
+
+            NetworkConfig networkConfig = new();
+            networkConfig.P2PPingInterval = 500;
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+            sessionMonitor.AddSession(session);
+            sessionMonitor.Start();
+            try
+            {
+                await Task.Delay(4_000);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Volatile.Read(ref calls), Is.GreaterThanOrEqualTo(3),
+                        "the recovery path is only exercised once the third ping has returned a pong");
+                    Assert.That(session.IsClosing, Is.False,
+                        "two missed pongs followed by a pong is a slow peer, not a dead one");
+                }
+            }
+            finally
+            {
+                sessionMonitor.Stop();
+            }
+        }
+
+        private ISession CreateSession() => CreateSession(_pingSender);
+
+        private ISession CreateSession(IPingSender pingSender)
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            session.PingSender = _pingSender;
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
+            session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
             return session;

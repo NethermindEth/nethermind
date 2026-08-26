@@ -61,19 +61,30 @@ public class ForkTests
     }
 
     [Test]
-    public void Bogota_carries_both_frame_transactions_and_FOCIL_on_top_of_Amsterdam()
+    public void Eip8141Prototype_enables_only_frame_transactions_on_top_of_Amsterdam()
     {
         using (Assert.EnterMultipleScope())
         {
-            // EIP-8141 is kept off the Amsterdam fork class so Amsterdam's genesis stays unchanged.
-            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False, "frame transactions are not baked into the Amsterdam fork class");
-            Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
-            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.True, "Bogota enables frame transactions");
-            Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True, "Bogota adds FOCIL inclusion lists alongside frame transactions");
             Assert.That(Eip8141Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
-            Assert.That(Eip8141Prototype.Instance.IsEip8141Enabled, Is.True, "prototype fork enables frame transactions for Amsterdam-era unit tests");
+            Assert.That(Eip8141Prototype.Instance.IsEip8141Enabled, Is.True, "prototype fork must enable frame transactions");
             Assert.That(Eip8141Prototype.Instance.IsEip7928Enabled, Is.True, "Amsterdam-era flags must be inherited");
-            Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest released mainnet fork must not enable frame transactions");
+            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False, "no production fork may enable frame transactions");
+            Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
+        }
+    }
+
+    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
+    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
+    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
+    [Test]
+    public void Bogota_enables_inclusion_lists_without_frame_transactions()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
         }
     }
 }

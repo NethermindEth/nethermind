@@ -7,6 +7,28 @@
 log() { printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Record the machine state a benchmark ran on, so a step change in results can be attributed to
+# the host rather than to code. A reboot or kernel upgrade shifts results persistently and is
+# otherwise invisible: on 2026-08-13 a 38% step in one payload set was traced to a restart only by
+# noticing that /proc/stat's monotonic interrupt counter had gone backwards between two runs.
+# boot_id changes on every boot, so it identifies the reboot directly; the rest covers the settings
+# that most often move a benchmark across a kernel upgrade.
+log_system_provenance() {
+  log "=== host provenance ==="
+  log "  kernel:      $(uname -r 2>/dev/null || echo unknown)"
+  log "  boot_id:     $(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
+  log "  uptime_s:    $(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unknown)"
+  log "  interrupts:  $(awk '/^intr /{print $2}' /proc/stat 2>/dev/null || echo unknown)"
+  log "  governor:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/a)"
+  log "  max_freq:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo n/a) kHz"
+  log "  thp:         $(sed -n 's/.*\[\(.*\)\].*/\1/p' /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo n/a)"
+  local vuln
+  for vuln in /sys/devices/system/cpu/vulnerabilities/*; do
+    [[ -r "$vuln" ]] || continue
+    log "  mitigation:  $(basename "$vuln")=$(tr -d '\n' < "$vuln" | cut -c1-60)"
+  done
+}
+
 # Run a command as root, using sudo only when not already root.
 as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -65,7 +87,7 @@ reap_stale_containers() {
     if [[ -n "$ids" ]]; then
       log "Reaping stale container(s) matching '${prefix}*'..."
       # shellcheck disable=SC2086
-      docker rm -f $ids >/dev/null 2>&1 || true
+      docker rm -fv $ids >/dev/null 2>&1 || true
     fi
   done
 }
@@ -82,7 +104,7 @@ rpc_post() {
 # Block until the node answers eth_blockNumber with a non-genesis head, or fail
 # (dies early with logs if the container exits). $1=url, $2=timeout s (def 1800), $3=container.
 wait_for_rpc() {
-  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head
+  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head head_digits
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
   while true; do
     if [[ -n "$container" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
@@ -92,13 +114,14 @@ wait_for_rpc() {
     fi
     resp="$(rpc_post "$url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)"
     head="$(printf '%s' "$resp" | jq -r '.result // empty' 2>/dev/null || true)"
-    if [[ -n "$head" && "$head" != "null" ]]; then
-      if [[ "$((16#${head#0x}))" -eq 0 ]]; then
+    if [[ "$head" =~ ^0x[0-9a-fA-F]{1,15}$ ]]; then
+      head_digits="${head#0x}"
+      if [[ "$((16#$head_digits))" -eq 0 ]]; then
         # A snapshot-backed node must report its snapshot head immediately; 0x0
         # means the datadir is wrong/empty and a fresh DB was initialized.
         die "node reports head block 0 — datadir mismatch (snapshot not picked up); refusing to benchmark genesis"
       fi
-      log "JSON-RPC is up. Head block: $((16#${head#0x})) ($head)"
+      log "JSON-RPC is up. Head block: $((16#$head_digits)) ($head)"
       return 0
     fi
     sleep "$interval"

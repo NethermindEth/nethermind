@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
 source "$HERE/lib.sh"
 
-: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /mnt/sda/nethermind-flat-snapshot)}"
+: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /data/nethermind/nethermind-flat-25490000)}"
 : "${SCRATCH_ROOT:?writable scratch root on the same large disk as the snapshot}"
 : "${STATE_DIR:?directory to persist node state for stop-node.sh}"
 
@@ -35,6 +35,9 @@ CONTAINER_NAME="${CONTAINER_NAME:-rpcbench-$INSTANCE}"
 RPC_PORT="${RPC_PORT:-8545}"
 NETWORK="${NETWORK:-mainnet}"
 DOTTRACE="${DOTTRACE:-false}"
+# sampling | tracing | timeline. Timeline snapshots are UI-only (Reporter cannot emit XML);
+# line-by-line is not offered because the client images carry no PDBs.
+DOTTRACE_MODE="${DOTTRACE_MODE:-sampling}"
 DOTTRACE_HOST_PATH="${DOTTRACE_HOST_PATH:-/opt/dottrace}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
@@ -55,6 +58,10 @@ NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 if [[ "$DOTTRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dottrace profiling requires CLIENT=nethermind (dotTrace is .NET-specific)"
 fi
+case "$DOTTRACE_MODE" in
+  sampling|tracing|timeline) ;;
+  *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
+esac
 
 mkdir -p "$STATE_DIR"
 [[ -d "$DB_SOURCE" ]] || {
@@ -262,7 +269,7 @@ for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
 # dotTrace (nethermind only): mount the host CLI and wrap the node binary, as expb's
-# --dottrace does. SIGINT (stop-signal) lets dotTrace finalize the .dtp.
+# --dottrace does. SIGINT (stop-signal) lets dotTrace finalize the snapshot.
 entry_args=()
 if [[ "$DOTTRACE" == "true" ]]; then
   if [[ ! -x "$DOTTRACE_HOST_PATH/dottrace" ]]; then
@@ -281,7 +288,10 @@ if [[ "$DOTTRACE" == "true" ]]; then
     -v "$DIAG_DIR/dottrace:/dottrace-output:rw"
     --entrypoint /opt/dottrace/dottrace
   )
-  entry_args=(start --framework=NetCore "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
+  # Timeline snapshots carry dotTrace's .dtt extension; keeping .dtp for them would let
+  # Reporter.exe's .dtp glob pick up a snapshot it cannot convert.
+  snapshot_ext="$([[ "$DOTTRACE_MODE" == "timeline" ]] && echo dtt || echo dtp)"
+  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.${snapshot_ext}" --propagate-exit-code -- /nethermind/nethermind)
 fi
 # Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
 # host tuning and enables a shipped PGO profile, which a direct binary call skips.
@@ -289,7 +299,7 @@ fi
 # node_args are passed as the container command.
 
 # 4) Start the node.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Starting $CLIENT container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
 # ${arr[@]+...} keeps the empty-array expansion safe under set -u on bash < 4.4.

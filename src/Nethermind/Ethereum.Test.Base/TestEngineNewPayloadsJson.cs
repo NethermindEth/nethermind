@@ -11,11 +11,8 @@ namespace Ethereum.Test.Base
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
-        // EIP-7805: RLP-encoded txs, emitted by the fixture out-of-band from `params`;
-        // appended as the 5th positional arg when targeting newPayloadV6.
-        public string[]? InclusionListTransactions { get; set; }
-        // Expected PayloadStatusV1.Status; when absent, derived from ValidationError.
-        public string? Status { get; set; }
+        // EIP-7805: expected PayloadStatusV2.inclusionListSatisfied; only meaningful for a VALID payload.
+        public bool? InclusionListSatisfied { get; set; }
 
         public ExecutionWitnessJson? ExecutionWitness { get; set; }
         public bool? ExecutionWitnessMutated { get; set; }

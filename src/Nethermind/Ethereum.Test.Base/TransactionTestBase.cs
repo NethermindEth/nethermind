@@ -138,6 +138,12 @@ public abstract class TransactionTestBase
         ["TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"] = ["InvalidBlobVersionedHashVersion"],
         ["TransactionException.TYPE_3_TX_CONTRACT_CREATION"] = ["blob transaction of type create"],
         ["TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"] = ["max fee per blob gas less than block blob gas fee"],
+        ["TransactionException.NONCE_TOO_BIG"] = ["NonceTooHigh"],
+        ["TransactionException.NONCE_IS_MAX"] = ["NonceTooHigh"],
+        ["TransactionException.NONCE_OVERFLOW"] = ["NonceTooWide"],
+        ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["Non-canonical integer"],
+        ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = ["Non-canonical integer", .. s_rlpDecodeFragments],
+        ["TransactionException.RLP_INVALID_NONCE"] = [.. s_rlpDecodeFragments],
         // EIP-8141 static frame rules: most messages name a frame, so new rules match without an entry here.
         ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] =
         [
@@ -151,4 +157,3 @@ public abstract class TransactionTestBase
         ],
     };
 }
-

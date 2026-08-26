@@ -25,6 +25,14 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Verify(testCase.Tx.SenderAddress!, testCase.Tx);
         }
 
+        [Test]
+        public void Verify_returns_false_for_unsigned_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            Assert.That(ecdsa.Verify(TestItem.AddressA, tx), Is.False);
+        }
 
         [TestCase(true)]
         [TestCase(false)]
@@ -36,6 +44,38 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Sign(key, tx, eip155);
             Address? address = ecdsa.RecoverAddress(tx);
             Assert.That(address, Is.EqualTo(key.Address));
+        }
+
+        [Test]
+        public void TryRecoverAddress_recovers_sender_for_signed_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.TestObject;
+            ecdsa.Sign(key, tx);
+
+            bool result = ecdsa.TryRecoverAddress(tx, out Address? address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(address, Is.EqualTo(key.Address));
+            }
+        }
+
+        [Test]
+        public void TryRecoverAddress_returns_false_for_unsigned_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            bool result = ecdsa.TryRecoverAddress(tx, out Address? address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.False);
+                Assert.That(address, Is.Null);
+            }
         }
 
         [TestCase(true)]

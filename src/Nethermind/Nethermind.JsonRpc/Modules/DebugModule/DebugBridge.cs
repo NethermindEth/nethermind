@@ -199,7 +199,7 @@ public class DebugBridge : IDebugBridge
 
     public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        CurrentStage = _syncModeSelector.Current.ToString()
+        CurrentStage = _syncModeSelector.Current.ToFlagsString()
     };
 
     public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();

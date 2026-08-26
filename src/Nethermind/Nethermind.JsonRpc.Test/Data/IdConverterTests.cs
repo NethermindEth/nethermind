@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -33,7 +34,14 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_handle_int()
         {
             IdConverter converter = new();
-            converter.Write(new Utf8JsonWriter(new MemoryStream()), 1, null);
+            using MemoryStream stream = new();
+            using (Utf8JsonWriter writer = new(stream))
+            {
+                converter.Write(writer, 1, null!);
+                writer.Flush();
+            }
+
+            Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo("1"));
         }
 
         [Test]

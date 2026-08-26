@@ -44,7 +44,7 @@ namespace Nethermind.Trie.Pruning
             // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
             // may make this call unnecessary.
             Root?.PrunePersistedRecursively(2);
-            Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            Metrics.DeepPruningTimeMs = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
 
         public int CompareTo(BlockCommitSet? other)

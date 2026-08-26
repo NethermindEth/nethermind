@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -71,6 +72,10 @@ public class SlotValueTests
     [Test]
     public void Test_FromBytes_ReturnsNullForNull() =>
         Assert.That(SlotValue.FromBytes(null), Is.Null);
+
+    [Test]
+    public void NullableSlotValue_IsCompact() =>
+        Assert.That(Unsafe.SizeOf<SlotValue?>(), Is.EqualTo(40));
 
     [Test]
     public void Test_FromBytes_WrapsNonNull()

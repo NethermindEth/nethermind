@@ -62,7 +62,7 @@ public static class SszCodec
         int count = inclusionList.Count;
         SszTransaction[] txs = new SszTransaction[count];
         for (int i = 0; i < count; i++)
-            txs[i] = new SszTransaction { Bytes = inclusionList[i].AsSpan().ToArray() };
+            txs[i] = new SszTransaction { Bytes = inclusionList[i].AsReadOnlyMemory() };
         return EncodeToWriter(new InclusionListResponseWire { Transactions = txs }, writer);
     }
 
@@ -104,8 +104,7 @@ public static class SszCodec
         }
     }
 
-    // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the opaque token;
-    // the spec says treat payload_id as opaque bytes, not a uint64). Empty list when there is no build.
+    // ByteVector[8] transmitted as-is: the spec treats payload_id as opaque bytes, not a uint64.
     private static SszPayloadId[] BuildPayloadIdList(string? payloadId)
     {
         if (payloadId is null) return [];
@@ -119,15 +118,11 @@ public static class SszCodec
     }
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
-    {
-        SszPayloadId[]? pidList = BuildPayloadIdList(resp.PayloadId);
-
-        return EncodeToWriter(new ForkchoiceUpdatedResponseWire
+        => EncodeToWriter(new ForkchoiceUpdatedResponseWire
         {
             PayloadStatus = BuildPayloadStatusWire(resp.PayloadStatus),
-            PayloadId = pidList ?? []
+            PayloadId = BuildPayloadIdList(resp.PayloadId)
         }, writer);
-    }
 
     internal static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
         headBlockHash: w.HeadBlockHash,

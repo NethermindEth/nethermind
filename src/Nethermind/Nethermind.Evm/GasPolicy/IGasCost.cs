@@ -45,6 +45,7 @@ public readonly struct JumpIGasCost : IGasCost { public static ulong GasCost => 
 public readonly struct JumpDestGasCost : IGasCost { public static ulong GasCost => GasCostOf.JumpDest; }
 public readonly struct TLoadGasCost : IGasCost { public static ulong GasCost => GasCostOf.TLoad; }
 public readonly struct TStoreGasCost : IGasCost { public static ulong GasCost => GasCostOf.TStore; }
+public readonly struct TxTraceGasCost : IGasCost { public static ulong GasCost => GasCostOf.TxTrace; }
 public readonly struct SelfBalanceGasCost : IGasCost { public static ulong GasCost => GasCostOf.SelfBalance; }
 public readonly struct BlockHashGasCost : IGasCost { public static ulong GasCost => GasCostOf.BlockHash; }
 public readonly struct BlobHashGasCost : IGasCost { public static ulong GasCost => GasCostOf.BlobHash; }

@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -33,7 +31,4 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
 
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
-
-    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
-        baseBlockValidator.ValidateInclusionList(processedBlock, suggestedBlock, worldState, options);
 }

@@ -19,7 +19,8 @@ public partial class BaseEngineModuleTests
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory = blockImprovementContextFactory;
         private readonly bool _skipDuplicatedContext = skipDuplicatedContext;
-        public List<IBlockImprovementContext> CreatedContexts { get; } = [];
+        // Tests read the snapshot copy, never the live list the improvement loop appends to.
+        private List<IBlockImprovementContext> CreatedContexts { get; } = [];
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
@@ -28,20 +29,31 @@ public partial class BaseEngineModuleTests
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
-            if (_skipDuplicatedContext
-                && CreatedContexts.Count > 0
-                && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
-            {
-                return blockImprovementContext;
-            }
-
             lock (CreatedContexts)
             {
+                if (_skipDuplicatedContext
+                    && CreatedContexts.Count > 0
+                    && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
+                {
+                    return blockImprovementContext;
+                }
+
                 CreatedContexts.Add(blockImprovementContext);
             }
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             Task.Run(() => ImprovementStarted?.Invoke(this, new ImprovementStartedEventArgs(blockImprovementContext)));
             return blockImprovementContext;
+        }
+
+        /// <summary>
+        /// Copies the created contexts under the same lock the improvement loop appends with.
+        /// </summary>
+        public IBlockImprovementContext[] SnapshotCreatedContexts()
+        {
+            lock (CreatedContexts)
+            {
+                return CreatedContexts.ToArray();
+            }
         }
 
         public async Task<IBlockImprovementContext> WaitForNextImprovementContext(CancellationToken cancellationToken)

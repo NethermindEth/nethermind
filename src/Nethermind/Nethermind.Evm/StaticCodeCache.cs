@@ -7,12 +7,14 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-/// <summary>Process-wide LRU <see cref="ICodeCache"/> used for normal block processing; the DI default and the shared cache tests reset between runs.</summary>
-public sealed class StaticCodeCache : ICodeCache
+/// <summary>LRU <see cref="ICodeCache"/>; <see cref="Instance"/> is the process-wide one used for normal block processing and reset between shared-cache test runs.</summary>
+/// <remarks>Capacities below <see cref="MemoryAllowance.CodeCacheSize"/> are for short-lived,
+/// single-block caches; overflowing one only costs a re-read and re-analysis of the code.</remarks>
+public sealed class StaticCodeCache(int maxCapacity) : ICodeCache
 {
-    public static readonly StaticCodeCache Instance = new();
+    public static readonly StaticCodeCache Instance = new(MemoryAllowance.CodeCacheSize);
 
-    private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(MemoryAllowance.CodeCacheSize);
+    private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(maxCapacity);
 
     public CodeInfo? Get(in ValueHash256 codeHash) => _cache.Get(in codeHash);
 

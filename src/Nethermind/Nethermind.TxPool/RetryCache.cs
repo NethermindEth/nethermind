@@ -194,7 +194,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
     }
 
-    private void ProcessRetryTick()
+    internal void ProcessRetryTick()
     {
         Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
         try

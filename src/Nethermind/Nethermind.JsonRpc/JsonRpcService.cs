@@ -78,15 +78,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ex = inner;
         }
 
-        (int errorCode, string errorText) = ex switch
+        (int errorCode, string errorText, bool suppressWarning) = ex switch
         {
-            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
-            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout"),
-            _ => (ErrorCodes.InternalError, "Internal error"),
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests", true),
+            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout", true),
+            _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), in rpcRequest.IdRef);
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
@@ -529,10 +531,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
-                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction),
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), ex.ToString(), in request.IdRef, returnAction),
@@ -915,6 +919,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool suppressWarning = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        // Counted here, at the funnel every error response passes through: concurrency-cap
+        // rejections reach this point along two distinct paths (module rental before invocation,
+        // and the override-environment cap during invocation), and their warnings are suppressed
+        // by design — without a counter operators cannot see that callers are being shed.
+        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
+        // response-body caps also produce LimitExceeded but keep their warnings.
+        if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        {
+            Metrics.IncrementJsonRpcOverloadRejections();
+        }
         JsonRpcErrorResponse response = new(in id, disposableAction)
         {
             Error = new Error

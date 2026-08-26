@@ -116,6 +116,30 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockDb.Remove(blockHash.Bytes);
     }
 
+    /// <summary>Drops every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever their
+    /// hashes and whether or not a chain level lists them.</summary>
+    /// <remarks>Reaches only block-number-prefixed keys. A database predating those stores bodies under the bare
+    /// 32-byte hash, which <see cref="Get"/> still reads, so it reclaims nothing here and keeps serving blocks below
+    /// the announced boundary. Accepted: it needs a node that never resynced since keys gained their prefix.</remarks>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        if (_pending is not null)
+        {
+            _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+        }
+        else
+        {
+            _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+        }
+
+        if (fromInclusive >= toExclusive) return;
+
+        // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
+        // disk must stop being served whatever the reclaim does.
+        _blockCache.Clear();
+        _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+    }
+
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
         ValueHash256 cacheKey = blockHash.ValueHash256;

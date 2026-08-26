@@ -4,24 +4,35 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
 using Polly;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Data
 {
     public class FileLocalDataSource<T> : ILocalDataSource<T>, IDisposable
     {
+        // Volatile publication for any T: the volatile _data write orders the readonly Value store,
+        // which a `volatile T` field cannot do once T may be a value type.
+        private sealed class DataSnapshot(T value)
+        {
+            public T Value { get; } = value;
+        }
+
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private T _data;
+        private volatile DataSnapshot _data = null!;
         private Timer _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
+        private bool _hasLoadedFile;
+        private int _isLoading;
         public string FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
@@ -32,11 +43,12 @@ namespace Nethermind.Blockchain.Data
             _interval = interval;
             SetupWatcher(filePath.GetApplicationResourcePath());
             LoadFile();
+            StartWatching();
         }
 
         protected virtual T DefaultValue => default;
 
-        public T Data => _data;
+        public T Data => _data.Value;
 
         public event EventHandler Changed;
 
@@ -44,7 +56,7 @@ namespace Nethermind.Blockchain.Data
 
         private void SetupWatcher(string filePath)
         {
-            _data = DefaultValue;
+            _data = new DataSnapshot(DefaultValue);
             IFileInfo fileInfo = null;
             try
             {
@@ -64,10 +76,21 @@ namespace Nethermind.Blockchain.Data
                 // file name is valid
                 FilePath = filePath;
                 if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
-                _timer = new Timer(_interval) { Enabled = true };
-                _timer.Elapsed += async (o, e) => await LoadFileAsync();
             }
         }
+
+        // Started only once the initial load has run, so polling cannot race it.
+        private void StartWatching()
+        {
+            if (FilePath is null) return;
+
+            Timer timer = _timer = new Timer(_interval);
+            timer.Elapsed += TimerOnElapsed;
+            timer.Start();
+        }
+
+        // System.Timers requires a void handler; LoadFileAsync observes and logs all errors.
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e) => _ = LoadFileAsync();
 
         private async Task LoadFileAsync()
         {
@@ -89,6 +112,10 @@ namespace Nethermind.Blockchain.Data
             catch (IOException e)
             {
                 ReportIOError(e);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Unexpected error while reloading {typeof(T)} from {FilePath}.", e);
             }
         }
 
@@ -115,29 +142,50 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFileCore()
         {
-            DateTime? lastChange = null;
+            // The reload timer does not serialise its callbacks. Overlapping loads could publish
+            // the content of one and the write time of the other, pairing stale content with a
+            // matching timestamp, which then reads as current. Skip instead of queueing: the file
+            // is polled again on the next tick anyway.
+            if (Interlocked.CompareExchange(ref _isLoading, 1, 0) != 0) return;
 
-            if (_fileSystem.File.Exists(FilePath))
+            bool changed = false;
+            try
             {
-                DateTime lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
-                if (lastWriteTime > _lastChange)
+                if (_fileSystem.File.Exists(FilePath))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
-                    using Stream file = _fileSystem.File.OpenRead(FilePath);
-                    _data = _jsonSerializer.Deserialize<T>(file);
-                    if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
-                    lastChange = lastWriteTime;
+                    // Read in UTC: distinct instants can share a local representation during a DST
+                    // fold. Compare for inequality, not order: an atomic replace, as from a restore
+                    // that preserves timestamps, can carry an older write time. Two writes within
+                    // the file system's timestamp granularity are indistinguishable either way.
+                    DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
+                    if (!_hasLoadedFile || lastWriteTime != _lastChange)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} with write time {lastWriteTime:O}; previous write time {_lastChange:O}.");
+                        using Stream file = _fileSystem.File.OpenRead(FilePath);
+                        _data = new DataSnapshot(_jsonSerializer.Deserialize<T>(file));
+                        if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
+                        _hasLoadedFile = true;
+                        _lastChange = lastWriteTime;
+                        changed = true;
+                    }
+                }
+                else if (_hasLoadedFile)
+                {
+                    // _lastChange is left alone: the flag makes the next file load whatever it holds.
+                    _hasLoadedFile = false;
+                    _data = new DataSnapshot(DefaultValue);
+                    changed = true;
                 }
             }
-            else if (!Equals(_data, DefaultValue))
+            finally
             {
-                lastChange = DateTime.UtcNow;
-                _data = DefaultValue;
+                Volatile.Write(ref _isLoading, 0);
             }
 
-            if (lastChange.HasValue)
+            // Raised after the guard is released: subscribers read the current Data rather than a
+            // snapshot, so event order does not matter, and their work must not block a reload.
+            if (changed)
             {
-                _lastChange = lastChange.Value;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }

@@ -66,6 +66,27 @@ public class BlobGasCalculatorTests
         Assert.That(blobGas, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2 + 3)));
     }
 
+    // Otherwise the receipt reports no blob gas while the block budget still meters it.
+    [Test]
+    public void GetGasInfo_reports_blob_gas_for_blob_carrying_frame_tx()
+    {
+        IReleaseSpec spec = Cancun.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).WithBaseFee(1).TestObject;
+        Transaction frameBlobTx = Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithBlobVersionedHashes(2)
+            .WithMaxFeePerBlobGas(1000)
+            .TestObject;
+
+        TxGasInfo gasInfo = frameBlobTx.GetGasInfo(spec, header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasInfo.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2)));
+            Assert.That(gasInfo.BlobGasPrice, Is.Not.Null);
+        }
+    }
+
     private static IEnumerable<TestCaseData> GenerateTestCases()
     {
         (IReleaseSpec Instance, bool)[] specs =

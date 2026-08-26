@@ -120,7 +120,7 @@ namespace Nethermind.TxPool
 
             if (tx is not null
                 && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
-                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
+                && _persistentTxs.TryInsert(tx.Hash, tx.CarriesBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
                 && removed?.Hash != tx.Hash)
             {
                 NotifyPeersAboutLocalTx(tx);
@@ -367,7 +367,7 @@ namespace Nethermind.TxPool
 
         public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
         {
-            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
+            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {
                 return true;
             }

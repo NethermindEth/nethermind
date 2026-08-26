@@ -25,12 +25,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions options,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
-    DbOnTheRocks.IteratorManager? iteratorManager = null,
+    DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
     ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
-    private readonly DbOnTheRocks.IteratorManager? _iteratorManager = iteratorManager;
+    private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager = iteratorManager;
     private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
 
     private readonly ReadOptions _options = options;
@@ -40,7 +40,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
-        DbOnTheRocks.IteratorManager? iteratorManager = null,
+        DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
         ColumnFamilyHandle? columnFamily = null)
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
@@ -63,9 +63,11 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
     /// finalizer queue buildup from short-lived ReadOptions instances.
     /// </summary>
-    internal static void DestroyReadOptions(ReadOptions options)
+    internal static void DestroyReadOptions(ReadOptions? options)
     {
-        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        if (options is null) return;
+
+        Native.Instance.rocksdb_readoptions_destroy(options.Handle);
         GC.SuppressFinalize(options);
     }
 
@@ -73,7 +75,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
         {
-            byte[]? result = _mainDb.GetWithIterator(key, _columnFamily, _iteratorManager, flags, out bool success);
+            byte[]? result = _mainDb.GetWithIterator(key, _columnFamily, _iteratorManager.Value, flags, out bool success);
             if (success)
             {
                 return result;

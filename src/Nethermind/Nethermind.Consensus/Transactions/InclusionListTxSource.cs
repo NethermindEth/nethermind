@@ -10,87 +10,97 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Transactions;
 
 public class InclusionListTxSource(
-    IEthereumEcdsa? ecdsa,
-    ISpecProvider? specProvider,
-    ILogManager? logManager) : ITxSource
+    IEthereumEcdsa ecdsa,
+    ISpecProvider specProvider,
+    ILogManager logManager) : IInclusionListTxSource
 {
-    // Lazy<T> defaults to ExecutionAndPublication — once-only construction even under racing FCUs.
+    // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
-    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<InclusionListTxSource>();
+    private readonly ILogger _logger = logManager.GetClassLogger<InclusionListTxSource>();
 
-    // EIP-7805 (FOCIL): scope the decoded IL to its build, keyed by the build's PayloadAttributes
-    // array, so a concurrent FCU can't leak another build's IL. Weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Transaction[]> _decodedByAttributes = [];
+    // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
+    // weak keys collect with the build.
+    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
 
-    // gasLimit is ignored — the downstream producer-side tx selection pipeline enforces it.
+    // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (_decodedByAttributes.TryGetValue(il, out Transaction[]? txs)) return txs;
+        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        {
+            // A miss means Set was never called for these attributes, e.g. an oversized IL that
+            // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
+            if (_logger.IsDebug) _logger.Debug($"No inclusion list for this build ({il.Length} entries) — building without it.");
+            return [];
+        }
 
-        // A miss for a non-empty IL means Set never completed for this attrs instance — e.g. a malformed
-        // or oversized IL discarded in engine_forkchoiceUpdatedV5, which already warned once with the cause.
-        // Debug-level here since GetTransactions runs once per improvement iteration for the whole slot.
-        if (_logger.IsDebug) _logger.Debug($"No decoded inclusion list for this build ({il.Length} entries) — building without it.");
-        return [];
+        try
+        {
+            return decoded.Value;
+        }
+        catch (Exception ex) when (ex is RlpException or ArgumentException)
+        {
+            // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
+            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
+            return [];
+        }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
+    /// a forkchoice update that never starts a build pays nothing.</remarks>
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec))));
+        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
+            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
 
-    // The producer offers each IL tx to the block executor only once, so a lower nonce that appears
-    // later than its dependent higher nonce (the IL is shuffled) would be skipped forever. Group each
-    // sender's txs and sort by nonce within the group, preserving the senders' first-appearance order —
-    // this keeps the dependency guarantee without imposing a cross-sender ordering bias (a plain
-    // (sender, nonce) sort would systematically favour low-address senders when the IL doesn't all fit).
+    // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
+    // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.
     private static Transaction[] OrderForProduction(Transaction[] txs)
     {
         if (txs.Length < 2) return txs;
 
-        Dictionary<AddressAsKey, List<Transaction>> bySender = new(txs.Length);
-        List<AddressAsKey> senderOrder = new(txs.Length);
+        // Unrecoverable senders can never be included; group them together under Zero.
+        Dictionary<AddressAsKey, int> firstSeen = new(txs.Length);
+        int next = 0;
         foreach (Transaction tx in txs)
-        {
-            // Unrecoverable senders (null) can never be included; group them together under Zero.
-            AddressAsKey key = tx.SenderAddress ?? Address.Zero;
-            if (!bySender.TryGetValue(key, out List<Transaction>? group))
-            {
-                bySender[key] = group = [];
-                senderOrder.Add(key);
-            }
-            group.Add(tx);
-        }
+            if (firstSeen.TryAdd(tx.SenderAddress ?? Address.Zero, next)) next++;
 
-        Transaction[] ordered = new Transaction[txs.Length];
-        int i = 0;
-        foreach (AddressAsKey sender in senderOrder)
+        Array.Sort(txs, (a, b) =>
         {
-            List<Transaction> group = bySender[sender];
-            group.Sort(static (a, b) => a.Nonce.CompareTo(b.Nonce));
-            foreach (Transaction tx in group) ordered[i++] = tx;
-        }
-        return ordered;
+            int bySender = firstSeen[a.SenderAddress ?? Address.Zero].CompareTo(firstSeen[b.SenderAddress ?? Address.Zero]);
+            return bySender != 0 ? bySender : a.Nonce.CompareTo(b.Nonce);
+        });
+        return txs;
     }
 
-    // FOCIL: blob (type-3) IL entries are ignored — drop them so block production never emits a blob
-    // tx that has no ShardBlobNetworkWrapper (which would make getPayloadV6 unusable for the CL).
+    // Blob IL entries carry no ShardBlobNetworkWrapper, so including one would make getPayloadV6
+    // unusable for the consensus client.
     private static Transaction[] FilterBlobs(Transaction[] txs)
     {
         int kept = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) kept++;
+            if (!IsBlobCarrying(txs[i])) kept++;
         if (kept == txs.Length) return txs;
 
         Transaction[] result = new Transaction[kept];
         int j = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) result[j++] = txs[i];
+            if (!IsBlobCarrying(txs[i])) result[j++] = txs[i];
         return result;
     }
+
+    /// <summary>Whether <paramref name="tx"/> would need a blob sidecar the inclusion list cannot carry.</summary>
+    /// <remarks>
+    /// An inclusion list is decoded from the canonical form, where the blob hashes are all that marks an
+    /// EIP-8141 blob-carrying frame transaction, so the type-3-only <see cref="Transaction.SupportsBlobs"/>
+    /// does not cover it on its own.
+    /// </remarks>
+    private static bool IsBlobCarrying(Transaction tx) => tx.SupportsBlobs || tx.CarriesBlobs;
 
     public bool SupportsBlobs => false;
 }

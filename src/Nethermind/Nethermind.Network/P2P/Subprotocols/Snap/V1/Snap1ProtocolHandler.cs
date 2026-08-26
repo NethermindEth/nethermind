@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 {
     public class Snap1ProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, IStaticProtocolInfo
     {
-        private ISnapServer SyncServer { get; }
+        protected ISnapServer SyncServer { get; }
         private bool CanServe { get; }
 
         public override string Name => "snap1";
@@ -117,7 +117,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             }
         }
 
-        private bool ShouldServeSnap()
+        protected bool ShouldServeSnap()
         {
             if (!CanServe)
             {
@@ -275,7 +275,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             return new RlpPathGroupList(builder.ToRlpItemList());
         }
 
-        private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)
+        protected async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)
             where TIn : SnapMessageBase
             where TOut : SnapMessageBase
         {

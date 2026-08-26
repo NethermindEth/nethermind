@@ -68,15 +68,38 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UpdateState(Feed.CurrentState);
 
+            using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
             try
             {
                 _activeTasks.AddCount(1);
-                using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
                 await DispatchLoop(linkedSource.Token);
             }
             finally
             {
-                SignalActiveTask();
+                try
+                {
+                    // Cancel first: in-flight dispatches then skip response handling, so they cannot
+                    // race the feed teardown that Finish triggers (ActivatedSyncFeed disposes on Finished).
+                    await linkedSource.CancelAsync();
+                }
+                finally
+                {
+                    try
+                    {
+                        // Shutdown waits on Feed.FeedTask, which only completes once the feed is finished,
+                        // and this loop is the feed's only consumer. The loop's own cancellation handler
+                        // misses every exit that is not a cancelled await - cancellation observed by the
+                        // `while` condition, an exhausted _activeTasks count, or a non-cancellation fault -
+                        // so finish the feed here.
+                        Feed.Finish();
+                    }
+                    finally
+                    {
+                        // The signal must not depend on the cancellation callbacks or feed subscribers:
+                        // a throw above would otherwise leave DisposeAsync waiting out its full timeout.
+                        SignalActiveTask();
+                    }
+                }
             }
         }
 
@@ -213,14 +236,31 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             Metrics.SyncDispatcherDispatchTimeMicros.Observe(Stopwatch.GetElapsedTime(dispatchTimeStart).TotalMicroseconds, new StringLabel(_feedName));
 
-            if (Feed.IsMultiFeed)
+            try
             {
-                // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
-                // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
-                await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+                if (Feed.IsMultiFeed)
+                {
+                    // Limit multithreaded feed concurrency. Note, this also blocks freeing the allocation, which is deliberate.
+                    // otherwise, we will keep spawning requests without processing it fast enough, which consume memory.
+                    await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
+                }
             }
-
-            Free(allocation);
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Teardown raced this dispatch; stop rather than fault the un-awaited task.
+                if (Logger.IsDebug) Logger.Debug($"{_feedName} dispatch abandoned during shutdown.");
+                return;
+            }
+            finally
+            {
+                // The allocation must return to the pool on every exit: a cancelled wait would
+                // otherwise retire the peer's slot for the lifetime of the connection.
+                Free(allocation);
+            }
 
             dispatchTimeStart = Stopwatch.GetTimestamp();
             try

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -29,6 +30,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
         [Test]
         public void Roundtrip_with_null_top_level() => Test(null, EthSerializerGoldens.EmptyListRlp);
+
+        private static IEnumerable<TestCaseData> DataLimitCases() =>
+            ByteArrayListLimitTester.BoundaryCases(NodeDataMessageSerializer.RlpLimit);
+
+        [TestCaseSource(nameof(DataLimitCases))]
+        public void Deserialize_EnforcesDataCountLimit(int dataCount, bool shouldThrow) =>
+            ByteArrayListLimitTester.AssertLimitEnforced(
+                new NodeDataMessageSerializer(),
+                static data => new NodeDataMessage(data),
+                static message => message.Data.Count,
+                dataCount,
+                shouldThrow);
 
         [Test]
         public void Roundtrip_with_empty_entry()

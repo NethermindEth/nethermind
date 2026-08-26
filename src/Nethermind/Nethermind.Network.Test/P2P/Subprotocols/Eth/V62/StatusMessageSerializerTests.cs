@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -33,6 +34,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             using StatusMessage statusMessage = new();
             StatusMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, statusMessage);
+        }
+
+        [TestCase("e83f018302008080a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d")]
+        [TestCase("e83f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc680")]
+        public void Rejects_empty_hash(string message)
+        {
+            StatusMessageSerializer serializer = new();
+
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpException>());
         }
 
         [Test]

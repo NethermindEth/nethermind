@@ -194,8 +194,8 @@ public class Startup : IStartup
 
         TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, logger);
 
-        // Trusted JSON-RPC HTTP POSTs dispatch directly, skipping routing, CORS,
-        // compression, and WebSocket middleware. Authentication is still enforced
+        // Trusted non-browser JSON-RPC HTTP POSTs dispatch directly, skipping routing,
+        // CORS, compression, and WebSocket middleware. Authentication is still enforced
         // inside the handler for authenticated endpoints.
         app.Use((ctx, next) =>
         {
@@ -282,9 +282,12 @@ public class Startup : IStartup
         TrustedCidr[] additionalTrustedNetworks,
         [NotNullWhen(true)] out JsonRpcUrl? jsonRpcUrl)
     {
+        // Browser requests carry an Origin header and must take the regular pipeline
+        // so the CORS middleware can emit Access-Control-Allow-Origin on the response.
         if (ctx.Request.Method == "POST" &&
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
+            StringValues.IsNullOrEmpty(ctx.Request.Headers.Origin) &&
             IsTrustedSource(ctx, additionalTrustedNetworks) &&
             IsJsonContentType(ctx.Request.ContentType))
         {

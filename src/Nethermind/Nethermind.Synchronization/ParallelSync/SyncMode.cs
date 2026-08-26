@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -69,6 +70,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
     public static class SyncModeExtensions
     {
+        private static readonly SyncMode[] FlagsDescending = CreateDescendingFlags();
+
+        private static SyncMode[] CreateDescendingFlags()
+        {
+            SyncMode[] flags = Enum.GetValues<SyncMode>();
+            Array.Reverse(flags);
+            return flags;
+        }
+
         public static bool NotSyncing(this SyncMode syncMode) => syncMode is SyncMode.WaitingForBlock or SyncMode.Disconnected;
 
         public static bool HaveNotSyncedBodiesYet(this SyncMode syncMode) =>
@@ -105,5 +115,53 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        /// <summary>
+        /// Formats the flags in <paramref name="syncMode"/> by name.
+        /// </summary>
+        /// <remarks>
+        /// The default flags formatting falls back to printing a raw number when two or more flags that share a
+        /// bit are combined, so this checks each flag independently instead, walking from the largest value down
+        /// and skipping a flag once its bits are already covered by one already printed. Bits that match no defined
+        /// flag are reported as unknown instead of being silently dropped.
+        /// </remarks>
+        public static string ToFlagsString(this SyncMode syncMode)
+        {
+            if (syncMode == SyncMode.None)
+            {
+                return nameof(SyncMode.None);
+            }
+
+            StringBuilder builder = new(64);
+            SyncMode printed = SyncMode.None;
+            foreach (SyncMode flag in FlagsDescending)
+            {
+                if ((syncMode & flag) != flag || (printed & flag) == flag)
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append(flag.ToString());
+                printed |= flag;
+            }
+
+            SyncMode unknown = syncMode & ~printed;
+            if (unknown != SyncMode.None)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append("unknown: 0x").Append(((uint)unknown).ToString("X"));
+            }
+
+            return builder.ToString();
+        }
     }
 }

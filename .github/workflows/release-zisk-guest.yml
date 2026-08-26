@@ -1,0 +1,116 @@
+name: Release guest for ZisK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+
+jobs:
+  # Builds the guest and runs it under ziskemu against the known fixtures. Its
+  # binary is what gets released, so nothing unexecuted is ever signed.
+  test:
+    name: Test
+    uses: ./.github/workflows/stateless-tests.yml
+
+  release:
+    name: Draft release on GitHub
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind
+          path: ${{ env.PACKAGE_DIR }}
+
+      - name: Archive and sign
+        id: archive
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+          GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          set -euo pipefail
+          archive_name=nethermind-guest-zisk-r${{ github.run_number }}.tar.gz
+
+          # Artifacts are zipped, which drops the executable bit
+          chmod +x nethermind
+
+          # For a zkVM guest the ELF is the program commitment, so anyone verifying
+          # a proof needs its digest
+          digest=$(sha256sum nethermind | cut -d ' ' -f 1)
+          echo "guest-digest=$digest" >> $GITHUB_OUTPUT
+          echo "Guest SHA-256: \`$digest\`" >> $GITHUB_STEP_SUMMARY
+
+          # Without these flags tar records mtime/uid/gid, so two archives of a
+          # byte-identical guest differ
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@$(git log -1 --format=%ct)" -czf "$archive_name" nethermind
+          tar -tzf "$archive_name"
+
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o "$archive_name.asc" -ab "$archive_name"
+
+      # The release is left as a draft on purpose: publishing it, once the notes
+      # are filled in, is a manual step in the UI
+      - name: Draft
+        working-directory: ${{ env.PACKAGE_DIR }}
+        env:
+          GIT_TAG: zisk-guest-r${{ github.run_number }}
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          relnotes=$(cat <<'EOF'
+          # Release notes
+
+          ### [CONTENT PLACEHOLDER]
+
+          #### Guest binary
+
+          Built from `${{ github.sha }}` with the SHA-256 checksum: `${{ steps.archive.outputs.guest-digest }}`
+
+          #### Build signature
+
+          The package is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          EOF
+          )
+
+          if ! gh release view "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Drafting release $GIT_TAG"
+            gh release create "$GIT_TAG" --target "$GITHUB_SHA" -d -p --latest=false \
+              -t "Guest for ZisK r${{ github.run_number }}" -F <(printf '%s' "$relnotes")
+          else
+            # `run_number` restarts if this file is ever renamed, so touch nothing
+            # but this run's own draft
+            release=$(gh release view "$GIT_TAG" --json isDraft,targetCommitish \
+              -q '"\(.isDraft) \(.targetCommitish)"')
+            [[ "$release" == "true $GITHUB_SHA" ]] || \
+              { echo "::error::Release $GIT_TAG already exists"; exit 1; }
+
+            # A re-run rebuilds the guest, so the notes must follow the new digest
+            echo "Refreshing the notes of $GIT_TAG"
+            gh release edit "$GIT_TAG" -F <(printf '%s' "$relnotes")
+          fi
+
+          echo "Uploading assets"
+          gh release upload "$GIT_TAG" *.tar.gz *.tar.gz.asc --clobber
+
+          echo "Drafting completed. Review and publish the release manually."

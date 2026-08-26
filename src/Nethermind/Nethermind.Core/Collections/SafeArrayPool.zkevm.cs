@@ -21,9 +21,14 @@ namespace Nethermind.Core.Collections;
 /// </remarks>
 public static class SafeArrayPool<T>
 {
-    public static readonly ArrayPool<T> Shared = new SingleThreadedPow2Pool();
+    private static readonly SingleThreadedPow2Pool Pool = new();
 
-    private sealed class SingleThreadedPow2Pool : ArrayPool<T>
+    /// <summary>Gets the shared zkVM array pool.</summary>
+    /// <remarks>The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.</remarks>
+    public static SingleThreadedPow2Pool Shared => Pool;
+
+    /// <summary>A single-threaded, power-of-two array pool for the zkVM guest.</summary>
+    public sealed class SingleThreadedPow2Pool : ArrayPool<T>
     {
         private const int MinBucketLog = 0;   // 1 element
         private const int MaxBucketLog = 28;  // 256 Mi elements
@@ -31,18 +36,51 @@ public static class SafeArrayPool<T>
 
         private readonly Stack<T[]>?[] _buckets = new Stack<T[]>?[BucketCount];
 
-        public override T[] Rent(int minimumLength)
+        public override T[] Rent(int minimumLength) => Rent(minimumLength, out _);
+
+        /// <summary>Rents an array and reports whether its elements are known to be default-initialized.</summary>
+        /// <param name="minimumLength">The minimum length of the requested array.</param>
+        /// <param name="isFresh">
+        /// <see langword="true"/> when the array cannot contain data from a previous renter;
+        /// otherwise, <see langword="false"/>.
+        /// </param>
+        /// <returns>An array whose length is at least <paramref name="minimumLength"/>.</returns>
+        /// <remarks>
+        /// A non-fresh array has arbitrary contents that callers must clear before exposing unwritten elements.
+        /// A zero-length request returns <see cref="Array.Empty{T}"/> with <paramref name="isFresh"/> set to
+        /// <see langword="true"/> because the singleton exposes no elements.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="minimumLength"/> is negative.
+        /// </exception>
+        public T[] Rent(int minimumLength, out bool isFresh)
         {
-            if (minimumLength == 0) return Array.Empty<T>();
+            if (minimumLength == 0)
+            {
+                isFresh = true;
+                return Array.Empty<T>();
+            }
+
             ArgumentOutOfRangeException.ThrowIfNegative(minimumLength);
 
             int bucketIndex = BucketFor(minimumLength);
-            if (bucketIndex < 0) return new T[minimumLength];
+            if (bucketIndex < 0)
+            {
+                isFresh = true;
+                // Oversized arrays are not retained by this pool, but their capacity can satisfy
+                // subsequent growth by the renter before they are returned.
+                return new T[ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength)];
+            }
 
             Stack<T[]>? bucket = _buckets[bucketIndex];
-            return bucket is { Count: > 0 }
-                ? bucket.Pop()
-                : new T[1 << (bucketIndex + MinBucketLog)];
+            if (bucket is { Count: > 0 })
+            {
+                isFresh = false;
+                return bucket.Pop();
+            }
+
+            isFresh = true;
+            return new T[1 << (bucketIndex + MinBucketLog)];
         }
 
         public override void Return(T[] array, bool clearArray = false)

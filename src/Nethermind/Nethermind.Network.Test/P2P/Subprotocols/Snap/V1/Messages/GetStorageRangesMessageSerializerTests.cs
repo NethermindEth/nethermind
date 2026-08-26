@@ -28,8 +28,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 {
                     RootHash = TestItem.KeccakA,
                     Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
-                    StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-                    LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                    StartingHash = SnapSerializerGoldens.RangeStart,
+                    LimitHash = SnapSerializerGoldens.RangeLimit
                 },
                 ResponseBytes = 1000
             };
@@ -40,23 +40,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
-        public void Roundtrip_Empty()
+        public void Roundtrip_Empty_With_Null_LimitHash()
         {
             GetStorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = SnapSerializerGoldens.RequestId1111,
                 StorageRange = new()
                 {
                     RootHash = Keccak.OfAnEmptyString,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
-                    StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
-                    LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
+                    StartingHash = SnapSerializerGoldens.RangeStart,
+                    LimitHash = null
                 },
                 ResponseBytes = 1000
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            // The message encodes as [requestId, rootHash, accountPaths, startingHash, limitHash, responseBytes].
+            SerializerTester.TestZero(serializer, msg,
+                "f84a" + SnapSerializerGoldens.RequestId1111Rlp +
+                SnapSerializerGoldens.EmptyStringKeccakRlp +
+                "c0" +
+                SnapSerializerGoldens.RangeStartRlp +
+                "80" +
+                "8203e8");
         }
 
         [Test]

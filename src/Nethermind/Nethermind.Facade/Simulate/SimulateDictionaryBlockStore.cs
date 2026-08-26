@@ -21,6 +21,25 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         _blockNumDict[block.Number] = block;
     }
 
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        // Iterates what is held rather than the span: the interface promises a cost independent of the range, and
+        // a caller's chunk can be millions of heights wide.
+        List<ulong> covered = [];
+        foreach (ulong number in _blockNumDict.Keys)
+        {
+            if (number >= fromInclusive && number < toExclusive) covered.Add(number);
+        }
+
+        foreach (ulong number in covered)
+        {
+            if (_blockNumDict.Remove(number, out Block? block) && block.Hash is not null)
+            {
+                _blockDict.Remove(block.Hash);
+            }
+        }
+    }
+
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockDict.Remove(blockHash);

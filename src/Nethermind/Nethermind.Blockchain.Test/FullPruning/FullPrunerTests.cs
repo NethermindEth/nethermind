@@ -97,6 +97,28 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         Assert.That(test.CopyDb.Count, Is.EqualTo(count));
     }
 
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task records_duration_and_count_on_success()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        // Seed a sentinel so the assertion proves RecordPruningMetrics actually wrote the duration
+        // (a sub-second test prune truncates to 0, which would otherwise be indistinguishable from unset).
+        Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
+        TestContext test = CreateTest();
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
+        Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task does_not_record_count_on_unsuccessful_pruning()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        TestContext test = CreateTest(successfulPruning: false);
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore));
+    }
+
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true, FullPruningCompletionBehavior.None, false)]
     [TestCase(true, FullPruningCompletionBehavior.ShutdownOnSuccess, true)]

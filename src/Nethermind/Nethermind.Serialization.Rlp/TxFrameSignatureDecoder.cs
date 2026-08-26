@@ -28,7 +28,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         int check = length + decoderContext.Position;
 
         byte scheme = decoderContext.DecodeByte();
-        Address? signer = decoderContext.DecodeAddress();
+        Address? signer = decoderContext.DecodeAddressOrNull();
         ReadOnlyMemory<byte> msg = decoderContext.DecodeByteArrayMemory(_msgRlpLimit);
         ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(_signatureRlpLimit);
 

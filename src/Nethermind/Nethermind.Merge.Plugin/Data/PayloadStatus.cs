@@ -25,10 +25,7 @@ namespace Nethermind.Merge.Plugin.Data
         /// </summary>
         public const string Accepted = "ACCEPTED";
 
-        /// <summary>
-        /// EIP-7805 (FOCIL): the block executed cleanly but the inclusion-list constraint was
-        /// not satisfied — an appendable IL transaction was omitted from the payload.
-        /// </summary>
+        /// <summary>The block executed cleanly but omitted an appendable inclusion-list transaction (EIP-7805).</summary>
         public const string InclusionListUnsatisfied = "INCLUSION_LIST_UNSATISFIED";
     }
 }

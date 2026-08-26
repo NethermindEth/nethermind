@@ -245,6 +245,35 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Propagate_cancellation_from_forwardHeaderProvider()
+    {
+        using CancellationTokenSource cts = new();
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cts.Cancel();
+                return Task.FromException<IOwnedReadOnlyList<BlockHeader?>?>(new OperationCanceledException(cts.Token));
+            });
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        Func<Task<BlocksRequest?>> act = () => ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            cts.Token);
+
+        // A cancelled request must surface as cancellation to the dispatcher, which owns the cancel
+        // handling; converting it to a null request hides the shutdown from the feed lifecycle.
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
     public async Task Return_Null_On_InConsistentHeaderSequence()
     {
         using ArrayPoolList<BlockHeader?> headers = new(1);
@@ -481,7 +510,6 @@ public partial class BlockDownloaderTests
 
     [TestCase(33UL)]
     [TestCase(65UL)]
-    [Retry(3)]
     public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(ulong headNumber)
     {
         await using IContainer node = CreateNode();

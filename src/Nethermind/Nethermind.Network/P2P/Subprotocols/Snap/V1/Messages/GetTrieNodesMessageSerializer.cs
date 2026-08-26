@@ -123,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             {
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
-                Hash256? rootHash = ctx.DecodeKeccak();
+                Hash256 rootHash = ctx.DecodeKeccak();
                 message.RootHash = rootHash;
 
                 rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);

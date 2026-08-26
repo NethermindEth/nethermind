@@ -87,6 +87,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>>();
     }
 }
 

@@ -30,13 +30,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256? parentHash = decoderContext.DecodeKeccak();
-            Hash256? unclesHash = decoderContext.DecodeKeccak();
-            Address? beneficiary = decoderContext.DecodeAddress();
-            Hash256? stateRoot = decoderContext.DecodeKeccak();
-            Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-            Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom? bloom = decoderContext.DecodeBloom();
+            Hash256 parentHash = decoderContext.DecodeKeccak();
+            Hash256 unclesHash = decoderContext.DecodeKeccak();
+            Address beneficiary = decoderContext.DecodeAddress();
+            Hash256 stateRoot = decoderContext.DecodeKeccak();
+            Hash256 transactionsRoot = decoderContext.DecodeKeccak();
+            Hash256 receiptsRoot = decoderContext.DecodeKeccak();
+            Bloom bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             ulong number = decoderContext.DecodeULong();
             ulong gasLimit = decoderContext.DecodeULong();
@@ -57,9 +57,9 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakOrNull();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccakOrNull();
+            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccakOrNull();
             if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -91,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp,
             byte[] extraData)
         {
-            Hash256? mixHash = decoderContext.DecodeKeccak();
+            Hash256 mixHash = decoderContext.DecodeKeccak();
             ulong nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
             return new BlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
             {
@@ -104,13 +104,13 @@ namespace Nethermind.Serialization.Rlp
         protected virtual void EncodeSeal<TWriter>(ref TWriter writer, BlockHeader header)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            writer.Encode(header.MixHash);
+            writer.Encode(header.MixHash ?? Keccak.Zero);
             writer.Encode(header.Nonce, NonceLength);
         }
 
         /// <summary>RLP length of the seal section written by <see cref="EncodeSeal"/>.</summary>
         protected virtual int GetSealLength(BlockHeader header) =>
-            Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
+            Rlp.LengthOf(header.MixHash ?? Keccak.Zero) + Rlp.LengthOfNonce(header.Nonce);
 
         public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -122,13 +122,13 @@ namespace Nethermind.Serialization.Rlp
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             writer.StartSequence(GetContentLength(header, rlpBehaviors));
-            writer.Encode(header.ParentHash);
-            writer.Encode(header.UnclesHash);
-            writer.Encode(header.Beneficiary);
-            writer.Encode(header.StateRoot);
-            writer.Encode(header.TxRoot);
-            writer.Encode(header.ReceiptsRoot);
-            writer.Encode(header.Bloom);
+            writer.Encode(header.ParentHash ?? Keccak.Zero);
+            writer.Encode(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
+            writer.Encode(header.Beneficiary ?? Address.Zero);
+            writer.Encode(header.StateRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.TxRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.ReceiptsRoot ?? Keccak.EmptyTreeHash);
+            writer.Encode(header.Bloom ?? Bloom.Empty);
             writer.Encode(header.Difficulty);
             writer.Encode(header.Number);
             writer.Encode(header.GasLimit);
@@ -189,13 +189,13 @@ namespace Nethermind.Serialization.Rlp
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
-                                + Rlp.LengthOf(item.ParentHash)
-                                + Rlp.LengthOf(item.UnclesHash)
-                                + Rlp.LengthOf(item.Beneficiary)
-                                + Rlp.LengthOf(item.StateRoot)
-                                + Rlp.LengthOf(item.TxRoot)
-                                + Rlp.LengthOf(item.ReceiptsRoot)
-                                + Rlp.LengthOf(item.Bloom)
+                                + Rlp.LengthOf(item.ParentHash ?? Keccak.Zero)
+                                + Rlp.LengthOf(item.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
+                                + Rlp.LengthOf(item.Beneficiary ?? Address.Zero)
+                                + Rlp.LengthOf(item.StateRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.TxRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.ReceiptsRoot ?? Keccak.EmptyTreeHash)
+                                + Rlp.LengthOf(item.Bloom ?? Bloom.Empty)
                                 + Rlp.LengthOf(item.Difficulty)
                                 + Rlp.LengthOf(item.Number)
                                 + Rlp.LengthOf(item.GasLimit)

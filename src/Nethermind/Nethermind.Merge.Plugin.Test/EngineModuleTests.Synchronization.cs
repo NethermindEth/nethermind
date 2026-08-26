@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -768,7 +769,6 @@ public partial class EngineModuleTests
 
     [Test]
     [CancelAfter(30000)]
-    [Retry(3)]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -852,6 +852,12 @@ public partial class EngineModuleTests
         {
             if (e.Block.Hash == bestBeaconBlock!.Hash) bestBlockProcessed.Release();
         };
+        // IsBeaconSyncFinished flips on WasProcessed, which is set on the main-chain update -
+        // after both waits below. Gate on the event that corresponds to the asserted state.
+        Task bestBlockOnMain = Wait.ForEventCondition<BlockReplacementEventArgs>(cancellationToken,
+            h => chain.BlockTree.BlockAddedToMain += h,
+            h => chain.BlockTree.BlockAddedToMain -= h,
+            e => e.Block.Hash == bestBeaconBlock!.Hash);
         foreach (Block block in missingBlocks)
         {
             await chain.BlockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
@@ -862,13 +868,10 @@ public partial class EngineModuleTests
 
         await bestBlockProcessed.WaitAsync(cancellationToken);
         await chain.BlockProcessingQueue.WaitForBlockProcessing(cancellationToken);
+        await bestBlockOnMain;
 
-        // beacon sync should be finished, eventually
         bestBeaconBlockRequest = CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);
-        Assert.That(
-            () => rpc.engine_newPayloadV1(bestBeaconBlockRequest).Result.Data.Status,
-            Is.EqualTo(PayloadStatus.Valid).After(1000, 100)
-        );
+        Assert.That((await rpc.engine_newPayloadV1(bestBeaconBlockRequest)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         using (Assert.EnterMultipleScope())
         {

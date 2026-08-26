@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -58,7 +59,19 @@ public sealed class ReceiptsRegenerator(
         if (parent is null) return false;
 
         foreach (Transaction tx in block.Transactions)
-            tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+        {
+            if (tx.SenderAddress is not null)
+            {
+                continue;
+            }
+
+            if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+            {
+                return FailUnrecoverableSender(block, tx);
+            }
+
+            tx.SenderAddress = senderAddress;
+        }
 
         // Re-execute on a throwaway copy: block processing writes back the resolved state root, account-change
         // buffers, and generated access list, and this runs on RPC threads against the shared block-tree instance —
@@ -110,5 +123,12 @@ public sealed class ReceiptsRegenerator(
             // defensively so a pooled buffer can never outlive this call regardless of where regeneration runs.
             isolated.DisposeAccountChanges();
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool FailUnrecoverableSender(Block block, Transaction tx)
+    {
+        if (_logger.IsWarn) _logger.Warn($"Could not regenerate receipts for block {block.Number} ({block.Hash}): transaction {tx.Hash} sender address is not recoverable.");
+        return false;
     }
 }

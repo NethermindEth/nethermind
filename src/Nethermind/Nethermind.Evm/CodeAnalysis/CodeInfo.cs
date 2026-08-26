@@ -78,7 +78,9 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
             return null;
-        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+        if (CodeHash == default)
+            return null;
+        if (InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
             return cached;
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;

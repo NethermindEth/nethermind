@@ -571,7 +571,7 @@ public class SyncServerTests
 
         // Older in-flight range broadcasts are cancelled as the head advances, so intermediate updates
         // may be coalesced away; only the latest range is guaranteed to reach every peer.
-        ulong genesisNumber = localBlockTree.Genesis!.Number;
+        ulong earliestNumber = localBlockTree.GetLowestBlock();
         // AddBranch adds blocks up to branchLength - 1, so the highest head is blocksCount - 1, not blocksCount.
         ulong finalLatest = (ulong)Enumerable.Range(startBlock + 1, blocksCount - 1).Last(x => x % frequency == 0);
 
@@ -583,7 +583,7 @@ public class SyncServerTests
                 .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
                 .Do(call =>
                 {
-                    if (call.ArgAt<BlockHeader>(0).Number == genesisNumber &&
+                    if (call.ArgAt<BlockHeader>(0).Number == earliestNumber &&
                         call.ArgAt<BlockHeader>(1).Number == finalLatest)
                         perPeerFinalRange[idx].Set();
                 });
@@ -598,8 +598,69 @@ public class SyncServerTests
         for (int i = 0; i < peers.Length; i++)
         {
             Assert.That(perPeerFinalRange[i].Wait(TimeSpan.FromSeconds(30)), Is.True,
-                $"Peer {i} was not notified of the latest block range (genesis -> {finalLatest})");
+                $"Peer {i} was not notified of the latest block range ({earliestNumber} -> {finalLatest})");
         }
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_with_lowest_stored_block_when_pruner_reports_no_oldest_block()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(100UL));
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_clamps_earliest_to_the_announced_block()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(64UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(64).TestObject);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(64).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(64UL));
     }
 
     [Test]

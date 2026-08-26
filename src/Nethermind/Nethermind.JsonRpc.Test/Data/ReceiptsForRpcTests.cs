@@ -77,6 +77,24 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(document.RootElement.TryGetProperty(jsonPropertyName, out _), Is.False);
         }
 
+        private const string LeadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+        private const string LeadingZeroByteRootHex = "0x009ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+
+        [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
+        [TestCase(LeadingZeroByteRootHex, LeadingZeroByteRootHex)]
+        [TestCase(null, "0x0000000000000000000000000000000000000000000000000000000000000000")]
+        public void Serializes_root_as_full_width_data(string? rootHex, string expectedRoot)
+        {
+            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits. A null root becomes the full-width zero hash.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.PostTransactionState = rootHex is null ? null : new Hash256(rootHex);
+
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
+        }
+
         [Test]
         public void Error_field_is_not_serialized()
         {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
@@ -19,14 +20,19 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-            bool nonceGapsAllowed = isLocal || !_txs.IsFull();
-            if (nonceGapsAllowed && !tx.SupportsBlobs)
+            if (KeyedNonceManager.UsesKeyedNonce(tx))
             {
                 return AcceptTxResult.Accepted;
             }
 
-            int numberOfSenderTxsInPending = tx.SupportsBlobs
+            bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
+            bool nonceGapsAllowed = isLocal || !_txs.IsFull();
+            if (nonceGapsAllowed && !tx.CarriesBlobs)
+            {
+                return AcceptTxResult.Accepted;
+            }
+
+            int numberOfSenderTxsInPending = tx.CarriesBlobs
                 ? _blobTxs.GetBucketCount(tx.SenderAddress!)
                 : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             ulong currentNonce = state.SenderAccount.Nonce;

@@ -7,5 +7,6 @@ public sealed class HeadTxValidator() :
     CompositeTxValidator(
         MaxBlobCountBlobTxValidator.Instance,
         GasLimitCapTxValidator.Instance,
-        MempoolBlobTxProofVersionValidator.Instance
+        MempoolBlobTxProofVersionValidator.Instance,
+        FrameTxNonceKeysTxValidator.Instance
     );

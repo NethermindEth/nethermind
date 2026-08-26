@@ -77,9 +77,10 @@ public sealed class ArenaManager : IArenaManager
 
     /// <summary>
     /// Initialize from existing arena files and catalog entries.
-    /// Computes allocation frontiers and dead bytes per arena.
+    /// Computes allocation frontiers and dead bytes per arena, and returns the ids of
+    /// arenas referenced by the catalog for which no on-disk file exists.
     /// </summary>
-    public void Initialize(IReadOnlyList<CatalogEntry> entries)
+    public IReadOnlySet<int> Initialize(IReadOnlyList<CatalogEntry> entries)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Open existing arena files. Defer the per-file metric push until after frontier
@@ -118,6 +119,10 @@ public sealed class ArenaManager : IArenaManager
         foreach (CatalogEntry entry in entries)
         {
             int aid = entry.Location.ArenaId;
+            // The catalog is not rewritten by this recovery path, so reserve every id with a
+            // representable successor; reusing one would make stale entries appear serviceable.
+            if (aid >= _nextArenaId && aid < int.MaxValue)
+                _nextArenaId = aid + 1;
             if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
             {
                 if (missingArenas.Add(aid) && _logger.IsWarn)
@@ -139,6 +144,8 @@ public sealed class ArenaManager : IArenaManager
             kv.Value.DeadBytes = kv.Value.Frontier - live;
             kv.Value.ReportAdded();
         }
+
+        return missingArenas;
     }
 
     /// <summary>

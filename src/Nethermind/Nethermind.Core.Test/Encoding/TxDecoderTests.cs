@@ -305,19 +305,21 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
         }
 
-        [Test]
-        public void Decodes_too_large_transaction_nonce_as_max_nonce_sentinel()
+        [TestCase(9)]
+        [TestCase(33)]
+        public void Rejects_transaction_nonce_too_wide_during_decoding(int nonceLength)
         {
-            byte[] txBytes = BuildLegacyTxWithNonce([0x01, 0, 0, 0, 0, 0, 0, 0, 0]);
-            RlpReader decoderContext = new(txBytes);
+            byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
 
-            Transaction transaction = _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
-
-            using (Assert.EnterMultipleScope())
+            void Decode()
             {
-                Assert.That(transaction.Nonce, Is.EqualTo(ulong.MaxValue));
-                Assert.That(transaction.Hash, Is.EqualTo(Keccak.Compute(txBytes)));
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
             }
+
+            Assert.That(
+                Decode,
+                Throws.TypeOf<RlpException>().With.Message.Contains("NonceTooWide"));
         }
 
         [TestCaseSource(nameof(NonCanonicalNonceTestCases))]

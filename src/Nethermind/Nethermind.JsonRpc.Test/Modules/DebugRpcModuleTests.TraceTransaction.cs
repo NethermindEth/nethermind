@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
@@ -32,6 +33,29 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_with_block_override_does_not_mutate_cached_header()
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        BlockHeader header = context.Blockchain.BlockTree.Head!.Header;
+        UInt256 baseFee = header.BaseFeePerGas;
+
+        GethTraceOptions options = new()
+        {
+            BlockOverrides = new BlockOverride { BaseFeePerGas = baseFee + UInt256.One }
+        };
+        await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+
+        Assert.That(header.BaseFeePerGas, Is.EqualTo(baseFee), "block override must not write into the block-tree-cached header");
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

@@ -29,11 +29,13 @@ public class EnrTreeCrawler(ILogger logger)
             }
         }
         DnsClient client = new(domain);
-        SearchContext searchContext = new(string.Empty);
-        return SearchTree(client, searchContext, cancellationToken);
+        return SearchTree(client, cancellationToken);
     }
 
-    private async IAsyncEnumerable<string> SearchTree(DnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    internal IAsyncEnumerable<string> SearchTree(IDnsClient client, CancellationToken cancellationToken = default) =>
+        SearchTree(client, new SearchContext(string.Empty), cancellationToken);
+
+    private async IAsyncEnumerable<string> SearchTree(IDnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         while (searchContext.RefsToVisit.Count > 0)
         {
@@ -53,6 +55,13 @@ public class EnrTreeCrawler(ILogger logger)
             IEnumerable<string> lookupResult = await client.Lookup(query, cancellationToken);
             foreach (string node in lookupResult)
             {
+                // An empty query is a tree root, which EIP-1459 serves from a bare domain with no hash label.
+                if (query.Length != 0 && !EnrTreeHash.Matches(query, node))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ENR tree record from DNS query '{query}': content does not hash to the subdomain it was served from.");
+                    continue;
+                }
+
                 EnrTreeNode treeNode;
                 try
                 {

@@ -1,13 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
+
+/// <summary>Extensions over the raw wire byte-strings carried by the SSZ containers in this file.</summary>
+/// <remarks>Not in <c>WireConversionExtensions</c>: the wire types compile into assemblies that do not link it.</remarks>
+internal static class SszWireBytesExtensions
+{
+    /// <summary>The wire bytes as an array, copied unless the memory exclusively owns one.</summary>
+    /// <remarks>The result outlives the wire struct, so memory that only spans part of a buffer must be
+    /// copied rather than aliased.</remarks>
+    public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
+        MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
+        && segment.Offset == 0 && segment.Count == segment.Array!.Length
+            ? segment.Array
+            : bytes.ToArray();
+}
 
 /// <summary>
 /// SSZ representation of a single variable-length transaction byte-string.
@@ -17,7 +33,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 [SszContainer(isCollectionItself: true)]
 public partial struct SszTransaction
 {
-    [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
+    [SszList(0x4000_0000)] public ReadOnlyMemory<byte> Bytes { get; set; }
 }
 
 [SszContainer]
@@ -43,9 +59,7 @@ public partial struct PayloadStatusWire
     [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
 }
 
-// EIP-7805 (FOCIL): result of engine_newPayloadV6. Adds the optional inclusion-list compliance
-// flag as List[byte, 1] (0/1 = false/true, empty = null), matching the LatestValidHash/ValidationError
-// Optional[T] = List[T, 1] pattern already used above.
+// InclusionListSatisfied follows the Optional[T] = List[T, 1] pattern used above: 0/1 = false/true, empty = null.
 [SszContainer]
 public partial struct PayloadStatusV2Wire
 {
@@ -112,9 +126,7 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
 }
 
-// EIP-7805 (FOCIL): the SszList limit below only affects hash-tree-root (which the REST wire never
-// computes — its bytes aren't merkleized), so it acts purely as a transport decode bound pending a
-// formal FOCIL SSZ transport spec.
+// SszList limits act purely as decode bounds here: the REST wire never computes hash-tree-root.
 [SszContainer]
 public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
 {
@@ -125,8 +137,7 @@ public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
     public ulong TargetGasLimit { get; set; }
-    // FCU-V5 carries the flattened aggregate (bounded on the JSON path by ExceedsAggregateInclusionListBound),
-    // so use the aggregate entry bound — the per-member cap would reject aggregates the JSON path accepts.
+    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
 }
 
@@ -186,8 +197,7 @@ public partial struct ForkchoiceUpdatedResponseWire
     [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
 }
 
-// EIP-7805 (FOCIL): response of engine_forkchoiceUpdatedV5 — carries PayloadStatusV2 so a VALID head
-// can report inclusionListSatisfied (execution-apis#609).
+// Carries PayloadStatusV2 so a VALID head can report inclusionListSatisfied (execution-apis#609).
 [SszContainer]
 public partial struct ForkchoiceUpdatedResponseWireV2
 {
@@ -236,12 +246,10 @@ public partial struct NewPayloadV6RequestWire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
-    // newPayloadV6 carries the flattened aggregate, so bound by the aggregate entry count (not the
-    // per-member MaxTransactionsPerInclusionList) — otherwise SSZ rejects aggregates the JSON path accepts.
+    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
 }
 
-// EIP-7805 (FOCIL): response of engine_getInclusionListV1 — the pending inclusion-list transactions.
 [SszContainer]
 public partial struct InclusionListResponseWire
 {

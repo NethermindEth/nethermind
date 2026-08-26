@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -77,7 +80,16 @@ public class SszMiddlewareTests
     {
         RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
 
-        ISszEndpointHandler[] handlers =
+        return new SszMiddleware(
+            passthrough,
+            _urlCollection,
+            _auth,
+            BuildHandlers(),
+            _processExitSource,
+            LimboLogs.Instance);
+    }
+
+    private ISszEndpointHandler[] BuildHandlers() =>
         [
             new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
             new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
@@ -116,15 +128,41 @@ public class SszMiddlewareTests
             new CapabilitiesSszHandler(_specProvider),
 
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
         ];
 
-        return new SszMiddleware(
-            passthrough,
-            _urlCollection,
-            _auth,
-            handlers,
-            _processExitSource,
-            LimboLogs.Instance);
+    // A resource mapped to a method version with no registered handler is advertised and recognised but
+    // unservable, and nothing else catches that since the handler set is assembled by hand.
+    [Test]
+    public void Every_route_a_fork_resolves_has_a_handler()
+    {
+        ISszEndpointHandler[] handlers = BuildHandlers();
+
+        List<string> missing = [];
+        foreach (string fork in SszRestPaths.SupportedForksOrdered)
+        {
+            foreach ((string httpMethod, string resource) in SszRestPaths.ForkScopedEndpoints)
+            {
+                int? version = SszRestPaths.MapForkToVersion(fork, resource, httpMethod, out _);
+                if (version is null) continue;
+                if (!handlers.Any(h => h.HttpMethod == httpMethod && h.Resource == resource && h.Version == version))
+                    missing.Add($"{fork}: {httpMethod} {resource} -> v{version}");
+            }
+        }
+
+        Assert.That(missing, Is.Empty);
+    }
+
+    // The coverage above only means something if this hand-built set matches what production registers.
+    [Test]
+    public void Configurer_registers_the_handler_set_this_fixture_builds()
+    {
+        ServiceCollection services = [];
+        new SszMiddlewareConfigurer(Substitute.For<IComponentContext>()).Configure(services);
+
+        Assert.That(
+            services.Where(d => d.ServiceType == typeof(ISszEndpointHandler)).Select(d => d.ImplementationType),
+            Is.EquivalentTo(BuildHandlers().Select(h => h.GetType())));
     }
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
@@ -1229,7 +1267,7 @@ public class SszMiddlewareTests
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
 
-    // EIP-7805 (FOCIL): the three Bogota methods must resolve to a handler (not 404) once advertised over SSZ.
+    // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
     {
@@ -1264,7 +1302,7 @@ public class SszMiddlewareTests
         {
             PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
         };
-        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>())
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
 
         byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
@@ -1284,7 +1322,7 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
-            Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>());
+            Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>());
     }
 
     [Test]

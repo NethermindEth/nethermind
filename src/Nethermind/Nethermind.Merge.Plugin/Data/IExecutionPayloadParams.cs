@@ -29,10 +29,7 @@ public class ExecutionPayloadParams(
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
-    /// <summary>
-    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
-    /// </summary>
+    /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
@@ -77,10 +74,7 @@ public class ExecutionPayloadParams(
                 return ValidationResult.Fail;
             }
 
-            // The flattened aggregate spans up to IL_COMMITTEE_SIZE members, each bounded by
-            // MAX_BYTES_PER_INCLUSION_LIST. Bound both the entry count and the raw byte total so an
-            // authenticated-but-faulty CL cannot force decode/recover work far beyond any valid FOCIL
-            // input (empty entries cost no bytes but still allocate a slot per entry downstream).
+            // Count is bounded separately from bytes: an empty entry costs no bytes but still allocates a slot.
             if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
             {
                 error = "Inclusion list exceeds the maximum number of transactions";
@@ -89,13 +83,11 @@ public class ExecutionPayloadParams(
 
             long totalBytes = 0;
             for (int i = 0; i < InclusionListTransactions.Length; i++)
-            {
                 totalBytes += InclusionListTransactions[i]?.Length ?? 0;
-                if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
-                {
-                    error = "Inclusion list exceeds the maximum aggregate size";
-                    return ValidationResult.Fail;
-                }
+            if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+            {
+                error = "Inclusion list exceeds the maximum aggregate size";
+                return ValidationResult.Fail;
             }
         }
 
@@ -268,3 +260,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return expectedIndex == expected.Length;
     }
 }
+
+/// <summary>An EIP-7805 newPayload request, distinguished by type because <see cref="ExecutionPayloadV4"/>
+/// spans two forks and shared handlers have nothing else to tell them apart by.</summary>
+public sealed class InclusionListExecutionPayloadParams(
+    ExecutionPayloadV4 executionPayload,
+    Hash256?[]? blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests,
+    byte[][]? inclusionListTransactions)
+    : ExecutionPayloadParams<ExecutionPayloadV4>(
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);

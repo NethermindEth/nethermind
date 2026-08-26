@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -155,9 +156,41 @@ public class PayloadAttributes
         return position;
     }
 
-    private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    /// <summary>Largest buffer any inclusion list within the EIP-7805 aggregate bounds can need.</summary>
+    private const long MaxPooledInclusionListDigestBuffer =
+        Eip7805Constants.MaxAggregateInclusionListBytes
+        + (long)Eip7805Constants.MaxAggregateInclusionListTransactions * sizeof(uint);
+
+    internal static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
         // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
+        long totalLength = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+            totalLength += sizeof(uint) + (long)(inclusionListTransactions[i]?.Length ?? 0);
+
+        // forkchoiceUpdated keeps an oversized list rather than rejecting it, so stream anything past
+        // the aggregate bounds instead of renting a buffer sized by the engine body cap.
+        if (totalLength > MaxPooledInclusionListDigestBuffer)
+            return ComputeInclusionListDigestStreaming(inclusionListTransactions);
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent((int)totalLength, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, (int)totalLength);
+        int position = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(span.Slice(position, sizeof(uint)), (uint)entry.Length);
+            position += sizeof(uint);
+            entry.CopyTo(span[position..]);
+            position += entry.Length;
+        }
+
+        return ValueKeccak.Compute(span);
+    }
+
+    /// <summary>Same byte sequence and digest as the pooled path, assembled incrementally.</summary>
+    internal static ValueHash256 ComputeInclusionListDigestStreaming(byte[][] inclusionListTransactions)
+    {
         Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
         KeccakHash hash = KeccakHash.Create();
         for (int i = 0; i < inclusionListTransactions.Length; i++)
@@ -167,6 +200,7 @@ public class PayloadAttributes
             hash.Update(lengthPrefix);
             if (entry.Length > 0) hash.Update(entry);
         }
+
         return hash.GenerateValueHash();
     }
 
@@ -227,14 +261,6 @@ public class PayloadAttributes
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
-        // EIP-7805: V5's only new field (inclusionListTransactions) is optional, so a null-IL attrs is
-        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't
-        // rejected — but only for FCUv5 itself, so FCUv3/V4 still report UnsupportedFork (-38005).
-        if (timestampVersion == PayloadAttributesVersions.V5
-            && actualVersion == PayloadAttributesVersions.V4
-            && fcuVersion == EngineApiVersions.Fcu.V5)
-            actualVersion = PayloadAttributesVersions.V5;
-
         // When attrs are below the timestamp-implied version and the FCU doesn't accept this
         // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
         // specific missing field rather than a generic version-mismatch.
@@ -278,7 +304,9 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
-            // EIP-7805: inclusionListTransactions is optional — the initial FCUv5 build starts with it null.
+            // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
+            // an absent one is not.
+            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
             _ => null
         };
     }

@@ -11,12 +11,9 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-/// <summary>
-/// Handles <c>POST /engine/v2/payloads</c> for Bogota (EIP-7805 / FOCIL), the SSZ-REST equivalent of
-/// <c>engine_newPayloadV6</c>. Dedicated rather than a <see cref="NewPayloadSszHandler{TVersion,TWire}"/>
-/// descriptor because V6 is the only newPayload version returning <see cref="PayloadStatusV2"/> (with the
-/// inclusion-list-satisfied flag) instead of <see cref="PayloadStatusV1"/>.
-/// </summary>
+/// <summary>SSZ-REST equivalent of <c>engine_newPayloadV6</c>.</summary>
+/// <remarks>Dedicated rather than a <see cref="NewPayloadSszHandler{TVersion,TWire}"/> descriptor because
+/// V6 alone returns <see cref="PayloadStatusV2"/>.</remarks>
 public sealed class NewPayloadV6SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";

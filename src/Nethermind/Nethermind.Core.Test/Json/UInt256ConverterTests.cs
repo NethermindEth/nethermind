@@ -25,9 +25,17 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [TestCase(NumberConversion.Raw)]
     public void Test_roundtrip(NumberConversion numberConversion)
     {
-        TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        ForcedNumberConversion.Value = numberConversion;
+        try
+        {
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]

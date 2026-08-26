@@ -318,9 +318,28 @@ namespace Nethermind.Synchronization.Peers
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
-                initCancelTokenSource?.Cancel();
+                try
+                {
+                    initCancelTokenSource?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The refresh continuation disposed the source between the lookup and the cancel.
+                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node:c} completed while the peer was being removed.");
+                }
             }
         }
+
+        // Replaces only the dictionary target; the refresh continuation retains ownership of the
+        // original source and disposes it. Used to reproduce the cancel-versus-dispose race.
+        internal bool TryReplaceRefreshCancellation(PublicKey id, CancellationTokenSource replacement)
+        {
+            if (!_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current)) return false;
+            return _refreshCancelTokens.TryUpdate(id, replacement, current);
+        }
+
+        internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
+            _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
 
         public void SetPeerPriority(PublicKey id)
         {
@@ -330,6 +349,13 @@ namespace Nethermind.Synchronization.Peers
                 Interlocked.Increment(ref PriorityPeerCount);
             }
         }
+
+        // Cap for the allocation retry backoff. A shallow-sleep wake-up is time-based and never fires
+        // _signal, so this retry delay is the only path that notices it, and AllocateAndRun passes an
+        // unbounded budget that would otherwise let the backoff grow without limit.
+        private const int MaxAllocationWaitTimeMs = 1000;
+
+        internal static int GetAllocationWaitTime(int tryCount) => (int)Math.Min(10L * tryCount, MaxAllocationWaitTimeMs);
 
         public async Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
@@ -365,7 +391,7 @@ namespace Nethermind.Synchronization.Peers
                                       || elapsedMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
-                int waitTime = 10 * tryCount++;
+                int waitTime = GetAllocationWaitTime(tryCount++);
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
                 if (waitTime > 0)

@@ -77,6 +77,17 @@ public class KademliaTests
         Assert.That(nodeRemovedTriggered, Is.EqualTo(1));
     }
 
+    /// <summary>Guards the wiring both discv4 and discv5 rely on, as they share this module.</summary>
+    [Test]
+    public void ShouldResolveRandomWalkDiscovery()
+    {
+        using IContainer container = CreateKadContainer(new KademliaConfig<ValueHash256>());
+
+        Assert.That(
+            container.Resolve<IKademliaDiscovery<ValueHash256, ValueHash256>>(),
+            Is.InstanceOf<RandomWalkKademliaDiscovery<ValueHash256, ValueHash256, Hash256>>());
+    }
+
     [Test]
     public void ShouldSeedBootnodes()
     {

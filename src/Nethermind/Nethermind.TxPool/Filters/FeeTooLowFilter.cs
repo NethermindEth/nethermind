@@ -41,7 +41,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.FeeTooLow;
             }
 
-            TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTxs : _txs);
+            TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTxs : _txs);
             if (relevantPool.IsFull() && relevantPool.TryGetLast(out Transaction? lastTx)
                 && affordableGasPrice <= lastTx?.GasBottleneck)
             {

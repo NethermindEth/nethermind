@@ -17,5 +17,10 @@ public interface IRoutingTable<TNode, TKadKey>
     void LogDebugInfo();
     event EventHandler<TNode>? OnNodeAdded;
     event EventHandler<TNode>? OnNodeRemoved;
-    int Size { get; }
+
+    /// <summary>
+    /// Returns how many nodes the table holds and how many slots its current buckets provide.
+    /// </summary>
+    /// <remarks>Implementations may walk every bucket, so this is not meant for hot paths.</remarks>
+    RoutingTableOccupancy GetOccupancy();
 }

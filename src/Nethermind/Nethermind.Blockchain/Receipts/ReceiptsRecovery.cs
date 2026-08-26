@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
+                receipt.ContractAddress = transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 // The log-count heuristic below rests on a pre-EIP-8141 invariant: a failed transaction
                 // has no logs. A frame transaction breaks it — its status is derived from the frame
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Recipient = (transaction.IsContractCreation ? Address.Zero : transaction.To)!.ToStructRef();
 
                 // how would it be in CREATE2?
-                receipt.ContractAddress = (transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
+                receipt.ContractAddress = (transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 // See the note on the same heuristic in the overload above.
                 if (receipt.StatusCode != StatusCode.Success && receipt.TxType != TxType.FrameTx)

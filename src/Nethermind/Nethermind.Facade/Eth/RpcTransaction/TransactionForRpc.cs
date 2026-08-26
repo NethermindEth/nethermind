@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -159,7 +161,7 @@ public abstract class TransactionForRpc
                 TxType = T.TxType,
                 Type = txType,
                 FromTransactionFunc = T.FromTransaction,
-                DiscriminatorProperties = uniqueProperties
+                DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
 
             int existingTypeInfo = _txTypes.FindIndex(t => t.TxType == typeInfo.TxType);
@@ -170,6 +172,9 @@ public abstract class TransactionForRpc
             }
             else
             {
+                // Discriminator bitset in DeriveTxType is ulong — keep registration count within it.
+                Debug.Assert(_txTypes.Count < 64);
+
                 // Adding in reverse order so newer tx types are in priority
                 int indexOfPreviousTxType = _txTypes.FindIndex(t => t.TxType < typeInfo.TxType);
                 if (indexOfPreviousTxType != -1)
@@ -185,12 +190,10 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            // Copy the reader so we can do a double parse:
-            // The first parse is used to check for fields, while the second parses the entire Transaction
+            // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
-            JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
+            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
 
             TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
@@ -200,29 +203,78 @@ public abstract class TransactionForRpc
             return result;
         }
 
-        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted)
-        {
-            const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
-            const string typeFieldKey = nameof(TransactionForRpc.Type);
+        private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
+        private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
 
-            if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
+        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
+        {
+            TxType? setType = null;
+            bool hasGasPrice = false;
+            // Bit i set ⇒ discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            ulong discriminated = 0;
+
+            if (reader.TokenType == JsonTokenType.StartObject)
             {
-                TxType? setType = node.Deserialize<TxType?>(options);
-                if (setType is not null)
+                while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    isDefaulted = false;
-                    return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ?? throw new JsonException("Unknown transaction type");
+                    if (setType is null && NameEqualsIgnoreCase(ref reader, TypeFieldUtf8))
+                    {
+                        reader.Read();
+                        setType = JsonSerializer.Deserialize<TxType?>(ref reader, options);
+                        // Explicit type fully determines the concrete class — stop scanning large payloads.
+                        if (setType is not null) break;
+                        continue;
+                    }
+
+                    if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
+                    {
+                        hasGasPrice = true;
+                    }
+                    else
+                    {
+                        int count = _txTypes.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            foreach (byte[] discriminator in _txTypes[i].DiscriminatorPropertiesUtf8)
+                            {
+                                if (NameEqualsIgnoreCase(ref reader, discriminator))
+                                {
+                                    discriminated |= 1UL << i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    reader.Read();
+                    if (!reader.TrySkip()) break;
                 }
             }
 
-            if (untyped.ContainsKey(gasPriceFieldKey))
+            Type? viaDiscriminator = null;
+            if (discriminated != 0)
+            {
+                viaDiscriminator = _txTypes[BitOperations.TrailingZeroCount(discriminated)].Type;
+            }
+
+            if (setType is not null)
+            {
+                isDefaulted = false;
+                foreach (TxTypeInfo candidate in _txTypes)
+                {
+                    if (candidate.TxType == setType) return candidate.Type;
+                }
+
+                throw new JsonException("Unknown transaction type");
+            }
+
+            if (hasGasPrice)
             {
                 isDefaulted = true;
                 return typeof(LegacyTransactionForRpc);
             }
 
             // Discriminator field is a strong signal — not a default.
-            Type? viaDiscriminator = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type;
             if (viaDiscriminator is not null)
             {
                 isDefaulted = false;
@@ -231,6 +283,35 @@ public abstract class TransactionForRpc
 
             isDefaulted = true;
             return typeof(EIP1559TransactionForRpc);
+        }
+
+        // lowerCaseName must be pure ASCII letters — |0x20 fold is only sound for that alphabet.
+        private static bool NameEqualsIgnoreCase(ref Utf8JsonReader reader, ReadOnlySpan<byte> lowerCaseName)
+        {
+            if (!reader.HasValueSequence && !reader.ValueIsEscaped)
+            {
+                ReadOnlySpan<byte> name = reader.ValueSpan;
+                if (name.Length != lowerCaseName.Length) return false;
+                for (int i = 0; i < name.Length; i++)
+                {
+                    if ((name[i] | 0x20) != lowerCaseName[i]) return false;
+                }
+
+                return true;
+            }
+
+            // Escaped / multi-segment: ordinal match first (no alloc), then one unescaped compare.
+            if (reader.ValueTextEquals(lowerCaseName)) return true;
+
+            string? unescaped = reader.GetString();
+            if (unescaped is null || unescaped.Length != lowerCaseName.Length) return false;
+            for (int i = 0; i < unescaped.Length; i++)
+            {
+                char c = unescaped[i];
+                if (c > 0x7f || ((byte)c | 0x20) != lowerCaseName[i]) return false;
+            }
+
+            return true;
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
@@ -243,7 +324,7 @@ public abstract class TransactionForRpc
             public TxType TxType { get; set; }
             public Type Type { get; set; }
             public FromTransactionFunc FromTransactionFunc { get; set; }
-            public string[] DiscriminatorProperties { get; set; } = [];
+            public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
     }
 

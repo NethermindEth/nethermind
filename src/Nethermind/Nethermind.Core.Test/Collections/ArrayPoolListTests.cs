@@ -444,3 +444,27 @@ public class ArrayPoolListTests
     }
 #endif
 }
+
+public class ArrayPoolUtilitiesTests
+{
+    private static object[][] CapacityCases() =>
+    [
+        [1, 1],
+        [3, 4],
+        [(1 << 28) + 1, 1 << 29],
+        [(1 << 30) + 1, (1 << 30) + 1],
+        [Array.MaxLength, Array.MaxLength],
+        [int.MaxValue, int.MaxValue],
+    ];
+
+    [TestCaseSource(nameof(CapacityCases))]
+    public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    public void Get_power_of_two_capacity_requires_positive_length(int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+}

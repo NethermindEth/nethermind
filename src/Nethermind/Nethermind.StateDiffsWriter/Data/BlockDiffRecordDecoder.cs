@@ -59,8 +59,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         int outerEnd = ctx.Position + outerLen;
 
         long blockNumber = ctx.DecodeLong();
-        Hash256 stateRoot = ctx.DecodeKeccak()
-            ?? throw new RlpException("BlockDiffRecord.StateRoot must not be null");
+        Hash256 stateRoot = ctx.DecodeKeccak();
 
         int codeSeqLen = ctx.ReadSequenceLength();
         int codeSeqEnd = ctx.Position + codeSeqLen;

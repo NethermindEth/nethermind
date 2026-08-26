@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
-internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequence, IDiscv5RecordFilter recordFilter)
+internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequence)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
     private const int MaxNodesResponseMessages = 16;
@@ -87,7 +87,7 @@ internal sealed class SelfRecordResponseHandler(Node receiver, ulong minimumSequ
         {
             NodeRecord record = nodes.Records[i];
             if (record.EnrSequence >= minimumSequence &&
-                KademliaAdapter.IsAcceptableNodeRecord(record, receiver.Id.Hash, _allowNonRoutableRelays, recordFilter))
+                KademliaAdapter.IsAcceptableNodeRecord(record, receiver.Id.Hash, _allowNonRoutableRelays))
             {
                 _record = record;
                 return;

@@ -25,7 +25,7 @@ public sealed class BlobTxPriorityComparer : IComparer<Transaction>
         if (x is null) return TxComparisonResult.XFirst;
         if (y is null) return TxComparisonResult.YFirst;
 
-        return x.SupportsBlobs == y.SupportsBlobs ? TxComparisonResult.Equal :
-            x.SupportsBlobs ? TxComparisonResult.XFirst : TxComparisonResult.YFirst;
+        return x.CarriesBlobs == y.CarriesBlobs ? TxComparisonResult.Equal :
+            x.CarriesBlobs ? TxComparisonResult.XFirst : TxComparisonResult.YFirst;
     }
 }
