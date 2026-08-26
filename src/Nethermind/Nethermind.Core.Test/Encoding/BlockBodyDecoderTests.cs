@@ -25,6 +25,7 @@ public class BlockBodyDecoderTests
     }
 
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
+    // Tx bound at the default 1 GGas MaxBlockGas: 1,000,000,000 / 4,500 + 1 == 222,223 entries.
     [TestCase(222_224, 0, null, TestName = "transactions")]
     [TestCase(0, 3, null, TestName = "uncles")]
     [TestCase(0, 0, 64_001, TestName = "withdrawals")]
