@@ -28,8 +28,8 @@ public partial class EthRpcModuleTests
     // return pad32(CALLDATALOAD(4) * 2) — no storage reads, so derivation must blacklist.
     private const string DoublerCode = "60043560020260005260206000f3";
 
-    // Reads (and discards) the arg-keyed mapping slot, then always returns the constant 0x2a.
-    private const string ConstantAfterMappingReadCode = "600435600052600060205260406000205450602a60005260206000f3";
+    // Mirrors EthCallTemplates.MaxDerivationAttempts.
+    private const int MaxDerivationAttempts = 16;
 
     private const uint BalanceOfSelector = 0x70a08231;
     private static readonly Address TemplateContract = new("0xc0de000000000000000000000000000000000001");
@@ -48,15 +48,17 @@ public partial class EthRpcModuleTests
         return new UInt256(ValueKeccak.Compute(material).Bytes, isBigEndian: true);
     }
 
-    private static async Task<TestRpcBlockchain> CreateTemplatesChain(string codeHex, bool enabled = true, bool shadowMode = true, UInt256? balanceA = null, UInt256? balanceB = null) =>
+    private static async Task<TestRpcBlockchain> CreateTemplatesChain(string codeHex, bool enabled = true, bool shadowMode = true, (UInt256 Arg, UInt256 Balance)[]? balances = null) =>
         await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EthCallTemplates = enabled, EthCallTemplatesShadowMode = shadowMode })
             .Build(builder => builder.WithGenesisPostProcessor((_, state, specProvider) =>
             {
                 state.CreateAccount(TemplateContract, 0);
                 state.InsertCode(TemplateContract, Bytes.FromHexString(codeHex), specProvider.GenesisSpec);
-                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgA, 0)), (balanceA ?? BalanceA).ToBigEndian());
-                state.Set(new StorageCell(TemplateContract, MappingSlot(ArgB, 0)), (balanceB ?? BalanceB).ToBigEndian());
+                foreach ((UInt256 arg, UInt256 balance) in balances ?? [(ArgA, BalanceA), (ArgB, BalanceB)])
+                {
+                    state.Set(new StorageCell(TemplateContract, MappingSlot(arg, 0)), balance.ToBigEndian());
+                }
                 state.Set(new StorageCell(TemplateContract, GuardSlot), ((UInt256)0xAA).ToBigEndian());
             }));
 
@@ -172,16 +174,48 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_templates_equal_outputs_give_no_derivation_evidence()
+    public async Task Eth_call_templates_equal_outputs_defer_derivation_until_distinct_pair()
     {
-        // The contract reads m[arg] but always returns 0x2a; with both mapping slots also holding 0x2a the
-        // outputs match the differing reads, so only the equal-outputs rejection prevents a bogus template.
-        UInt256 constant = 0x2a;
-        using TestRpcBlockchain rpc = await CreateTemplatesChain(ConstantAfterMappingReadCode, balanceA: constant, balanceB: constant);
+        // Two equal balances (the common zero-balance case in the wild) are ambiguous evidence: no template
+        // may be derived from them, but the pair must stay learnable — a later distinct-output pair derives.
+        UInt256 sharedBalance = 42;
+        UInt256 argC = new(0xCCCC);
+        UInt256 balanceC = 77;
+        using TestRpcBlockchain rpc = await CreateTemplatesChain(
+            BalanceOfBody, balances: [(ArgA, sharedBalance), (ArgB, sharedBalance), (argC, balanceC)]);
         TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
 
-        Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(constant)));
-        Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(constant)));
+        Assert.That(await CallTemplateContract(rpc, ArgA), Is.EqualTo(SuccessResponse(sharedBalance)));
+        Assert.That(await CallTemplateContract(rpc, ArgB), Is.EqualTo(SuccessResponse(sharedBalance)));
+
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted));
+
+        Assert.That(await CallTemplateContract(rpc, argC), Is.EqualTo(SuccessResponse(balanceC)));
+
+        Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived + 1));
+        Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted));
+    }
+
+    [Test]
+    public async Task Eth_call_templates_equal_output_retries_exhaust_into_blacklist()
+    {
+        // Every argument holds the same balance, so each derivation attempt fails on equal outputs;
+        // after MaxDerivationAttempts such failures the pair must be blacklisted.
+        UInt256 sharedBalance = 42;
+        (UInt256 Arg, UInt256 Balance)[] balances = new (UInt256, UInt256)[MaxDerivationAttempts + 1];
+        for (int i = 0; i < balances.Length; i++)
+        {
+            balances[i] = (new UInt256((ulong)(0x1000 + i)), sharedBalance);
+        }
+
+        using TestRpcBlockchain rpc = await CreateTemplatesChain(BalanceOfBody, balances: balances);
+        TemplateMetricsSnapshot before = TemplateMetricsSnapshot.Capture();
+
+        foreach ((UInt256 arg, _) in balances)
+        {
+            Assert.That(await CallTemplateContract(rpc, arg), Is.EqualTo(SuccessResponse(sharedBalance)));
+        }
 
         Assert.That(Metrics.EthCallTemplatesDerived, Is.EqualTo(before.Derived));
         Assert.That(Metrics.EthCallTemplatesBlacklisted, Is.EqualTo(before.Blacklisted + 1));

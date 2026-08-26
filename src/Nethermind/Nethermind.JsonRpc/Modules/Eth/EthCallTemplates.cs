@@ -34,10 +34,13 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// traces, and whose value must equal the 32-byte call output. All other reads become value-guards that are
 /// re-checked against the requested block before a template answer is served; a guard or code-hash change at
 /// the current head invalidates the entry (historical queries just fall through). Recording runs as a
-/// dedicated extra execution so the user's request always stays on the normal path while learning: two
-/// recordings per learning cycle, at most one in flight per pair, and a head-block guard invalidation starts
-/// a new cycle. In shadow mode the normal path also runs on template hits and its result is served; the
-/// template answer is only compared and mismatches blacklist the entry.
+/// dedicated extra execution so the user's request always stays on the normal path while learning: one
+/// recording per learning observation, at most one in flight per pair, and a head-block guard invalidation
+/// starts a new cycle. An equal-output candidate pair is ambiguous rather than disqualifying (e.g. two
+/// zero balances) — the fresher trace is kept and derivation is retried, up to
+/// <see cref="MaxDerivationAttempts"/> failures before the pair is blacklisted. In shadow mode the normal
+/// path also runs on template hits and its result is served; the template answer is only compared and
+/// mismatches blacklist the entry.
 /// Thread-safe: the store is a bounded <see cref="LruCache{TKey,TValue}"/> holding immutable entries.
 /// </remarks>
 public sealed class EthCallTemplates(
@@ -55,6 +58,7 @@ public sealed class EthCallTemplates(
     private const int SelectorSize = 4;
     private const int QualifyingCallDataLength = SelectorSize + WordSize;
     private const ulong MinQualifyingGasLimit = 100_000;
+    private const int MaxDerivationAttempts = 16;
 
     private readonly LruCache<TemplateKey, Entry> _store = new(StoreCapacity, "eth_call templates");
     private readonly ConcurrentDictionary<TemplateKey, bool> _learningInFlight = new();
@@ -113,7 +117,7 @@ public sealed class EthCallTemplates(
         // getting a fresh full-length one after the call already ran.
         using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
         ResultWrapper<HexBytes> result = executeCall();
-        Learn(call, header, key, arg, (entry as FirstTrace)?.Trace, result, timeout.Token);
+        Learn(call, header, key, arg, entry as FirstTrace, result, timeout.Token);
         return result;
     }
 
@@ -153,7 +157,7 @@ public sealed class EthCallTemplates(
         Blacklist(key);
     }
 
-    private void Learn(TransactionForRpc call, BlockHeader header, in TemplateKey key, in UInt256 arg, CallTrace? firstTrace, ResultWrapper<HexBytes> result, CancellationToken cancellationToken)
+    private void Learn(TransactionForRpc call, BlockHeader header, in TemplateKey key, in UInt256 arg, FirstTrace? firstEntry, ResultWrapper<HexBytes> result, CancellationToken cancellationToken)
     {
         // Only deterministic 32-byte successes fit the single-mapping-read model.
         if (result.Result.ResultType != ResultType.Success || result.Data.Bytes.Length != WordSize)
@@ -162,7 +166,7 @@ public sealed class EthCallTemplates(
         }
 
         // Derivation needs two observations with different arguments.
-        if (firstTrace is not null && firstTrace.Arg == arg)
+        if (firstEntry is not null && firstEntry.Trace.Arg == arg)
         {
             return;
         }
@@ -189,26 +193,32 @@ public sealed class EthCallTemplates(
                 return;
             }
 
-            if (firstTrace is null)
+            if (firstEntry is null)
             {
-                _store.Set(key, new FirstTrace(trace));
+                _store.Set(key, new FirstTrace(trace, failedAttempts: 0));
                 return;
             }
 
-            Template? template = TryDerive(firstTrace, trace, key.To.Value);
-            if (template is null)
+            switch (TryDerive(firstEntry.Trace, trace, key.To.Value, out Template? template))
             {
-                Blacklist(key);
-                return;
+                case DerivationOutcome.Rejected:
+                    Blacklist(key);
+                    break;
+                case DerivationOutcome.EqualOutputs when firstEntry.FailedAttempts + 1 >= MaxDerivationAttempts:
+                    // A genuinely constant function keeps producing equal outputs; each retry costs a
+                    // recorded execution, so give up after a bounded number of attempts.
+                    Blacklist(key);
+                    break;
+                case DerivationOutcome.EqualOutputs:
+                    // Keep the fresher of the two equally informative traces so learning is never
+                    // pinned to guard values observed at an old block.
+                    _store.Set(key, new FirstTrace(trace, firstEntry.FailedAttempts + 1));
+                    break;
+                case DerivationOutcome.Derived:
+                    _store.Set(key, new Templated(template!));
+                    Interlocked.Increment(ref Metrics.EthCallTemplatesDerived);
+                    break;
             }
-
-            if (IsBlacklisted(key))
-            {
-                return;
-            }
-
-            _store.Set(key, new Templated(template));
-            Interlocked.Increment(ref Metrics.EthCallTemplatesDerived);
         }
         finally
         {
@@ -315,18 +325,29 @@ public sealed class EthCallTemplates(
         return -1;
     }
 
-    private static Template? TryDerive(CallTrace first, CallTrace second, Address to)
+    private enum DerivationOutcome
     {
+        Derived,
+        /// <summary>Structurally incompatible traces; the pair can never be templated.</summary>
+        Rejected,
+        /// <summary>Structure and slot pattern fit but both outputs are equal (e.g. two zero balances) — ambiguous, retry with another argument.</summary>
+        EqualOutputs,
+    }
+
+    private static DerivationOutcome TryDerive(CallTrace first, CallTrace second, Address to, out Template? template)
+    {
+        template = null;
+
         if (first.CodeHash != second.CodeHash)
         {
-            return null;
+            return DerivationOutcome.Rejected;
         }
 
         StorageRead[] firstReads = first.Reads;
         StorageRead[] secondReads = second.Reads;
         if (firstReads.Length != secondReads.Length || firstReads.Length == 0 || firstReads.Length - 1 > MaxGuards)
         {
-            return null;
+            return DerivationOutcome.Rejected;
         }
 
         int diffPosition = -1;
@@ -339,7 +360,7 @@ public sealed class EthCallTemplates(
 
             if (!firstReads[i].Address.Equals(secondReads[i].Address) || diffPosition >= 0)
             {
-                return null;
+                return DerivationOutcome.Rejected;
             }
 
             diffPosition = i;
@@ -347,21 +368,27 @@ public sealed class EthCallTemplates(
 
         if (diffPosition < 0)
         {
-            return null;
+            return DerivationOutcome.Rejected;
         }
 
         StorageRead firstDiff = firstReads[diffPosition];
         StorageRead secondDiff = secondReads[diffPosition];
-        // Identical outputs (e.g. both zero) are no evidence the output tracks the differing slot.
-        if (first.Output == second.Output || first.Output != firstDiff.Value || second.Output != secondDiff.Value)
+        if (first.Output != firstDiff.Value || second.Output != secondDiff.Value)
         {
-            return null;
+            return DerivationOutcome.Rejected;
         }
 
         int slotIndex = FindMappingSlotIndex(first.Arg, firstDiff.Index);
         if (slotIndex < 0 || ComputeMappingSlot(second.Arg, (byte)slotIndex) != secondDiff.Index)
         {
-            return null;
+            return DerivationOutcome.Rejected;
+        }
+
+        // Identical outputs (e.g. both zero) give no evidence the output tracks the differing slot,
+        // but they are not evidence against it either — the caller retries with another argument.
+        if (first.Output == second.Output)
+        {
+            return DerivationOutcome.EqualOutputs;
         }
 
         StorageRead[] guards = new StorageRead[secondReads.Length - 1];
@@ -374,7 +401,7 @@ public sealed class EthCallTemplates(
             }
         }
 
-        return new Template
+        template = new Template
         {
             To = to,
             CodeHash = second.CodeHash,
@@ -382,6 +409,7 @@ public sealed class EthCallTemplates(
             MappingSlotIndex = (byte)slotIndex,
             Guards = guards,
         };
+        return DerivationOutcome.Derived;
     }
 
     /// <summary>Runs a dedicated recording execution of the call, mirroring the shareable-scope bridge path.</summary>
@@ -465,9 +493,12 @@ public sealed class EthCallTemplates(
 
     private abstract class Entry;
 
-    private sealed class FirstTrace(CallTrace trace) : Entry
+    private sealed class FirstTrace(CallTrace trace, int failedAttempts) : Entry
     {
         public CallTrace Trace { get; } = trace;
+
+        /// <summary>Number of derivation attempts against this pair that failed on equal outputs.</summary>
+        public int FailedAttempts { get; } = failedAttempts;
     }
 
     private sealed class Templated(Template template) : Entry
