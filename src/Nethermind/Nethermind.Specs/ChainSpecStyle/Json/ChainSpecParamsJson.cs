@@ -201,6 +201,8 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
 
+    public ulong? Eip7805TransitionTimestamp { get; set; }
+
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
     /// in practice the hardfork shorthand labels (<c>shanghai</c>, <c>cancun</c>, <c>prague</c>,

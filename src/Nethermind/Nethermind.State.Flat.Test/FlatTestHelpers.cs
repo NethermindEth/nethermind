@@ -34,7 +34,15 @@ internal static class FlatTestHelpers
     /// optionally pre-populating the snapshot content via <paramref name="populate"/>.
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
-        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+        MakeBundle(pool, Substitute.For<IPersistence.IPersistenceReader>(), populate);
+
+    /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
+    /// <param name="reader">Persistence reader to back the bundle with, for tests that assert on its reads.</param>
+    public static ReadOnlySnapshotBundle MakeBundle(
+        ResourcePool pool,
+        IPersistence.IPersistenceReader reader,
+        Action<SnapshotContent>? populate = null) =>
+        new(SnapshotList(MakeSnapshot(pool, populate)), reader,
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 
