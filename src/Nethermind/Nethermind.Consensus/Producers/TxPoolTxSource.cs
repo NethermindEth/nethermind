@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -162,9 +161,15 @@ namespace Nethermind.Consensus.Producers
                 return;
             }
 
-            ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
+            using ArrayPoolList<(Transaction tx, ulong blobChain)> candidates = new(16);
             foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
             {
+                if (blobTx.SenderAddress is null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, sender is not resolved.");
+                    continue;
+                }
+
                 ulong txBlobCount = (ulong)blobTx.GetBlobCount();
                 if (txBlobCount > maxBlobs)
                 {
@@ -178,23 +183,8 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (txBlobCount == 1UL && candidates is null)
-                {
-                    selectedBlobTxs.Add(blobTx);
-                    if ((ulong)selectedBlobTxs.Count == maxBlobs)
-                    {
-                        // Early exit, have complete set of 1 blob txs with maximal priority fees
-                        // No need to consider other tx.
-                        return;
-                    }
-                }
-                else
-                {
-                    candidates ??= new(16);
-
-                    candidates.Add((blobTx, blobChain));
-                    countOfRemainingBlobs += txBlobCount;
-                }
+                candidates.Add((blobTx, blobChain));
+                countOfRemainingBlobs += txBlobCount;
 
                 if (countOfRemainingBlobs > maxBlobsToConsider)
                 {
@@ -203,31 +193,18 @@ namespace Nethermind.Consensus.Producers
                 }
             }
 
-            // No leftover candidates
-            if (candidates is null) return;
+            if (candidates.Count == 0) return;
 
-            using (candidates)
-            {
-                // We have leftover candidates. Check how many blob slots remain.
-                ulong leftoverCapacity = maxBlobs - (ulong)selectedBlobTxs.Count;
-                if (countOfRemainingBlobs <= leftoverCapacity)
-                {
-                    foreach ((Transaction tx, ulong blobChain) tx in candidates.AsSpan())
-                    {
-                        selectedBlobTxs.Add(tx.tx);
-                    }
-                }
-                else
-                {
-                    ChooseBestBlobTransactions(candidates, (int)leftoverCapacity, baseFee, selectedBlobTxs);
-                }
-            }
+            ChooseBestBlobTransactions(candidates, (int)maxBlobs, baseFee, selectedBlobTxs);
         }
 
         /// <summary>
-        /// Selects a subset of candidate transactions
-        /// that maximizes the total fee without exceeding the available blob capacity.
-        /// Uses a 1D knapsack dynamic programming approach to find the optimal selection.
+        /// Selects nonce-contiguous sender prefixes without exceeding the available blob capacity.
+        /// When selectable transactions have different execution fees, the selection maximizes total
+        /// execution fees and uses producer priority as a tie-break. When all selectable transaction
+        /// execution fees are equal, producer priority is the primary objective. This intentionally
+        /// preserves transaction ordering even when a bundle of lower-priority transactions would have
+        /// higher aggregate execution fees.
         /// The chosen transactions are appended to <paramref name="selectedBlobTxs"/>.
         /// </summary>
         /// <param name="candidateTxs">A list of candidate blob transactions.</param>
@@ -243,108 +220,207 @@ namespace Nethermind.Consensus.Producers
             in UInt256 baseFee,
             ArrayPoolList<Transaction> selectedBlobTxs)
         {
-            int maxCapacity = leftoverCapacity + 1;
-            // The maximum total fee achievable with capacity
-            using ArrayPoolListRef<ulong> dpFeesPooled = new(maxCapacity, maxCapacity);
-            Span<ulong> dpFees = dpFeesPooled.AsSpan();
+            int capacityCount = leftoverCapacity + 1;
+            using ArrayPoolListRef<UInt256> dpFeesPooled = new(capacityCount, capacityCount);
+            using ArrayPoolListRef<UInt256> nextFeesPooled = new(capacityCount, capacityCount);
+            using ArrayPoolListRef<int> dpSelectionStatesPooled = new(capacityCount, capacityCount);
+            using ArrayPoolListRef<int> nextSelectionStatesPooled = new(capacityCount, capacityCount);
+            using ArrayPoolListRef<bool> dpReachablePooled = new(capacityCount, capacityCount);
+            using ArrayPoolListRef<bool> nextReachablePooled = new(capacityCount, capacityCount);
+            Span<UInt256> dpFees = dpFeesPooled.AsSpan();
+            Span<UInt256> nextFees = nextFeesPooled.AsSpan();
+            Span<int> dpSelectionStates = dpSelectionStatesPooled.AsSpan();
+            Span<int> nextSelectionStates = nextSelectionStatesPooled.AsSpan();
+            Span<bool> dpReachable = dpReachablePooled.AsSpan();
+            Span<bool> nextReachable = nextReachablePooled.AsSpan();
+            dpSelectionStates.Fill(-1);
+            dpReachable[0] = true;
 
-            using ArrayPoolBitMap isChosen = new(candidateTxs.Count * maxCapacity);
-
-            // Build up the DP table to find the maximum total fee for each capacity.
-            // Outer loop: go through each transaction (1-based index).
-            // Inner loop: iterate capacity in descending order to avoid overwriting data needed for the calculation.
-            for (int i = 0; i < candidateTxs.Count; i++)
+            // A sender contributes either no transactions or one contiguous nonce prefix.
+            // Treating each transaction as an independent knapsack item can discard a lower-value
+            // predecessor that is required by a later, more valuable transaction.
+            using ArrayPoolList<AddressAsKey> senders = new(candidateTxs.Count);
+            using ArrayPoolListRef<int> candidateGroupIndexesPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<int> candidateGroupIndexes = candidateGroupIndexesPooled.AsSpan();
+            candidateGroupIndexes.Fill(-1);
+            for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
             {
-                (Transaction tx, ulong blobChain) = candidateTxs[i];
-
-                if (!tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
+                AddressAsKey sender = candidateTxs[candidateIndex].tx.SenderAddress!;
+                int groupIndex = -1;
+                for (int index = 0; index < senders.Count; index++)
                 {
-                    // Skip any tx where tx can't cover the premium per gas.
-                    continue;
+                    if (senders[index].Equals(sender))
+                    {
+                        groupIndex = index;
+                        break;
+                    }
                 }
 
-                // How many blobs does this tx actually consume?
-                int blobCount = tx.GetBlobCount();
-                // If this tx has explicit dependencies (i.e. it requires k prior blobs
-                // from the *same address* to be in the block before it), include them here.
-                // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
-                int blobCapacityNeeded = (int)blobChain + blobCount;
-                // Compute the total fee this tx contributes (premium * gas used).
-                // Use actual gas used (SpentGas) when available as the tx may be using over-estimated gaslimit
-                ulong feeValue = (ulong)premiumPerGas * tx.SpentGas;
-
-                int dependencyIndex = -1;
-                // If dependencies, look back for the one direct predecessor tx.
-                // if blobDependenciesCount > 0, then we require *the* previous
-                // nonce from the same address to also be chosen in order to
-                // include this tx's extra blob-dependency slots.
-                if (blobCapacityNeeded > blobCount)
+                if (groupIndex < 0)
                 {
-                    // scan backward from i–1 until you hit a tx from the same address
-                    // this ensures we only link to the immediate prior-nonce.
-                    for (int j = i - 1; j >= 0; j--)
+                    groupIndex = senders.Count;
+                    senders.Add(sender);
+                }
+
+                candidateGroupIndexes[candidateIndex] = groupIndex;
+            }
+
+            // Precompute every eligible prefix once. Prefixes that contain a gap, have an invalid
+            // premium, or already exceed capacity cannot participate in the DP or switch its objective.
+            using ArrayPoolListRef<int> prefixBlobCountsPooled = new(candidateTxs.Count, candidateTxs.Count);
+            using ArrayPoolListRef<UInt256> prefixFeesPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<int> prefixBlobCounts = prefixBlobCountsPooled.AsSpan();
+            Span<UInt256> prefixFees = prefixFeesPooled.AsSpan();
+            prefixBlobCounts.Fill(-1);
+            UInt256? commonExecutionFee = null;
+            bool allExecutionFeesEqual = true;
+            for (int groupIndex = 0; groupIndex < senders.Count; groupIndex++)
+            {
+                ulong prefixBlobCount = 0;
+                ulong? previousNonce = null;
+                UInt256 prefixFee = UInt256.Zero;
+                for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
+                {
+                    if (candidateGroupIndexes[candidateIndex] != groupIndex) continue;
+
+                    (Transaction tx, ulong blobChain) = candidateTxs[candidateIndex];
+                    if (blobChain != prefixBlobCount ||
+                        previousNonce is not null &&
+                        (previousNonce == ulong.MaxValue || tx.Nonce != previousNonce + 1) ||
+                        !tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
                     {
-                        Transaction required = candidateTxs[j].tx;
-                        if (required.SenderAddress == tx.SenderAddress)
+                        break;
+                    }
+
+                    prefixBlobCount += (ulong)tx.GetBlobCount();
+                    if (prefixBlobCount > (ulong)leftoverCapacity) break;
+                    previousNonce = tx.Nonce;
+
+                    UInt256 executionFee = premiumPerGas * tx.SpentGas;
+                    prefixFee += executionFee;
+                    prefixBlobCounts[candidateIndex] = (int)prefixBlobCount;
+                    prefixFees[candidateIndex] = prefixFee;
+                    if (commonExecutionFee is null)
+                    {
+                        commonExecutionFee = executionFee;
+                    }
+                    else if (commonExecutionFee != executionFee)
+                    {
+                        allExecutionFeesEqual = false;
+                    }
+                }
+            }
+
+            using ArrayPoolListRef<(int CandidateIndex, int PreviousState)> selectionStates =
+                new(candidateTxs.Count * capacityCount);
+            using ArrayPoolListRef<bool> candidateMembershipPooled = new(candidateTxs.Count, candidateTxs.Count);
+            using ArrayPoolListRef<bool> currentMembershipPooled = new(candidateTxs.Count, candidateTxs.Count);
+            Span<bool> candidateMembership = candidateMembershipPooled.AsSpan();
+            Span<bool> currentMembership = currentMembershipPooled.AsSpan();
+
+            for (int groupIndex = 0; groupIndex < senders.Count; groupIndex++)
+            {
+                dpFees.CopyTo(nextFees);
+                dpSelectionStates.CopyTo(nextSelectionStates);
+                dpReachable.CopyTo(nextReachable);
+
+                for (int previousCapacity = 0; previousCapacity <= leftoverCapacity; previousCapacity++)
+                {
+                    if (!dpReachable[previousCapacity]) continue;
+
+                    int prefixState = dpSelectionStates[previousCapacity];
+                    for (int candidateIndex = 0; candidateIndex < candidateTxs.Count; candidateIndex++)
+                    {
+                        if (candidateGroupIndexes[candidateIndex] != groupIndex) continue;
+
+                        int prefixBlobCount = prefixBlobCounts[candidateIndex];
+                        if (prefixBlobCount < 0) break;
+                        int capacity = previousCapacity + prefixBlobCount;
+                        if (capacity > leftoverCapacity) break;
+
+                        selectionStates.Add((candidateIndex, prefixState));
+                        prefixState = selectionStates.Count - 1;
+
+                        UInt256 candidateFee = dpFees[previousCapacity] + prefixFees[candidateIndex];
+                        bool hasHigherPriority = !nextReachable[capacity] || IsHigherPrioritySelection(
+                            selectionStates.AsSpan(), prefixState, nextSelectionStates[capacity],
+                            candidateMembership, currentMembership);
+                        bool improvesSelection = !nextReachable[capacity] || (allExecutionFeesEqual
+                            ? hasHigherPriority
+                            : candidateFee > nextFees[capacity] ||
+                              candidateFee == nextFees[capacity] && hasHigherPriority);
+                        if (improvesSelection)
                         {
-                            if (required.Nonce + 1 == tx.Nonce)
-                            {
-                                // only a match if it's exactly nonce–1
-                                dependencyIndex = j;
-                            }
-                            // Stop as soon as we found the prior same sender tx
-                            break;
+                            nextReachable[capacity] = true;
+                            nextFees[capacity] = candidateFee;
+                            nextSelectionStates[capacity] = prefixState;
                         }
                     }
-
-                    if (dependencyIndex < 0)
-                    {
-                        // if we didn't find an immediate matching address with the prior nonce,
-                        // so we *cannot* include this tx
-                        continue;
-                    }
                 }
 
-                // Iterate backward from maxBlobCapacity down to blobCount (from high to low to avoid overwrite)
-                // so we only compute for valid capacities that can fit this transaction.
-                for (int capacity = leftoverCapacity; capacity >= blobCapacityNeeded; capacity--)
-                {
-                    int previousCapacity = capacity - blobCount;
-                    // We subtract only tx's own blobCount from capacity,
-                    // because the dpFees index represents total blobs used;
-                    // dependencies are "paid for" by only allowing this path
-                    // if dependencyIndex was chosen at the smaller capacity.
-                    ulong candidateFee = dpFees[previousCapacity] + feeValue;
-                    // If this improves the max fee at [capacity], record it
-                    if (candidateFee >= dpFees[capacity])
-                    {
-                        dpFees[capacity] = candidateFee;
-
-                        isChosen[i * maxCapacity + capacity] = dependencyIndex < 0 ||
-                            // with a dependency: only mark this tx as chosen
-                            // if *its* predecessor was also marked in the smaller capacity.
-                            isChosen[dependencyIndex * maxCapacity + previousCapacity];
-                    }
-                }
+                nextFees.CopyTo(dpFees);
+                nextSelectionStates.CopyTo(dpSelectionStates);
+                nextReachable.CopyTo(dpReachable);
             }
 
-            int start = selectedBlobTxs.Count;
-            // Backtrack through 'choices' to find which transactions were actually chosen.
-            int remainingCapacity = leftoverCapacity;
-            for (int i = candidateTxs.Count - 1; i >= 0; i--)
+            int bestState = -1;
+            UInt256 bestFee = UInt256.Zero;
+            for (int capacity = 1; capacity <= leftoverCapacity; capacity++)
             {
-                if (isChosen[i * maxCapacity + remainingCapacity])
+                if (!dpReachable[capacity]) continue;
+
+                bool hasHigherPriority = IsHigherPrioritySelection(
+                    selectionStates.AsSpan(), dpSelectionStates[capacity], bestState,
+                    candidateMembership, currentMembership);
+                if (allExecutionFeesEqual
+                    ? hasHigherPriority
+                    : dpFees[capacity] > bestFee || dpFees[capacity] == bestFee && hasHigherPriority)
                 {
-                    Transaction tx = candidateTxs[i].tx;
-                    int blobCount = tx.GetBlobCount();
-                    selectedBlobTxs.Add(tx);
-                    remainingCapacity -= blobCount;
+                    bestState = dpSelectionStates[capacity];
+                    bestFee = dpFees[capacity];
                 }
             }
 
-            // The newly added items were added in reverse
-            // restore original picking order.
-            selectedBlobTxs.AsSpan()[start..].Reverse();
+            using ArrayPoolList<int> chosenCandidateIndexes = new(leftoverCapacity);
+            for (int state = bestState; state >= 0; state = selectionStates[state].PreviousState)
+            {
+                chosenCandidateIndexes.Add(selectionStates[state].CandidateIndex);
+            }
+
+            chosenCandidateIndexes.AsSpan().Sort();
+            foreach (int candidateIndex in chosenCandidateIndexes.AsSpan())
+            {
+                selectedBlobTxs.Add(candidateTxs[candidateIndex].tx);
+            }
+        }
+
+        private static bool IsHigherPrioritySelection(
+            ReadOnlySpan<(int CandidateIndex, int PreviousState)> states,
+            int candidateState,
+            int currentState,
+            Span<bool> candidateMembership,
+            Span<bool> currentMembership)
+        {
+            candidateMembership.Clear();
+            currentMembership.Clear();
+            for (int state = candidateState; state >= 0; state = states[state].PreviousState)
+            {
+                candidateMembership[states[state].CandidateIndex] = true;
+            }
+
+            for (int state = currentState; state >= 0; state = states[state].PreviousState)
+            {
+                currentMembership[states[state].CandidateIndex] = true;
+            }
+
+            // Candidate indices follow producer-priority order. At the first index where
+            // selections differ, the selection containing that earlier candidate wins.
+            for (int index = 0; index < candidateMembership.Length; index++)
+            {
+                if (candidateMembership[index] != currentMembership[index]) return candidateMembership[index];
+            }
+
+            return false;
         }
 
         private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
@@ -457,38 +533,5 @@ namespace Nethermind.Consensus.Producers
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
 
-        private readonly ref struct ArrayPoolBitMap : IDisposable
-        {
-            private const int BitShiftPerInt64 = 6;
-            private static int GetLengthOfBitLength(int n) => (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
-
-            private readonly ulong[] _array;
-
-            public ArrayPoolBitMap(int size)
-            {
-                _array = ArrayPool<ulong>.Shared.Rent(GetLengthOfBitLength(size));
-                _array.AsSpan().Clear();
-            }
-
-            public bool this[int i]
-            {
-                get => (_array[i >> BitShiftPerInt64] & (1UL << i)) != 0;
-                set
-                {
-                    ref ulong element = ref _array[(uint)i >> BitShiftPerInt64];
-                    ulong selector = (1UL << i);
-                    if (value)
-                    {
-                        element |= selector;
-                    }
-                    else
-                    {
-                        element &= ~selector;
-                    }
-                }
-            }
-
-            public void Dispose() => ArrayPool<ulong>.Shared.Return(_array);
-        }
     }
 }
