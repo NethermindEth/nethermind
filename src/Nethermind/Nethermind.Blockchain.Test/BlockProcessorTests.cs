@@ -104,6 +104,24 @@ public class BlockProcessorTests
 
     // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
     // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
+    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    [Test]
+    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False));
+    }
+
     [Test]
     public void ApplyStateChanges_creates_missing_account_from_code_change()
     {
