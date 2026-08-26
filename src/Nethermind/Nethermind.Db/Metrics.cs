@@ -143,7 +143,7 @@ namespace Nethermind.Db
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
         [CounterMetric]
-        [Description("Number of contracts whose non-empty persisted storage was explicitly cleared during a committed tree write.")]
+        [Description("Number of contracts whose non-empty persisted storage was explicitly cleared during a committed tree write, including trace/debug RPC state-override commits.")]
         public static long StorageCleared => _storageCleared.Value;
         private static CacheLinePaddedLong _storageCleared;
         internal static void IncrementStorageCleared() => Interlocked.Increment(ref _storageCleared.Value);

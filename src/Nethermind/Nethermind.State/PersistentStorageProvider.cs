@@ -452,6 +452,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void ClearAndSetMissingAsDefault(bool clearedNonEmptyStorage = false)
         {
             _missingAreDefault = true;
+            // Preserve a non-empty clear when multiple clears occur before the root is flushed.
             _clearedNonEmptyStorage |= clearedNonEmptyStorage;
             _dictionary.Clear();
         }
@@ -574,6 +575,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
+            // RootHash is the pre-block root, so only storage persisted before this block is counted.
             BlockChange.ClearAndSetMissingAsDefault(_backend.RootHash != Keccak.EmptyTreeHash);
         }
 

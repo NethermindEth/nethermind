@@ -62,9 +62,10 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
-    [Test]
+    [TestCase(false, TestName = "StorageClearedMetric_CountsClearStorage")]
+    [TestCase(true, TestName = "StorageClearedMetric_CountsMarkStorageDestroyed")]
     [NonParallelizable]
-    public void StorageClearedMetric_CountsOnlyCommittedClearOfNonEmptyStorage()
+    public void StorageClearedMetric_CountsOnlyCommittedClearOfNonEmptyStorage(bool markStorageDestroyed)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -85,7 +86,11 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance);
         long storageClearedAfterFreshAddressClear = Db.Metrics.StorageCleared;
 
-        provider.ClearStorage(ctx.Address1);
+        if (markStorageDestroyed)
+            provider.MarkStorageDestroyed(ctx.Address1);
+        else
+            provider.ClearStorage(ctx.Address1);
+
         provider.Commit(Frontier.Instance, commitRoots: false);
         long storageClearedBeforeRootCommit = Db.Metrics.StorageCleared;
         provider.Commit(Frontier.Instance);
@@ -97,6 +102,29 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(storageClearedBeforeRootCommit, Is.EqualTo(storageClearedBefore));
             Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void StorageClearedMetric_CountsEachContractInParallelFlush()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        Address[] addresses = [ctx.Address1, ctx.Address2, TestItem.AddressA];
+
+        provider.CreateAccount(TestItem.AddressA, 0);
+        foreach (Address address in addresses)
+            provider.Set(new StorageCell(address, 1), _values[1]);
+
+        provider.Commit(Frontier.Instance);
+        long storageClearedBefore = Db.Metrics.StorageCleared;
+
+        foreach (Address address in addresses)
+            provider.ClearStorage(address);
+
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + addresses.Length));
     }
 
     /// <summary>
