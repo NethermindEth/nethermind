@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -166,6 +167,115 @@ namespace Nethermind.Core.Test
                 Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(expected));
                 Assert.That(Keccak.Compute(byteArray), Is.EqualTo(expected));
             }
+        }
+
+        [Test]
+        public void Avx512VL_permutation_matches_scalar()
+        {
+            if (!Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            const int stateLength = 25;
+            ulong[] expected = new ulong[stateLength];
+            ulong[] actual = new ulong[stateLength];
+
+            for (int testCase = 0; testCase < 64; testCase++)
+            {
+                for (int lane = 0; lane < stateLength; lane++)
+                {
+                    actual[lane] = testCase switch
+                    {
+                        0 => 0,
+                        1 => ulong.MaxValue,
+                        _ => unchecked((ulong)(testCase * stateLength + lane + 1) * 0x9e3779b97f4a7c15UL)
+                    };
+                }
+
+                actual.CopyTo(expected, 0);
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+                KeccakHash.KeccakF1600Avx512VL(ref actual[0]);
+
+                Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
+            }
+        }
+
+        [Test]
+        public void Avx512_eight_way_64_byte_hash_matches_individual_hashes()
+        {
+            if (!Avx512F.IsSupported)
+            {
+                Assert.Ignore("AVX-512F intrinsics are not supported on this machine.");
+            }
+
+            const int inputLength = 64;
+            const int hashLength = 32;
+            const int batchSize = 8;
+            byte[] input = new byte[inputLength * batchSize];
+            byte[] output = new byte[hashLength * batchSize];
+
+            Random random = new(42);
+            for (int iteration = 0; iteration < 16; iteration++)
+            {
+                random.NextBytes(input);
+                KeccakHash.ComputeHash64Bytes8Avx512(ref input[0], ref output[0]);
+
+                for (int i = 0; i < batchSize; i++)
+                {
+                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, inputLength));
+                    Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
+        [Test]
+        public void Avx512vl_two_way_532_byte_hash_matches_individual_hashes()
+        {
+            if (!Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            byte[] input0 = new byte[532];
+            byte[] input1 = new byte[532];
+            byte[][] inputs = [input0, input1];
+            byte[] output = new byte[2 * Hash256.Size];
+            Random random = new(42);
+
+            for (int iteration = 0; iteration < 16; iteration++)
+            {
+                random.NextBytes(input0);
+                random.NextBytes(input1);
+                KeccakHash.ComputeHash532Bytes2Avx512VL(ref input0[0], ref input1[0], ref output[0]);
+
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    ValueHash256 expected = ValueKeccak.Compute(inputs[i]);
+                    Assert.That(output.AsSpan(i * Hash256.Size, Hash256.Size).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
+        // Expected hashes were generated with PyCryptodome's independent Keccak-256 implementation.
+        [TestCase(20, "50c02dbeee2be79b9595060fe30efbd78f06acedf7a1fe8cb05df7ddd76f2b1b")]
+        [TestCase(32, "d064c972ea7cbd9f1237bbd922fd5f08ca57895c13bc9ea2b91913f7099809a1")]
+        [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
+        public void Common_input_lengths_match_known_hash(int inputLength, string expected)
+        {
+            byte[] input = new byte[inputLength];
+            byte[] output = new byte[32];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            KeccakHash.ComputeHash(input, output);
+
+            Assert.That(output.ToHexString(), Is.EqualTo(expected));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]

@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -21,7 +20,6 @@ public class RecentRootStoreTests
     private static readonly ValueHash256 Salt = TestItem.KeccakA.ValueHash256;
     private static readonly ValueHash256 Root = TestItem.KeccakB.ValueHash256;
     private static readonly ValueHash256 OtherRoot = TestItem.KeccakC.ValueHash256;
-    private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
     [Test]
     public void SourceId_is_deterministic_and_distinct_per_input()
@@ -88,7 +86,7 @@ public class RecentRootStoreTests
         using (scope)
         {
             const ulong writeSlot = 100_000;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
+            Write(state, Source, Salt, Root, writeSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + 1), Is.True);
@@ -110,7 +108,7 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
+            Write(state, Source, Salt, Root, writeSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, currentSlot), Is.True);
@@ -125,7 +123,7 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
+            Write(state, Source, Salt, Root, writeSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
             ValueHash256 wrongSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
 
@@ -143,7 +141,7 @@ public class RecentRootStoreTests
         {
             const ulong writtenSlot = 5;
             ulong aliasedSlot = writtenSlot + Eip8272Constants.RecentRootLength;
-            RecentRootStore.Write(state, Source, Salt, Root, writtenSlot, Spec);
+            Write(state, Source, Salt, Root, writtenSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(
@@ -178,8 +176,8 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
-            RecentRootStore.Write(state, Source, Salt, OtherRoot, 150, Spec);
+            Write(state, Source, Salt, Root, 100);
+            Write(state, Source, Salt, OtherRoot, 150);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 150, OtherRoot)]), Is.True);
@@ -192,7 +190,7 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            Write(state, Source, Salt, Root, 100);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 100, OtherRoot)]), Is.False);
@@ -205,7 +203,7 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            Write(state, Source, Salt, Root, 100);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
             Assert.That(Validate(state, [new(sourceId, 100, Root), new(sourceId, 100, Root)]), Is.True);
@@ -219,7 +217,7 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            RecentRootStore.Write(state, Source, Salt, Root, 100, Spec);
+            Write(state, Source, Salt, Root, 100);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
             using StackAccessTracker accessTracker = new(false);
 
@@ -240,7 +238,7 @@ public class RecentRootStoreTests
             for (int i = 0; i < references.Length; i++)
             {
                 ulong slot = (ulong)(100 + i);
-                RecentRootStore.Write(state, Source, Salt, Root, slot, Spec);
+                Write(state, Source, Salt, Root, slot);
                 references[i] = new RecentRootReference(sourceId, slot, Root);
             }
 
@@ -252,6 +250,13 @@ public class RecentRootStoreTests
     {
         using StackAccessTracker accessTracker = new(false);
         return RecentRootReferences.Validate(state, references, currentSlot, in accessTracker);
+    }
+
+    private static void Write(IWorldState state, Address source, in ValueHash256 salt, in ValueHash256 root, ulong slot)
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
+        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, slot);
+        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
     }
 
     private static IWorldState CreateState(out IDisposable scope)

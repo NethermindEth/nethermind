@@ -37,4 +37,8 @@ public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
         UInt256? result = JsonSerializer.Deserialize<UInt256?>(json, options);
         Assert.That(result, Is.EqualTo(UInt256.Parse(expected)));
     }
+
+    [Test]
+    public void Serializes_as_hex_quantity() =>
+        TestConverter((UInt256?)10485760, "\"0xa00000\"", converter, static (a, b) => a.Equals(b));
 }

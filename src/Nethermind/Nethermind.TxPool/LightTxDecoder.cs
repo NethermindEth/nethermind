@@ -24,7 +24,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOf((byte)tx.Type)
-               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0);
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -48,6 +49,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode((byte)tx.Type);
         // Expiry needs the deadline after a reload, where the frames that carried it are gone.
         if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        // A sequence, so the decoder tells it apart from the expiry deadline that only sometimes precedes it.
+        // Any further optional trailing field must also be a list: a second optional scalar would be ambiguous.
+        if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
 
         return bytes;
     }
@@ -71,6 +75,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size: ctx.DecodePositiveInt(),
             proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.DecodeByte() : default,
             type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.DecodeByte() : TxType.Blob,
-            expiryDeadline: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? ctx.DecodeULong() : null);
+            expiryDeadline: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null,
+            nonceKeys: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? FrameTxNonceCalldata.DecodeKeys(ref ctx) : null);
     }
 }

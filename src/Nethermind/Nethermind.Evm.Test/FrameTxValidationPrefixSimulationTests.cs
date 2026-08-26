@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -383,9 +384,15 @@ public class FrameTxValidationPrefixSimulationTests
         {
             Assert.That(tracer.Violated, Is.True);
             // The release-mode tripwire: the interpreter's own Debug.Assert is compiled out of every CI job.
-            Assert.That(_virtualMachine.StateStack, Is.Empty);
+            Assert.That(StateStack().Count, Is.Zero);
         }
     }
+
+    /// <summary>The interpreter's call-frame stack, which only a clean unwind leaves empty.</summary>
+    private VmStateStack<EthereumGasPolicy> StateStack() =>
+        (VmStateStack<EthereumGasPolicy>)typeof(VirtualMachine<EthereumGasPolicy>)
+            .GetField("_stateStack", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(_virtualMachine)!;
 
     [Test]
     public void Simulate_PrefixDeclaringAnUncommittedRecentRootReference_RejectedBeforeAnyFrameRuns()

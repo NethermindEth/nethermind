@@ -15,7 +15,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -30,22 +29,20 @@ namespace Nethermind.TxPool.Test;
 public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
-    private static readonly IReleaseSpec Spec = Eip8141Prototype.Instance;
-    private const int TestCost = 100_000;
 
     // The bound is inclusive: a tx whose reserved + max_cost exactly equals the balance is admitted,
-    // matching the spec's strict `available < tx.max_cost` rejection condition.
-    [TestCase(TestCost, 0, false, TestName = "single tx within balance")]
-    [TestCase(TestCost - 1, 0, true, TestName = "single tx over balance")]
-    [TestCase(TestCost + 50_000 - 1, 50_000, true, TestName = "summed exposure over balance")]
-    [TestCase(TestCost + 50_000, 50_000, false, TestName = "summed exposure at inclusive boundary")]
+    // matching the spec's strict `available < tx.max_cost` rejection condition (ethereum/EIPs#12007).
+    [TestCase(1000, 0, false, TestName = "single tx within balance")]
+    [TestCase(999, 0, true, TestName = "single tx over balance")]
+    [TestCase(1500, 1000, true, TestName = "summed exposure over balance")]
+    [TestCase(2000, 1000, false, TestName = "summed exposure at inclusive boundary")]
     public void Accept_GatesOnPayerExposure(int balance, int reserved, bool rejected)
     {
         TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
         PayerExposureCache cache = new();
         if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue, out _);
 
-        AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
+        AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
@@ -62,13 +59,13 @@ public class FrameTxPayerExposureFilterTests
         long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
         PayerExposureCache cache = new();
 
-        AcceptTxResult atBound = Accept(StateWithPayerBalance(TestCost + blobTerm), cache, BlobFrameTx(blobCount, maxFeePerBlobGas));
-        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(TestCost + blobTerm - 1), new PayerExposureCache(), BlobFrameTx(blobCount, maxFeePerBlobGas));
+        AcceptTxResult atBound = Accept(StateWithPayerBalance(1000 + blobTerm), cache, BlobFrameTx(blobCount, maxFeePerBlobGas));
+        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(1000 + blobTerm - 1), new PayerExposureCache(), BlobFrameTx(blobCount, maxFeePerBlobGas));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(atBound, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(TestCost + blobTerm)), "the gas leg and the whole blob term are reserved");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(1000 + blobTerm)), "the gas leg and the whole blob term are reserved");
             Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
         }
     }
@@ -81,22 +78,19 @@ public class FrameTxPayerExposureFilterTests
     [TestCase(0ul, true, true, TestName = "an incumbent paid by another payer frees that one")]
     public void Accept_DiscountsOnlyTheReservationItDisplaces(ulong bumpNonce, bool incumbentPaidByAnother, bool rejected)
     {
-        const int incumbentCost = TestCost;
-        const int bumpCost = TestCost + TestCost / 2;
-        const int balance = 2 * TestCost;
-
-        Transaction incumbent = FrameTxCostingExactly(incumbentCost, payer: incumbentPaidByAnother ? TestItem.AddressC : null);
+        Transaction incumbent = FrameTxCostingExactly(600, payer: incumbentPaidByAnother ? TestItem.AddressC : null);
         incumbent.Hash = TestItem.KeccakA;
-        Transaction bump = FrameTxCostingExactly(bumpCost);
+        Transaction bump = FrameTxCostingExactly(700);
         bump.Nonce = bumpNonce;
         bump.Hash = TestItem.KeccakB;
 
-        // The two summed exceed the balance, so only discounting the displaced incumbent admits the bump.
-        // Case three's reservation is synthetic: admission cannot leave Payer reserved with nothing pending.
+        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump. In the
+        // third case the 600 is synthetic: it stands in for another pending tx of Payer's, since a
+        // reservation with nothing pending behind it is not a state admission can reach.
         PayerExposureCache cache = new();
-        cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
+        cache.TryReserve(Payer, 600, balance: 1200, out _);
 
-        AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: false, incumbent));
+        AcceptTxResult result = Accept(StateWithPayerBalance(1200), cache, bump, pending: Pool(blobs: false, incumbent));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
@@ -104,17 +98,17 @@ public class FrameTxPayerExposureFilterTests
     [Test]
     public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
-        TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
+        TestReadOnlyStateProvider state = StateWithPayerBalance(1500);
         PayerExposureCache cache = new();
 
-        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(TestCost));
-        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(TestCost));
+        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(1000));
+        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(1000));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
-            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)TestCost), "only the admitted tx is reserved");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1000), "only the admitted tx is reserved");
         }
     }
 
@@ -122,30 +116,12 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_UnresolvedFramePayer_PassesThrough()
     {
         // FrameTxPayerFilter left the payer null (RequiresSimulation / NoPayer): not gated here.
-        Transaction tx = FrameTxCostingExactly(TestCost);
+        Transaction tx = FrameTxCostingExactly(1000);
         tx.PayerAddress = null;
 
         AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx);
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-    }
-
-    [Test]
-    public void Accept_UnpriceableMaxCost_DoesNotDisconnectTheRelayingPeer()
-    {
-        // AcceptTxResult.Invalid is the one result TxFloodController maps to an immediate disconnect, and
-        // an unpriceable max_cost is unincludable rather than malformed.
-        Transaction tx = FrameTx(0);
-        tx.DecodedMaxFeePerGas = UInt256.MaxValue;
-
-        AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out _), Is.False, "the fixture must overflow, or this pins nothing");
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Int256Overflow));
-            Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid));
-        }
     }
 
     [Test]
@@ -158,13 +134,13 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    [TestCase(TestCost, false, TestName = "self-paying sender within its balance")]
-    [TestCase(TestCost - 1, true, TestName = "self-paying sender over its balance")]
+    [TestCase(1000, false, TestName = "self-paying sender within its balance")]
+    [TestCase(999, true, TestName = "self-paying sender over its balance")]
     public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
     {
         // Native resolution only ever yields payer == sender today, so this is the branch every real
         // admission takes: it must read the cached sender account, not the state provider.
-        Transaction tx = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
+        Transaction tx = FrameTxCostingExactly(1000, payer: TestItem.AddressA);
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)balance);
 
@@ -193,18 +169,6 @@ public class FrameTxPayerExposureFilterTests
         // Over-release clamps at zero rather than wrapping, so the gate can never be disabled.
         cache.Subtract(Payer, 1000);
         Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
-    }
-
-    [Test]
-    public void MaxCost_CountsTheBlobTerm()
-    {
-        // A large max_fee_per_blob_gas must not smuggle unbounded exposure past a gas-only reservation.
-        Transaction tx = FrameTxCostingExactly(TestCost);
-        tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1;
-
-        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-        Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
     }
 
     [Test]
@@ -279,7 +243,7 @@ public class FrameTxPayerExposureFilterTests
     /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
     private static Transaction BlobFrameTx(int blobCount, int maxFeePerBlobGas)
     {
-        Transaction tx = FrameTxCostingExactly(TestCost);
+        Transaction tx = FrameTxCostingExactly(1000);
         byte[][] hashes = new byte[blobCount][];
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -291,36 +255,23 @@ public class FrameTxPayerExposureFilterTests
         return tx;
     }
 
-    /// <summary>A frame tx whose EIP-8141 <c>TXPARAM(0x06)</c> max cost is exactly <paramref name="cost"/> wei.</summary>
-    private static Transaction FrameTxCostingExactly(int cost, Address? payer = null)
-    {
-        // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
-        // requested cost less the spec-priced intrinsic component.
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _), Is.True);
-        Assert.That(intrinsicGas, Is.LessThan((ulong)cost), "the requested cost must leave room for the intrinsic term");
-        return FrameTx((ulong)cost - intrinsicGas, payer);
-    }
-
-    private static Transaction FrameTx(ulong frameGasLimit, Address? payer = null) => new()
+    /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
+    private static Transaction FrameTxCostingExactly(int cost, Address? payer = null) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
-        FrameSignatures = [],
-        DecodedMaxFeePerGas = UInt256.One,
+        GasLimit = 1,
+        DecodedMaxFeePerGas = (UInt256)cost,
         PayerAddress = payer ?? Payer,
     };
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null)
     {
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Spec);
-
         // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
             ? (Pool(blobs: false), pending ?? Pool(blobs: true))
             : (pending ?? Pool(blobs: false), Pool(blobs: true));
-        FrameTxPayerExposureFilter filter = new(specProvider, state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
+        FrameTxPayerExposureFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
