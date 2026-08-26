@@ -63,6 +63,9 @@ public class GethGenesisConfigJson : IHasNamedForks
     // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
     // class is Bogota.
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
+    // EIP-8141 frame transactions schedule on their own rather than with Bogota: the expiry-verifier
+    // predeploy they install shifts every block's EIP-7928 access list, which the Bogota fixtures pin.
+    public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }

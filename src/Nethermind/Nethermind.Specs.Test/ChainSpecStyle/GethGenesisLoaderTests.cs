@@ -53,10 +53,7 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp =
-    [
-        "Eip8141Prototype", // frame transaction prototype — not scheduled on any network
-    ];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -319,6 +316,22 @@ public class GethGenesisLoaderTests
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip7805Enabled, Is.False);
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.True);
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.False);
+    }
+
+    // The other half of the split: frame transactions must stay activatable from the format the devnet
+    // genesis files are generated in, without dragging inclusion lists along.
+    [Test]
+    public void Can_load_genesis_with_eip8141_prototype_time()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15");
+
+        Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
+        Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
     }
 
     [Test]
