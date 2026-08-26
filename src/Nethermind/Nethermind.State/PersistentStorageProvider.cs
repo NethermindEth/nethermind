@@ -142,17 +142,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes)[..(currentPosition + 1)];
         Dictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
         {
             trace = [];
-            CommitChanges<OnFlag>(changes, currentPosition, toUpdateRoots, trace);
+            CommitChanges<OnFlag>(changes, toUpdateRoots, trace);
         }
         else
         {
             trace = null;
-            CommitChanges<OffFlag>(changes, currentPosition, toUpdateRoots, null);
+            CommitChanges<OffFlag>(changes, toUpdateRoots, null);
         }
 
         foreach (AddressAsKey address in toUpdateRoots)
@@ -205,24 +205,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void CommitChanges<TStorageTracing>(
         ReadOnlySpan<Change> changes,
-        int currentPosition,
         HashSet<AddressAsKey> toUpdateRoots,
         Dictionary<StorageCell, StorageChangeTrace>? trace)
         where TStorageTracing : struct, IFlag
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
 
-        for (int i = 0; i <= currentPosition; i++)
+        for (int i = changes.Length - 1; i >= 0; i--)
         {
-            ref readonly Change change = ref changes[currentPosition - i];
+            ref readonly Change change = ref changes[i];
             if (!_committedThisRound.Add(change!.StorageCell))
             {
                 continue;
             }
 
             // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
-            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
-                $"Expected the cached index to equal {currentPosition} - {i}");
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == i,
+                $"Expected the cached index to equal {i}");
 
             if (change.ChangeType == ChangeType.Update)
             {
@@ -240,7 +239,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                    TraceUpdate(change);
                 }
 
                 if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
@@ -263,6 +262,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUpdate(in Change change)
+        => _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {

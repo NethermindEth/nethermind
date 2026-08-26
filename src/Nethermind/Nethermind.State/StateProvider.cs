@@ -521,16 +521,17 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             ThrowStartOfCommitIsNull(stepsBack);
         }
 
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        bool removeEmptyAccounts = releaseSpec.IsEip158Enabled && !isGenesis;
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes)[..(stepsBack + 1)];
         if (stateTracer.IsTracingState)
         {
             Dictionary<AddressAsKey, ChangeTrace> trace = [];
-            CommitChanges<OnFlag>(changes, stepsBack, releaseSpec, isGenesis, isTracing, trace);
+            CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
             trace.ReportStateTrace(stateTracer, _nullAccountReads, this);
         }
         else
         {
-            CommitChanges<OffFlag>(changes, stepsBack, releaseSpec, isGenesis, isTracing, null);
+            CommitChanges<OffFlag>(changes, removeEmptyAccounts, isTracing, null);
         }
 
         InvalidateFrontCache();
@@ -595,18 +596,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private void CommitChanges<TStateTracing>(
         ReadOnlySpan<Change> changes,
-        int stepsBack,
-        IReleaseSpec releaseSpec,
-        bool isGenesis,
+        bool removeEmptyAccounts,
         bool isTracing,
         Dictionary<AddressAsKey, ChangeTrace>? trace)
         where TStateTracing : struct, IFlag
     {
         Debug.Assert(TStateTracing.IsActive == (trace is not null));
 
-        for (int i = 0; i <= stepsBack; i++)
+        for (int i = changes.Length - 1; i >= 0; i--)
         {
-            ref readonly Change change = ref changes[stepsBack - i];
+            ref readonly Change change = ref changes[i];
             if (!TStateTracing.IsActive && change!.ChangeType == ChangeType.JustCache)
             {
                 // Safe to skip without touching the head: JustCache is always the bottom of its chain.
@@ -633,9 +632,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             }
 
             int forAssertion = _intraTxCache[change.Address];
-            if (forAssertion != stepsBack - i)
+            if (forAssertion != i)
             {
-                ThrowUnexpectedCommitPosition(stepsBack, i, forAssertion);
+                ThrowUnexpectedCommitPosition(i, forAssertion);
             }
 
             _committedThisRound.Add(change.Address);
@@ -647,7 +646,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 case ChangeType.Touch:
                 case ChangeType.Update:
                     {
-                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                        if (removeEmptyAccounts && change.Account.IsEmpty)
                         {
                             if (isTracing) TraceRemoveEmpty(change);
                             SetState(change.Address, null);
@@ -664,7 +663,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                     }
                 case ChangeType.New:
                     {
-                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        if (!removeEmptyAccounts || !change.Account.IsEmpty)
                         {
                             if (isTracing) TraceCreate(change);
                             SetState(change.Address, change.Account);
@@ -728,8 +727,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowUnexpectedCommitPosition(int currentPosition, int i, int forAssertion)
-        => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+    private static void ThrowUnexpectedCommitPosition(int expected, int actual)
+        => throw new InvalidOperationException($"Expected checked value {actual} to be equal to {expected}");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
