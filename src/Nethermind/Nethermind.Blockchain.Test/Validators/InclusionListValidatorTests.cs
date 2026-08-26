@@ -109,11 +109,8 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
-    // EIP-8369: an EIP-8141 frame transaction is a Profile 2 candidate, whose appendability turns on the
-    // validation-operand state surface (EIP-8250 keyed nonces, EIP-8272 recent roots, a bounded validation
-    // replay) that this validator does not reconstruct. Judging it by the Profile 1 rules would read the
-    // account nonce it does not use and report an honest payload as censoring. The well-formedness
-    // assertion keeps the case honest: without it the entry could be passing for being malformed.
+    // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
+    // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
     [Test]
     public void Omitted_frame_transaction_is_not_judged()
     {
@@ -126,8 +123,11 @@ public class InclusionListValidatorTests
             .TestObject;
         IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
 
-        Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
+            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+        }
     }
 
     private static Transaction BuildFrameTx() => new()

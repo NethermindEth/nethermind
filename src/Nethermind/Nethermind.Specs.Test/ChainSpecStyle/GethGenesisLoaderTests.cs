@@ -309,13 +309,19 @@ public class GethGenesisLoaderTests
 
         // bogotaTime carries inclusion lists alone. Frame transactions keep their own transition, so a
         // genesis scheduling Bogota does not silently pull in the predeploy that shifts the fixtures.
-        Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(15));
-        Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(15));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+        }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip7805Enabled, Is.False);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.True);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip7805Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.False);
+        }
     }
 
     // The other half of the split: frame transactions must stay activatable from the format the devnet
@@ -325,13 +331,19 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15");
 
-        Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
-        Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+        }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
-        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
+        }
     }
 
     [Test]
