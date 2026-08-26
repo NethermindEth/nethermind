@@ -584,11 +584,22 @@ and waits for the `.nettrace` to finalize **before** the node is stopped. With a
 `tool_config.duration` the session is also capped at that duration plus ten minutes
 (`--duration`), so a hung cell cannot grow the file until the job times out.
 
-The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log. Read
-it with PerfView or TraceEvent (`GC/Stop` pause durations, `Contention/Stop` `DurationNs`
-with the `Contention/Start` stacks); stacks are managed-only. `dotnet-trace convert
---format speedscope` produces an empty profile for these events — it only knows sampled
-CPU stacks.
+The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log.
+[`scripts/nettrace-report.cs`](../nettrace-report.cs) summarizes it — GC count and pause per
+generation with the worst pauses ranked, contention wait count and percentiles, exception
+count:
+
+```bash
+dotnet run scripts/nettrace-report.cs -- dotnet-trace/rpcbench.nettrace [--top N]
+```
+
+Its contention figure is **blocked** time; CPU burnt spinning before a wait blocks is not in
+the trace at all, and a sampling profiler books that against `Monitor.Enter_Slowpath`
+instead — so the two collectors disagree by design, and the pair tells you which one a lock
+is costing you. For the owning stacks open the trace in PerfView (`Contention/Start` carries
+them at the verbose level the sidecar collects); stacks are managed-only. `dotnet-trace
+convert --format speedscope` produces an empty profile for these events — it only knows
+sampled CPU stacks.
 
 ## Runner prerequisites
 
@@ -621,5 +632,6 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
 | `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema and stage only validated aggregate files for the corpus artifact. |
 | `prepare-eth-call-corpus.py` | Convert a JSONL(.gz) corpus into the JSON-array fixture json-bench consumes. |
+| `../nettrace-report.cs` | Summarize a sidecar `.nettrace`: GC pauses per generation, contention percentiles, exceptions (`dotnet run scripts/nettrace-report.cs -- <file>`). |
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
