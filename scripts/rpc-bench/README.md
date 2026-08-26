@@ -53,8 +53,9 @@ which uses the same snapshots on this runner:
 - The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
   `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
   production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
-  inside the measured window; treat a run's first test/rate as warm-up. One-off
-  code-gen experiments: set `NODE_ENV_VARS`.
+  inside the measured window; treat a run's first test/rate as warm-up, or for
+  `jsonbench` set `corpus_warmup_duration` (see below). One-off code-gen
+  experiments: set `NODE_ENV_VARS`.
 
 ## Snapshot sets
 
@@ -256,9 +257,20 @@ from `reference_client` and overridable via `mode`:
   "html_report": true,
   "fail_on_diff": false,                           // compare: fail the job on any response difference
   "max_fail_rate_pct": 1,                          // benchmark: fail when summary.json's http fail rate exceeds this % (k6 itself exits 0 even at 100%)
+  "corpus_warmup_duration": 0,                     // benchmark: seconds (optional 's' suffix) of discarded load before the measured cell; 0 = none
+  "corpus_warmup_rps": 400,                        // rate of that warm-up
   "extra_args": ""
 }
 ```
+
+**Warm-up (`corpus_warmup_duration`, benchmark mode only).** A node that has just started
+answers `eth_blockNumber` long before it serves `eth_call` warm: snapshot persistence keeps
+writing for minutes and the JIT has not tiered up. With a non-zero duration the workflow first
+replays the same workload (same `benchmark_config`/corpus, `corpus_warmup_rps`, fail-rate gate
+lifted) into scratch — never staged or published — and **only then starts the profilers**
+(`start-profilers.sh`), so a `perf` or `dottrace` profile covers the measured cell alone. The
+sweep has its own warm-up with the same key (default 240 s there); here the default is 0 so an
+unconfigured run measures exactly what it always did, profilers starting as soon as RPC is up.
 
 `benchmark_config` accepts json-bench's curated head-only workloads by name —
 `realistic-mix-head` (weighted mainnet mix), `ethcall-contracts-head` (`eth_call`
@@ -465,6 +477,12 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only
    into the container, and the entrypoint is wrapped:
    `dottrace start --framework=NetCore --profiling-type=<Mode> --save-to=... --propagate-exit-code -- /nethermind/nethermind …`.
+   With a `jsonbench` warm-up (`corpus_warmup_duration`) the wrapper is launched with
+   `--collect-data-from-start=off --service-output=on --service-input=/dottrace-output/control.svc`;
+   after the warm-up `start-profilers.sh` appends `##dotTrace["start"]` to that file and
+   waits for the launcher's `##dotTrace["started"]` in the container log, failing loudly if it
+   never comes (a profiler that never collected has no snapshot to save on SIGINT). The
+   `start` wrapper is kept rather than `attach` because attach cannot do `tracing`.
 2. `stop-node.sh` stops the container with **SIGINT**, letting dotTrace finalize
    the snapshot into the mounted diag dir (`.dtp`, or `.dtt` for `timeline`).
 3. The `generate-dottrace-reports` job (Windows) runs `Reporter.exe` to convert
@@ -478,9 +496,10 @@ its dotTrace snapshot (GC pauses, lock contention, exception throws — runtime 
 CPU profile cannot show). rpc-bench does not: a `timeline` run here yields the `.dtt`
 snapshot only, for the dotTrace UI.
 
-> The snapshot spans the node's whole lifetime (including DB load and warmup), so
-> keep the benchmark `duration` the dominant phase, or analyze by time window, so
-> RPC-call frames dominate the captured `OwnTime`.
+> Without a warm-up the snapshot spans the node's whole lifetime (including DB
+> load and JIT tiering), so keep the benchmark `duration` the dominant phase, or
+> analyze by time window, so RPC-call frames dominate the captured `OwnTime`. With
+> `corpus_warmup_duration` set, collection covers only the measured cell.
 
 Download the `dottrace-reports` artifact and inspect locally:
 
@@ -497,9 +516,10 @@ many cells require per-cell profile isolation.
 
 The self-hosted runner process must execute as `root`: host `perf` is launched
 directly — not through `sudo` — so the recorder PID can be retained for
-identity-safe teardown. Host `perf` must be able to sample `cycles:u`. Sampling
-starts once the node serves RPC: startup is excluded, while the benchmark
-warm-up is included.
+identity-safe teardown. Host `perf` must be able to sample `cycles:u` (or falls
+back to `cpu-clock:u`). Sampling starts once the node serves RPC — startup is
+excluded — or, with a `jsonbench` `corpus_warmup_duration`, only after that
+warm-up, so the profile covers the measured cell alone.
 
 Shutdown folds the recording into `perf.folded`; collection fails when it has
 no managed-symbol leaf/self samples, including all-native or all-unknown
@@ -535,7 +555,8 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | File | Role |
 |---|---|
 | `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
-| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC. |
+| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
+| `start-profilers.sh` | Start perf and deferred dotTrace collection after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
 | `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
