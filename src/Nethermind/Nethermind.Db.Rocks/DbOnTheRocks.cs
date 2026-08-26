@@ -820,99 +820,41 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private DisposableLazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions readOptions) =>
         new(() => new IteratorManager(_db, cf, readOptions));
 
-    /// <summary>
-    /// Stack-buffer size for the single-call read fast path; values larger than this are re-read through the pinned API.
-    /// </summary>
-    internal const int GetStackBufferSize = 1024;
-
-    [SkipLocalsInit]
     internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
-        const int StackBufferSize = GetStackBufferSize;
-
         nint db = _db.Handle;
         nint readOptionsHandle = readOptions.Handle;
         nint cfHandle = cf?.Handle ?? 0;
 
-        byte* buffer = stackalloc byte[StackBufferSize];
-
-        nuint valueLength;
-        byte found;
-
-        byte fits;
-
+        // The key remains pinned for the native call, and the returned value remains valid until the handle is destroyed.
+        IntPtr handle;
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         {
-            fits = cfHandle != 0
-                ? Native.Instance.rocksdb_get_into_buffer_cf(
-                    db,
-                    readOptionsHandle,
-                    cfHandle,
-                    (nint)keyPtr,
-                    (nuint)key.Length,
-                    (nint)buffer,
-                    (nuint)StackBufferSize,
-                    out valueLength,
-                    out found)
-                : Native.Instance.rocksdb_get_into_buffer(
-                    db,
-                    readOptionsHandle,
-                    (nint)keyPtr,
-                    (nuint)key.Length,
-                    (nint)buffer,
-                    (nuint)StackBufferSize,
-                    out valueLength,
-                    out found);
+            handle = cfHandle != 0
+                ? Native.Instance.rocksdb_get_pinned_cf_v2(db, readOptionsHandle, cfHandle, keyPtr, (nuint)key.Length)
+                : Native.Instance.rocksdb_get_pinned_v2(db, readOptionsHandle, keyPtr, (nuint)key.Length);
         }
 
-        if (found == 0)
+        if (handle == IntPtr.Zero)
             return null;
 
-        int length = checked((int)valueLength);
-
-        if (fits == 0)
-            return GetLarge(db, readOptionsHandle, cfHandle, key);
-
-        byte[] result = GC.AllocateUninitializedArray<byte>(length);
-        new ReadOnlySpan<byte>(buffer, length).CopyTo(result);
-
-        return result;
-
-        // The value may have been rewritten since the probe call reported its size, so re-read through the
-        // pinned API and size the result from the pinned value rather than trusting the earlier length.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static byte[]? GetLarge(
-            nint db,
-            nint readOptionsHandle,
-            nint cfHandle,
-            ReadOnlySpan<byte> key)
+        try
         {
-            IntPtr handle;
-            fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
-            {
-                handle = cfHandle != 0
-                    ? Native.Instance.rocksdb_get_pinned_cf_v2(db, readOptionsHandle, cfHandle, keyPtr, (nuint)key.Length)
-                    : Native.Instance.rocksdb_get_pinned_v2(db, readOptionsHandle, keyPtr, (nuint)key.Length);
-            }
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnable_handle_get_value(handle, out UIntPtr valueLength);
+            int length = checked((int)valueLength);
+            if (length == 0)
+                return [];
 
-            if (handle == IntPtr.Zero)
+            if (valuePtr == IntPtr.Zero)
                 return null;
 
-            try
-            {
-                IntPtr valuePtr = Native.Instance.rocksdb_pinnable_handle_get_value(handle, out UIntPtr valueLength);
-                if (valuePtr == IntPtr.Zero)
-                    return null;
-
-                int length = checked((int)valueLength);
-                byte[] result = GC.AllocateUninitializedArray<byte>(length);
-                new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(result);
-                return result;
-            }
-            finally
-            {
-                Native.Instance.rocksdb_pinnable_handle_destroy(handle);
-            }
+            byte[] result = GC.AllocateUninitializedArray<byte>(length);
+            new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            Native.Instance.rocksdb_pinnable_handle_destroy(handle);
         }
     }
 
@@ -1072,13 +1014,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         nuint valueLength;
         byte found;
         byte fits;
+        byte emptyOutput = 0;
 
+        // Both spans remain pinned for the native call, which copies only when the complete value fits in output.
         fixed (byte* keyPtr = &MemoryMarshal.GetReference(key))
         fixed (byte* outputPtr = &MemoryMarshal.GetReference(output))
         {
             nint db = _db.Handle;
             nint readOptionsHandle = readOptions.Handle;
             nint cfHandle = cf?.Handle ?? 0;
+            byte* destination = output.IsEmpty ? &emptyOutput : outputPtr;
 
             fits = cfHandle != 0
                 ? Native.Instance.rocksdb_get_into_buffer_cf(
@@ -1087,7 +1032,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     cfHandle,
                     (nint)keyPtr,
                     (nuint)key.Length,
-                    (nint)outputPtr,
+                    (nint)destination,
                     (nuint)output.Length,
                     out valueLength,
                     out found)
@@ -1096,7 +1041,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     readOptionsHandle,
                     (nint)keyPtr,
                     (nuint)key.Length,
-                    (nint)outputPtr,
+                    (nint)destination,
                     (nuint)output.Length,
                     out valueLength,
                     out found);
@@ -1104,13 +1049,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (found == 0) return 0;
 
-        int length = checked((int)valueLength);
-        if (fits == 0) ThrowNotEnoughMemory(length, output.Length);
+        if (fits == 0 || valueLength > (nuint)output.Length) ThrowNotEnoughMemory(valueLength, output.Length);
 
-        return length;
+        return checked((int)valueLength);
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowNotEnoughMemory(int length, int bufferLength) =>
+        static void ThrowNotEnoughMemory(nuint length, int bufferLength) =>
             throw new ArgumentException($"Output buffer not large enough. Output size: {length}, Buffer size: {bufferLength}");
     }
 

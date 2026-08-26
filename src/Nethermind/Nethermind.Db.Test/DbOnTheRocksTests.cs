@@ -683,19 +683,62 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
-        // Straddles the stack buffer of the single-call Get fast path; the last case exercises the pinned large-value path.
         [TestCase(1)]
-        [TestCase(DbOnTheRocks.GetStackBufferSize - 1)]
-        [TestCase(DbOnTheRocks.GetStackBufferSize)]
-        [TestCase(DbOnTheRocks.GetStackBufferSize + 1)]
-        [TestCase(DbOnTheRocks.GetStackBufferSize * 8)]
-        public void Smoke_test_value_size_boundaries(int valueSize)
+        [TestCase(1024)]
+        [TestCase(8192)]
+        public void Smoke_test_value_sizes(int valueSize)
         {
             byte[] value = new byte[valueSize];
             new Random(valueSize).NextBytes(value);
 
             _db[[1, 2, 3]] = value;
             AssertCanGetViaAllMethod(_db, [1, 2, 3], value);
+        }
+
+        [Test]
+        public void Missing_value_uses_existing_get_semantics()
+        {
+            byte[] output = [0xA5, 0xA5, 0xA5];
+            byte[]? value = _db.Get([1, 2, 3]);
+            int length = _db.Get([1, 2, 3], output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Null);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5, 0xA5, 0xA5 }));
+            }
+        }
+
+        [TestCase(0)]
+        [TestCase(3)]
+        public void C_style_get_rejects_undersized_output_without_modifying_it(int outputSize)
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [4, 5, 6, 7];
+            byte[] output = new byte[outputSize];
+            Array.Fill(output, (byte)0xA5);
+            byte[] expectedOutput = (byte[])output.Clone();
+
+            Assert.That(() => _db.Get(key, output), Throws.ArgumentException);
+            Assert.That(output, Is.EqualTo(expectedOutput));
+        }
+
+        [Test]
+        public void Empty_value_round_trips_without_modifying_output()
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [];
+            byte[] output = [0xA5];
+            byte[]? value = _db.Get(key);
+            int length = _db.Get(key, output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Empty);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5 }));
+            }
         }
 
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
