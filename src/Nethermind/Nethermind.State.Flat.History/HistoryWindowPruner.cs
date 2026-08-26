@@ -54,6 +54,7 @@ public sealed class HistoryWindowPruner(
         if (config.HistoryRetentionBlocks == 0 || _started) return;
         _started = true;
         writer.WatermarkAdvanced += OnWatermarkAdvanced;
+        _wakeSignal.Release();
 
         // A pass is synchronous for seconds and the drain blocks, so the loop owns a thread.
         _loop = new Thread(RunLoop) { IsBackground = true, Name = "Flat history window pruner" };

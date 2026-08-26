@@ -224,6 +224,21 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void Start_WithNoWatermarkEventSinceStartup_StillRunsAFirstPassAndPublishesTheFloor()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        pruner.Start();
+
+        Assert.That(() => _reader.IsPrunedBelowFloor(11), Is.True.After(5000, 25),
+            "a restarted node must not wait for the first persistence flush before pruning");
+
+        pruner.Dispose();
+    }
+
+    [Test]
     public void Dispose_CalledTwice_DoesNotThrow()
     {
         HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
