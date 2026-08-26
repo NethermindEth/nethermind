@@ -9,8 +9,14 @@ namespace Nethermind.Serialization.Rlp;
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
+    // This is a defensive allocation bound, not consensus validation. It matches Geth's
+    // Amsterdam receipt-count safety floor. It must stay at or below the lowest minimum gas
+    // among supported transaction types; 4,500 leaves headroom below EIP-2780's 12,000 gas floor.
+    // https://github.com/ethereum/go-ethereum/blob/e9e35a42f8213235da1fde4f9ac8f3e9ff666b87/eth/protocols/eth/peer.go#L583-L592
+    private const ulong TransactionGasSafetyFloor = 4_500;
+
     private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
-        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.Transaction + 1)),
+        checked((int)(RlpLimit.MaxBlockGas / TransactionGasSafetyFloor + 1)),
         nameof(BlockBody.Transactions)
     );
 
