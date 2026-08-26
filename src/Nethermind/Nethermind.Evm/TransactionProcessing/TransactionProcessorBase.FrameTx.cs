@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -25,6 +26,35 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a POST_TX transaction on a
+    /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
+    /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
+    /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
+    /// succeed on a chain whose blocks halt.</remarks>
+    private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
+    {
+        // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.
+        if (!spec.IsEip7906Enabled
+            || !spec.BlockLevelAccessListsEnabled
+            || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
+            || tx.Frames is not { } frames
+            || WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: null } recorder)
+        {
+            return null;
+        }
+
+        foreach (TxFrame frame in frames)
+        {
+            if (frame.Mode == TxFrame.ModePostTx)
+            {
+                recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                return recorder;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
     /// <remarks>
     /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
@@ -114,6 +144,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // Enforced here, not only in static validation, so unvalidated entry points (e.g. eth_call)
         // cannot mint ETH: EIP-8141 forbids approval scope on a frame belonging to an atomic batch.
         bool prevIsAtomicBatch = false;
+        bool sawPostTx = false;
         foreach (TxFrame frame in frames)
         {
             if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
@@ -133,6 +164,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
             }
 
+            // The assertion opcodes share one diff view per transaction, which is only the finished
+            // transaction's while nothing after the first POST_TX frame can still change state.
+            if (sawPostTx && frame.Mode != TxFrame.ModePostTx)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotTrailing);
+            }
+
+            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.ValueOutsideSenderMode);
+            }
+
+            sawPostTx |= frame.Mode == TxFrame.ModePostTx;
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 
