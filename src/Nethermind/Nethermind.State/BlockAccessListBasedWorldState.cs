@@ -246,7 +246,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     // Storage reads are answered from the access list, so overrides installed on the wrapped state would go unseen.
-    public override bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll) => false;
+    public override bool TrySetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll) => false;
 
     public override bool IsDeadAccount(Address address)
         => !AccountExists(address) ||

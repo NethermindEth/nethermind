@@ -111,7 +111,7 @@ public class StateOverridesTests
         NonSinkWorldState state = new(_state);
         Dictionary<Address, AccountOverride> overrides = new()
         {
-            { TestItem.AddressA, new AccountOverride { StateDiff = new Dictionary<UInt256, ValueHash256> { [1] = ((UInt256)7).ToValueHash() } } },
+            { TestItem.AddressA, new AccountOverride { StateDiff = new Dictionary<UInt256, Hash256> { [1] = new Hash256(((UInt256)7).ToValueHash()) } } },
         };
 
         state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance, lazyStorage: true);
@@ -129,7 +129,7 @@ public class StateOverridesTests
 
     private sealed class NonSinkWorldState(IWorldState state) : WorldStateDecorator(state)
     {
-        public override bool TrySetStorageOverrides(Address address, Dictionary<UInt256, ValueHash256> slots, bool replaceAll) => false;
+        public override bool TrySetStorageOverrides(Address address, Dictionary<UInt256, Hash256> slots, bool replaceAll) => false;
     }
 
     [Test]
