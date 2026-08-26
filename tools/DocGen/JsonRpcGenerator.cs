@@ -79,6 +79,7 @@ internal static class JsonRpcGenerator
         [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
         [typeof(PublicKeyConverter)] = "_string_ (hex data)",
         [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
+        [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
     };
 
     internal static void Generate(string path)
