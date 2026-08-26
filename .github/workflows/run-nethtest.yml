@@ -534,6 +534,8 @@ jobs:
               # An empty block at a 21000 gas limit is expected VALID, yet its mandatory system-contract
               # BAL items exceed the EIP-7928 cap; test_bal_gas_limit_boundary contradicts it at 50000.
               'test_tx_gas_limit.fork_Bogota-blockchain_test_engine_inclusion_list'
+              # FOCIL v0.2.0 still embeds an EIP-7610 collision scenario removed from Glamsterdam v8.1.2.
+              'test_block_with_failing_included_il_tx_is_valid.*scenario_creation_address_collision'
             )
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
             echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
