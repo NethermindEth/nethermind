@@ -152,7 +152,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         else
         {
             trace = null;
-            CommitChanges<OffFlag>(changes, currentPosition, toUpdateRoots, trace);
+            CommitChanges<OffFlag>(changes, currentPosition, toUpdateRoots, null);
         }
 
         foreach (AddressAsKey address in toUpdateRoots)
@@ -210,6 +210,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Dictionary<StorageCell, StorageChangeTrace>? trace)
         where TStorageTracing : struct, IFlag
     {
+        Debug.Assert(TStorageTracing.IsActive == (trace is not null));
+
         for (int i = 0; i <= currentPosition; i++)
         {
             ref readonly Change change = ref changes[currentPosition - i];

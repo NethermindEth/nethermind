@@ -602,6 +602,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         Dictionary<AddressAsKey, ChangeTrace>? trace)
         where TStateTracing : struct, IFlag
     {
+        Debug.Assert(TStateTracing.IsActive == (trace is not null));
+
         for (int i = 0; i <= stepsBack; i++)
         {
             ref readonly Change change = ref changes[stepsBack - i];
@@ -633,7 +635,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             int forAssertion = _intraTxCache[change.Address];
             if (forAssertion != stepsBack - i)
             {
-                ThrowUnexpectedPosition(stepsBack, i, forAssertion);
+                ThrowUnexpectedCommitPosition(stepsBack, i, forAssertion);
             }
 
             _committedThisRound.Add(change.Address);
@@ -726,7 +728,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)
+    private static void ThrowUnexpectedCommitPosition(int currentPosition, int i, int forAssertion)
         => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
