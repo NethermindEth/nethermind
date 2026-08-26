@@ -178,7 +178,7 @@ public static class BaseFlatPersistence
 
             using ArrayPoolListRef<byte> keys = new(addresses.Length * StorageKeyLength, addresses.Length * StorageKeyLength);
             for (int i = 0; i < addresses.Length; i++)
-                EncodeStorageKeyHashedWithShortPrefix(keys.AsSpan().Slice(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i]);
+                EncodeStorageKey(keys.AsSpan().Slice(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i], fullAddressStorageKey);
 
             using ArrayPoolListRef<byte[]?> encodedValues = new(addresses.Length, addresses.Length);
             storage.MultiGet(keys.AsSpan(), StorageKeyLength, encodedValues.AsSpan(), ReadFlags.HintCacheMiss);

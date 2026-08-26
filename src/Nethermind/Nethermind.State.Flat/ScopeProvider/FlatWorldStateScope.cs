@@ -22,6 +22,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 {
     private const int AccountReadBatchSize = 256;
     private const int StorageReadBatchSize = 256;
+    private const int UnprocessedSelfDestructIdx = int.MinValue;
 
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -204,7 +205,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             using ArrayPoolList<Account?> loadedAccounts = new(accountCount, accountCount);
             Account?[]? accounts = sink is null ? null : loadedAccounts.UnsafeGetInternalArray();
             using ArrayPoolList<int>? selfDestructIdxs = sink is null ? null : new(accountCount, accountCount);
-            selfDestructIdxs?.AsSpan().Fill(-1);
+            selfDestructIdxs?.AsSpan().Fill(UnprocessedSelfDestructIdx);
 
             try
             {
@@ -241,10 +242,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             sink.OnAccountRead(address, account);
 
                         if (accounts is not null)
-                        {
                             accounts[i] = account;
-                            selfDestructIdxs!.UnsafeGetInternalArray()[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-                        }
 
                         if (account is null) continue;
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
@@ -271,6 +269,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             }
                         }
 
+                        if (accounts is not null)
+                            selfDestructIdxs!.UnsafeGetInternalArray()[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+
                     }
                 }
 
@@ -295,7 +296,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 if (sink is not null && !token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
-                    RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!.UnsafeGetInternalArray(), sink, parallelOptions);
+                    RunSinkSlotReads(accountChanges, selfDestructIdxs!.UnsafeGetInternalArray(), sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -307,7 +308,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
@@ -318,7 +318,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
+            if (selfDestructIdxs[i] == UnprocessedSelfDestructIdx) continue;
             totalSlots += accountChanges[i].StorageChanges.Length
                        + accountChanges[i].StorageReads.Length;
         }
@@ -329,7 +329,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
+            if (selfDestructIdxs[i] == UnprocessedSelfDestructIdx) continue;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
