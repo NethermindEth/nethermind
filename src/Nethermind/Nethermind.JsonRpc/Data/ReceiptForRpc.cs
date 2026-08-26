@@ -65,7 +65,8 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }
-        public LogEntryForRpc[] Logs { get; set; }
+        /// <summary>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</summary>
+        public LogEntryForRpc[]? Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
@@ -84,7 +85,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 Bloom = LogsBloom,
                 Index = (int)TransactionIndex,
-                Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
+                Logs = (Logs ?? []).Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,
                 Sender = From,
                 BlockHash = BlockHash,

@@ -4,12 +4,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -361,6 +363,29 @@ public class FrameTransactionForRpcTests
             Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
             Assert.That(roundTripped.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(5_000UL));
             Assert.That(roundTripped.FrameReceipts[1].StateGasUsed, Is.EqualTo(0UL));
+        }
+    }
+
+    /// <summary>The wire-facing converter, not just the DTO, must carry the frame fields both ways.</summary>
+    /// <remarks><see cref="TxReceiptConverter"/> is the registered converter for <see cref="TxReceipt"/>.</remarks>
+    [Test]
+    public void TxReceiptConverter_FrameTx_RoundTripsPayerAndFrameReceipts()
+    {
+        TxReceipt receipt = BuildFrameTxReceipt();
+        receipt.TxHash = Keccak.Zero;
+        EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+        TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped!.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
+            Assert.That(roundTripped.FrameReceipts![0].ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
+            Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(roundTripped.Logs, Has.Length.EqualTo(1));
         }
     }
 
