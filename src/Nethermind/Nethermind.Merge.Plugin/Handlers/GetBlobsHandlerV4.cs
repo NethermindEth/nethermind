@@ -79,7 +79,10 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
                     continue;
                 }
 
-                found++;
+                if (!availableMask.IsEmpty)
+                {
+                    found++;
+                }
                 if (availableMask != requestedMask)
                 {
                     allRequestedCellsAvailable = false;

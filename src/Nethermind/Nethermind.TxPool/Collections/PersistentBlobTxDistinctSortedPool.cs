@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -33,18 +32,29 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private readonly ILogger _logger;
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
-    private readonly Dictionary<ValueHash256, TaskCompletionSource<bool>> _metadataFallbackReads = [];
+    private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
     private readonly int _maxPendingBlobUpdates;
     private const int MaxBlobUpdateWriteAttempts = 2;
     private const int MaxBlobUpdateRetryExponent = 5;
     private static readonly TimeSpan InitialBlobUpdateRetryDelay = TimeSpan.FromSeconds(1);
+    private readonly TimeProvider _timeProvider;
     private readonly object _blobUpdateRetryTimerLock = new();
-    private Timer? _blobUpdateRetryTimer;
+    private ITimer? _blobUpdateRetryTimer;
     private DateTimeOffset? _nextBlobUpdateRetryAt;
     private long _nextBlobUpdateToken;
     private int _disposed;
 
     public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
+        : this(blobTxStorage, txPoolConfig, comparer, logManager, TimeProvider.System)
+    {
+    }
+
+    internal PersistentBlobTxDistinctSortedPool(
+        ITxStorage blobTxStorage,
+        ITxPoolConfig txPoolConfig,
+        IComparer<Transaction> comparer,
+        ILogManager logManager,
+        TimeProvider timeProvider)
         : base(txPoolConfig.PersistentBlobStorageSize, comparer, logManager)
     {
         _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
@@ -53,6 +63,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         _blobTxMetadataCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob tx metadata cache");
         _maxPendingBlobUpdates = Math.Max(1, txPoolConfig.BlobCacheSize);
         _logger = logManager?.GetClassLogger<PersistentBlobTxDistinctSortedPool>() ?? throw new ArgumentNullException(nameof(logManager));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
         RecreateLightTxCollectionAndCache(blobTxStorage);
     }
@@ -108,7 +119,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     }
                     catch
                     {
-                        DateTimeOffset retryAt = DateTimeOffset.UtcNow;
+                        DateTimeOffset retryAt = _timeProvider.GetUtcNow();
                         pendingUpdate.NextRetryAt = retryAt;
                         ScheduleBlobUpdateRetry(retryAt);
                         throw;
@@ -197,8 +208,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
             }
 
-            TaskCompletionSource<bool> fallbackRead;
-            bool ownsFallbackRead;
             using (McsLock.Disposable lockRelease = Lock.Acquire())
             {
                 if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
@@ -218,27 +227,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     return false;
                 }
 
-                if (_metadataFallbackReads.TryGetValue(hash, out fallbackRead!))
-                {
-                    ownsFallbackRead = false;
-                }
-                else
-                {
-                    fallbackRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    _metadataFallbackReads.Add(hash, fallbackRead);
-                    ownsFallbackRead = true;
-                }
-            }
-
-            if (!ownsFallbackRead)
-            {
-                if (!fallbackRead.Task.GetAwaiter().GetResult())
+                if (!_metadataFallbackReads.Add(hash))
                 {
                     blobTx = default;
                     return false;
                 }
-
-                continue;
             }
 
             bool readCompleted = false;
@@ -261,12 +254,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
             finally
             {
-                using (McsLock.Disposable lockRelease = Lock.Acquire())
-                {
-                    _metadataFallbackReads.Remove(hash);
-                }
-
-                fallbackRead.TrySetResult(readCompleted);
+                using McsLock.Disposable lockRelease = Lock.Acquire();
+                _metadataFallbackReads.Remove(hash);
             }
         }
     }
@@ -728,7 +717,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 pendingUpdate.RetryCount = 0;
                 if (!pendingUpdate.WriterActive)
                 {
-                    retryAt = DateTimeOffset.UtcNow;
+                    retryAt = _timeProvider.GetUtcNow();
                     pendingUpdate.NextRetryAt = retryAt;
                 }
             }
@@ -872,7 +861,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     {
                         current.WriterActive = false;
                         int retryExponent = Math.Min(current.RetryCount++, MaxBlobUpdateRetryExponent);
-                        retryAt = DateTimeOffset.UtcNow + InitialBlobUpdateRetryDelay * (1 << retryExponent);
+                        retryAt = _timeProvider.GetUtcNow() + InitialBlobUpdateRetryDelay * (1 << retryExponent);
                         current.NextRetryAt = retryAt;
                     }
                 }
@@ -898,12 +887,12 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
 
             _nextBlobUpdateRetryAt = retryAt;
-            _blobUpdateRetryTimer ??= new Timer(
+            _blobUpdateRetryTimer ??= _timeProvider.CreateTimer(
                 static state => ((PersistentBlobTxDistinctSortedPool)state!).RetryPendingBlobUpdatesSafely(),
                 this,
                 Timeout.InfiniteTimeSpan,
                 Timeout.InfiniteTimeSpan);
-            TimeSpan dueTime = retryAt - DateTimeOffset.UtcNow;
+            TimeSpan dueTime = retryAt - _timeProvider.GetUtcNow();
             _blobUpdateRetryTimer.Change(dueTime > TimeSpan.Zero ? dueTime : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
         }
     }
@@ -917,7 +906,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         catch (Exception ex)
         {
             if (_logger.IsError) _logger.Error("Failed to run blob transaction persistence retries; retry rescheduled.", ex);
-            ScheduleBlobUpdateRetry(DateTimeOffset.UtcNow + InitialBlobUpdateRetryDelay);
+            ScheduleBlobUpdateRetry(_timeProvider.GetUtcNow() + InitialBlobUpdateRetryDelay);
         }
     }
 
@@ -933,7 +922,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             _nextBlobUpdateRetryAt = null;
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _timeProvider.GetUtcNow();
         List<(ValueHash256 Hash, UInt256 Timestamp)>? retries = null;
         DateTimeOffset? nextRetryAt = null;
         using (McsLock.Disposable lockRelease = Lock.Acquire())
@@ -1007,7 +996,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return;
         }
 
-        Timer? retryTimer;
+        ITimer? retryTimer;
         lock (_blobUpdateRetryTimerLock)
         {
             retryTimer = _blobUpdateRetryTimer;
@@ -1017,9 +1006,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
         if (retryTimer is not null)
         {
-            using ManualResetEvent disposed = new(initialState: false);
-            retryTimer.Dispose(disposed);
-            disposed.WaitOne();
+            retryTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }
 

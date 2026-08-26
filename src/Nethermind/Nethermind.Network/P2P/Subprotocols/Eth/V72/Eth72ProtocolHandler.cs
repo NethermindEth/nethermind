@@ -35,6 +35,21 @@ using PooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
+/// <summary>Implements eth/72 sparse blob transaction announcements, retrieval, and cell exchange.</summary>
+/// <param name="session">The devp2p session.</param>
+/// <param name="serializer">The message serializer.</param>
+/// <param name="nodeStatsManager">The peer statistics manager.</param>
+/// <param name="syncServer">The synchronization server.</param>
+/// <param name="backgroundTaskScheduler">The bounded background task scheduler.</param>
+/// <param name="txPool">The transaction pool.</param>
+/// <param name="gossipPolicy">The network gossip policy.</param>
+/// <param name="forkInfo">The peer fork information provider.</param>
+/// <param name="logManager">The log manager.</param>
+/// <param name="txPoolConfig">The transaction-pool configuration.</param>
+/// <param name="specProvider">The chain specification provider.</param>
+/// <param name="blobCustodyTracker">The local blob custody tracker.</param>
+/// <param name="sparseBlobPoolPeerRegistry">The node-wide sparse blob peer registry.</param>
+/// <param name="transactionsGossipPolicy">The optional transaction gossip policy.</param>
 public class Eth72ProtocolHandler(
     ISession session,
     IMessageSerializationService serializer,
@@ -102,12 +117,17 @@ public class Eth72ProtocolHandler(
     private double _cellServeTokens;
     private DateTimeOffset _cellServeTokensUpdatedAt;
 
+    /// <inheritdoc/>
     public override string Name => "eth72";
 
+    /// <summary>Gets the eth/72 protocol version.</summary>
     public new static byte Version => EthVersions.Eth72;
+    /// <inheritdoc/>
     public override byte ProtocolVersion => Version;
+    /// <inheritdoc/>
     public override int MessageIdSpaceSize => 22;
 
+    /// <inheritdoc/>
     public override void Init()
     {
         _requestRatioWarmupEndsAt = _timestamper.UtcNowOffset + RequestToAnnouncementWarmup;
@@ -167,6 +187,7 @@ public class Eth72ProtocolHandler(
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {
+                        ClearPreHashes(pooledTransactions.EthMessage.Transactions.AsSpan());
                         pooledTransactions.Dispose();
                         IgnorePooledTransactionResponse();
                         throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
@@ -526,6 +547,7 @@ public class Eth72ProtocolHandler(
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
         => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
+    /// <inheritdoc/>
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
         ArrayPoolList<Hash256> hashes = new(1) { new Hash256(message.TxHash) };
@@ -730,7 +752,6 @@ public class Eth72ProtocolHandler(
         }
 
         _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, requestedMask, this);
-        AddPendingCellRequest(key, missingMask);
         if (!_sparseBlobPoolPeerRegistry.RecordCells(this, hash, availableMask, pending.Cells))
         {
             DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
@@ -755,8 +776,8 @@ public class Eth72ProtocolHandler(
     }
 
     /// <summary>
-    /// Handles a response that carries none of the requested cells: the peer's announcement is
-    /// dropped so retries converge on other providers instead of looping on the same peer.
+    /// Handles a response that carries none of the requested cells by backing off the peer before
+    /// restoring its announcement, allowing another provider to answer without losing the sole source.
     /// </summary>
     private void RetryUnansweredCellRequest(SentCellRequest sentRequest, BlobCellMask responseMask)
     {
@@ -765,10 +786,7 @@ public class Eth72ProtocolHandler(
             ThrowMalformedCellsResponse(sentRequest, $"Unexpected cell mask in empty {nameof(CellsMessage72)} response.");
         }
 
-        Hash256 hash = sentRequest.Hash.ToHash256();
-        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, sentRequest.Mask, this);
-        _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
-        RequestCellsWhenReady(hash, sentRequest.Mask);
+        RequeueClaimedCellRequest(sentRequest, removePeer: false);
     }
 
     private void OnPendingCellsApplied(Hash256 hash, ValueHash256 key, BlobCellMask availableMask, BlobCellMask missingMask)
@@ -799,30 +817,32 @@ public class Eth72ProtocolHandler(
     {
         IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
         ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+        int currentIdx = request.StartIndex;
+        bool isTransferred = false;
         try
         {
-            int startIdx = request.StartIndex;
             bool isTrace = Logger.IsTrace;
-
-            for (int i = startIdx; i < transactionsSpan.Length; i++)
+            while (currentIdx < transactionsSpan.Length)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    if (i == startIdx)
+                    if (currentIdx == request.StartIndex)
                     {
-                        transactions.Dispose();
                         return ValueTask.CompletedTask;
                     }
 
-                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), HandleSlow, "Transactions"))
+                    if (BackgroundTaskScheduler.TryScheduleBackgroundTask(
+                        new TransactionsRequest(transactions, currentIdx),
+                        HandleSlow,
+                        "Transactions"))
                     {
-                        transactions.Dispose();
+                        isTransferred = true;
                     }
 
                     return ValueTask.CompletedTask;
                 }
 
-                Transaction tx = transactionsSpan[i];
+                Transaction tx = transactionsSpan[currentIdx];
                 if (!ValidateAnnouncedPooledTransaction(tx))
                 {
                     throw new SubprotocolException("invalid pooled tx type or size");
@@ -831,10 +851,8 @@ public class Eth72ProtocolHandler(
                 if (!tx.SupportsBlobs)
                 {
                     PrepareAndSubmitTransaction(tx, isTrace);
-                    continue;
                 }
-
-                if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 })
+                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 })
                 {
                     if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
                     {
@@ -846,19 +864,22 @@ public class Eth72ProtocolHandler(
                         RemoveCellState(tx.Hash.ValueHash256);
                         _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
                     }
-
-                    continue;
+                }
+                else
+                {
+                    PrepareAndMaybeSubmitSparseBlobTransaction(tx, isTrace);
                 }
 
-                PrepareAndMaybeSubmitSparseBlobTransaction(tx, isTrace);
+                currentIdx++;
             }
-
-            transactions.Dispose();
         }
-        catch
+        finally
         {
-            transactions.Dispose();
-            throw;
+            if (!isTransferred)
+            {
+                ClearPreHashes(transactionsSpan[currentIdx..]);
+                transactions.Dispose();
+            }
         }
 
         return ValueTask.CompletedTask;
@@ -1195,9 +1216,14 @@ public class Eth72ProtocolHandler(
         if (removePeer)
         {
             _sparseBlobPoolPeerRegistry.RemovePeer(this);
+            RequestCellsWhenReady(requestedHash, sentRequest.Mask);
+            return;
         }
 
-        RequestCellsWhenReady(requestedHash, sentRequest.Mask);
+        DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
+        _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, requestedHash);
+        _partialCellResponseBackoff.Set(sentRequest.Hash, retryAt);
+        AddPendingCellRequest(sentRequest.Hash, sentRequest.Mask, retryAt, restoreAnnouncement: true);
     }
 
     private void AddSentCellRequest(ValueHash256 hash, BlobCellMask requestMask, long requestId)
@@ -1444,11 +1470,7 @@ public class Eth72ProtocolHandler(
         {
             for (int i = 0; i < expiredSentRequests.Count; i++)
             {
-                SentCellRequest request = expiredSentRequests[i];
-                Hash256 hash = request.Hash.ToHash256();
-                _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
-                _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, request.Mask, this);
-                RequestCellsWhenReady(hash, request.Mask);
+                RequeueClaimedCellRequest(expiredSentRequests[i], removePeer: false);
             }
         }
     }
@@ -1732,31 +1754,10 @@ public class Eth72ProtocolHandler(
             return 0;
         }
 
-        if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-        {
-            return GetElidedBlobNetworkSize(
-                consensusEncodingSize,
-                wrapper.Version,
-                Rlp.LengthOf(wrapper.Commitments),
-                Rlp.LengthOf(wrapper.Proofs));
-        }
-
-        if (tx is LightTransaction { ProofVersion: { } proofVersion }
-            && tx.BlobVersionedHashes is { Length: > 0 } blobVersionedHashes)
-        {
-            int blobCount = blobVersionedHashes.Length;
-            int proofCount = proofVersion switch
-            {
-                ProofVersion.V0 => blobCount,
-                ProofVersion.V1 => checked(blobCount * BlobCellMask.CellCount),
-                _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {proofVersion}")
-            };
-            int commitmentsLength = GetFixedByteArrayListLength(blobCount, CkzgLib.Ckzg.BytesPerCommitment);
-            int proofsLength = GetFixedByteArrayListLength(proofCount, CkzgLib.Ckzg.BytesPerProof);
-            return GetElidedBlobNetworkSize(consensusEncodingSize, proofVersion, commitmentsLength, proofsLength);
-        }
-
-        return 0;
+        return tx.NetworkWrapper is ShardBlobNetworkWrapper
+            || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
+            ? consensusEncodingSize
+            : 0;
     }
 
     // Devp2p specifies consensus size, while sparse-v2 geth announces its elided wrapper estimate.
@@ -1765,28 +1766,13 @@ public class Eth72ProtocolHandler(
         => MatchesAnnouncedSize(tx, announcedSize)
         || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;
 
-    private static int GetElidedBlobNetworkSize(
-        int consensusEncodingSize,
-        ProofVersion proofVersion,
-        int commitmentsLength,
-        int proofsLength)
+    private static void ClearPreHashes(ReadOnlySpan<Transaction> transactions)
     {
-        int contentLength = checked(
-            consensusEncodingSize - sizeof(byte)
-            + (proofVersion switch
-            {
-                ProofVersion.V0 => 0,
-                ProofVersion.V1 => Rlp.LengthOf((byte)ProofVersion.V1),
-                _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {proofVersion}")
-            })
-            + Rlp.LengthOfSequence(0)
-            + commitmentsLength
-            + proofsLength);
-        return checked(sizeof(byte) + Rlp.LengthOfSequence(contentLength));
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i].ClearPreHash();
+        }
     }
-
-    private static int GetFixedByteArrayListLength(int count, int itemLength)
-        => Rlp.LengthOfSequence(checked(count * Rlp.LengthOfByteString(itemLength, firstByte: 0)));
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

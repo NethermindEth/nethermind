@@ -8,6 +8,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
+/// <summary>Represents an eth/72 peer participating in sparse blob transaction and cell exchange.</summary>
 public interface ISparseBlobPoolPeer
 {
     /// <summary>Gets the remote peer identity.</summary>

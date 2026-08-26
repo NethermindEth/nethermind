@@ -19,6 +19,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
+/// <summary>
+/// Coordinates bounded sparse blob state, peer selection, custody changes, and cell-serving capacity across eth/72 peers.
+/// </summary>
 public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
 {
     internal const int SupernodeCustodyColumnThreshold = 64;
@@ -90,6 +93,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private BlobCellMask _pendingCustodyMask;
     private int _disposed;
 
+    /// <summary>Initializes a node-wide sparse blob peer registry.</summary>
+    /// <param name="txPool">The transaction pool used for sparse admission and cell lookup.</param>
+    /// <param name="blobCustodyTracker">The source of local custody changes.</param>
+    /// <param name="backgroundTaskScheduler">The bounded scheduler for maintenance and custody scans.</param>
+    /// <param name="logManager">The log manager.</param>
     public SparseBlobPoolPeerRegistry(
         ITxPool txPool,
         IBlobCustodyTracker blobCustodyTracker,
@@ -143,6 +151,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _txPool.EvictedPending += OnPendingTransactionRemoved;
     }
 
+    /// <summary>Stops maintenance and releases registry resources.</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -195,8 +204,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         if (!_backgroundTaskScheduler.TryScheduleTask(
-            this,
-            static (registry, cancellationToken) => registry.ApplyPendingCustodyChange(cancellationToken),
+            new ScheduledRegistryRequest(this),
+            static (request, cancellationToken) => request.Registry.ApplyPendingCustodyChange(cancellationToken),
             timeout: ScheduledActionTimeout,
             source: nameof(BlobCustodyTracker)))
         {
@@ -206,36 +215,57 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private Task ApplyPendingCustodyChange(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
+        bool completedScan = false;
+        try
         {
-            BlobCellMask custodyMask;
-            long revision;
-            lock (_custodyLock)
+            while (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
             {
-                custodyMask = _pendingCustodyMask;
-                revision = _custodyUpdateRevision;
-            }
-
-            int requests = RequestCellsForCustodyChange(custodyMask, HasSupernodeCustody(custodyMask));
-            if (requests != 0 && _logger.IsDebug)
-            {
-                _logger.Debug($"Scheduled {requests} sparse blob custody cell requests for mask {custodyMask}.");
-            }
-
-            lock (_custodyLock)
-            {
-                if (revision != _custodyUpdateRevision)
+                BlobCellMask custodyMask;
+                long revision;
+                lock (_custodyLock)
                 {
-                    continue;
+                    custodyMask = _pendingCustodyMask;
+                    revision = _custodyUpdateRevision;
                 }
 
-                _appliedCustodyUpdateRevision = revision;
-                Interlocked.Exchange(ref _custodyUpdateScheduled, 0);
-                return Task.CompletedTask;
+                if (!RequestCellsForCustodyChange(
+                    custodyMask,
+                    HasSupernodeCustody(custodyMask),
+                    cancellationToken,
+                    out int requests))
+                {
+                    break;
+                }
+
+                if (requests != 0 && _logger.IsDebug)
+                {
+                    _logger.Debug($"Scheduled {requests} sparse blob custody cell requests for mask {custodyMask}.");
+                }
+
+                lock (_custodyLock)
+                {
+                    if (revision != _custodyUpdateRevision)
+                    {
+                        continue;
+                    }
+
+                    _custodyMask = custodyMask;
+                    _appliedCustodyUpdateRevision = revision;
+                    completedScan = true;
+                    break;
+                }
             }
         }
+        finally
+        {
+            Interlocked.Exchange(ref _custodyUpdateScheduled, 0);
+        }
 
-        Interlocked.Exchange(ref _custodyUpdateScheduled, 0);
+        if (completedScan)
+        {
+            TrySchedulePendingCustodyUpdate();
+        }
+
         return Task.CompletedTask;
     }
 
@@ -255,6 +285,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public void AddPeer(ISparseBlobPoolPeer peer)
     {
         ArgumentNullException.ThrowIfNull(peer);
@@ -280,6 +311,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
     }
 
+    /// <inheritdoc/>
     public void RemovePeer(ISparseBlobPoolPeer peer)
     {
         ArgumentNullException.ThrowIfNull(peer);
@@ -431,6 +463,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask)
     {
         if (announcementMask.IsEmpty || !IsActivePeer(peer))
@@ -480,6 +513,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return true;
     }
 
+    /// <inheritdoc/>
     public BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent)
     {
         if (announcementMask.IsEmpty)
@@ -553,6 +587,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return Keccak.Compute(input);
     }
 
+    /// <inheritdoc/>
     public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
         if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -724,6 +759,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return false;
     }
 
+    /// <inheritdoc/>
     public void OnCellsRequestCompleted(Hash256 hash, BlobCellMask completedMask, ISparseBlobPoolPeer peer)
     {
         if (completedMask.IsEmpty
@@ -762,6 +798,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public void RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash)
     {
         if (IsActivePeer(peer)
@@ -783,7 +820,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
-    private int RequestCellsForCustodyChange(BlobCellMask newCustodyMask, bool requestAllAnnouncedCells)
+    private bool RequestCellsForCustodyChange(
+        BlobCellMask newCustodyMask,
+        bool requestAllAnnouncedCells,
+        CancellationToken cancellationToken,
+        out int requests)
     {
         BlobCellMask requestMaskTemplate;
         lock (_custodyLock)
@@ -791,17 +832,21 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             requestMaskTemplate = requestAllAnnouncedCells
                 ? BlobCellMask.Full
                 : new BlobCellMask(newCustodyMask.Value & ~_custodyMask.Value);
-            _custodyMask = newCustodyMask;
         }
 
+        requests = 0;
         if (requestMaskTemplate.IsEmpty)
         {
-            return 0;
+            return true;
         }
 
-        int requests = 0;
         foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> entry in _transactions)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
             Hash256 hash = entry.Key.ToHash256();
             BlobCellMask requestMask = requestAllAnnouncedCells
                 ? GetMissingAnnouncedMask(hash, entry.Value)
@@ -822,7 +867,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
         }
 
-        return requests;
+        return !cancellationToken.IsCancellationRequested;
     }
 
     private BlobCellMask AddProviderExtraCell(Hash256 hash, TrackedSparseBlobTx state, BlobCellMask requestMask)
@@ -857,6 +902,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             : requestMask;
     }
 
+    /// <inheritdoc/>
     public bool HasRecordedTransaction(Hash256 hash)
     {
         if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -870,6 +916,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public int GetFullProviderAnnouncementCount(Hash256 hash)
     {
         if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -892,6 +939,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return count;
     }
 
+    /// <inheritdoc/>
     public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
     {
         Hash256? hash = transaction.Hash;
@@ -984,6 +1032,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return TrySubmit(hash, state);
     }
 
+    /// <inheritdoc/>
     public bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells)
     {
         if (cellMask.IsEmpty
@@ -1052,6 +1101,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return true;
     }
 
+    /// <inheritdoc/>
     public bool TryApplyRecordedCells(Hash256 hash)
     {
         if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -1199,6 +1249,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return BlobCellMergeResult.Accepted;
     }
 
+    /// <inheritdoc/>
     public bool TryAcquireCellServeWork(int work)
     {
         if (work <= 0)
@@ -1231,6 +1282,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public void ReleaseCellServeWork()
     {
         lock (_cellServeLock)
@@ -1244,6 +1296,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    /// <inheritdoc/>
     public void RefundCellServeWork(int work)
     {
         if (work <= 0)
@@ -1268,6 +1321,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _cellServeConcurrency.Dispose();
     }
 
+    /// <inheritdoc/>
     public void Clear(Hash256 hash)
     {
         if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -1853,8 +1907,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         if (!_backgroundTaskScheduler.TryScheduleTask(
-            this,
-            static (registry, cancellationToken) => registry.RunMaintenance(cancellationToken),
+            new ScheduledRegistryRequest(this),
+            static (request, cancellationToken) => request.Registry.RunMaintenance(cancellationToken),
             timeout: ScheduledActionTimeout,
             source: nameof(SparseBlobPoolPeerRegistry)))
         {
@@ -2568,6 +2622,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     private readonly record struct TrackedStateKey(ValueHash256 Hash, long Revision);
+
+    private readonly record struct ScheduledRegistryRequest(SparseBlobPoolPeerRegistry Registry);
 
     private readonly record struct PeerCleanupAction(
         Hash256 Hash,

@@ -80,19 +80,22 @@ namespace Nethermind.Facade.Test.Eth
         }
 
         [Test]
-        public void IsSyncing_ReturnsFalseWhenSynchronizationDisabled()
+        public void IsSyncing_StillReportsHeadDistanceWhenSynchronizationDisabled()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             SyncConfig syncConfig = new() { SynchronizationEnabled = false };
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
 
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
-            Assert.That(syncingResult.IsSyncing, Is.False);
-            blockTree.DidNotReceive().FindBestSuggestedHeader();
+            Assert.That(syncingResult.IsSyncing, Is.True);
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(80UL));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
         }
 
         [TestCase(false, true, true)]

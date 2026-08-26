@@ -11,10 +11,16 @@ using Nethermind.Network.Contract.Messages;
 
 namespace Nethermind.TxPool
 {
+    /// <summary>Describes the outcome of merging verified blob cells into a pending transaction.</summary>
     public enum BlobCellMergeResult
     {
+        /// <summary>The cells were accepted or were already present.</summary>
         Accepted,
+
+        /// <summary>The target transaction is no longer available for merging.</summary>
         TransactionUnavailable,
+
+        /// <summary>The supplied cells or proofs are invalid for the target transaction.</summary>
         InvalidCells,
     }
 
@@ -145,6 +151,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Verifies and merges newly received cells and reports why the merge was rejected.
         /// </summary>
+        /// <returns>The outcome of the merge attempt.</returns>
         BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;

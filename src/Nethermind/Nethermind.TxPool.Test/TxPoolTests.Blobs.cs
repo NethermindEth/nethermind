@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
@@ -1403,7 +1404,7 @@ namespace Nethermind.TxPool.Test
                 BlobCacheSize = 1,
                 Size = 10
             };
-            BlobTxStorage blobTxStorage = new();
+            CountingBlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -1420,8 +1421,10 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
+            Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1440,6 +1443,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobs[1], Is.Not.Null);
                 Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
                 Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
 
@@ -2008,7 +2012,7 @@ namespace Nethermind.TxPool.Test
                 BlobCacheSize = 1,
                 Size = 10
             };
-            BlobTxStorage blobTxStorage = new();
+            CountingBlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -2025,8 +2029,10 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
+            Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -2047,6 +2053,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobs[1], Is.Not.Null);
                 Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
                 Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
 
@@ -2494,8 +2501,9 @@ namespace Nethermind.TxPool.Test
                 Size = 10
             };
             IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
             using BlockingBlobTxStorage storage = new(failedUpdateCount: 2);
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance, timeProvider);
             Transaction fullBlobTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
@@ -2513,7 +2521,8 @@ namespace Nethermind.TxPool.Test
             storage.ReleaseFirstUpdate();
             Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
 
-            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(15)), Is.True);
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(1)), Is.True);
 
             Assert.That(storage.TryGet(fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp, out Transaction storedTx), Is.True);
             Assert.That(((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask, Is.EqualTo(initialMask | updateMask));
@@ -2903,7 +2912,7 @@ namespace Nethermind.TxPool.Test
                     duplicateRead = RunOnDedicatedThread(() =>
                         blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
                     Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
-                    Assert.That(duplicateRead.IsCompleted, Is.False);
+                    Assert.That(await duplicateRead.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
                     Assert.That(storage.FullReadCount, Is.EqualTo(1));
                 }
 
@@ -2917,17 +2926,12 @@ namespace Nethermind.TxPool.Test
                 }
 
                 Assert.That(await staleRead, Is.False);
-                if (duplicateRead is not null)
-                {
-                    Assert.That(await duplicateRead, Is.False);
-                }
-
                 Assert.That(storage.ContainsWithoutBlobs(storedTx.Hash), Is.False);
             }
         }
 
         [Test]
-        public async Task should_share_concurrent_legacy_sidecar_read()
+        public async Task should_not_block_concurrent_legacy_sidecar_read()
         {
             (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
                 CreatePersistentBlobPoolWithBlockingReadStorage();
@@ -2945,7 +2949,8 @@ namespace Nethermind.TxPool.Test
                 try
                 {
                     Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
-                    Assert.That(duplicateRead.IsCompleted, Is.False);
+                    Assert.That(await duplicateRead.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
+                    Assert.That(storage.FullReadCount, Is.EqualTo(1));
                 }
                 finally
                 {
@@ -2953,7 +2958,6 @@ namespace Nethermind.TxPool.Test
                 }
 
                 Assert.That(await firstRead, Is.True);
-                Assert.That(await duplicateRead, Is.True);
                 Assert.That(storage.FullReadCount, Is.EqualTo(1));
             }
         }

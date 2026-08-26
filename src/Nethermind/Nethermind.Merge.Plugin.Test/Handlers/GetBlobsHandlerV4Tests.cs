@@ -24,6 +24,7 @@ namespace Nethermind.Merge.Plugin.Test.Handlers;
 public class GetBlobsHandlerV4Tests
 {
     private int _getBlobsRequestsTotal;
+    private int _getBlobsRequestsInBlobpoolTotal;
     private int _getBlobsRequestsSuccessTotal;
     private int _getBlobsRequestsFailureTotal;
 
@@ -31,6 +32,7 @@ public class GetBlobsHandlerV4Tests
     public void SetUp()
     {
         _getBlobsRequestsTotal = Metrics.GetBlobsRequestsTotal;
+        _getBlobsRequestsInBlobpoolTotal = Metrics.GetBlobsRequestsInBlobpoolTotal;
         _getBlobsRequestsSuccessTotal = Metrics.GetBlobsRequestsSuccessTotal;
         _getBlobsRequestsFailureTotal = Metrics.GetBlobsRequestsFailureTotal;
     }
@@ -39,6 +41,7 @@ public class GetBlobsHandlerV4Tests
     public void TearDown()
     {
         Metrics.GetBlobsRequestsTotal = _getBlobsRequestsTotal;
+        Metrics.GetBlobsRequestsInBlobpoolTotal = _getBlobsRequestsInBlobpoolTotal;
         Metrics.GetBlobsRequestsSuccessTotal = _getBlobsRequestsSuccessTotal;
         Metrics.GetBlobsRequestsFailureTotal = _getBlobsRequestsFailureTotal;
     }
@@ -123,6 +126,44 @@ public class GetBlobsHandlerV4Tests
         {
             Assert.That(response[0]!.BlobCells![0], Is.SameAs(cell));
             Assert.That(response[0]!.Proofs![0], Is.SameAs(proof));
+        }
+    }
+
+    [Test]
+    public async Task HandleAsync_should_not_count_known_blob_without_available_cells_as_pool_hit()
+    {
+        Metrics.GetBlobsRequestsTotal = 0;
+        Metrics.GetBlobsRequestsInBlobpoolTotal = 0;
+        Metrics.GetBlobsRequestsSuccessTotal = 0;
+        Metrics.GetBlobsRequestsFailureTotal = 0;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([3]);
+        txPool.TryGetBlobCellsAndProofsV1(
+                Arg.Any<byte[]>(),
+                requestedMask,
+                out Arg.Any<BlobCellMask>(),
+                out Arg.Any<byte[][]?>(),
+                out Arg.Any<byte[][]?>())
+            .Returns(call =>
+            {
+                call[2] = BlobCellMask.Empty;
+                call[3] = Array.Empty<byte[]>();
+                call[4] = Array.Empty<byte[]>();
+                return true;
+            });
+        GetBlobsHandlerV4 handler = CreateHandler(txPool);
+        GetBlobsHandlerV4Request request = new([new byte[Hash256.Size]], ToBitArray(requestedMask));
+
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await handler.HandleAsync(request);
+
+        using BlobsV4DirectResponse response = (BlobsV4DirectResponse)result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response[0], Is.Not.Null);
+            Assert.That(Metrics.GetBlobsRequestsInBlobpoolTotal, Is.Zero);
+            Assert.That(Metrics.GetBlobsRequestsSuccessTotal, Is.Zero);
+            Assert.That(Metrics.GetBlobsRequestsFailureTotal, Is.EqualTo(1));
         }
     }
 

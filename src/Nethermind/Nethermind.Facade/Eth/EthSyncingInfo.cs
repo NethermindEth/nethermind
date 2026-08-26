@@ -29,12 +29,6 @@ namespace Nethermind.Facade.Eth
 
         public SyncingResult GetFullInfo()
         {
-            if (!_syncConfig.SynchronizationEnabled)
-            {
-                // A node configured not to synchronize cannot be actively syncing, regardless of peer head distance.
-                return SyncingResult.NotSyncing;
-            }
-
             (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
             SyncMode syncMode = _syncModeSelector.Current;
 
