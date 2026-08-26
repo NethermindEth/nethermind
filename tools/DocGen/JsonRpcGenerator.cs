@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
@@ -59,7 +61,7 @@ internal static class JsonRpcGenerator
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
-        [typeof(PublicKey)] = "_string_ (hex data)",
+        [typeof(PublicKey)] = "_string_ (node id)",
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
@@ -68,6 +70,15 @@ internal static class JsonRpcGenerator
         [typeof(ulong)] = "_string_ (hex integer)",
         [typeof(UInt256)] = "_string_ (hex integer)",
         [typeof(ValueHash256)] = "_string_ (hash)",
+    };
+
+    // Overrides the type mapping above for members that set their own converter
+    private static readonly Dictionary<Type, string> _knownConverterTypeNames = new()
+    {
+        [typeof(BlockNonceConverter)] = "_string_ (8-byte hex data)",
+        [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
+        [typeof(PublicKeyConverter)] = "_string_ (hex data)",
+        [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
     };
 
     internal static void Generate(string path)
@@ -379,6 +390,9 @@ internal static class JsonRpcGenerator
                 return "_boolean_";
             // a string falls through to keep its flavour from the editorial mapping below
         }
+
+        if (converterType is not null && _knownConverterTypeNames.TryGetValue(converterType, out string? converterName))
+            return converterName;
 
         if (_knownTypeNames.TryGetValue(type, out string? knownName))
             return knownName;
