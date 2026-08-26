@@ -352,25 +352,18 @@ public static class FrameTxValidation
         return false;
     }
 
-    /// <summary>
-    /// The paymaster <paramref name="transaction"/> pays through: the explicit target of the <c>pay</c> frame
-    /// ending its recognized validation prefix, or <c>null</c> when it pays without one, carries no frames to
-    /// read and none recorded, or is not a frame transaction at all.
-    /// </summary>
+    /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
     /// <remarks>
-    /// Derived from the frame layout alone, so no state is read: a self-relay prefix, an unrecognized layout,
-    /// or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is returned
-    /// like any other target — the spec's carve-out is the empty code hash, not self-payment. A record the
-    /// pool holds without its frames answers from <see cref="Transaction.PersistedPaymaster"/> instead, which
-    /// froze this same derivation when the record was built — except for one reloaded from storage, which
-    /// carries no frozen value, so its <c>null</c> means unknown rather than unsponsored.
+    /// Derived from the frame layout alone, never from state; a <c>pay</c> frame naming the sender counts like
+    /// any other target, since the carve-out is the empty code hash. A frameless pool record instead answers
+    /// from <see cref="Transaction.PersistedPaymaster"/>, unset after a reload — <c>null</c> then means unknown,
+    /// not unsponsored.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
         TxFrame[]? frames = transaction.Frames;
         if (frames is null)
         {
-            // A reloaded or light pool record has no frames; its paymaster travels on the record instead.
             return transaction.PersistedPaymaster;
         }
 

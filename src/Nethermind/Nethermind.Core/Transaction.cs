@@ -251,10 +251,8 @@ namespace Nethermind.Core
         /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
         public virtual ulong? PersistedExpiryDeadline => null;
 
-        /// <summary>The EIP-8141 prefix paymaster carried by a pool record held without its frames. Null for
-        /// every in-memory transaction, which derives the paymaster from its frames.</summary>
-        /// <remarks>Set when the record is built, not encoded with it, so a record reloaded from storage has
-        /// none and its sponsor goes uncounted.</remarks>
+        /// <summary>The EIP-8141 prefix paymaster frozen onto a pool record held without its frames. Null for an
+        /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
         public virtual Address? PersistedPaymaster => null;
 
         /// <summary>

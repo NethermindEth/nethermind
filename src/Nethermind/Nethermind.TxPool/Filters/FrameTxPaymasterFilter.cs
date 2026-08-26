@@ -36,9 +36,8 @@ internal sealed class FrameTxPaymasterFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // A replacement takes over the slot of the tx it displaces, so the pending set does not grow
-        // (EIP-8141 decrements on "eviction, replacement, inclusion, or reorg removal"). Below the cap the
-        // discount cannot change the verdict, so skip the bucket walk and its pool lock there.
+        // A replacement takes over the slot of the tx it displaces, so the pending set does not grow. Below the
+        // cap the discount cannot change the verdict, so skip the bucket walk and its pool lock there.
         int held = paymasters.GetPendingCount(paymaster);
         int pending = held < Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
             || !ReplacesPendingTxOfSamePaymaster(tx, paymaster)
@@ -60,15 +59,9 @@ internal sealed class FrameTxPaymasterFilter(
     private bool IsNonCanonicalPaymaster(Address paymaster) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
-    /// <summary>
-    /// Whether the pending transaction <paramref name="tx"/> would displace pays through
-    /// <paramref name="paymaster"/>, so admitting it does not grow that paymaster's pending count.
-    /// </summary>
     /// <remarks>
-    /// Tested with the pool's own competing key, so the EIP-8250 nonce-key domain is part of the match: a
-    /// same-nonce transaction in another domain joins the pending set and must not be discounted.
-    /// Matches on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot
-    /// while still taking one here.
+    /// Matched on the pool's competing key, so the EIP-8250 nonce-key domain counts, and on the paymaster too:
+    /// displacing a tx sponsored elsewhere frees that sponsor's slot while still taking one here.
     /// </remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
     {
