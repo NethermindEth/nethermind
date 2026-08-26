@@ -25,6 +25,30 @@ STOP_GRACE="${STOP_GRACE:-180}"     # seconds; SIGINT (stop-signal) lets dotTrac
 LOG_OUT="${LOG_OUT:-$STATE_DIR/node$SUFFIX.log}"
 integrity_fail=0
 perf_fail=0
+dotnet_trace_fail=0
+
+# Stop the dotnet-trace collector first, while the container is still up: SIGINT delivered inside
+# the container is what finalizes the .nettrace, and the exec dies with the container.
+if [[ "${DOTNET_TRACE:-false}" == "true" ]]; then
+  nettrace="$DIAG_DIR/dotnet-trace/rpcbench$SUFFIX.nettrace"
+  if [[ -z "${DOTNET_TRACE_PID:-}" || -z "${DOTNET_TRACE_COLLECTOR_PID:-}" ]]; then
+    log "ERROR: dotnet-trace was requested but its collector was never attached (no PID persisted)"
+    dotnet_trace_fail=1
+  else
+    log "Stopping dotnet-trace (container pid $DOTNET_TRACE_COLLECTOR_PID)..."
+    stop_dotnet_trace_collector "$CONTAINER_NAME" "$DOTNET_TRACE_PID" "$DOTNET_TRACE_COLLECTOR_PID" \
+      || dotnet_trace_fail=1
+  fi
+  if [[ -s "$nettrace" ]]; then
+    log "dotnet-trace: $(du -h "$nettrace" | cut -f1) $nettrace"
+  else
+    log "ERROR: dotnet-trace produced no $nettrace"
+    dotnet_trace_fail=1
+  fi
+  if [[ "$dotnet_trace_fail" == "1" ]]; then
+    sed 's/^/    /' "$DIAG_DIR/dotnet-trace/dotnet-trace-collect$SUFFIX.log" 2>/dev/null | tail -n 20 || true
+  fi
+fi
 
 # 1) Graceful stop FIRST, then capture logs — so the shutdown window (dispose/flush
 #    exceptions, dotTrace finalize, shutdown marker) is scanned too.
@@ -174,5 +198,8 @@ if [[ "$integrity_fail" == "1" ]]; then
 fi
 if [[ "$perf_fail" == "1" ]]; then
   die "perf profiling FAILED — no non-empty perf.folded was produced (see errors above)."
+fi
+if [[ "$dotnet_trace_fail" == "1" ]]; then
+  die "dotnet-trace collection FAILED — no finalized .nettrace was produced (see errors above)."
 fi
 log "=== Node stopped; snapshot verified pristine ==="

@@ -44,6 +44,11 @@ PERF="${PERF:-false}"
 # perf samples on the host: it is absent from the client images and links against
 # libLLVM/libpython/libtraceevent, so the host binary cannot be mounted in.
 PERF_FREQUENCY="${PERF_FREQUENCY:-99}"
+# dotnet-trace EventPipe sidecar (runtime events: GC, contention, threading, exceptions). The tool is
+# mounted from the host and attached inside the container by start_profilers, so it never sees the
+# warm-up; see lib.sh. DOTNET_TRACE_MAX_SECONDS optionally caps the session.
+DOTNET_TRACE="${DOTNET_TRACE:-false}"
+DOTNET_TRACE_HOST_PATH="${DOTNET_TRACE_HOST_PATH:-/opt/dotnet-trace}"
 # true = leave perf unstarted and dotTrace launched with data collection off; the workflow runs
 # start-profilers.sh once the warm-up is done, so the profiles cover only the measured phase.
 PROFILE_AFTER_WARMUP="${PROFILE_AFTER_WARMUP:-false}"
@@ -67,6 +72,13 @@ if [[ "$DOTTRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
 fi
 if [[ "$PERF" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "perf profiling is wired for CLIENT=nethermind (it needs the runtime perf map)"
+fi
+case "$DOTNET_TRACE" in
+  true|false) ;;
+  *) die "DOTNET_TRACE must be true or false (got '$DOTNET_TRACE')" ;;
+esac
+if [[ "$DOTNET_TRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
+  die "dotnet-trace requires CLIENT=nethermind (EventPipe is .NET-specific)"
 fi
 case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
@@ -108,6 +120,7 @@ log "Isolation:  $DB_ISOLATION"
 log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"
 log "perf:       $PERF (${PERF_FREQUENCY}Hz)"
+log "dotnet-trace: $DOTNET_TRACE"
 [[ "$PROFILE_AFTER_WARMUP" == "true" ]] && log "profilers:  deferred until start-profilers.sh runs after the warm-up"
 log "RPC port:   $RPC_PORT  (network: $NETWORK)"
 # Snapshot sets carry provenance sidecars (capture head + client version) — log
@@ -219,6 +232,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DOTTRACE_DEFERRED=$DOTTRACE_DEFERRED"
   echo "PERF=$PERF"
   echo "PERF_FREQUENCY=$PERF_FREQUENCY"
+  echo "DOTNET_TRACE=$DOTNET_TRACE"
   echo "PROFILE_AFTER_WARMUP=$PROFILE_AFTER_WARMUP"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
@@ -305,6 +319,23 @@ if [[ "$PERF" == "true" ]]; then
     for kv in "${perf_client_env[@]}"; do docker_args+=(-e "$kv"); done
   fi
 fi
+# dotnet-trace (nethermind only): mount the host tool read-only plus an output dir; the collector is
+# attached with docker exec by start_profilers, so nothing about the node's launch changes.
+if [[ "$DOTNET_TRACE" == "true" ]]; then
+  if [[ ! -x "$DOTNET_TRACE_HOST_PATH/dotnet-trace" ]]; then
+    log "dotnet-trace not found at $DOTNET_TRACE_HOST_PATH — installing via dotnet tool..."
+    dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || as_root dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || die "failed to install dotnet-trace (is the .NET SDK on the runner?)"
+  fi
+  assert_no_mounts_under "$DIAG_DIR/dotnet-trace"
+  as_root rm -rf "$DIAG_DIR/dotnet-trace"
+  mkdir -p "$DIAG_DIR/dotnet-trace"
+  docker_args+=(
+    -v "$DOTNET_TRACE_HOST_PATH:$DOTNET_TRACE_CONTAINER_PATH:ro"
+    -v "$DIAG_DIR/dotnet-trace:$DOTNET_TRACE_OUTPUT_PATH:rw"
+  )
+fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
@@ -367,6 +398,6 @@ log "=== Node ready for benchmarking ==="
 #    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.
 if [[ "$PROFILE_AFTER_WARMUP" == "true" ]]; then
   log "profilers deferred: run start-profilers.sh after the warm-up"
-elif [[ "$PERF" == "true" ]]; then
+elif [[ "$PERF" == "true" || "$DOTNET_TRACE" == "true" ]]; then
   start_profilers "$STATE_DIR/node$SUFFIX.env"
 fi

@@ -173,6 +173,7 @@ the workflow's defensive-cleanup step).
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
+| `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a single-node Nethermind benchmark. See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
@@ -494,10 +495,9 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-The EXPB workflow additionally collects a **dotnet-trace EventPipe sidecar** alongside
-its dotTrace snapshot (GC pauses, lock contention, exception throws — runtime events a
-CPU profile cannot show). rpc-bench does not: a `timeline` run here yields the `.dtt`
-snapshot only, for the dotTrace UI.
+For the runtime events a CPU profile cannot show (GC pauses, lock contention, exception
+throws) enable the [dotnet-trace sidecar](#dotnet-trace-sidecar) alongside; a `timeline`
+run on its own yields the `.dtt` snapshot only, for the dotTrace UI.
 
 > Without a warm-up the snapshot spans the node's whole lifetime (including DB
 > load and JIT tiering), so keep the benchmark `duration` the dominant phase, or
@@ -535,6 +535,38 @@ scripts/perf-report.sh top perf.folded 30
 scripts/perf-report.sh compare before.folded after.folded 30
 ```
 
+## dotnet-trace sidecar
+
+Set `dotnet_trace: true` (single-node Nethermind tools; rejected for `jsonbench-sweep`
+like `perf`) to collect an EventPipe `.nettrace` of **runtime events** — GC start/end
+and pause durations, monitor contention with the owning thread's stack, thread-pool
+adjustments, exception throws — during the **measured phase only**. It records no CPU
+samples, so it can run next to `dottrace` and `perf` without double-sampling the node;
+its providers are `gc+contention+threading+exception` at level **verbose**, which is
+required because informational `Contention` events carry no stacks and lock-owner
+attribution is the point.
+
+The collector is the framework-dependent `dotnet-trace` global tool installed on the host
+on demand (`dotnet tool install --tool-path /opt/dotnet-trace dotnet-trace`), bind-mounted
+read-only into the container and started **inside it** with `docker exec` against the
+runtime's default diagnostics IPC socket (`dotnet-trace collect -p <container pid>`), with
+`DOTNET_ROOT` resolved from the container's own `dotnet --list-runtimes` and
+`DOTNET_ROLL_FORWARD=Major`. Attaching from inside, late, is what excludes the warm-up:
+expb's alternative — a diagnostic port the runtime connects to at start — has to listen
+before the runtime starts and records everything from launch. `start-profilers.sh` attaches
+it after a `jsonbench` warm-up (or `start-node.sh` once RPC is ready without one), fails
+loudly if the collector exits within a second (the apphost's ".NET location: Not found" is
+otherwise a silent 400-byte log), and `stop-node.sh` sends it SIGINT inside the container
+and waits for the `.nettrace` to finalize **before** the node is stopped. With a plain
+`tool_config.duration` the session is also capped at that duration plus ten minutes
+(`--duration`), so a hung cell cannot grow the file until the job times out.
+
+The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log. Read
+it with PerfView or TraceEvent (`GC/Stop` pause durations, `Contention/Stop` `DurationNs`
+with the `Contention/Start` stacks); stacks are managed-only. `dotnet-trace convert
+--format speedscope` produces an empty profile for these events — it only knows sampled
+CPU stacks.
+
 ## Runner prerequisites
 
 The `reproducible-benchmarks-arm` self-hosted runner must provide:
@@ -549,7 +581,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
-  `/opt/dottrace` is not already installed by previous expb dotTrace runs).
+  `/opt/dottrace` / `/opt/dotnet-trace` are not already installed by previous runs).
 - **Host `perf` and a root runner process** when using `perf: true`; `perf` must
   be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
 
@@ -559,8 +591,8 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 |---|---|
 | `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
 | `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
-| `start-profilers.sh` | Start perf and deferred dotTrace collection after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
-| `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
+| `start-profilers.sh` | Start perf, deferred dotTrace collection and the dotnet-trace sidecar after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
+| `stop-node.sh` | Stop dotnet-trace and fold perf → graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |

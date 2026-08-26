@@ -468,12 +468,18 @@ class PerfReportingTests(unittest.TestCase):
         environment = os.environ.copy()
         environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
         environment["PERF_COMMAND_LOG"] = str(command_log)
+        environment["DOCKER_COMMAND_LOG"] = (self.directory / "docker-commands.log").as_posix()
         environment["RPC_BENCH_PROC_ROOT"] = str(proc_root)
         environment["DOTTRACE_START_TIMEOUT"] = "2"
+        environment["DOTNET_TRACE_STOP_TIMEOUT"] = "10"
         environment["DIAG"] = diag.as_posix()
         return environment, diag, command_log
 
-    def write_node_env(self, diag: Path) -> Path:
+    def docker_commands(self) -> list[str]:
+        log = self.directory / "docker-commands.log"
+        return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+    def write_node_env(self, diag: Path, dotnet_trace: bool = False) -> Path:
         values = {
             "CLIENT": "nethermind",
             "INSTANCE_SUFFIX": "",
@@ -486,21 +492,56 @@ class PerfReportingTests(unittest.TestCase):
             "PERF_FREQUENCY": "99",
             "PROFILE_AFTER_WARMUP": "true",
         }
+        if dotnet_trace:
+            values["DOTNET_TRACE"] = "true"
+            (diag / "dotnet-trace").mkdir(exist_ok=True)
         env_file = self.directory / "node.env"
         env_file.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
         return env_file
 
-    # `docker top` lists the dotTrace launcher and the client; `docker logs` acknowledges a start
-    # message only once it has been appended to the control file, as the real launcher would.
-    FAKE_DOCKER = """
+    # `docker top` lists the dotTrace launcher, the client and, once attached, the dotnet-trace collector;
+    # `docker logs` acknowledges a start message only once it has been appended to the control file, as
+    # the real launcher would. `docker exec` answers the runtime probe and plays the collector: it publishes
+    # its identity under the fake /proc, then waits to be stopped and writes the .nettrace on the way out.
+    FAKE_DOCKER = r"""
         docker() {
+          printf '%s\n' "$*" >> "$DOCKER_COMMAND_LOG"
           case "$1" in
-            top) printf '%s\\n' 'PID ARGS' '1200 /opt/dottrace/dottrace start --framework=NetCore' '1300 /nethermind/nethermind --datadir=/execution-data' ;;
-            logs)
-              printf '##dotTrace["connected", {pid: 1300, path: "/nethermind/nethermind"}]\\n'
-              if [[ "${DOTTRACE_ACK:-true}" == "true" ]] && grep -qF '##dotTrace["start"]' "$DIAG/dottrace/control.svc" 2>/dev/null; then
-                printf '##dotTrace["started", {pid: 1300, path: "/nethermind/nethermind"}]\\n'
+            top)
+              printf '%s\n' 'PID ARGS' '1200 /opt/dottrace/dottrace start --framework=NetCore' '1300 /nethermind/nethermind --datadir=/execution-data'
+              if [[ -f "$DIAG/collector.pid" ]]; then
+                printf '%s /opt/dotnet-trace/dotnet-trace collect -p 42 --clrevents gc+contention+threading+exception\n' "$(cat "$DIAG/collector.pid")"
               fi ;;
+            logs)
+              printf '##dotTrace["connected", {pid: 1300, path: "/nethermind/nethermind"}]\n'
+              if [[ "${DOTTRACE_ACK:-true}" == "true" ]] && grep -qF '##dotTrace["start"]' "$DIAG/dottrace/control.svc" 2>/dev/null; then
+                printf '##dotTrace["started", {pid: 1300, path: "/nethermind/nethermind"}]\n'
+              fi ;;
+            exec)
+              shift
+              while [[ "${1:-}" == "-e" ]]; do shift 2; done
+              shift
+              case "$*" in
+                'dotnet --list-runtimes')
+                  printf 'Microsoft.AspNetCore.App 10.0.11 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]\n'
+                  printf 'Microsoft.NETCore.App 10.0.11 [/usr/share/dotnet/shared/Microsoft.NETCore.App]\n' ;;
+                'test -d '*) [[ "${DOTNET_FXR:-true}" == "true" ]] ;;
+                '/opt/dotnet-trace/dotnet-trace collect '*)
+                  if [[ "${DOTNET_TRACE_STARTS:-true}" != "true" ]]; then
+                    printf 'You must install or update .NET to run this application.\n.NET location: Not found\n' >&2
+                    return 1
+                  fi
+                  printf '%s' "$BASHPID" > "$DIAG/collector.pid"
+                  mkdir -p "$RPC_BENCH_PROC_ROOT/$BASHPID"
+                  printf 'Name:\tdotnet-trace\nNSpid:\t%s\t77\n' "$BASHPID" > "$RPC_BENCH_PROC_ROOT/$BASHPID/status"
+                  # Background jobs of a non-interactive shell ignore SIGINT, so the in-container
+                  # `kill -INT` below is played back as SIGTERM to this fake.
+                  sleep 30 & sleeper=$!
+                  trap 'kill "$sleeper" 2>/dev/null; printf nettrace > "$DIAG/dotnet-trace/rpcbench.nettrace"; exit 0' TERM
+                  wait "$sleeper" ;;
+                'sh -c kill -INT "$1" sh 77') kill -TERM "$(cat "$DIAG/collector.pid")" ;;
+                *) return 64 ;;
+              esac ;;
             *) return 64 ;;
           esac
         }
@@ -544,6 +585,134 @@ class PerfReportingTests(unittest.TestCase):
         self.assertIn("PERF_RECORDER_COMM=perf\n", node_env)
         self.assertEqual(node_env.count("DOTTRACE_STARTED_AT="), 1)
         self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
+        self.assertEqual(
+            [c for c in self.docker_commands() if c.startswith("exec ")],
+            [],
+            "dotnet-trace must stay off unless DOTNET_TRACE=true",
+        )
+        self.assertNotIn("DOTNET_TRACE_PID=", node_env)
+
+    def test_start_profilers_attaches_dotnet_trace_inside_the_container_and_stops_it_before_the_node(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_TRACE_MAX_SECONDS"] = "3900"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            source "$NODE_ENV"
+            kill -0 "$DOTNET_TRACE_PID"
+            stop_dotnet_trace_collector rpcbench-primary "$DOTNET_TRACE_PID" "$DOTNET_TRACE_COLLECTOR_PID"
+            if kill -0 "$DOTNET_TRACE_PID" 2>/dev/null; then echo "collector still running"; exit 1; fi
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        docker_commands = self.docker_commands()
+        self.assertIn("exec rpcbench-primary dotnet --list-runtimes", docker_commands)
+        self.assertIn("exec rpcbench-primary test -d /usr/share/dotnet/host/fxr", docker_commands)
+        self.assertEqual(
+            [c for c in docker_commands if " collect " in c],
+            [
+                "exec -e DOTNET_ROOT=/usr/share/dotnet -e DOTNET_ROLL_FORWARD=Major rpcbench-primary "
+                "/opt/dotnet-trace/dotnet-trace collect -p 42 "
+                "--clrevents gc+contention+threading+exception --clreventlevel verbose "
+                "-o /dotnet-trace-output/rpcbench.nettrace --duration 01:05:00"
+            ],
+            "the collector attaches exactly once, to the client's container pid",
+        )
+        self.assertIn('exec rpcbench-primary sh -c kill -INT "$1" sh 77', docker_commands)
+        self.assertIn(
+            "dotnet-trace collecting gc+contention+threading+exception (verbose) from container pid 42, capped at 3900s",
+            result.stdout,
+        )
+        self.assertEqual((diag / "dotnet-trace" / "rpcbench.nettrace").read_bytes(), b"nettrace")
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertIn("DOTNET_TRACE_COLLECTOR_PID=77\n", node_env)
+        self.assertEqual(node_env.count("DOTNET_TRACE_PID="), 1)
+        self.assertLess(
+            node_env.index("DOTNET_TRACE_PID="),
+            node_env.index("PERF_PID="),
+            "dotnet-trace attaches before perf so a failure leaves no recorder behind",
+        )
+        self.assertEqual(len([c for c in command_log.read_text(encoding="utf-8").splitlines() if c.startswith("record ")]), 1)
+
+    def test_start_profilers_dies_with_the_log_when_the_dotnet_trace_collector_exits_immediately(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_TRACE_STARTS"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dotnet-trace exited immediately", result.stdout)
+        self.assertIn(".NET location: Not found", result.stdout, "the collector log must be dumped")
+        self.assertIn("dotnet-trace did not start", result.stderr)
+        self.assertFalse(
+            command_log.exists() and "record" in command_log.read_text(encoding="utf-8"),
+            "perf must not start when the dotnet-trace collector could not be attached",
+        )
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertNotIn("DOTNET_TRACE_PID=", node_env)
+        self.assertNotIn("PROFILERS_STARTED_AT=", node_env)
+
+    def test_start_profilers_requires_hostfxr_under_the_container_dotnet_root(self) -> None:
+        environment, diag, _ = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_FXR"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no .NET root with host/fxr found inside rpcbench-primary", result.stderr)
+        self.assertEqual([c for c in self.docker_commands() if " collect " in c], [])
+
+    def test_stop_dotnet_trace_collector_signals_only_the_collector_it_started(self) -> None:
+        environment, diag, _ = self.profiler_environment()
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            ( : ) & finished=$!
+            wait "$finished"
+            stop_dotnet_trace_collector rpcbench-primary "$finished" 77
+            sleep 5 & alive=$!
+            if stop_dotnet_trace_collector rpcbench-primary "$alive" 77; then echo "unexpected success"; exit 1; fi
+            kill "$alive"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("dotnet-trace collector already exited", result.stdout)
+        self.assertIn("is pid '<none>', expected 77; refusing to signal", result.stdout)
+        self.assertEqual([c for c in self.docker_commands() if "kill -INT" in c], [])
 
     def test_start_profilers_fails_when_dottrace_never_acknowledges_the_start(self) -> None:
         environment, diag, command_log = self.profiler_environment()
@@ -701,7 +870,7 @@ esac
         self.assertIn(
             'if [[ "$PROFILE_AFTER_WARMUP" == "true" ]]; then\n'
             '  log "profilers deferred: run start-profilers.sh after the warm-up"\n'
-            'elif [[ "$PERF" == "true" ]]; then\n'
+            'elif [[ "$PERF" == "true" || "$DOTNET_TRACE" == "true" ]]; then\n'
             '  start_profilers "$STATE_DIR/node$SUFFIX.env"\n'
             "fi",
             start_node,
@@ -743,8 +912,46 @@ esac
         self.assertEqual(
             workflow_named_step_if(rpc_workflow, "benchmark", "Start profilers"),
             "needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' "
-            "&& (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true')",
+            "&& (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' "
+            "|| needs.resolve.outputs.dotnet_trace == 'true')",
         )
+
+    def test_dotnet_trace_sidecar_is_stopped_before_the_node_and_shipped_as_its_own_artifact(self) -> None:
+        start_node = START_NODE.read_text(encoding="utf-8")
+        stop_node = STOP_NODE.read_text(encoding="utf-8")
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('-v "$DOTNET_TRACE_HOST_PATH:$DOTNET_TRACE_CONTAINER_PATH:ro"', start_node)
+        self.assertIn('-v "$DIAG_DIR/dotnet-trace:$DOTNET_TRACE_OUTPUT_PATH:rw"', start_node)
+        self.assertIn('echo "DOTNET_TRACE=$DOTNET_TRACE"', start_node)
+        # SIGINT inside the container finalizes the .nettrace, so the collector must go before the
+        # container does — and before perf's finalization, which reads through the live container too.
+        self.assertLess(
+            stop_node.index("stop_dotnet_trace_collector"),
+            stop_node.index("signal_perf_recorder_if_matches INT"),
+        )
+        self.assertLess(stop_node.index("stop_dotnet_trace_collector"), stop_node.index('docker stop -t "$STOP_GRACE"'))
+        self.assertIn("dotnet-trace collection FAILED", stop_node)
+
+        job = workflow_job_body(rpc_workflow, "benchmark")
+        order = [
+            "- name: Stop node and verify DB integrity\n",
+            "- name: Collect dotnet-trace\n",
+            "- name: Upload perf profile\n",
+            "- name: Upload dotnet-trace\n",
+        ]
+        positions = [job.index(step) for step in order]
+        self.assertEqual(positions, sorted(positions))
+        dotnet_trace_gate = "always() && needs.resolve.outputs.dotnet_trace == 'true'"
+        for step_name in ("Collect dotnet-trace", "Upload dotnet-trace"):
+            self.assertEqual(workflow_named_step_if(rpc_workflow, "benchmark", step_name), dotnet_trace_gate)
+        self.assertIn("name: dotnet-trace-rpcbench", workflow_named_step_body(rpc_workflow, "benchmark", "Upload dotnet-trace"))
+        self.assertIn(
+            "DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Start node"),
+        )
+        self.assertIn('DOTNET_TRACE: "false"', workflow_named_step_body(rpc_workflow, "benchmark", "Start reference node"))
+        self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")

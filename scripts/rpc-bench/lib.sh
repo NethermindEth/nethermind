@@ -160,24 +160,37 @@ start_dottrace_collection() {
   log "dotTrace: data collection started"
 }
 
+# Echo the HOST pid of the client process in container $1 — docker top reports host pids, which is
+# what perf needs. Under dotTrace the client is a child of the profiler launcher, and dotnet-trace
+# runs in the same container, so pick the client explicitly. awk reads the whole listing: an early
+# exit would SIGPIPE docker top, which pipefail turns into a failed lookup.
+client_host_pid() {
+  docker top "$1" -eo pid,args 2>/dev/null \
+    | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace|dotnet-trace/ && !found {print $1; found = 1}'
+}
+
+# Echo the container-namespace pid of host process $1 (the last NSpid entry). RPC_BENCH_PROC_ROOT
+# lets the unit test resolve PIDs without a live container.
+container_pid_of() {
+  local host_pid="$1" proc_root="${RPC_BENCH_PROC_ROOT:-/proc}" container_pid
+  container_pid="$(awk '/^NSpid:/{print $NF}' "$proc_root/$host_pid/status" 2>/dev/null || true)"
+  [[ "$container_pid" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$container_pid"
+}
+
 # Start perf against the client process of container $1 and append the recorder's identity to
 # the node env file $2 (suffix $3 selects the instance's files under $DIAG_DIR/perf), so that
 # stop-node.sh signals only the recorder it started. The caller must invoke require_perf_access
-# first. RPC_BENCH_PROC_ROOT lets the unit test resolve PIDs without a live container.
+# first.
 start_perf_for_container() {
-  local container="$1" env_file="$2" suffix="$3" proc_root="${RPC_BENCH_PROC_ROOT:-/proc}"
+  local container="$1" env_file="$2" suffix="$3"
   local node_pid container_pid perf_pid perf_recorder_start_time perf_recorder_comm perf_recorder_executable
-  # docker top reports HOST pids, which is what perf needs. Under dotTrace the
-  # client is a child of the profiler launcher, so pick the client explicitly.
-  node_pid="$(docker top "$container" -eo pid,args 2>/dev/null \
-    | awk 'tolower($0) ~ /nethermind/ && tolower($0) !~ /dottrace/ {print $1; exit}')"
+  node_pid="$(client_host_pid "$container")"
   if [[ -z "$node_pid" ]]; then
     die "could not find the client process for perf"
   fi
-  container_pid="$(awk '/^NSpid:/{print $NF}' "$proc_root/$node_pid/status" 2>/dev/null || true)"
-  if ! [[ "$container_pid" =~ ^[0-9]+$ ]]; then
-    die "could not resolve the container PID for perf client process $node_pid"
-  fi
+  container_pid="$(container_pid_of "$node_pid")" \
+    || die "could not resolve the container PID for perf client process $node_pid"
   start_perf_recorder "$PERF_FREQUENCY" "$node_pid" "$DIAG_DIR/perf/perf$suffix.data" \
     "$DIAG_DIR/perf/perf-record$suffix.log"
   perf_pid="$PERF_RECORDER_PID"
@@ -201,8 +214,126 @@ start_perf_for_container() {
   log "perf recording pid $node_pid at ${PERF_FREQUENCY}Hz"
 }
 
-# Start every requested profiler against a node that already serves RPC: perf, and dotTrace data
-# collection when start-node.sh launched the profiler with collection deferred. Reads the node
+# dotnet-trace (EventPipe) sidecar. The host-installed global tool is bind-mounted at
+# DOTNET_TRACE_CONTAINER_PATH and run INSIDE the node container with docker exec, against the
+# runtime's default diagnostics IPC socket. Attaching late is what keeps the warm-up out of the
+# trace: a diagnostic port the runtime connects to (expb's approach) must listen before the runtime
+# starts and records the warm-up too.
+DOTNET_TRACE_CONTAINER_PATH="/opt/dotnet-trace"
+DOTNET_TRACE_OUTPUT_PATH="/dotnet-trace-output"
+# Runtime events only — alongside dotTrace/perf a second CPU sampler would double-sample the node.
+# Verbose is required for lock-owner attribution: informational Contention events carry no stacks.
+DOTNET_TRACE_CLR_EVENTS="gc+contention+threading+exception"
+DOTNET_TRACE_CLR_EVENT_LEVEL="verbose"
+DOTNET_TRACE_STOP_TIMEOUT="${DOTNET_TRACE_STOP_TIMEOUT:-120}"
+
+# Echo the DOTNET_ROOT the framework-dependent dotnet-trace apphost needs inside container $1.
+# The directory of the `dotnet` on PATH is not it (a distro host package puts a real binary under
+# /usr/bin while the runtime lives elsewhere), so ask the muxer for its runtimes and take the root
+# above "shared", requiring host/fxr under it — without hostfxr the apphost aborts with
+# ".NET location: Not found".
+container_dotnet_root() {
+  local container="$1" line path root
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    [[ "$line" == *"["*"]" ]] || continue
+    path="${line##*[}"
+    path="${path%]}"
+    root="${path%/*}"
+    root="${root%/*}"
+    if docker exec "$container" test -d "$root/host/fxr"; then
+      printf '%s\n' "$root"
+      return 0
+    fi
+  done < <(docker exec "$container" dotnet --list-runtimes 2>/dev/null || true)
+  return 1
+}
+
+# Echo the container-namespace pid of the dotnet-trace collector running in container $1, or fail
+# when none is running.
+dotnet_trace_collector_pid() {
+  local container="$1" host_pid
+  host_pid="$(docker top "$container" -eo pid,args 2>/dev/null | awk '/dotnet-trace collect/ && !found {print $1; found = 1}')"
+  [[ -n "$host_pid" ]] || return 1
+  container_pid_of "$host_pid"
+}
+
+# Attach the dotnet-trace collector to the client of container $1 and append its identity to the
+# node env file $2 (suffix $3 selects the instance's files under $DIAG_DIR/dotnet-trace), so that
+# stop-node.sh can stop it before the container goes down. DOTNET_TRACE_MAX_SECONDS, when set, caps
+# the session (--duration) so a hung cell cannot grow the trace until the job times out.
+start_dotnet_trace_for_container() {
+  local container="$1" env_file="$2" suffix="$3"
+  local node_pid client_pid dotnet_root collect_log host_pid collector_pid max_seconds
+  local -a collect_args
+  node_pid="$(client_host_pid "$container")"
+  if [[ -z "$node_pid" ]]; then
+    die "could not find the client process for dotnet-trace"
+  fi
+  client_pid="$(container_pid_of "$node_pid")" \
+    || die "could not resolve the container PID for dotnet-trace client process $node_pid"
+  dotnet_root="$(container_dotnet_root "$container")" \
+    || die "no .NET root with host/fxr found inside $container via 'dotnet --list-runtimes' — the dotnet-trace apphost cannot run there"
+  collect_log="$DIAG_DIR/dotnet-trace/dotnet-trace-collect$suffix.log"
+  collect_args=(
+    collect -p "$client_pid"
+    --clrevents "$DOTNET_TRACE_CLR_EVENTS" --clreventlevel "$DOTNET_TRACE_CLR_EVENT_LEVEL"
+    -o "$DOTNET_TRACE_OUTPUT_PATH/rpcbench$suffix.nettrace"
+  )
+  max_seconds="${DOTNET_TRACE_MAX_SECONDS:-}"
+  if [[ -n "$max_seconds" ]]; then
+    [[ "$max_seconds" =~ ^[1-9][0-9]*$ ]] || die "DOTNET_TRACE_MAX_SECONDS must be a positive integer (got '$max_seconds')"
+    collect_args+=(--duration "$(printf '%02d:%02d:%02d' $((max_seconds / 3600)) $((max_seconds % 3600 / 60)) $((max_seconds % 60)))")
+  fi
+  # Major roll-forward: the image carries only a runtime newer than the tool's target framework.
+  docker exec -e "DOTNET_ROOT=$dotnet_root" -e DOTNET_ROLL_FORWARD=Major "$container" \
+    "$DOTNET_TRACE_CONTAINER_PATH/dotnet-trace" "${collect_args[@]}" > "$collect_log" 2>&1 &
+  host_pid=$!
+  # A collector that cannot start dies at once, leaving nothing but a short log until somebody
+  # opens the artifact.
+  sleep 1
+  if ! kill -0 "$host_pid" 2>/dev/null; then
+    log "ERROR: dotnet-trace exited immediately:"
+    sed 's/^/    /' "$collect_log" || true
+    die "dotnet-trace did not start"
+  fi
+  collector_pid="$(dotnet_trace_collector_pid "$container")" \
+    || die "dotnet-trace is running but its process is not visible in $container"
+  {
+    printf 'DOTNET_TRACE_PID=%q\n' "$host_pid"
+    printf 'DOTNET_TRACE_COLLECTOR_PID=%q\n' "$collector_pid"
+  } >> "$env_file"
+  log "dotnet-trace collecting $DOTNET_TRACE_CLR_EVENTS ($DOTNET_TRACE_CLR_EVENT_LEVEL) from container pid $client_pid${max_seconds:+, capped at ${max_seconds}s}"
+}
+
+# Stop the dotnet-trace collector of container $1 (host docker-exec pid $2, container-namespace
+# pid $3): SIGINT delivered inside the container finalizes the .nettrace, then the exec returns.
+# Must run while the container is still up. Returns non-zero when the collector could not be
+# stopped cleanly; the host process is never signalled because that would not reach the collector.
+stop_dotnet_trace_collector() {
+  local container="$1" host_pid="$2" collector_pid="$3" running_pid
+  if ! kill -0 "$host_pid" 2>/dev/null; then
+    # --duration elapsed or the collector died mid-run; either way there is nothing to signal.
+    log "dotnet-trace collector already exited"
+    return 0
+  fi
+  running_pid="$(dotnet_trace_collector_pid "$container" || true)"
+  if [[ "$running_pid" != "$collector_pid" ]]; then
+    log "ERROR: the dotnet-trace collector in $container is pid '${running_pid:-<none>}', expected $collector_pid; refusing to signal"
+    return 1
+  fi
+  # kill is a shell builtin, so the image needs no procps.
+  docker exec "$container" sh -c 'kill -INT "$1"' sh "$collector_pid" || return 1
+  for _ in $(seq 1 "$DOTNET_TRACE_STOP_TIMEOUT"); do
+    kill -0 "$host_pid" 2>/dev/null || return 0
+    sleep 1
+  done
+  log "ERROR: dotnet-trace did not finish within ${DOTNET_TRACE_STOP_TIMEOUT}s of SIGINT"
+  return 1
+}
+
+# Start every requested profiler against a node that already serves RPC: dotTrace data collection
+# when start-node.sh launched the profiler with collection deferred, dotnet-trace, and perf. Reads the node
 # state start-node.sh persisted to $1 and records the start there, so a second call is refused —
 # a second recorder would orphan the first, which teardown could then neither stop nor fold.
 # start-node.sh calls this right after RPC is ready; with a warm-up the workflow calls
@@ -222,6 +353,15 @@ start_profilers() {
     else
       start_dottrace_collection "$CONTAINER_NAME" "$DIAG_DIR/dottrace/$DOTTRACE_CONTROL_FILE_NAME"
       printf 'DOTTRACE_STARTED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_file"
+    fi
+  fi
+  # Before perf: the collector guards its own retry (a second exec would open a second EventPipe
+  # session), and a failure here must not leave a perf recorder behind for a retry to duplicate.
+  if [[ "${DOTNET_TRACE:-false}" == "true" ]]; then
+    if [[ -n "${DOTNET_TRACE_PID:-}" ]]; then
+      log "dotnet-trace: collector already attached (docker exec pid ${DOTNET_TRACE_PID})"
+    else
+      start_dotnet_trace_for_container "$CONTAINER_NAME" "$env_file" "${INSTANCE_SUFFIX:-}"
     fi
   fi
   if [[ "${PERF:-false}" == "true" ]]; then

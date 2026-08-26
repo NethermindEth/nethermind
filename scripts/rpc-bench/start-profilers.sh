@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Start the profilers (perf, deferred dotTrace collection) against a node started with
+# Start the profilers (perf, deferred dotTrace collection, dotnet-trace) against a node started with
 # PROFILE_AFTER_WARMUP=true, once the warm-up load has run: the profiles then cover only
 # the measured phase instead of startup, snapshot persistence and JIT tiering.
 
@@ -26,6 +26,6 @@ if [[ "${PERF:-false}" == "true" ]]; then
 fi
 docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"   || die "container '$CONTAINER_NAME' is not running — nothing to profile"
 
-log "=== Starting profilers after the warm-up (perf: ${PERF:-false}, dotTrace: ${DOTTRACE:-false}) ==="
+log "=== Starting profilers after the warm-up (perf: ${PERF:-false}, dotTrace: ${DOTTRACE:-false}, dotnet-trace: ${DOTNET_TRACE:-false}) ==="
 start_profilers "$NODE_ENV_FILE"
 log "=== Profilers running; the measured phase may begin ==="
