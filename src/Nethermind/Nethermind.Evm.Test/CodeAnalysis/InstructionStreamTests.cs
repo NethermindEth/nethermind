@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -18,6 +19,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis;
 [TestFixture]
 public class InstructionStreamTests
 {
+    [Test]
+    public void StreamOp_StaysCompact()
+        => Assert.That(Unsafe.SizeOf<StreamOp>(), Is.EqualTo(8));
+
     [Test]
     public void TryBuild_StraightLineArithmetic_SumsTheBlockGasOnce()
     {
@@ -38,11 +43,11 @@ public class InstructionStreamTests
             Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
                 "two pushes and an add are one block charged as a single sum");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
+            Assert.That(stream.Operands[0], Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
                 "PUSH1 2; ADD folds into a single const-op entry");
             Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
-            Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
+            Assert.That(stream.Constants[(int)stream.Operands[1]], Is.EqualTo((Nethermind.Int256.UInt256)2),
                 "the pushed constant survives in the pool as the pair's operand");
             Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
                 "STOP is not a static-cost op and must run the standard handler");
@@ -114,7 +119,7 @@ public class InstructionStreamTests
         {
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
                 "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
+            Assert.That(stream.Operands[0], Is.EqualTo((ulong)stream.PcToEntry[5]),
                 "the operand is the pre-resolved target entry index");
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
         }
@@ -161,7 +166,7 @@ public class InstructionStreamTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
-            Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
+            Assert.That(stream.Constants[(int)stream.Operands[0]], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
                 "PUSH3 immediates are pre-decoded big-endian into the pool");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst),
                 "PUSH3 const; ADD folds into a single block-charging const-op entry");
