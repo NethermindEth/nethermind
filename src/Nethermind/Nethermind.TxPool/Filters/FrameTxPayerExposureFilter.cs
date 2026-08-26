@@ -3,7 +3,6 @@
 
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -15,7 +14,6 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>Rejects a frame transaction whose payer's summed pending maximum cost would exceed its balance (EIP-8141).</summary>
 /// <remarks>The reservation is taken at admission and released when the transaction leaves the pool.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
-    IChainHeadSpecProvider specProvider,
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool,
@@ -30,13 +28,11 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // The upper-bound TXPARAM(0x06), shared with the processor so the admission bound and the
-        // payer-solvency gate cannot drift — this is where the base branch's under-reservation closes.
-        IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
+        // EIP8141-DEVIATION: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go
+        // unreserved — nothing at all, and so no bound, when every frame gas limit is zero.
+        if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
-            // Unincludable rather than malformed: Invalid is the one result that disconnects the relaying peer.
-            return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
+            return AcceptTxResult.Int256Overflow;
         }
 
         // A simulated third-party payer must be read from state, or the bound gates the wrong account.
@@ -46,7 +42,7 @@ internal sealed class FrameTxPayerExposureFilter(
 
         // A snapshot: AddCore settles the replacement later, under the pool lock. TryReserve ignores the
         // discount when the payer holds no reservation, so skip the bucket walk and its pool lock there.
-        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer, spec);
+        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
             // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
@@ -62,11 +58,10 @@ internal sealed class FrameTxPayerExposureFilter(
     /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
     /// set instead.</summary>
     /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
-    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.
-    /// Priced with the helper the reservation used, or the discount under-refunds.</remarks>
-    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer, IReleaseSpec spec)
+    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.</remarks>
+    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
     {
-        ReplacementSearch search = new(tx, payer, spec);
+        ReplacementSearch search = new(tx, payer);
         TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
         pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
         {
@@ -76,7 +71,7 @@ internal sealed class FrameTxPayerExposureFilter(
 
             if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
                 && pending.PayerAddress == state.Payer
-                && FrameTxValidation.TryCalculateMaxCost(pending, state.Spec, out UInt256 cost))
+                && !pending.IsOverflowInTxCostAndValue(out UInt256 cost))
             {
                 state.Reserved = cost;
                 return false;
@@ -89,12 +84,11 @@ internal sealed class FrameTxPayerExposureFilter(
         return search.Reserved;
     }
 
-    private struct ReplacementSearch(Transaction tx, Address payer, IReleaseSpec spec)
+    private struct ReplacementSearch(Transaction tx, Address payer)
     {
         public readonly Transaction Tx = tx;
         public readonly ulong Nonce = tx.Nonce;
         public readonly Address Payer = payer;
-        public readonly IReleaseSpec Spec = spec;
         public UInt256 Reserved;
     }
 }

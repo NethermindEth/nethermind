@@ -99,8 +99,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400UL,
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000UL,
-            MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
-            MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? 3533,
+            MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
+            MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
@@ -226,6 +226,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
             Eip2780TransitionTimestamp = chainSpecJson.Params.Eip2780TransitionTimestamp,
+            Eip7805TransitionTimestamp = chainSpecJson.Params.Eip7805TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(chainSpecJson.Params);

@@ -10,12 +10,20 @@ namespace Nethermind.Specs.Test;
 
 public class SpecNameParserTests
 {
+    // Consensus fixtures name their fork through this parser, and the Bogota vectors are the inclusion-list
+    // ones. Frame transactions are not part of the name: they carry their own transition timestamp.
     [Test]
-    public void Parse_maps_Bogota_to_the_frame_transactions_fork()
+    public void Parse_maps_Bogota_to_the_inclusion_lists_fork()
     {
         IReleaseSpec spec = SpecNameParser.Parse("Bogota");
 
-        Assert.That(spec, Is.SameAs(Bogota.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(Bogota.Instance));
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.True);
+            Assert.That(spec.IsEip8141Enabled, Is.False);
+        }
     }
 
     [TestCase("NotAFork", "NotAFork")]
