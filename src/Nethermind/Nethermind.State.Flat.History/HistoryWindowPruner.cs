@@ -220,8 +220,6 @@ public sealed class HistoryWindowPruner(
         {
             Metrics.FlatHistoryFloor = (long)(watermark - retention);
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
-            if (_logger.IsInfo) _logger.Info(
-                $"Flat history window floor advanced to #{watermark - retention} (watermark #{watermark}, retaining {retention} blocks).");
 
             // Publish before the drain: a scope opened after this sees the new floor at its own admission check.
             long drainGeneration = scopeGate.BeginFloorAdvance();
@@ -255,12 +253,14 @@ public sealed class HistoryWindowPruner(
         bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
         if (completed) Volatile.Write(ref _deletesOwed, false);
 
-        long deleted = Metrics.FlatHistoryPrunedRows - rowsBefore;
-        if (_logger.IsInfo && (deleted > 0 || completed))
+        if (_logger.IsInfo)
         {
+            long deleted = Metrics.FlatHistoryPrunedRows - rowsBefore;
             _logger.Info(completed
-                ? $"Completed flat history window pruning below #{floor}. Deleted {deleted} rows this pass."
-                : $"Pruned {deleted} flat history rows below #{floor}; the sweep resumes from its cursor next pass.");
+                ? $"Flat history pruning caught up below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass."
+                : $"Flat history pruning below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass, "
+                  + $"accounts {SweepProgress(completedAccount, AccountCursorKey)}, storage {SweepProgress(completedStorage, StorageCursorKey)}, "
+                  + $"clears {(completedClears ? "done" : "running")}, markers {(completedBlocks ? "done" : "running")}.");
         }
 
         return completed;
@@ -463,6 +463,16 @@ public sealed class HistoryWindowPruner(
         _availableBlocks.Get(StorageCursorKey) is not null ||
         _availableBlocks.Get(ClearsCursorKey) is not null ||
         _availableBlocks.Get(BlocksCursorKey) is not null;
+
+    /// <summary>Both versioned columns are keyed by a hash, so the cursor's leading bytes are a uniform position in
+    /// the keyspace and give the sweep an honest percentage rather than a row count with no denominator.</summary>
+    private string SweepProgress(bool completed, ReadOnlySpan<byte> cursorKeyName)
+    {
+        if (completed) return "done";
+        byte[]? cursor = ReadCursor(cursorKeyName);
+        if (cursor is null || cursor.Length < sizeof(uint)) return "0%";
+        return $"{BinaryPrimitives.ReadUInt32BigEndian(cursor) * 100L / uint.MaxValue}%";
+    }
 
     private byte[]? ReadCursor(ReadOnlySpan<byte> cursorKeyName) => _availableBlocks.Get(cursorKeyName);
 
