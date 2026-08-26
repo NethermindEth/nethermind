@@ -480,6 +480,25 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_BlobTxWithUnknownProofVersion_ReturnFalseWithoutThrowing()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Version = (ProofVersion)byte.MaxValue };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        bool? result = null;
+
+        Assert.That(() => result = txValidator.IsWellFormed(tx, Osaka.Instance).AsBool(), Throws.Nothing);
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
     public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
@@ -720,6 +739,23 @@ public class TxValidatorTests
             {
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
+            };
+            yield return new TestCaseData(Osaka.Instance, Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerBlobGas(1)
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with
+                {
+                    Blobs = [],
+                    CellMask = BlobCellMask.Empty,
+                    Cells = []
+                })
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Blob tx with commitments but no blobs or cells",
+                ExpectedResult = false
             };
 
             yield return new TestCaseData(Cancun.Instance, MakeTestObject(0)
