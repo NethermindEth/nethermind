@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 import signal
 import subprocess
 import sys
@@ -24,7 +26,13 @@ CGROUP_ROOTS = ("/sys/fs/cgroup/system.slice/docker-{cid}.scope",
                 "/sys/fs/cgroup/kubepods/docker-{cid}.scope")
 CPU_FREQ_ROOT = Path("/sys/devices/system/cpu")
 CPU_FREQ_SOURCES = ("scaling_cur_freq", "cpuinfo_cur_freq")
+CPPC_FREQUENCY_SOURCE = "cppc_delivered_perf"
+CPU_FREQUENCY_SOURCES = CPU_FREQ_SOURCES + (CPPC_FREQUENCY_SOURCE,)
+CPU_FREQUENCY_UNAVAILABLE_FIELD = "cpu_frequency_unavailable_sources"
 MAX_CPU_FREQ_KHZ = 10_000_000
+_CPPC_COUNTER_PATTERN = re.compile(r"([A-Za-z][A-Za-z0-9_-]*)\s*[:=]\s*(-?[0-9]+)")
+_CPPC_COUNTER_NAMES = {"ref": "reference", "del": "delivered",
+                       "reference": "reference", "delivered": "delivered"}
 
 
 class ResourceSampleError(Exception):
@@ -114,8 +122,82 @@ def _cpu_frequency_values(source: str) -> list[int]:
     return values
 
 
-def _frequency_observations() -> dict[str, list[int]]:
-    return {source: _cpu_frequency_values(source) for source in CPU_FREQ_SOURCES}
+def _cppc_counters(path: Path) -> tuple[int, int] | None:
+    try:
+        text = path.read_text()
+    except OSError:
+        return None
+    matches = list(_CPPC_COUNTER_PATTERN.finditer(text))
+    if not matches or any(match.group(1) not in _CPPC_COUNTER_NAMES for match in matches):
+        return None
+    values: dict[str, int] = {}
+    for match in matches:
+        name, value = _CPPC_COUNTER_NAMES[match.group(1)], int(match.group(2))
+        if name in values or value < 0:
+            return None
+        values[name] = value
+    remainder = _CPPC_COUNTER_PATTERN.sub("", text).strip(" \t\r\n,;")
+    if remainder or set(values) != {"delivered", "reference"}:
+        return None
+    return values["delivered"], values["reference"]
+
+
+def _positive_number(path: Path) -> float | None:
+    try:
+        value = float(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+class _CppcFrequencySampler:
+    """Convert ACPI CPPC feedback-counter deltas into per-CPU delivered kHz samples."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+        self._previous: dict[str, tuple[int, int, float, float, float]] = {}
+
+    def sample(self) -> list[float]:
+        values: list[float] = []
+        current_cpus: set[str] = set()
+        current: dict[str, tuple[int, int, float, float, float]] = {}
+        try:
+            paths = sorted(self.root.glob("cpu[0-9]*/acpi_cppc"))
+        except OSError:
+            paths = []
+        for directory in paths:
+            cpu = directory.parent.name
+            current_cpus.add(cpu)
+            counters = _cppc_counters(directory / "feedback_ctrs")
+            metadata = tuple(_positive_number(directory / name)
+                             for name in ("reference_perf", "nominal_perf", "nominal_freq"))
+            if counters is None or any(value is None for value in metadata):
+                continue
+            delivered, reference = counters
+            reference_perf, nominal_perf, nominal_freq = metadata
+            reading = (delivered, reference, reference_perf, nominal_perf, nominal_freq)
+            previous = self._previous.get(cpu)
+            current[cpu] = reading
+            if previous is None or previous[2:] != reading[2:]:
+                continue
+            delivered_delta = delivered - previous[0]
+            reference_delta = reference - previous[1]
+            if delivered_delta <= 0 or reference_delta <= 0:
+                continue
+            frequency = (nominal_freq * reference_perf * delivered_delta
+                         / (nominal_perf * reference_delta) * 1000)
+            if math.isfinite(frequency) and 0 < frequency <= MAX_CPU_FREQ_KHZ:
+                values.append(frequency)
+        # A missing or malformed CPU must not retain a stale baseline if it reappears later.
+        self._previous = {cpu: reading for cpu, reading in current.items() if cpu in current_cpus}
+        return values
+
+
+def _frequency_observations(cppc_sampler: _CppcFrequencySampler | None = None) -> dict[str, list[float]]:
+    observations: dict[str, list[float]] = {source: _cpu_frequency_values(source) for source in CPU_FREQ_SOURCES}
+    if cppc_sampler is not None:
+        observations[CPPC_FREQUENCY_SOURCE] = cppc_sampler.sample()
+    return observations
 
 
 def _frequency_summary(observations: dict[str, dict[str, int | float]]) -> dict[str, dict[str, int | float]]:
@@ -153,6 +235,7 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
     io_start = _io_totals(cgroup / "io.stat")
     psi_start = {name: _pressure_total(cgroup / f"{name}.pressure") for name in ("cpu", "io", "memory")}
     memory_samples: list[int] = []
+    cppc_sampler = _CppcFrequencySampler(CPU_FREQ_ROOT)
     frequency_stats: dict[str, dict[str, int | float]] = {
         source: {
             "sample_count": 0,
@@ -161,7 +244,7 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
             "min_khz": MAX_CPU_FREQ_KHZ,
             "max_khz": 0,
         }
-        for source in CPU_FREQ_SOURCES
+        for source in CPU_FREQUENCY_SOURCES
     }
     peak_cores = 0.0
     last_t, last_cpu = started, cpu_start
@@ -171,7 +254,7 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         current = _read_int(cgroup / "memory.current")
         if current is not None:
             memory_samples.append(current)
-        for source, values in _frequency_observations().items():
+        for source, values in _frequency_observations(cppc_sampler).items():
             if not values:
                 continue
             stats = frequency_stats[source]
@@ -214,6 +297,10 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
     frequency = _frequency_summary(frequency_stats)
     if frequency:
         summary["cpu_frequency_khz"] = frequency
+    unavailable = [source for source in CPU_FREQUENCY_SOURCES
+                   if frequency_stats[source]["observation_count"] < 1]
+    if unavailable:
+        summary[CPU_FREQUENCY_UNAVAILABLE_FIELD] = unavailable
     _write(out_path, _with_rates(summary))
 
 

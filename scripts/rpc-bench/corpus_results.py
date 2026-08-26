@@ -50,9 +50,9 @@ RESOURCE_FIELDS = {
     "wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec",
     "memory_avg_bytes", "memory_peak_bytes", "io_read_bytes", "io_write_bytes", "stall_cpu_usec",
     "stall_io_usec", "stall_memory_usec", "requests", "cpu_ms_per_request", "io_read_bytes_per_request",
-    "cpu_frequency_khz", "estimated_cycles_per_request", "perf_stat",
+    "cpu_frequency_khz", "estimated_cycles_per_request", "cpu_frequency_unavailable_sources", "perf_stat",
 }
-FREQUENCY_SOURCES = ("scaling_cur_freq", "cpuinfo_cur_freq")
+FREQUENCY_SOURCES = ("scaling_cur_freq", "cpuinfo_cur_freq", "cppc_delivered_perf")
 FREQUENCY_FIELDS = {"sample_count", "observation_count", "avg_khz", "min_khz", "max_khz"}
 PERF_STAT_FIELDS = {
     "task_clock_ms", "cycles", "instructions", "task_clock_ms_per_request", "cycles_per_request",
@@ -551,7 +551,8 @@ def _validate_resources(path: Path) -> None:
     if not isinstance(data, dict) or not set(data) <= RESOURCE_FIELDS:
         raise CorpusResultsError(f"{path.name} does not match the resource schema")
     for key, value in data.items():
-        if key in ("cpu_frequency_khz", "estimated_cycles_per_request", "perf_stat"):
+        if key in ("cpu_frequency_khz", "estimated_cycles_per_request",
+                   "cpu_frequency_unavailable_sources", "perf_stat"):
             continue
         if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
                                   or not math.isfinite(float(value)) or value < 0):
@@ -575,6 +576,15 @@ def _validate_resources(path: Path) -> None:
                 raise CorpusResultsError(f"{path.name}: invalid CPU frequency value")
             if not values["min_khz"] <= values["avg_khz"] <= values["max_khz"]:
                 raise CorpusResultsError(f"{path.name}: CPU frequency range is inconsistent")
+    if "cpu_frequency_unavailable_sources" in data:
+        unavailable = data["cpu_frequency_unavailable_sources"]
+        if not isinstance(unavailable, list) or any(
+                not isinstance(source, str) or source not in FREQUENCY_SOURCES for source in unavailable):
+            raise CorpusResultsError(f"{path.name}: invalid unavailable CPU frequency sources")
+        if len(unavailable) != len(set(unavailable)):
+            raise CorpusResultsError(f"{path.name}: duplicate unavailable CPU frequency source")
+        if isinstance(frequency, dict) and set(unavailable) & set(frequency):
+            raise CorpusResultsError(f"{path.name}: unavailable CPU frequency source was measured")
     estimates = data.get("estimated_cycles_per_request")
     if estimates is not None:
         if not isinstance(estimates, dict) or set(estimates) - set(FREQUENCY_SOURCES):

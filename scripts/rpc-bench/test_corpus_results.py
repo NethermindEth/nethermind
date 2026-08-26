@@ -156,16 +156,41 @@ class CorpusResultsTests(unittest.TestCase):
         resources = {
             "requests": 1000,
             "cpu_ms_per_request": 1.0,
-            "cpu_frequency_khz": {"scaling_cur_freq": {
-                "sample_count": 2, "observation_count": 4, "avg_khz": 3_800_000,
-                "min_khz": 3_700_000, "max_khz": 3_900_000}},
-            "estimated_cycles_per_request": {"scaling_cur_freq": 3_800_000.0},
+            "cpu_frequency_khz": {
+                "scaling_cur_freq": {
+                    "sample_count": 2, "observation_count": 4, "avg_khz": 3_800_000,
+                    "min_khz": 3_700_000, "max_khz": 3_900_000},
+                "cppc_delivered_perf": {
+                    "sample_count": 1, "observation_count": 2, "avg_khz": 3_040_000,
+                    "min_khz": 2_800_000, "max_khz": 3_280_000}},
+            "estimated_cycles_per_request": {
+                "scaling_cur_freq": 3_800_000.0, "cppc_delivered_perf": 3_040_000.0},
+            "cpu_frequency_unavailable_sources": ["cpuinfo_cur_freq"],
             "perf_stat": corpus_results.normalize_perf_data(perf_json(), 1000),
         }
         corpus_results._validate_resources(self.write_json(self.dir / "resources.json", resources))
         resources["perf_stat"]["cycles_per_request"] = "leak"
         with self.assertRaises(corpus_results.CorpusResultsError):
             corpus_results._validate_resources(self.write_json(self.dir / "bad-resources.json", resources))
+
+    def test_resources_validator_rejects_invalid_unavailable_frequency_sources(self):
+        resources = {
+            "cpu_frequency_khz": {"scaling_cur_freq": {
+                "sample_count": 1, "observation_count": 1, "avg_khz": 3_800_000,
+                "min_khz": 3_800_000, "max_khz": 3_800_000}},
+        }
+        invalid = (
+            ("unknown", {"cpu_frequency_unavailable_sources": ["bogus"]}),
+            ("duplicate", {"cpu_frequency_unavailable_sources": ["cpuinfo_cur_freq", "cpuinfo_cur_freq"]}),
+            ("wrong type", {"cpu_frequency_unavailable_sources": "cpuinfo_cur_freq"}),
+            ("null", {"cpu_frequency_unavailable_sources": None}),
+            ("overlap", {"cpu_frequency_unavailable_sources": ["scaling_cur_freq"]}),
+        )
+        for name, extension in invalid:
+            with self.subTest(name=name):
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results._validate_resources(
+                        self.write_json(self.dir / f"bad-frequency-{name}.json", {**resources, **extension}))
 
     def test_pidfd_preflight_roundtrip_when_supported(self):
         if not (hasattr(os, "pidfd_open") and hasattr(corpus_results.signal, "pidfd_send_signal")

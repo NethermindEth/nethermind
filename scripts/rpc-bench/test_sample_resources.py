@@ -13,6 +13,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,7 +58,7 @@ class SamplerArithmeticTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _run(self, ticks, frequencies=None):
+    def _run(self, ticks, frequencies=None, cppc_root=None):
         """Drive the loop for len(ticks) iterations, applying each tick's mutations."""
         state = {"i": 0}
 
@@ -75,8 +76,12 @@ class SamplerArithmeticTests(unittest.TestCase):
         original_id = sample_resources._container_id
         sample_resources._container_id = lambda _name: "cid"
         original_frequencies = sample_resources._frequency_observations
-        readings = iter(frequencies or ({source: [] for source in sample_resources.CPU_FREQ_SOURCES},) * len(ticks))
-        sample_resources._frequency_observations = lambda: next(readings)
+        original_frequency_root = sample_resources.CPU_FREQ_ROOT
+        if cppc_root is None:
+            readings = iter(frequencies or ({source: [] for source in sample_resources.CPU_FREQ_SOURCES},) * len(ticks))
+            sample_resources._frequency_observations = lambda *_: next(readings)
+        else:
+            sample_resources.CPU_FREQ_ROOT = cppc_root
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 sample_resources.sample("node", str(self.out), 0.0, should_stop)
@@ -84,6 +89,7 @@ class SamplerArithmeticTests(unittest.TestCase):
             sample_resources._cgroup_dir = original
             sample_resources._container_id = original_id
             sample_resources._frequency_observations = original_frequencies
+            sample_resources.CPU_FREQ_ROOT = original_frequency_root
         return json.loads(self.out.read_text(encoding="utf-8"))
 
     def test_throttling_is_a_delta_not_the_cgroup_lifetime_value(self):
@@ -119,7 +125,56 @@ class SamplerArithmeticTests(unittest.TestCase):
             "sample_count": 2, "observation_count": 3, "avg_khz": 3_800_000,
             "min_khz": 3_700_000, "max_khz": 3_900_000})
         self.assertNotIn("cpuinfo_cur_freq", summary["cpu_frequency_khz"])
+        self.assertEqual(summary["cpu_frequency_unavailable_sources"], [
+            "cpuinfo_cur_freq", "cppc_delivered_perf"])
         self.assertNotIn("estimated_cycles_per_request", summary)
+
+    def test_cppc_frequency_is_aggregated_from_counter_deltas(self):
+        root = self.dir / "sys" / "devices" / "system" / "cpu"
+
+        def write_cpu(cpu, delivered, reference, reference_perf=80, nominal_perf=100, nominal_freq=3800):
+            directory = root / cpu / "acpi_cppc"
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "feedback_ctrs").write_text(
+                f"ref:{reference} del:{delivered}\n", encoding="utf-8")
+            for name, value in (("reference_perf", reference_perf), ("nominal_perf", nominal_perf),
+                                ("nominal_freq", nominal_freq)):
+                (directory / name).write_text(f"{value}\n", encoding="utf-8")
+
+        summary = self._run(
+            [lambda c: write_cpu("cpu0", 1000, 500), lambda c: write_cpu("cpu0", 1100, 600)],
+            cppc_root=root)
+        self.assertEqual(summary["cpu_frequency_khz"]["cppc_delivered_perf"], {
+            "sample_count": 1, "observation_count": 1, "avg_khz": 3_040_000,
+            "min_khz": 3_040_000, "max_khz": 3_040_000})
+        self.assertEqual(summary["cpu_frequency_unavailable_sources"], [
+            "scaling_cur_freq", "cpuinfo_cur_freq"])
+
+    def test_cppc_frequency_rejects_missing_malformed_reset_and_disappearing_counters(self):
+        root = self.dir / "sys" / "devices" / "system" / "cpu"
+        directory = root / "cpu0" / "acpi_cppc"
+
+        def write_feedback(delivered, reference, valid=True):
+            directory.mkdir(parents=True, exist_ok=True)
+            text = (f"ref:{reference} del:{delivered}\n" if valid else "broken")
+            (directory / "feedback_ctrs").write_text(text, encoding="utf-8")
+            for name, value in (("reference_perf", 100), ("nominal_perf", 100), ("nominal_freq", 3800)):
+                (directory / name).write_text(f"{value}\n", encoding="utf-8")
+
+        sampler = sample_resources._CppcFrequencySampler(root)
+        self.assertEqual(sampler.sample(), [])
+        write_feedback(1000, 500)
+        self.assertEqual(sampler.sample(), [])
+        write_feedback(900, 600)  # counter reset
+        self.assertEqual(sampler.sample(), [])
+        write_feedback(1000, 600, valid=False)  # malformed feedback file
+        self.assertEqual(sampler.sample(), [])
+        shutil.rmtree(directory)
+        self.assertEqual(sampler.sample(), [])  # disappearing CPU drops its baseline
+        write_feedback(1000, 600)
+        self.assertEqual(sampler.sample(), [])
+        write_feedback(1100, 700)
+        self.assertEqual(sampler.sample(), [3_800_000.0])
 
 
 class NormalizeTests(unittest.TestCase):
@@ -162,6 +217,15 @@ class NormalizeTests(unittest.TestCase):
             sample_resources.normalize(str(self.path), 1000)
         summary = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(summary["estimated_cycles_per_request"], {"scaling_cur_freq": 171_000_000.0})
+
+    def test_normalize_derives_cycles_per_request_from_cppc_frequency(self):
+        self._write(cpu_frequency_khz={
+            "cppc_delivered_perf": {"sample_count": 1, "observation_count": 2, "avg_khz": 3_040_000,
+                                      "min_khz": 2_800_000, "max_khz": 3_280_000}})
+        with contextlib.redirect_stdout(io.StringIO()):
+            sample_resources.normalize(str(self.path), 1000)
+        summary = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["estimated_cycles_per_request"], {"cppc_delivered_perf": 136_800_000.0})
 
     def test_normalize_does_not_invent_cycle_estimates_without_frequency(self):
         self._write()
