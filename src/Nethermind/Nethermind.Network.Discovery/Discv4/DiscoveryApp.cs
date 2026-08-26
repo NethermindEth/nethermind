@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -73,12 +73,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
             {
                 if (!Node.TryFromDiscoveryEnr(bootnode.Enr, out Node? enrNode))
                 {
-                    if (logger.IsWarn) logger.Warn($"ENR bootnode ignored because it has no usable discovery endpoint: {bootnode}");
+                    if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint: {bootnode}");
                     continue;
                 }
 
                 node = enrNode;
-                if (logger.IsDebug) logger.Debug($"Accepted discv4 ENR bootnode {node.DiscoveryAddress}.");
             }
             else
             {
