@@ -54,6 +54,7 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         GetMatchingRlp(bundle.TryLoadStateRlp(path, hash, flags), hash);
 
+    // Persistence is path-keyed, so a racing read can return bytes for another root; verify before publishing.
     internal static byte[]? GetMatchingRlp(byte[]? rlp, Hash256 hash) =>
         rlp is null || ValueKeccak.Compute(rlp) == hash ? rlp : null;
 

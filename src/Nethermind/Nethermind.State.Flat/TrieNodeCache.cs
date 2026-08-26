@@ -140,6 +140,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             if (fullRlp.IsNull) return null;
 
             Hash256? keccak = source.Keccak;
+            // A warmer can race a writer, so reverify the bytes before promoting them to the shared cache.
             if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
 
             TrieNode detached = keccak is null
@@ -147,18 +148,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 : new TrieNode(NodeType.Unknown, keccak, fullRlp);
             TreePath path = TreePath.Empty;
 
-            try
-            {
-                return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return null;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return null;
-            }
+            return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
         Parallel.For(0, ShardCount, (i) =>

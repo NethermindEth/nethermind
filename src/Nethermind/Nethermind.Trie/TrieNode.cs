@@ -158,6 +158,8 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerOwned => (Volatile.Read(ref _blockAndFlags) & _warmerOwnedMask) != 0;
 
+        private bool IsWarmerOwnedNonVolatile => (_blockAndFlags & _warmerOwnedMask) != 0;
+
         internal void MarkWarmerOwned()
         {
             byte previousValue = Volatile.Read(ref _blockAndFlags);
@@ -1327,7 +1329,7 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 childOrRef = child;
-                                if (!child.IsWarmerOwned || child.NodeType != NodeType.Unknown) data = child;
+                                if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
 
                                 break;
                             }
@@ -1508,7 +1510,7 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     childOrRef = child;
-                                    if (!child.IsWarmerOwned || child.NodeType != NodeType.Unknown) data = child;
+                                    if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
 
                                     break;
                                 }
