@@ -53,11 +53,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         CodeInfo value)
     {
         ValueHash256 codeHash = value.CodeHash != default ? value.CodeHash : ValueKeccak.Compute(value.Code.Span);
-        CodeInfo? shared = value.IsEmpty ? null : codeCache.Get(in codeHash);
+        bool cacheable = !value.IsEmpty && value.Code.Length <= vmSpec.MaxCodeSize;
+        CodeInfo? shared = cacheable ? codeCache.Get(in codeHash) : null;
         if (shared is null)
         {
             value.CodeHash = codeHash;
-            if (!value.IsEmpty)
+            if (cacheable)
             {
                 codeCache.Set(in codeHash, value);
             }
