@@ -75,6 +75,52 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Copy-to-memory core for sources that halt on an out-of-range read instead of zero-padding it
+    /// (RETURNDATACOPY per EIP-211, EVENTDATACOPY per EIP-7906), operands already popped.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType BoundedDataCopyCore<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        in UInt256 destOffset,
+        in UInt256 sourceOffset,
+        in UInt256 size,
+        scoped ReadOnlySpan<byte> source)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
+        if (outOfGas) goto OutOfGas;
+
+        // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
+        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 end) || end > source.Length)
+            goto AccessViolation;
+
+        if (!size.IsZero)
+        {
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
+                goto OutOfGas;
+
+            vm.VmState.Memory.SaveAfterGas(in destOffset, source.Slice((int)sourceOffset, (int)size));
+
+            if (TTracingInst.IsActive)
+            {
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
+                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
+            }
+        }
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    AccessViolation:
+        return EvmExceptionType.AccessViolation;
+    }
+
+    /// <summary>
     /// CODECOPY - copies a portion of the executing contract's code into memory.
     /// Sources bytes from <c>stack.Code</c>/<c>stack.CodeLength</c> (hoisted at frame entry)
     /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
@@ -115,38 +161,9 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
-            goto StackUnderflow;
+            return EvmExceptionType.StackUnderflow;
 
-        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
-        if (outOfGas) goto OutOfGas;
-
-        ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
-        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
-            goto AccessViolation;
-
-        if (!size.IsZero)
-        {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
-                goto OutOfGas;
-
-            ReadOnlySpan<byte> source = returnDataBuffer.Span.Slice((int)sourceOffset, (int)size);
-            vm.VmState.Memory.SaveAfterGas(in destOffset, source);
-
-            if (TTracingInst.IsActive)
-            {
-                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
-                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
-            }
-        }
-
-        return EvmExceptionType.None;
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    AccessViolation:
-        return EvmExceptionType.AccessViolation;
+        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in destOffset, in sourceOffset, in size, vm.ReturnDataBuffer.Span);
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -40,7 +41,12 @@ internal static class FrameTxTestFrames
     public static TxFrame ApprovingDefault(ulong gasLimit = 1_000) =>
         new(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
-    public static TxFrame Expiry(ulong gasLimit = 30_000) =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero,
-            new byte[Eip8141Constants.ExpiryDataLength]);
+    public static TxFrame Expiry(ulong gasLimit = 30_000) => ExpiryAt(deadline: 0, gasLimit);
+
+    public static TxFrame ExpiryAt(ulong deadline, ulong gasLimit = 30_000)
+    {
+        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(data, deadline);
+        return new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, data);
+    }
 }

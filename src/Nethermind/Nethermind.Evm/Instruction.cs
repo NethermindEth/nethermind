@@ -171,6 +171,11 @@ public enum Instruction : byte
     // EIP-8272 recent roots
     RECENTROOTREFLOAD = 0xb6,
 
+    // EIP-7906, draft: shifted up two from the spec's 0xb5-0xb7, which collides with EIP-8141 and EIP-8272.
+    TXTRACE = 0xb7,
+    TXDIFF = 0xb8,
+    EVENTDATACOPY = 0xb9,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,

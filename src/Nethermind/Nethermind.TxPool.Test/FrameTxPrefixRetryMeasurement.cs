@@ -52,7 +52,7 @@ public class FrameTxPrefixRetryMeasurement
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        _specProvider = new TestSpecProvider(Bogota.Instance);
+        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
         _stateProvider = new TestReadOnlyStateProvider();
         _blockTree = new TestBlockTree();

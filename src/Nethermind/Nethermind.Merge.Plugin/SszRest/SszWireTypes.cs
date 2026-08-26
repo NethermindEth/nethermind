@@ -1,13 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
+
+/// <summary>Extensions over the raw wire byte-strings carried by the SSZ containers in this file.</summary>
+/// <remarks>Not in <c>WireConversionExtensions</c>: the wire types compile into assemblies that do not link it.</remarks>
+internal static class SszWireBytesExtensions
+{
+    /// <summary>The wire bytes as an array, copied unless the memory exclusively owns one.</summary>
+    /// <remarks>The result outlives the wire struct, so memory that only spans part of a buffer must be
+    /// copied rather than aliased.</remarks>
+    public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
+        MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
+        && segment.Offset == 0 && segment.Count == segment.Array!.Length
+            ? segment.Array
+            : bytes.ToArray();
+}
 
 /// <summary>
 /// SSZ representation of a single variable-length transaction byte-string.
@@ -17,7 +33,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 [SszContainer(isCollectionItself: true)]
 public partial struct SszTransaction
 {
-    [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
+    [SszList(0x4000_0000)] public ReadOnlyMemory<byte> Bytes { get; set; }
 }
 
 [SszContainer]
@@ -41,6 +57,16 @@ public partial struct PayloadStatusWire
     public byte Status { get; set; }
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
     [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
+}
+
+// InclusionListSatisfied follows the Optional[T] = List[T, 1] pattern used above: 0/1 = false/true, empty = null.
+[SszContainer]
+public partial struct PayloadStatusV2Wire
+{
+    public byte Status { get; set; }
+    [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
+    [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
+    [SszList(1)] public byte[]? InclusionListSatisfied { get; set; }
 }
 
 [SszContainer]
@@ -100,6 +126,21 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
 }
 
+// SszList limits act purely as decode bounds here: the REST wire never computes hash-tree-root.
+[SszContainer]
+public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
+{
+    public ulong Timestamp { get; set; }
+    public Hash256 PrevRandao { get; set; }
+    public Address SuggestedFeeRecipient { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
+    public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
+    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+}
+
 [SszContainer]
 public partial struct ForkchoiceUpdatedV1RequestWire
 {
@@ -129,6 +170,14 @@ public partial struct ForkchoiceUpdatedRequestWire
     [SszList(1)] public SszCustodyColumns[]? CustodyColumns { get; set; }
 }
 
+[SszContainer]
+public partial struct ForkchoiceUpdatedV5RequestWire
+{
+    public ForkchoiceStateWire ForkchoiceState { get; set; }
+    [SszList(1)] public PayloadAttributesV5Wire[]? PayloadAttributes { get; set; }
+    [SszList(1)] public SszCustodyColumns[]? CustodyColumns { get; set; }
+}
+
 [SszContainer(isCollectionItself: true)]
 public partial struct SszCustodyColumns
 {
@@ -145,6 +194,14 @@ public partial struct SszPayloadId
 public partial struct ForkchoiceUpdatedResponseWire
 {
     public PayloadStatusWire PayloadStatus { get; set; }
+    [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
+}
+
+// Carries PayloadStatusV2 so a VALID head can report inclusionListSatisfied (execution-apis#609).
+[SszContainer]
+public partial struct ForkchoiceUpdatedResponseWireV2
+{
+    public PayloadStatusV2Wire PayloadStatus { get; set; }
     [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
 }
 
@@ -181,6 +238,22 @@ public partial struct NewPayloadV5RequestWire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+}
+
+[SszContainer]
+public partial struct NewPayloadV6RequestWire
+{
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
+    [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+}
+
+[SszContainer]
+public partial struct InclusionListResponseWire
+{
+    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? Transactions { get; set; }
 }
 
 [SszContainer]

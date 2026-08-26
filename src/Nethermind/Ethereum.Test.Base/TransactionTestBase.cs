@@ -29,7 +29,7 @@ public abstract class TransactionTestBase
         IReleaseSpec spec;
         try
         {
-            spec = SpecNameParser.Parse(test.Fork);
+            spec = SpecNameParser.Parse(ForkAliases.Resolve(test.Fork));
         }
         catch (Exception ex)
         {
