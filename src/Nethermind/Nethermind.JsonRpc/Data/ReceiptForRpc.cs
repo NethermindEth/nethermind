@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -65,7 +66,9 @@ namespace Nethermind.JsonRpc.Data
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }
-        /// <summary>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</summary>
+
+        /// <summary>The transaction's log entries.</summary>
+        /// <remarks>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</remarks>
         public LogEntryForRpc[]? Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
@@ -85,7 +88,7 @@ namespace Nethermind.JsonRpc.Data
             {
                 Bloom = LogsBloom,
                 Index = (int)TransactionIndex,
-                Logs = (Logs ?? []).Select(static l => l.ToLogEntry()).ToArray(),
+                Logs = ToLogEntries(),
                 Recipient = To,
                 Sender = From,
                 BlockHash = BlockHash,
@@ -103,7 +106,7 @@ namespace Nethermind.JsonRpc.Data
             if (Type == TxType.FrameTx)
             {
                 receipt.Payer = Payer;
-                TxFrameReceipt[] frameReceipts = (FrameReceipts ?? []).Select(static f => f.ToFrameReceipt()).ToArray();
+                TxFrameReceipt[] frameReceipts = ToFrameReceipts();
                 receipt.FrameReceipts = frameReceipts;
 
                 // Frames are authoritative, as on the wire path: derive the dependent fields so a payload
@@ -119,6 +122,56 @@ namespace Nethermind.JsonRpc.Data
             }
 
             return receipt;
+        }
+
+        /// <summary>Binds the caller-supplied <see cref="Logs"/> to their core representation.</summary>
+        /// <exception cref="JsonException">An entry is null.</exception>
+        private LogEntry[] ToLogEntries()
+        {
+            if (Logs is not { Length: > 0 } logs)
+            {
+                return [];
+            }
+
+            LogEntry[] logEntries = new LogEntry[logs.Length];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                logEntries[i] = logs[i] is { } log
+                    ? log.ToLogEntry()
+                    : throw new JsonException($"Log entry {i} is null.");
+            }
+
+            return logEntries;
+        }
+
+        /// <summary>Binds the caller-supplied <see cref="FrameReceipts"/> to their core representation.</summary>
+        /// <remarks>
+        /// Reached with an unvalidated payload through <c>debug_insertReceipts</c>, so a shape EIP-8141
+        /// cannot produce has to be rejected here rather than reaching the receipt store.
+        /// </remarks>
+        /// <exception cref="JsonException">An entry is null, or there are more than EIP-8141's MAX_FRAMES of them.</exception>
+        private TxFrameReceipt[] ToFrameReceipts()
+        {
+            if (FrameReceipts is not { Length: > 0 } frames)
+            {
+                return [];
+            }
+
+            if (frames.Length > Eip8141Constants.MaxFrames)
+            {
+                throw new JsonException($"A frame transaction receipt carries at most {Eip8141Constants.MaxFrames} frame receipts, got {frames.Length}.");
+            }
+
+            TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
+            for (int i = 0; i < frames.Length; i++)
+            {
+                // The element annotation does not bind the deserializer: "frameReceipts": [null] reaches here.
+                frameReceipts[i] = frames[i] is { } frame
+                    ? frame.ToFrameReceipt()
+                    : throw new JsonException($"Frame receipt {i} is null.");
+            }
+
+            return frameReceipts;
         }
     }
 }

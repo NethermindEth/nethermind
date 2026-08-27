@@ -419,4 +419,36 @@ public class FrameTransactionForRpcTests
             Assert.That(receipt.Bloom, Is.EqualTo(hasFrameReceipts ? new Bloom([FrameLog]) : new Bloom()));
         }
     }
+
+    private static IEnumerable<TestCaseData> MalformedFrameReceiptsCases()
+    {
+        yield return new TestCaseData("[null]").SetName("A null frame receipt entry is rejected");
+        yield return new TestCaseData(
+                $"[{string.Join(',', Enumerable.Repeat("{}", Eip8141Constants.MaxFrames + 1))}]")
+            .SetName("More frame receipts than MAX_FRAMES are rejected");
+    }
+
+    /// <summary>A shape EIP-8141 cannot produce is a caller error, not a node error.</summary>
+    /// <remarks>
+    /// debug_insertReceipts binds these entries straight from JSON, and JsonRpcService answers a
+    /// <see cref="JsonException"/> with invalid params where an unhandled one becomes an internal error.
+    /// </remarks>
+    [TestCaseSource(nameof(MalformedFrameReceiptsCases))]
+    public void ReceiptForRpc_FrameTx_RejectsMalformedFrameReceipts(string frameReceiptsJson)
+    {
+        EthereumJsonSerializer serializer = new();
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts = serializer.Deserialize<FrameReceiptForRpc[]>(frameReceiptsJson);
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    /// <summary>The same hazard on the top-level logs, which every receipt type carries.</summary>
+    [Test]
+    public void ReceiptForRpc_RejectsANullLogEntry()
+    {
+        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""");
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
 }
