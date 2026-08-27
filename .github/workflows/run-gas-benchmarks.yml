@@ -171,7 +171,9 @@ jobs:
             });
 
   setup:
-    needs: [resolve-inputs]
+    # Also waits on the image so the VM is not created until there is work for it:
+    # max_run_duration runs from boot, so idling through the build eats the benchmark's budget.
+    needs: [resolve-inputs, publish-docker]
     if: needs.resolve-inputs.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -261,7 +263,7 @@ jobs:
           postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
 
   post-results-comment:
-    needs: [resolve-inputs, gas-benchmark]
+    needs: [resolve-inputs, gas-benchmark, cleanup]
     if: always() && needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-slim
     permissions:
@@ -274,9 +276,11 @@ jobs:
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}
           BENCHMARK_STATUS: ${{ needs.gas-benchmark.result }}
+          PREEMPTED: ${{ needs.cleanup.outputs.preempted }}
         with:
           script: |
             const benchmarkStatus = process.env.BENCHMARK_STATUS || '';
+            const preempted = process.env.PREEMPTED === 'true';
             const filter = process.env.FILTER || '';
             const filterText = filter ? ` with filter: \`${filter}\`` : '';
             const workflowUrl = `${context.payload.repository.html_url}/actions/runs/${context.runId}`;
@@ -287,6 +291,10 @@ jobs:
               emoji = '✅';
               title = 'Gas Benchmark Complete';
               message = `Gas benchmarks have completed successfully${filterText}!`;
+            } else if (preempted) {
+              emoji = '♻️';
+              title = 'Gas Benchmark Interrupted';
+              message = `The spot machine running the benchmarks${filterText} was reclaimed by the provider, so the run did not finish. This is not a benchmark failure — re-run the workflow.`;
             } else if (benchmarkStatus === 'failure') {
               emoji = '❌';
               title = 'Gas Benchmark Failed';
@@ -315,6 +323,10 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    timeout-minutes: 15
+    outputs:
+      terminated-by: ${{ steps.destroy.outputs.terminated_by }}
+      preempted: ${{ steps.destroy.outputs.preempted }}
 
     steps:
       - name: Checkout repository
