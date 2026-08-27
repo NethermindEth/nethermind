@@ -734,8 +734,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot) => BlockChange.Restore(snapshot);
 
-        // RootHash is the last committed root, so storage written and cleared inside one commit
-        // window is not counted (post-Byzantium that window is the whole block).
+        /// <summary>Whether a clear would drop storage that is already persisted.</summary>
+        /// <remarks>
+        /// Scopes <see cref="Db.Metrics.StorageCleared"/> to clears that discard committed state.
+        /// <see cref="IWorldStateScopeProvider.IStorageTree.RootHash"/> is the last committed root, so
+        /// storage written and cleared inside one commit window is not counted; post-Byzantium that
+        /// window is the whole block, before it a single transaction.
+        /// </remarks>
         private bool ClearsPersistedStorage => _backend.RootHash != Keccak.EmptyTreeHash;
 
         public void Return()
