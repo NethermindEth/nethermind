@@ -354,7 +354,9 @@ public static class FrameTxValidation
 
     /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
     /// <remarks>
-    /// Derived from the frame layout alone, never from state; a <c>pay</c> frame naming the sender counts like
+    /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
+    /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
+    /// still keyed. Derived from the frame layout alone, never from state; a frame naming the sender counts like
     /// any other target, since the carve-out is the empty code hash. A frameless pool record instead answers
     /// from <see cref="Transaction.PersistedPaymaster"/>, unset after a reload — <c>null</c> then means unknown,
     /// not unsponsored.
@@ -367,9 +369,18 @@ public static class FrameTxValidation
             return transaction.PersistedPaymaster;
         }
 
-        return RecognizedPrefixLength(frames, transaction.SenderAddress) is int length && IsPayFrame(frames[length - 1])
-            ? frames[length - 1].Target
-            : null;
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+
+        for (int i = next; i < frames.Length; i++)
+        {
+            // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
+            if (frames[i].Mode != TxFrame.ModeVerify) break;
+            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0) return frames[i].Target;
+        }
+
+        return null;
     }
 
     /// <summary>

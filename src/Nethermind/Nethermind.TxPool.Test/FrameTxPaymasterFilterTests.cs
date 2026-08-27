@@ -41,7 +41,7 @@ public class FrameTxPaymasterFilterTests
         else state.CreateAccount(Paymaster, Unit.Ether);
 
         PendingPaymasterCache cache = new();
-        cache.Increment(Paymaster);
+        cache.Reserve(Paymaster);
 
         AcceptTxResult result = Accept(state, cache, build());
 
@@ -68,9 +68,14 @@ public class FrameTxPaymasterFilterTests
         yield return Case("PayFrameWithoutTarget_Accepted",
             () => FrameTx([OnlyVerifyFrame(), PayFrame(null)]), paymasterHasCode: true, rejected: false);
 
-        // Not a recognized prefix, so it names no paymaster; the simulation gate decides its fate.
-        yield return Case("UnrecognizedPrefix_Accepted",
+        // The leading frame already approves payment for the sender, so the later pay frame sponsors nothing.
+        yield return Case("SelfPaidBeforePayFrame_Accepted",
             () => FrameTx([SelfVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: false);
+
+        // The simulator walks the whole leading VERIFY run, so an unapproving frame before the pay frame
+        // must not hide the sponsor from the cap.
+        yield return Case("PayFrameBehindSpacerVerifyFrame_Rejected",
+            () => FrameTx([OnlyVerifyFrame(), SpacerVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: true);
 
         yield return Case("NonFrameTx_Accepted",
             () => Build.A.Transaction.WithSenderAddress(Sender).TestObject, paymasterHasCode: true, rejected: false);
@@ -83,7 +88,7 @@ public class FrameTxPaymasterFilterTests
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Sender);
         PendingPaymasterCache cache = new();
-        cache.Increment(Sender);
+        cache.Reserve(Sender);
 
         AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Sender)], nonce: 1));
 
@@ -98,9 +103,8 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         Transaction tx = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]);
 
+        // Admission counts the slot itself, so the second submission sees the first one holding it.
         AcceptTxResult first = Accept(state, cache, tx);
-        // The pool counts an admitted tx on insert, as TxPool does from its Inserted event.
-        cache.Increment(Paymaster);
         AcceptTxResult second = Accept(state, cache, tx);
 
         using (Assert.EnterMultipleScope())
@@ -116,7 +120,7 @@ public class FrameTxPaymasterFilterTests
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Paymaster);
         PendingPaymasterCache cache = new();
-        cache.Increment(Paymaster);
+        cache.Reserve(Paymaster);
         cache.Decrement(Paymaster);
 
         AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]));
@@ -133,9 +137,9 @@ public class FrameTxPaymasterFilterTests
 
         Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(pendingPaymaster)], pendingNonce);
         PendingPaymasterCache cache = new();
-        cache.Increment(pendingPaymaster);
+        cache.Reserve(pendingPaymaster);
         // The incoming tx's own paymaster must be at the cap for the discount to be what decides.
-        if (pendingPaymaster != Paymaster) cache.Increment(Paymaster);
+        if (pendingPaymaster != Paymaster) cache.Reserve(Paymaster);
 
         // A fee bump is the same sender and nonce at a higher price.
         Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], incomingNonce, gasPrice: 2);
@@ -153,7 +157,7 @@ public class FrameTxPaymasterFilterTests
 
         Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true);
         PendingPaymasterCache cache = new();
-        cache.Increment(Paymaster);
+        cache.Reserve(Paymaster);
 
         Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
         AcceptTxResult result = Accept(state, cache, incoming, Pool(blobs: true, pending));
@@ -174,7 +178,7 @@ public class FrameTxPaymasterFilterTests
         Assert.That(record.Frames, Is.Null, "the record must be frameless, or this pins nothing");
 
         PendingPaymasterCache cache = new();
-        cache.Increment(Paymaster);
+        cache.Reserve(Paymaster);
 
         // The bump displaces the record, so the discount has to resolve the record's paymaster; a later
         // nonce displaces nothing and must still be capped.
@@ -209,8 +213,8 @@ public class FrameTxPaymasterFilterTests
     {
         PendingPaymasterCache cache = new();
 
-        cache.Increment(Paymaster);
-        cache.Increment(Paymaster);
+        cache.Reserve(Paymaster);
+        cache.Reserve(Paymaster);
         Assert.That(cache.GetPendingCount(Paymaster), Is.EqualTo(2));
 
         cache.Decrement(Paymaster);
@@ -283,6 +287,9 @@ public class FrameTxPaymasterFilterTests
 
     private static TxFrame PayFrame(Address? target) =>
         new(TxFrame.ModeVerify, TxFrame.ApprovePayment, target, gasLimit: 100_000, UInt256.Zero, default);
+
+    private static TxFrame SpacerVerifyFrame() =>
+        new(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, target: TestItem.AddressD, gasLimit: 100_000, UInt256.Zero, default);
 
     private static TxFrame DeployFrame() =>
         new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);

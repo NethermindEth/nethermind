@@ -35,6 +35,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         //  - payer and paymaster on blob-pool records restored from disk, which carry neither until
         //    LightTxDecoder encodes them as lists, the way NonceKeys already is
         //  - reorg re-admission beyond one tx per sponsor
+        //  - a prefix frame flagged to approve payment whose target declines, which moves the real payer to a
+        //    later frame the cap does not key on
         // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
