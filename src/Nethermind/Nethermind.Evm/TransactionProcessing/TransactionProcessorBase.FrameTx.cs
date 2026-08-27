@@ -799,7 +799,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
 
-        // Shared with the admission gate, so the two cannot escrow against different numbers.
+        // A bound this simulation rolls back, not an escrow: shared with the admission gate so both judge the
+        // same number, and its blob leg prices at max_fee_per_blob_gas since the fee at inclusion is unknown here.
         if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
