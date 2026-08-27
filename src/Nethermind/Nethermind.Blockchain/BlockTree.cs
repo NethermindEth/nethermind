@@ -946,8 +946,9 @@ namespace Nethermind.Blockchain
         {
             PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
-            // The head itself must have a body to be moved onto the main chain (the walk below checks every
-            // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
+            // The head must have a body to be moved onto the main chain - preloaded by the caller or already in
+            // the store (the walk below checks every ancestor the same way). Fail fast here rather than throwing
+            // later when GetBlock can't load it.
             if (!cache.TryGet(newHead.Hash!, out _) && !_blockStore.HasBlock(newHead.Number, newHead.Hash!))
             {
                 return false;
