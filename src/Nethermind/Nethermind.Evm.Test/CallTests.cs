@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
@@ -103,6 +104,39 @@ namespace Nethermind.Evm.Test
 
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(TestState.AccountExists(target), Is.False);
+        }
+
+        [Test]
+        public void Nested_revert_preserves_ripemd_empty_account_deletion()
+        {
+            Address child = TestItem.AddressC;
+            TestState.CreateAccount(Ripemd160Precompile.Address, UInt256.Zero);
+            TestState.CreateAccount(child, UInt256.Zero);
+            byte[] childCode = Prepare.EvmCode
+                .Call(Ripemd160Precompile.Address, 50_000)
+                .Op(Instruction.POP)
+                .Call(BN254PairingCheckPrecompile.Address, 0)
+                .Op(Instruction.POP)
+                .Op(Instruction.INVALID)
+                .Done;
+            TestState.InsertCode(child, childCode, SpecProvider.GenesisSpec);
+            byte[] code = Prepare.EvmCode
+                .Call(child, 150_000)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            (Block block, Transaction transaction) = PrepareTx((MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000, code, value: 0);
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.AccountExists(Ripemd160Precompile.Address), Is.False);
+            }
         }
 
         [TestCase(false)]

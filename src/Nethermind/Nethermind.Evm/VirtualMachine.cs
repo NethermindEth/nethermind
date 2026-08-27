@@ -1076,8 +1076,6 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
             }
-
-            _parityTouchBugAccount.ShouldDelete = false;
         }
     }
 
