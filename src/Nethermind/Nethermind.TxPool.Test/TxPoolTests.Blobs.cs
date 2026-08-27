@@ -2605,7 +2605,7 @@ namespace Nethermind.TxPool.Test
                 blobPool.MergeCells(retainedTx.Hash!.ValueHash256, updateMask, updateCells),
                 Is.EqualTo(BlobCellMergeResult.Accepted));
 
-            blobPool.InterceptNextUpdate(() =>
+            blobPool.InterceptNextUpdate(replacementTx.Hash!.ValueHash256, () =>
             {
                 Assert.That(blobPool.TryRemove(replacementTx.Hash!.ValueHash256), Is.True);
                 Assert.That(blobPool.TryInsert(replacementTx.Hash, replacementTx, out _), Is.True);
@@ -3462,12 +3462,21 @@ namespace Nethermind.TxPool.Test
             : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager)
         {
             private Action _nextUpdate;
+            private ValueHash256 _nextUpdateHash;
 
-            public void InterceptNextUpdate(Action action) => _nextUpdate = action;
+            public void InterceptNextUpdate(in ValueHash256 hash, Action action)
+            {
+                _nextUpdateHash = hash;
+                Volatile.Write(ref _nextUpdate, action);
+            }
 
             protected override void OnBlobTransactionUpdated(ValueHash256 hash, in UInt256 timestamp)
             {
-                Interlocked.Exchange(ref _nextUpdate, null)?.Invoke();
+                if (hash == _nextUpdateHash)
+                {
+                    Interlocked.Exchange(ref _nextUpdate, null)?.Invoke();
+                }
+
                 base.OnBlobTransactionUpdated(hash, timestamp);
             }
         }
