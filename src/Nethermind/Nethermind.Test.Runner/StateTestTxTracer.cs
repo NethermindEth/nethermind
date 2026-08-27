@@ -188,7 +188,6 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    // EIP-3529 also zeroes destroyRefund before EIP-6780's same-transaction restriction applies.
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
         _refundTracker.CreditSelfDestruct(address);
 

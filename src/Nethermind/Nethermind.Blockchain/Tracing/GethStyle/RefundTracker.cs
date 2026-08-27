@@ -27,6 +27,7 @@ public sealed class RefundTracker(long destroyRefund)
     /// <remarks>
     /// The refund is credited at the opcode boundary because transaction finalization reports it again
     /// after the final trace entry has already sampled the counter.
+    /// EIP-3529 sets <c>destroyRefund</c> to zero before EIP-6780 restricts which accounts can be destroyed.
     /// </remarks>
     /// <param name="address">The self-destructed account.</param>
     public void CreditSelfDestruct(Address address)
