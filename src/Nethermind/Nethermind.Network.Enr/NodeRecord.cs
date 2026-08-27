@@ -4,6 +4,7 @@
 using System.Buffers.Text;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -126,6 +127,15 @@ public class NodeRecord
         => TryGetEndpoint(EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
 
     /// <summary>
+    /// Tries to get the UDP discovery endpoint for an address family from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
+    /// <param name="endpoint">The discovery endpoint when the ENR contains a usable UDP endpoint for the family.</param>
+    /// <returns><see langword="true"/> when a usable discovery endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetDiscoveryEndpoint(AddressFamily addressFamily, [MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Udp, EnrContentKey.Udp6, addressFamily, out endpoint);
+
+    /// <summary>
     /// Tries to get the TCP RLPx endpoint from matching ENR address and port entries.
     /// </summary>
     /// <param name="endpoint">The TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
@@ -133,19 +143,62 @@ public class NodeRecord
     public bool TryGetTcpEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
         => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, out endpoint);
 
+    /// <summary>
+    /// Tries to get the TCP RLPx endpoint for an address family from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
+    /// <param name="endpoint">The TCP endpoint when the ENR contains a usable RLPx endpoint for the family.</param>
+    /// <returns><see langword="true"/> when a usable TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetTcpEndpoint(AddressFamily addressFamily, [MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, addressFamily, out endpoint);
+
     private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
-        IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        if (ip is not null && TryGetPort(ipv4PortKey, out int port))
+        if (TryGetEndpoint(ipv4PortKey, ipv6PortKey, AddressFamily.InterNetwork, out endpoint))
         {
-            endpoint = new IPEndPoint(ip, port);
             return true;
         }
 
-        IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        if (ip6 is not null && (TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port)))
+        return TryGetEndpoint(ipv4PortKey, ipv6PortKey, AddressFamily.InterNetworkV6, out endpoint);
+    }
+
+    private bool TryGetEndpoint(
+        string ipv4PortKey,
+        string ipv6PortKey,
+        AddressFamily addressFamily,
+        [MaybeNullWhen(false)] out IPEndPoint endpoint)
+    {
+        string? addressKey = addressFamily switch
         {
-            endpoint = new IPEndPoint(ip6, port);
+            AddressFamily.InterNetwork => EnrContentKey.Ip,
+            AddressFamily.InterNetworkV6 => EnrContentKey.Ip6,
+            _ => null
+        };
+        if (addressKey is null)
+        {
+            endpoint = null;
+            return false;
+        }
+
+        IPAddress? address = GetObj<IPAddress>(addressKey);
+        bool hasExpectedFamily = addressFamily == AddressFamily.InterNetwork
+            ? address?.AddressFamily == AddressFamily.InterNetwork
+            : addressFamily == AddressFamily.InterNetworkV6 &&
+              address?.AddressFamily == AddressFamily.InterNetworkV6 &&
+              !address.IsIPv4MappedToIPv6;
+        if (!hasExpectedFamily)
+        {
+            endpoint = null;
+            return false;
+        }
+
+        bool hasPort = addressFamily == AddressFamily.InterNetwork
+            ? TryGetPort(ipv4PortKey, out int port)
+            : TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port);
+
+        if (hasPort)
+        {
+            endpoint = new IPEndPoint(address!, port);
             return true;
         }
 

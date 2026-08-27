@@ -10,7 +10,6 @@ namespace Nethermind.Network.Config
     public class NetworkConfig : INetworkConfig
     {
         public string? ExternalIp { get; set; }
-        public string? ExternalIpV4 { get; set; }
         public string? ExternalIpV6 { get; set; }
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }

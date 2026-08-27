@@ -17,21 +17,14 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The external IP address used for the enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An IPv6 value is only advertised when the node also listens on IPv6.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IP address used for the enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An IPv6 value is only advertised when `{nameof(LocalIp)}` is IPv6. For dual-stack advertisement, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and set `{nameof(LocalIp)}` to `::`.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
-
-    /// <remarks>
-    /// User-facing override only. Code that needs the actual external IPv4 address must resolve it
-    /// through <c>IIPResolver.Resolve</c>.
-    /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise in the ENR. Only advertised when the node listens on IPv4 (`{nameof(LocalIp)}` unset, an IPv4 address, an IPv4-mapped IPv6 address, or `::`). Defaults to `{nameof(ExternalIp)}` when it is an IPv4 address. Use with `{nameof(ExternalIpV6)}` to advertise both address families.", DefaultValue = "null")]
-    string? ExternalIpV4 { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
     /// through <c>IIPResolver.Resolve</c>.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node actually listens on IPv6. Use with `{nameof(ExternalIpV4)}` to advertise both address families.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node listens on IPv6. For dual-stack advertisement, keep `{nameof(ExternalIp)}` IPv4 (or let it resolve automatically) and set `{nameof(LocalIp)}` to `::`.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 
     /// <remarks>
@@ -39,7 +32,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically. Set to `::` to listen on both IPv4 and IPv6.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]

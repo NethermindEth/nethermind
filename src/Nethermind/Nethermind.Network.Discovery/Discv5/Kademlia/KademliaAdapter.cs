@@ -939,11 +939,8 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        IPEndPoint tcpEndpoint = TryGetEndpoint(
-            record,
+        IPEndPoint tcpEndpoint = record.TryGetTcpEndpoint(
             discoveryEndpoint.Address.AddressFamily,
-            EnrContentKey.Tcp,
-            EnrContentKey.Tcp6,
             out IPEndPoint? matchingTcpEndpoint)
             ? matchingTcpEndpoint
             : new IPEndPoint(discoveryEndpoint.Address, 0);
@@ -968,7 +965,7 @@ public sealed class KademliaAdapter(
                 ? AddressFamily.InterNetworkV6
                 : AddressFamily.InterNetwork;
             IPAddress normalizedPreferredAddress = preferredAddress.IsIPv4MappedToIPv6 ? preferredAddress.MapToIPv4() : preferredAddress;
-            if (TryGetDiscoveryEndpoint(record, preferredFamily, out IPEndPoint? candidate) &&
+            if (record.TryGetDiscoveryEndpoint(preferredFamily, out IPEndPoint? candidate) &&
                 candidate.Address.Equals(normalizedPreferredAddress) &&
                 candidate.Port == preferredEndpoint.Port &&
                 DiscoveryV5App.IsDiscoveryAddressAcceptable(candidate.Address, allowNonRoutable))
@@ -978,13 +975,13 @@ public sealed class KademliaAdapter(
             }
         }
 
-        if (TryGetDiscoveryEndpoint(record, AddressFamily.InterNetwork, out endpoint) &&
+        if (record.TryGetDiscoveryEndpoint(AddressFamily.InterNetwork, out endpoint) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
         {
             return true;
         }
 
-        if (TryGetDiscoveryEndpoint(record, AddressFamily.InterNetworkV6, out endpoint) &&
+        if (record.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out endpoint) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
         {
             return true;
@@ -1001,49 +998,9 @@ public sealed class KademliaAdapter(
             ? AddressFamily.InterNetworkV6
             : AddressFamily.InterNetwork;
         IPAddress normalizedAddress = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
-        return TryGetDiscoveryEndpoint(record, family, out IPEndPoint? discoveryEndpoint) &&
+        return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
                discoveryEndpoint.Address.Equals(normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;
-    }
-
-    private static bool TryGetDiscoveryEndpoint(
-        NodeRecord record,
-        AddressFamily family,
-        [NotNullWhen(true)] out IPEndPoint? endpoint)
-        => TryGetEndpoint(record, family, EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
-
-    private static bool TryGetEndpoint(
-        NodeRecord record,
-        AddressFamily family,
-        string ipv4PortKey,
-        string ipv6PortKey,
-        [NotNullWhen(true)] out IPEndPoint? endpoint)
-    {
-        string addressKey = family == AddressFamily.InterNetwork ? EnrContentKey.Ip : EnrContentKey.Ip6;
-        IPAddress? address = record.GetObj<IPAddress>(addressKey);
-        bool hasExpectedFamily = family == AddressFamily.InterNetwork
-            ? address?.AddressFamily == AddressFamily.InterNetwork
-            : address?.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv4MappedToIPv6;
-        int? port = family == AddressFamily.InterNetwork
-            ? GetValidPort(record, ipv4PortKey)
-            : GetValidPort(record, ipv6PortKey) ?? GetValidPort(record, ipv4PortKey);
-
-        if (hasExpectedFamily && port is not null)
-        {
-            endpoint = new IPEndPoint(address!, port.Value);
-            return true;
-        }
-
-        endpoint = null;
-        return false;
-    }
-
-    private static int? GetValidPort(NodeRecord record, string portKey)
-    {
-        // Mirrors NodeRecord.TryGetPort (the canonical EIP-778 port validity rule); kept local so
-        // discovery can select and preserve an acceptable address family without widening NodeRecord.
-        int? port = record.GetValue<int>(portKey);
-        return port is > 0 && (uint)port.Value <= ushort.MaxValue ? port.Value : null;
     }
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)

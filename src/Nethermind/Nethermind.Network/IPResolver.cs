@@ -52,36 +52,27 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         }
 
         IPAddress? configuredExternalIp = TryGetExternalIpOverride(_networkConfig.ExternalIp, nameof(NetworkConfig.ExternalIp), expectedFamily: null);
-        IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
         IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
 
         // ExternalIpV6 must not become the primary address: IPv4-only consumers (enode, RLPx peer
         // filter) would break, and an IPv6-only override would suppress IPv4 auto-detection.
         IPAddress externalIp = configuredExternalIp
-            ?? configuredExternalIpV4
             ?? await ResolveExternalIp(cancellationToken);
 
-        WarnIfFamilyOverrideDiffers(configuredExternalIp, configuredExternalIpV4, nameof(NetworkConfig.ExternalIpV4));
-        WarnIfFamilyOverrideDiffers(configuredExternalIp, configuredExternalIpV6, nameof(NetworkConfig.ExternalIpV6));
+        if (configuredExternalIp?.AddressFamily == AddressFamily.InterNetworkV6 &&
+            configuredExternalIpV6 is not null &&
+            !configuredExternalIp.Equals(configuredExternalIpV6) &&
+            _logger.IsWarn)
+        {
+            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {nameof(NetworkConfig.ExternalIpV6)} = {configuredExternalIpV6}. The ENR advertises {nameof(NetworkConfig.ExternalIpV6)} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+        }
 
         if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
         {
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }
 
-        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
-    }
-
-    private void WarnIfFamilyOverrideDiffers(IPAddress? configuredExternalIp, IPAddress? familyOverride, string familyConfigName)
-    {
-        if (configuredExternalIp is not null &&
-            familyOverride is not null &&
-            configuredExternalIp.AddressFamily == familyOverride.AddressFamily &&
-            !configuredExternalIp.Equals(familyOverride) &&
-            _logger.IsWarn)
-        {
-            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {familyConfigName} = {familyOverride}. The ENR advertises {familyConfigName} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
-        }
+        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV6);
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
@@ -177,9 +168,9 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
         => expectedFamily switch
         {
-            AddressFamily.InterNetwork => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress),
             AddressFamily.InterNetworkV6 => IIPResolver.NethermindIp.GetExternalIpV6(ipAddress),
-            _ => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress) ?? IIPResolver.NethermindIp.GetExternalIpV6(ipAddress)
+            null => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress) ?? IIPResolver.NethermindIp.GetExternalIpV6(ipAddress),
+            _ => null
         };
 
     private async Task<IPAddress> InitializeLocalIp()

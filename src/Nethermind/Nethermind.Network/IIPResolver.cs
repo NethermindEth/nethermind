@@ -16,9 +16,8 @@ namespace Nethermind.Network
         /// <remarks>
         /// The result is resolved once and cached; concurrent callers await the same in-flight
         /// resolution. An explicit <c>INetworkConfig.LocalIp</c>/<c>ExternalIp</c> override is
-        /// honored when set, otherwise the address is auto-detected. The IPv4/IPv6 addresses to
-        /// advertise are derived from <c>ExternalIp</c> unless <c>ExternalIpV4</c>/<c>ExternalIpV6</c>
-        /// overrides are set.
+        /// honored when set, otherwise the address is auto-detected. The IPv4 address to advertise
+        /// is derived from <c>ExternalIp</c>; <c>ExternalIpV6</c> optionally adds an IPv6 address.
         /// </remarks>
         /// <param name="cancellationToken">
         /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
@@ -33,67 +32,30 @@ namespace Nethermind.Network
         /// Equality compares the resolved addresses, regardless of whether a family address came from
         /// an explicit override or was derived from <see cref="ExternalIp"/>.
         /// </remarks>
-        public readonly record struct NethermindIp
+        /// <param name="LocalIp">The local address used for network listeners.</param>
+        /// <param name="ExternalIp">The primary external address used by existing consumers.</param>
+        public readonly record struct NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
         {
             /// <summary>
-            /// Creates resolved node addresses, deriving the family-specific address from
-            /// <paramref name="ExternalIp"/>.
-            /// </summary>
-            /// <param name="LocalIp">The local address used for network listeners.</param>
-            /// <param name="ExternalIp">The primary external address used by existing consumers.</param>
-            public NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
-                : this(LocalIp, ExternalIp, null, null)
-            {
-            }
-
-            /// <summary>
-            /// Creates resolved node addresses with optional family-specific advertisement overrides.
+            /// Creates resolved node addresses with an optional IPv6 advertisement override.
             /// </summary>
             /// <param name="localIp">The local address used for network listeners.</param>
             /// <param name="externalIp">The primary external address used by existing consumers.</param>
-            /// <param name="externalIpV4">The optional IPv4 advertisement override.</param>
             /// <param name="externalIpV6">The optional IPv6 advertisement override.</param>
-            public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV4, IPAddress? externalIpV6)
-            {
-                LocalIp = localIp;
-                ExternalIp = externalIp;
-                ExternalIpV4 = GetExternalIpV4(externalIpV4) ?? GetExternalIpV4(externalIp);
-                ExternalIpV6 = GetExternalIpV6(externalIpV6) ?? GetExternalIpV6(externalIp);
-            }
+            public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV6)
+                : this(localIp, externalIp)
+                => ExternalIpV6 = GetExternalIpV6(externalIpV6) ?? GetExternalIpV6(externalIp);
 
             /// <summary>
-            /// Gets the local address used for network listeners.
+            /// Gets the external IPv4 address to advertise, derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress LocalIp { get; }
-
-            /// <summary>
-            /// Gets the primary external address used by existing consumers.
-            /// </summary>
-            public IPAddress ExternalIp { get; }
-
-            /// <summary>
-            /// Gets the external IPv4 address to advertise. An explicit IPv4 override takes precedence;
-            /// otherwise the value is derived from <see cref="ExternalIp"/>.
-            /// </summary>
-            public IPAddress? ExternalIpV4 { get; }
+            public IPAddress? ExternalIpV4 => GetExternalIpV4(ExternalIp);
 
             /// <summary>
             /// Gets the external IPv6 address to advertise. An explicit IPv6 override takes precedence;
             /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV6 { get; }
-
-            /// <summary>
-            /// Preserves the deconstruction contract of the previous positional record so plugins that
-            /// deconstruct the resolver result keep compiling and running.
-            /// </summary>
-            /// <param name="LocalIp">The resolved local address.</param>
-            /// <param name="ExternalIp">The resolved primary external address.</param>
-            public void Deconstruct(out IPAddress LocalIp, out IPAddress ExternalIp)
-            {
-                LocalIp = this.LocalIp;
-                ExternalIp = this.ExternalIp;
-            }
+            public IPAddress? ExternalIpV6 { get; } = GetExternalIpV6(ExternalIp);
 
             internal static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
             {
