@@ -39,24 +39,18 @@ internal static partial class FixtureExclusions
 
     public static IEnumerable<T> Filter<T>(IEnumerable<T> tests, string? sourceFile = null) where T : EthereumTest
     {
-        DirectoryInfo? sourceDirectory = sourceFile is null ? null : new FileInfo(sourceFile).Directory;
+        string? sourceCategory = sourceFile is null ? null : Path.GetFileName(Path.GetDirectoryName(sourceFile));
         foreach (T test in tests)
         {
-            if (!IsExcluded(test, sourceDirectory))
+            if (!IsExcluded(test, sourceCategory))
                 yield return test;
         }
     }
 
-    private static bool IsExcluded(EthereumTest test, DirectoryInfo? sourceDirectory)
+    private static bool IsExcluded(EthereumTest test, string? sourceCategory)
     {
         string fixtureName = GetFixtureName(test.Name);
-        for (DirectoryInfo? directory = sourceDirectory; directory is not null; directory = directory.Parent)
-        {
-            if (IsExcluded(directory.Name, fixtureName))
-                return true;
-        }
-
-        return IsExcluded(Path.GetFileName(test.Category), fixtureName);
+        return IsExcluded(sourceCategory, fixtureName) || IsExcluded(Path.GetFileName(test.Category), fixtureName);
     }
 
     private static bool IsExcluded(string? category, string fixtureName)

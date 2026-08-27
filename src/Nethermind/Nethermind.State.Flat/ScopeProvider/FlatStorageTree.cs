@@ -145,11 +145,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     internal void ClearStorage()
     {
         _bundle.ClearStorage(_address, _addressHash);
-        ResetAfterClear();
-    }
-
-    private void ResetAfterClear()
-    {
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
     }

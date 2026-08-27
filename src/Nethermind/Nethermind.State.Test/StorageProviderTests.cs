@@ -1101,6 +1101,41 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Clear_after_same_block_account_deletion_clears_backing_storage(bool recreateAsBalanceOnly)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState worldState = ctx.StateProvider;
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 0);
+            worldState.Set(cell, [1, 2, 3]);
+            worldState.Commit(Frontier.Instance);
+            worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
+        }
+
+        using (worldState.BeginScope(baseBlock))
+        {
+            worldState.DeleteAccount(TestItem.AddressA);
+            worldState.Commit(SpuriousDragon.Instance, commitRoots: false);
+
+            if (recreateAsBalanceOnly)
+            {
+                worldState.CreateAccount(TestItem.AddressA, 1);
+                worldState.Commit(SpuriousDragon.Instance, commitRoots: false);
+            }
+
+            worldState.ClearStorage(TestItem.AddressA);
+
+            Assert.That(worldState.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+        }
+    }
+
     [Test]
     public void StorageClearSelfDestruct()
     {

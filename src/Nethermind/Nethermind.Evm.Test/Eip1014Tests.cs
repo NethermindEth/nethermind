@@ -74,6 +74,10 @@ namespace Nethermind.Evm.Test
             Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
             Assert.That(account.Balance, Is.EqualTo(1.Ether));
             AssertEip1014(expectedAddress, []);
+            if (withStorage)
+            {
+                Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }));
+            }
         }
 
         [Test]

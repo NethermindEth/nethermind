@@ -33,6 +33,7 @@ public sealed class SnapshotBundle : IDisposable
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
+    private readonly ConcurrentDictionary<HashedKey<Address>, byte> _addressesWithChangedSlots = new();
 
     private bool _trieChanged = false;
 
@@ -494,6 +495,11 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
         }
+
+        if (!_addressesWithChangedSlots.ContainsKey(address))
+        {
+            _addressesWithChangedSlots.TryAdd(address, 0);
+        }
     }
 
     internal void ClearStorage(Address address, Hash256 addressHash)
@@ -506,6 +512,11 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
         _changedStorageNodes.RemoveAddress(addressHash);
+
+        if (!_addressesWithChangedSlots.TryRemove(address, out _))
+        {
+            return;
+        }
 
         using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
@@ -606,6 +617,7 @@ public sealed class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
+            _addressesWithChangedSlots.NoLockClear();
 
             return (snapshot, transientResource);
         }
@@ -619,6 +631,7 @@ public sealed class SnapshotBundle : IDisposable
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
+            _addressesWithChangedSlots.NoLockClear();
             _trieChanged = false;
 
             return (null, null);

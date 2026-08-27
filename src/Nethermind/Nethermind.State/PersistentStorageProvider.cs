@@ -465,15 +465,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (readCell.Key.Address == address)
             {
                 (originalValues ??= []).Add(readCell);
-                Set(readCell.Key, StorageTree.ZeroBytes);
             }
         }
 
         base.ClearStorage(address);
 
+        if (originalValues is not null)
+        {
+            foreach (KeyValuePair<StorageCell, byte[]> readCell in originalValues)
+            {
+                if (!_intraBlockCache.ContainsKey(readCell.Key))
+                {
+                    Set(readCell.Key, StorageTree.ZeroBytes);
+                }
+            }
+        }
+
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
         DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
-        _toUpdateRoots.TryAdd(address, true);
+        _toUpdateRoots[address] = true;
         int journalIndex = _storageClearJournal.Count;
         _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
         PushStorageClear(journalIndex);
@@ -484,11 +494,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <remarks>
     /// Reads and writes register the address in <see cref="_storages"/>; <see cref="Set"/> does so
-    /// explicitly because a cached write can bypass the loading path. Persisted trie storage is
-    /// reachable only through the current account's storage root. <c>TrieStoreScopeProvider</c>
-    /// resolves from that root, while <c>FlatWorldStateScope</c> clears an account's storage when
-    /// it writes a null account record after storage changes are flushed. Therefore no registered
-    /// state and no account storage root exhaust the readable cases.
+    /// explicitly because a cached write can bypass the loading path. When the pending account has
+    /// no storage root, reads can still resolve through the scope's pre-block account until account
+    /// changes are flushed, so that backend account must also be checked.
     /// </remarks>
     private bool HasStorageToClear(Address address)
     {
@@ -498,7 +506,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         Account? account = _stateProvider.GetThroughCache(address);
-        return account?.HasStorage == true;
+        if (account?.HasStorage == true)
+        {
+            return true;
+        }
+
+        return _currentScope.Get(address)?.HasStorage == true;
     }
 
     protected override void RestoreStorageClear(int journalIndex)
