@@ -368,6 +368,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     protected internal void UpdateReadMetrics() => _totalReads.Increment();
 
+    protected internal void UpdateReadMetrics(int count) => _totalReads.Add(count);
+
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>

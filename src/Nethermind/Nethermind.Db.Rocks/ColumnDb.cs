@@ -75,7 +75,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         get
         {
             _mainDb.ThrowIfDisposing();
-            for (int i = 0; i < keys.Length; i++) _mainDb.UpdateReadMetrics();
+            _mainDb.UpdateReadMetrics(keys.Length);
 
             ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);

@@ -146,15 +146,6 @@ public sealed class HistoryReader
 
         if (_isV3)
         {
-            // An over-cap destruct left no per-slot rows, so fail closed rather than omit slots.
-            bool poisoned = clearsCache is not null
-                ? clearsCache.HasPoisonedClearAbove(addrHash, _storageClears, block)
-                : _storageClears.HasPoisonedClearAbove(addrHash.Bytes, block);
-            if (poisoned)
-                throw new StateUnavailableException(
-                    $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
-                    "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
-
             // Seek, live only on a miss, then seek again only if a capture landed - see TryGetAccountV3's remarks.
             long generation = _availability.CaptureGeneration;
             int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
@@ -170,6 +161,15 @@ public sealed class HistoryReader
 
                 if (written < 0)
                 {
+                    // An over-cap destruct left no per-slot rows, so fail closed rather than omit slots.
+                    bool poisoned = clearsCache is not null
+                        ? clearsCache.HasPoisonedClearAbove(addrHash, _storageClears, block)
+                        : _storageClears.HasPoisonedClearAbove(addrHash.Bytes, block);
+                    if (poisoned)
+                        throw new StateUnavailableException(
+                            $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
+                            "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
+
                     if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
                     written = live;
                 }

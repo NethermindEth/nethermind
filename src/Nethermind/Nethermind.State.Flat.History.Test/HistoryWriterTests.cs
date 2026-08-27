@@ -1018,9 +1018,62 @@ public class HistoryWriterTests
         CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, Slot1, out _),
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, 999999, out _),
             Throws.InstanceOf<InvalidOperationException>(),
-            "reads for this account below an over-cap destruct must fail closed rather than silently report every slot absent");
+            "a slot the over-cap destruct wrote no row for must fail closed rather than silently report absent");
+    }
+
+    [Test]
+    public void V3_SelfDestruct_AboveEnumerationCap_ARecordedRowStillAnswers_OnlyTheLiveFallbackFailsClosed()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        for (UInt256 slot = 100; slot <= 100 + HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        CommitBlock(2, 3, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        bool found = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True, "a recorded pre-value row is authoritative below the destruct - the poison only covers reads that would fall through to live state");
+            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(() => windowedReader.TryGetStorage(1, AddrA, 999999, out _),
+                Throws.InstanceOf<InvalidOperationException>(),
+                "a slot with no recorded row below an over-cap destruct must still fail closed - absent is indistinguishable from missed by the cap");
+        }
+    }
+
+    [Test]
+    public void SeedPivot_InsideTheAlreadyCapturedWindow_Throws_AndWritesNothing()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 222))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Assert.That(() => windowedWriter.SeedPivot(1, TestItem.KeccakA),
+            Throws.InvalidOperationException.With.Message.Contains("watermark"),
+            "a pivot inside the captured window replaces the live state its history resolves through - it must refuse, not re-seed");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedWriter.LastCapturedBlock, Is.EqualTo(2UL), "the watermark must be untouched by the refused seed");
+            Assert.That(windowedReader.IsAvailable(StateAt(1)), Is.True, "block 1's captured marker must not have been overwritten before the refusal");
+            Assert.That(windowedReader.IsPrunedBelowFloor(0), Is.False, "no floor may publish from a refused seed");
+        }
     }
 
     [Test]

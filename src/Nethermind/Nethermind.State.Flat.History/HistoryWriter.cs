@@ -320,14 +320,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         if (!_enabled || !_isV3) return;
 
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
-        {
-            HistoryColumnBatches columns = new(batch);
-            HistoryAvailability.MarkBlock(columns.AvailableBlocks, pivotBlock, pivotStateRoot, _formatVersion);
-        }
-
-        _availability.PublishWatermark(pivotBlock, _formatVersion);
-
         // Raise-only: seeding a pivot below an already-published floor would re-admit reads for heights whose
         // rows the pruner has already deleted, and they would answer from live state instead of failing closed.
         if (_availability.TryGetGlobalFloor(out ulong currentFloor) && pivotBlock < currentFloor)
@@ -337,6 +329,22 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 $"{currentFloor}, whose rows are already pruned. Resync the flatHistory database to start from this pivot.");
         }
 
+        if (_availability.TryGetWatermark(out ulong currentWatermark) && pivotBlock < currentWatermark)
+        {
+            throw new InvalidOperationException(
+                $"Cannot seed the flat history floor at pivot {pivotBlock}: it is inside the already-captured window, " +
+                $"whose watermark is {currentWatermark}. The snap sync replaced the live state the captured history above " +
+                "the pivot resolves through, so its as-of reads would answer from the pivot's state instead of failing " +
+                "closed. Resync the flatHistory database to start from this pivot.");
+        }
+
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
+        {
+            HistoryColumnBatches columns = new(batch);
+            HistoryAvailability.MarkBlock(columns.AvailableBlocks, pivotBlock, pivotStateRoot, _formatVersion);
+        }
+
+        _availability.PublishWatermark(pivotBlock, _formatVersion);
         _availability.PublishGlobalFloor(pivotBlock);
         _history.SyncWal();
     }
@@ -356,7 +364,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             _storageClears.RecordClear(block, addrHash.Bytes, columns.StorageClears);
 
             // Tracked before the enumeration, so an account that trips the cap still gets splices for its
-            // in-walk slots. Those rows are unreachable behind the poison marker - wasted, never wrong.
+            // in-walk slots. The reader answers from those rows; the poison only refuses reads that would
+            // otherwise fall through to the live column.
             if (_isV3) pending!.TrackDestruct(addrHash, block);
         }
 

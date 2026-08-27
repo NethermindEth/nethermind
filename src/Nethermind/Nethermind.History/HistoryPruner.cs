@@ -603,7 +603,9 @@ public class HistoryPruner : IHistoryPruner
         _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
     }
 
-    /// <summary>False when the level names nothing, so the caller ranges the height instead.</summary>
+    /// <summary>False when the level names nothing, so the caller ranges the height instead. A present level is
+    /// trusted to name every stored block at its height, as every canonical read does - a body stored outside its
+    /// level survives here, where the range form would drop it.</summary>
     private bool RemoveBothAt(ulong number, ChainLevelInfo? level)
     {
         if (level is null || level.BlockInfos.Length == 0) return false;

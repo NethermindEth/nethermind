@@ -28,6 +28,7 @@ public sealed class HistoryWindowPruner(
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
     private const double DeadWeightCompactionRatio = 0.5;
+    private const int OwedDrainWarnEveryNFailures = 10;
 
     private static ReadOnlySpan<byte> AccountCursorKey => "history:prune:cursor:account"u8;
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
@@ -50,6 +51,7 @@ public sealed class HistoryWindowPruner(
     private ulong _cycleFloor;
     private ulong _cycleMarkersAndClearsFloor;
     private long _owedDrainGeneration;
+    private long _owedDrainFailedPasses;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
 
     /// <summary>Raised after each completed loop pass; tests synchronize on it instead of polling.</summary>
@@ -63,8 +65,8 @@ public sealed class HistoryWindowPruner(
     {
         if (config.HistoryRetentionBlocks == 0 || _started) return;
         _started = true;
-        writer.WatermarkAdvanced += OnWatermarkAdvanced;
         _wakeSignal.Release();
+        writer.WatermarkAdvanced += OnWatermarkAdvanced;
 
         // A pass is synchronous for seconds and the drain blocks, so the loop owns a thread.
         _loop = new Thread(RunLoop) { IsBackground = true, Name = "Flat history window pruner" };
@@ -230,7 +232,16 @@ public sealed class HistoryWindowPruner(
         // would demote readers already safe under it.
         if (Volatile.Read(ref _deletesOwed))
         {
-            if (!scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token)) return false;
+            if (!scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token))
+            {
+                if (++_owedDrainFailedPasses % OwedDrainWarnEveryNFailures == 0 && _logger.IsWarn) _logger.Warn(
+                    $"History window pruning has been blocked for {_owedDrainFailedPasses} consecutive passes by a historical read scope " +
+                    $"older than floor generation {Volatile.Read(ref _owedDrainGeneration)} that outlives the pass budget; no disk is " +
+                    "reclaimed while it holds. FlatDb.HistoryPrunePassBudgetSeconds must exceed the longest historical query this node serves.");
+                return false;
+            }
+
+            _owedDrainFailedPasses = 0;
             Volatile.Write(ref _deletesOwed, false);
         }
 
@@ -309,7 +320,9 @@ public sealed class HistoryWindowPruner(
 
             bool accountCompacted = _accountHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
             bool storageCompacted = _storageHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
-            if ((accountCompacted || storageCompacted) && _logger.IsInfo)
+            bool clearsCompacted = _storageClears.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+            bool markersCompacted = _availableBlocks.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+            if ((accountCompacted || storageCompacted || clearsCompacted || markersCompacted) && _logger.IsInfo)
             {
                 _logger.Info("Compacted the flat history columns whose files were mostly tombstones; their space has been returned.");
             }
@@ -528,6 +541,9 @@ public sealed class HistoryWindowPruner(
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _accountHistory.InterruptCompactions();
+        _storageHistory.InterruptCompactions();
+        _storageClears.InterruptCompactions();
+        _availableBlocks.InterruptCompactions();
         if (_started)
         {
             writer.WatermarkAdvanced -= OnWatermarkAdvanced;

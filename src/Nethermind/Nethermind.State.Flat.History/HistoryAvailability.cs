@@ -225,6 +225,13 @@ public sealed class HistoryAvailability
 
     private void WriteGlobalFloorUnderLock(ulong floor)
     {
+        if (TryGetWatermark(out ulong watermark) && floor > watermark)
+        {
+            throw new InvalidOperationException(
+                $"Refusing to publish flat history floor {floor} above the captured watermark {watermark}: every floor " +
+                "is derived from the watermark, so a higher one was computed against inconsistent state.");
+        }
+
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
