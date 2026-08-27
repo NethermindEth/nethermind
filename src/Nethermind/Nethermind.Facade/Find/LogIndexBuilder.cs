@@ -369,6 +369,14 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
+                    if (!isForward && (ulong)start < _blockTree.GetLowestBlock())
+                    {
+                        if (_logger.IsInfo) _logger.Info(
+                            $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {_blockTree.GetLowestBlock()} is pruned, so its receipts are not late, they are gone.");
+                        MarkCompleted(isForward);
+                        return;
+                    }
+
                     // TODO: stop waiting immediately when receipts become available
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
