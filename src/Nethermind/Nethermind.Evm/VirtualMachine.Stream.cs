@@ -13,11 +13,19 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
+    // NETHERMIND_EVM_STREAM_FORCE=1 is an explicit diagnostic override for ARM64's normal default.
+    private static readonly bool ForceEnabled = IsForceEnabled(Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FORCE"));
+
     // Enabled by default except on ARM64, where the bytecode loop is currently preferred. Volatile so tests
     // can override it in-process.
-    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+    public static volatile bool Enabled = IsEnabled(RuntimeInformation.ProcessArchitecture, ForceEnabled);
 
     internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
+
+    internal static bool IsEnabled(Architecture architecture, bool forceEnabled)
+        => IsEnabledByDefault(architecture) || forceEnabled;
+
+    internal static bool IsForceEnabled(string? value) => string.Equals(value, "1", StringComparison.Ordinal);
 
     // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
     // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
@@ -30,6 +38,14 @@ internal static class StreamInterpreter
 
     // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
     public const int MaxStreamRetainedBytes = 512 * 1024;
+
+    // Stream dispatch pays for its preprocessed entry walk at every dynamic boundary. Require at least
+    // two entries that stay on the direct/precharged path for each general boundary. MLOAD/MSTORE/MCOPY
+    // are counted as direct entries because RunStream has dedicated handlers for them.
+    internal const int MinFastEntriesPerGeneralBoundary = 2;
+
+    internal static bool IsProfitable(InstructionStream stream)
+        => stream.HasFastEntryRatio(MinFastEntriesPerGeneralBoundary);
 
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and

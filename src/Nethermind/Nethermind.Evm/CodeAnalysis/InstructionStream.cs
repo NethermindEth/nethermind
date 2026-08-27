@@ -124,6 +124,8 @@ internal sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
+    private readonly int _fastEntryCount;
+    private readonly int _generalBoundaryCount;
 
     public int RetainedBytes =>
         Ops.Length * Unsafe.SizeOf<StreamOp>()
@@ -132,12 +134,31 @@ internal sealed class InstructionStream
         + ConstantBytes.Length
         + PcToEntry.Length * sizeof(ushort);
 
+    internal bool HasFastEntryRatio(int fastEntriesPerGeneralBoundary)
+        => _generalBoundaryCount == 0 || _fastEntryCount >= _generalBoundaryCount * fastEntriesPerGeneralBoundary;
+
+    private static bool IsSpecializedMemoryBoundary(StreamOp op)
+        => (Instruction)op.Opcode is Instruction.MLOAD or Instruction.MSTORE or Instruction.MCOPY;
+
     private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
         Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
         PcToEntry = pcToEntry;
+
+        int fastEntryCount = 0;
+        int generalBoundaryCount = 0;
+        foreach (StreamOp op in ops)
+        {
+            if (op.Kind < StreamOpKind.Boundary || IsSpecializedMemoryBoundary(op))
+                fastEntryCount++;
+            else
+                generalBoundaryCount++;
+        }
+
+        _fastEntryCount = fastEntryCount;
+        _generalBoundaryCount = generalBoundaryCount;
 
         // Only the fused bitwise cores index ConstantBytes; arithmetic/shift fusion reads the UInt256
         // Constants form. Skip the big-endian copy entirely when no bitwise fusion was emitted.
