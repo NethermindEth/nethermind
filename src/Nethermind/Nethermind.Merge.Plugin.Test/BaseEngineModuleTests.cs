@@ -160,9 +160,14 @@ public abstract partial class BaseEngineModuleTests
         public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
-        public Task WaitForImprovedBlock(Hash256? parentHash = null) =>
+        /// <summary>
+        /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
+        /// <paramref name="minTransactions"/> transactions.
+        /// </summary>
+        public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
-                b => parentHash is null || b.Header.ParentHash == parentHash);
+                b => (parentHash is null || b.Header.ParentHash == parentHash)
+                     && b.Transactions.Length >= minTransactions);
 
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();

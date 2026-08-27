@@ -1443,7 +1443,8 @@ public partial class EngineModuleTests
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
-        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash);
+        // All three transactions have sequential nonces and must land for the expected hashes below to be meaningful.
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash, minTransactions: 3);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpc.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
         await blockImprovementWait;
