@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -110,6 +111,70 @@ public class LightTxDecoderTests
         }
 
         return keys;
+    }
+
+    // The blob fields were later put ahead of the frame-transaction ones, so a record written by an earlier build of
+    // this branch no longer decodes. The pool is a cache, so it has to lose that record rather than refuse to start.
+    [TestCase(TxType.Blob, null)]
+    [TestCase(TxType.FrameTx, null)]
+    [TestCase(TxType.FrameTx, 1_000ul)]
+    public void Unreadable_record_is_skipped_and_leaves_the_rest_of_the_pool_loadable(TxType type, ulong? deadline)
+    {
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        lightBlobTxs.Set(UnreadableRecordKey, EncodeWithBlobFieldsLast(BlobCarryingTx(type, deadline)));
+        lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
+    // GetAllValues walks the column in key order, so the unreadable record is reached first.
+    private static readonly byte[] UnreadableRecordKey = [0];
+    private static readonly byte[] ReadableRecordKey = [1];
+
+    /// <summary>Writes the record layout that preceded the blob fields moving in front of the frame-transaction ones.</summary>
+    private static byte[] EncodeWithBlobFieldsLast(Transaction tx)
+    {
+        bool hasDeadline = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline);
+        int length = Rlp.LengthOf(tx.Timestamp)
+            + Rlp.LengthOf(tx.SenderAddress)
+            + Rlp.LengthOf(tx.Nonce)
+            + Rlp.LengthOf(tx.Hash)
+            + Rlp.LengthOf(tx.Value)
+            + Rlp.LengthOf(tx.GasLimit)
+            + Rlp.LengthOf(tx.GasPrice)
+            + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.BlobVersionedHashes!)
+            + Rlp.LengthOf(tx.PoolIndex)
+            + Rlp.LengthOf(tx.GetLength())
+            + Rlp.LengthOf(sizeof(byte))
+            + Rlp.LengthOf((byte)tx.Type)
+            + (hasDeadline ? Rlp.LengthOf(expiryDeadline) : 0);
+
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode((byte)tx.Type);
+        if (hasDeadline) writer.Encode(expiryDeadline);
+
+        return bytes;
     }
 
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)

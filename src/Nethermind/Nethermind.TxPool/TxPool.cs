@@ -271,7 +271,7 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
             _blobTransactions.GetBucketSnapshot(filterToReadyTx
-                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                ? data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)
                 : null);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>

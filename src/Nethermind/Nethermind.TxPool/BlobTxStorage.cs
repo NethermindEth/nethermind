@@ -13,11 +13,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -34,6 +35,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
     private readonly IDb _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     private readonly IDb _processedBlobTxsDb = database.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<BlobTxStorage>();
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
@@ -100,14 +102,27 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
+    /// <summary>Enumerates every persisted light blob transaction record this build can read.</summary>
+    /// <remarks>
+    /// The blob pool is a cache, so a record this build cannot read — one left by another build's record layout —
+    /// is skipped rather than allowed to abort the load and with it node startup.
+    /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
         foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
         {
-            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
+            LightTransaction? transaction;
+            try
             {
-                yield return transaction!;
+                if (!TryDecodeLightTx(txBytes, out transaction)) continue;
             }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Ignoring an unreadable persisted blob transaction: {e.Message}");
+                continue;
+            }
+
+            yield return transaction!;
         }
     }
 

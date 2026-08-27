@@ -497,6 +497,32 @@ public class Eth72ProtocolHandlerTests
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
     }
 
+    // The frame-transaction gate reads the head spec, and an announcement carries up to MaxCount entries.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_announcement()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        Hash256[] hashes = [HashFromInt(1), HashFromInt(2), HashFromInt(3)];
+        using NewPooledTransactionHashesMessage72 message = new(
+            [.. Enumerable.Repeat((byte)TxType.FrameTx, hashes.Length)],
+            [.. Enumerable.Repeat(1024, hashes.Length)],
+            [.. hashes],
+            BlobCellMask.Empty.ToBytes());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+            m.EthMessage.Hashes.Count == hashes.Length));
+    }
+
     [Test]
     public void should_reject_announcement_above_peer_admission_limit()
     {

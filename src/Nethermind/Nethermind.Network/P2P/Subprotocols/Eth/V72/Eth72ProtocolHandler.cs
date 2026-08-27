@@ -416,12 +416,15 @@ public class Eth72ProtocolHandler(
         int toRequestCount = 0;
         ArrayPoolList<Hash256>? hashesToRequest = null;
 
+        // Resolved on the first type-6 byte, so a batch without one does no head lookup.
+        bool? frameTxsEnabled = null;
+
         for (int i = 0; i < msg.Hashes.Length; i++)
         {
             Hash256 hash = msg.Hashes[i];
             TxType txType = (TxType)msg.Types[i];
             int txSize = msg.Sizes[i];
-            if (!CanRequestPooledTransaction(txType) || txSize <= 0)
+            if (!CanRequestPooledTransaction(txType, ref frameTxsEnabled) || txSize <= 0)
             {
                 continue;
             }
