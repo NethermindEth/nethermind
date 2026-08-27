@@ -188,7 +188,7 @@ namespace Nethermind.Network
                 _rlpxHost.SessionDisconnected += _onSessionDisconnected;
             }
 
-            _peerUpdateTimerTask = RunPeerUpdateTimerAsync();
+            _peerUpdateTimerTask = RunPeerUpdateTimerAsync(peersUpdateInterval);
             _peerUpdateLoopTask = RunPeerUpdateLoopAsync();
 
             _isStarted = true;
@@ -626,13 +626,13 @@ namespace Nethermind.Network
             }
         }
 
-        private async Task RunPeerUpdateTimerAsync()
+        private async Task RunPeerUpdateTimerAsync(int peersUpdateInterval)
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
             try
             {
-                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_networkConfig.PeersUpdateInterval));
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(peersUpdateInterval));
                 while (await timer.WaitForNextTickAsync(_cancellationTokenSource.Token))
                 {
                     SignalPeerUpdateNeeded();
