@@ -13,11 +13,18 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
+    // NETHERMIND_EVM_STREAM_FORCE=1 is an explicit diagnostic override for ARM64's normal default.
+    private static readonly bool ForceEnabled = string.Equals(
+        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FORCE"),
+        "1",
+        StringComparison.Ordinal);
+
     // Enabled by default except on ARM64, where the bytecode loop is currently preferred. Volatile so tests
     // can override it in-process.
-    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture, ForceEnabled);
 
-    internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
+    internal static bool IsEnabledByDefault(Architecture architecture, bool forceEnabled = false) =>
+        forceEnabled || architecture != Architecture.Arm64;
 
     // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
     // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
