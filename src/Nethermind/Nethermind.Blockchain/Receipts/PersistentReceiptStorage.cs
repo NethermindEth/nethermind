@@ -932,9 +932,6 @@ namespace Nethermind.Blockchain.Receipts
             bool removedAny = false;
             foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
             {
-                if (fromInclusive >= toExclusive) continue;
-                removedAny = true;
-
                 // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing
                 // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
@@ -945,13 +942,15 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
                 }
+
+                removedAny |= fromInclusive < toExclusive;
             }
 
             if (!removedAny) return;
             _receiptsCache.Clear();
             foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
             {
-                if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+                _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
             }
         }
 

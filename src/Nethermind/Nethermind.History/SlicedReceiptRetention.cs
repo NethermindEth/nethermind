@@ -3,6 +3,7 @@
 
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -10,18 +11,21 @@ using Nethermind.Db.LogIndex;
 namespace Nethermind.History;
 
 /// <summary>Retains the receipts and body of blocks that touched a per-contract history slice, so those addresses
-/// stay queryable where the general history pruner reclaims. The bloom is only a first filter; where the
+/// stay queryable where the general history pruner reclaims. A bounded slice retains only heights inside its own
+/// window, measured from the head at sweep time. The bloom is only a first filter; where the
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
-public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage) : IPrunedReceiptRetention
+public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree) : IPrunedReceiptRetention
 {
-    private readonly FrozenSet<Address> _addresses = ParseAddresses(flatDbConfig.HistorySliceAddresses);
+    private readonly FrozenDictionary<Address, ulong?> _slices = ParseSlices(flatDbConfig.HistorySliceAddresses);
 
     public bool ShouldRetainReceipts(BlockHeader header)
     {
-        if (_addresses.Count == 0)
+        if (_slices.Count == 0)
         {
             return false;
         }
+
+        ulong head = HeadNumber;
 
         Bloom? bloom = header.Bloom;
         if (bloom is null)
@@ -36,9 +40,9 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             && logIndexStorage.MinBlockNumber is { } min && header.Number >= (ulong)min
             && logIndexStorage.MaxBlockNumber is { } max && header.Number <= (ulong)max;
 
-        foreach (Address address in _addresses)
+        foreach ((Address address, ulong? retention) in _slices)
         {
-            if (!bloom.Matches(address))
+            if (!InsideSliceWindow(header.Number, retention, head) || !bloom.Matches(address))
             {
                 continue;
             }
@@ -66,13 +70,15 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
     /// </summary>
     public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
     {
-        if (_addresses.Count == 0)
+        if (_slices.Count == 0)
         {
             // Nothing is retained at any height, so the whole span is answered - and answered with nothing.
             answeredFrom = fromInclusive;
             answeredTo = toExclusive;
             return FrozenSet<ulong>.Empty;
         }
+
+        ulong head = HeadNumber;
 
         answeredFrom = fromInclusive;
         answeredTo = fromInclusive;
@@ -93,9 +99,17 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         }
 
         HashSet<ulong> retained = [];
-        foreach (Address address in _addresses)
+        foreach ((Address address, ulong? retention) in _slices)
         {
-            using IEnumerator<int> hits = logIndexStorage.GetEnumerator(address, (int)coveredFrom, (int)(coveredTo - 1));
+            ulong sliceFrom = coveredFrom;
+            if (retention is { } bound)
+            {
+                ulong sliceFloor = head > bound ? head - bound : 0;
+                if (sliceFloor >= coveredTo) continue;
+                sliceFrom = ulong.Max(coveredFrom, sliceFloor);
+            }
+
+            using IEnumerator<int> hits = logIndexStorage.GetEnumerator(address, (int)sliceFrom, (int)(coveredTo - 1));
             while (hits.MoveNext())
             {
                 retained.Add((ulong)hits.Current);
@@ -107,14 +121,26 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return retained;
     }
 
-    private static FrozenSet<Address> ParseAddresses(string? raw)
+    private ulong HeadNumber => blockTree.Head?.Number ?? 0;
+
+    private static bool InsideSliceWindow(ulong height, ulong? retention, ulong head) =>
+        retention is not { } bound || head <= bound || height >= head - bound;
+
+    /// <summary>An address named twice keeps its deepest bound; unbounded wins outright.</summary>
+    private static FrozenDictionary<Address, ulong?> ParseSlices(string? raw)
     {
-        HashSet<Address> addresses = [];
+        Dictionary<Address, ulong?> slices = [];
         foreach (SliceScopeEntry entry in SliceScopeConfig.Parse(raw))
         {
-            addresses.Add(entry.Address);
+            if (slices.TryGetValue(entry.Address, out ulong? existing)
+                && (existing is null || (entry.RetentionBlocks is { } incoming && incoming <= existing)))
+            {
+                continue;
+            }
+
+            slices[entry.Address] = entry.RetentionBlocks;
         }
 
-        return addresses.ToFrozenSet();
+        return slices.ToFrozenDictionary();
     }
 }

@@ -8,8 +8,10 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -156,6 +158,15 @@ public class BlockStoreTests
             Assert.That(store.Get(blocks[4].Number, blocks[4].Hash!), Is.Null);
             Assert.That(store.Get(blocks[5].Number, blocks[5].Hash!), Is.Not.Null, "the upper bound is exclusive");
         }
+    }
+
+    [Test]
+    public void Test_DeleteRanges_with_an_empty_range_still_probes_range_delete_support()
+    {
+        BlockStore store = new(Substitute.For<IDb>());
+
+        Assert.That(() => store.DeleteRanges([(0, 0)]), Throws.InstanceOf<NotSupportedException>(),
+            "an empty range is the pruner's capability probe, so it must reach the store instead of being skipped");
     }
 
     [Test]

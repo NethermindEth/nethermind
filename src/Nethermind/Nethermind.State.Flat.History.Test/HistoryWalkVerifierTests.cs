@@ -208,6 +208,32 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void A_missing_slot_row_is_caught_when_the_account_records_storage_root_moves_without_slot_history()
+    {
+        byte[] value = [0xAB];
+        Account b0 = new(1, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+        Account b1 = new(2, 50, StorageRootOf((Slot, value)), Keccak.OfAnEmptyString);
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, b1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrB, b1));
+
+        MarkAll(headers);
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.False,
+                "the state root check alone passes here - the account row carries the root the header expects - so only the moved-root-without-slot-history check catches a deleted slot row");
+            Assert.That(verdict.Mismatches.Select(m => m.Kind), Is.EquivalentTo(new[] { HistoryWalkMismatchKind.MissingSlotHistory }));
+            Assert.That(verdict.Mismatches[0].Block, Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
     public void Parallel_segments_verify_the_same_history_each_anchored_at_its_own_start()
     {
         Account a0 = new(1, 100);

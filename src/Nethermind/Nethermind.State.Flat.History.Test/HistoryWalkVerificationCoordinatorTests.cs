@@ -85,12 +85,8 @@ public class HistoryWalkVerificationCoordinatorTests
 
         Assert.That(coordinator.Started, Is.True);
 
-        HistoryWalkVerdict? verdict = null;
-        for (int i = 0; i < 500 && verdict is null; i++)
-        {
-            await Task.Delay(10);
-            verdict = coordinator.LastVerdict;
-        }
+        await coordinator.VerificationLoop;
+        HistoryWalkVerdict? verdict = coordinator.LastVerdict;
 
         Assert.That(verdict, Is.Not.Null, "the coordinator must run the walk once the watermark exists and publish its verdict");
         using (Assert.EnterMultipleScope())

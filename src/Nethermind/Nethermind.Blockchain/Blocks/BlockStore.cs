@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Buffers;
+using System.Collections.Generic;
+using System;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -129,9 +129,6 @@ public class BlockStore : IBlockStore, IClearableCache
         bool removedAny = false;
         foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
         {
-            if (fromInclusive >= toExclusive) continue;
-            removedAny = true;
-
             if (_pending is not null)
             {
                 _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
@@ -140,6 +137,8 @@ public class BlockStore : IBlockStore, IClearableCache
             {
                 _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
             }
+
+            removedAny |= fromInclusive < toExclusive;
         }
 
         if (!removedAny) return;

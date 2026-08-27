@@ -44,6 +44,9 @@ public sealed class HistoryWindowPruner(
     private bool _deletesOwed;
     private long _owedDrainGeneration;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
+
+    /// <summary>Raised after each completed loop pass; tests synchronize on it instead of polling.</summary>
+    internal Action? PassCompleted;
     private int _disposed;
     private bool _started;
 
@@ -173,6 +176,7 @@ public sealed class HistoryWindowPruner(
             {
                 yielded = !RunOnePass(token);
                 pauseAfterYield = Stopwatch.GetElapsedTime(passStartedAt);
+                PassCompleted?.Invoke();
             }
             catch (OperationCanceledException)
             {

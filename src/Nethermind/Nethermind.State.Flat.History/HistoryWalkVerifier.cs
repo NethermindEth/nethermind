@@ -191,9 +191,11 @@ public sealed class HistoryWalkVerifier
         }
 
         StateTree state = new(new RawScopedTrieStore(new MemDb()), _logManager);
+        Dictionary<byte[], ValueHash256> lastAccountStorageRoots = new(Bytes.EqualityComparer);
         foreach ((ValueHash256 path, Account account) in data.StartAccounts)
         {
             state.Set(path, account);
+            lastAccountStorageRoots[path.Bytes[..IdentityLength].ToArray()] = new ValueHash256(account.StorageRoot.Bytes);
         }
 
         state.UpdateRootHash();
@@ -212,18 +214,20 @@ public sealed class HistoryWalkVerifier
         {
             token.ThrowIfCancellationRequested();
 
+            HashSet<byte[]>? touched = null;
             if (clearsByBlock.TryGetValue(block, out List<byte[]>? clearedIdentities))
             {
+                touched = new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach (byte[] identity in clearedIdentities)
                 {
                     storageTries[identity] = new StorageTree(new RawScopedTrieStore(new MemDb()), _logManager);
+                    touched.Add(identity);
                 }
             }
 
-            HashSet<byte[]>? touched = null;
             if (data.SlotDeltas.TryGetValue(block, out List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>? slots))
             {
-                touched = new HashSet<byte[]>(Bytes.EqualityComparer);
+                touched ??= new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach ((byte[] identity, ValueHash256 slotPath, byte[] value) in slots)
                 {
                     StorageTree tree = GetOrMaterialize(storageTries, data.StartSlots, identity);
@@ -266,6 +270,28 @@ public sealed class HistoryWalkVerifier
                     {
                         mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.StorageRoot, rebuiltStorageRoot, recordedStorageRoot));
                     }
+                }
+            }
+
+            if (accountsAtBlock is not null)
+            {
+                foreach ((byte[] identity, Account? account) in accountsAtBlock)
+                {
+                    if (account is null)
+                    {
+                        lastAccountStorageRoots[identity] = new ValueHash256(Keccak.EmptyTreeHash.Bytes);
+                        continue;
+                    }
+
+                    ValueHash256 recorded = new(account.StorageRoot.Bytes);
+                    if ((touched is null || !touched.Contains(identity))
+                        && lastAccountStorageRoots.TryGetValue(identity, out ValueHash256 previous)
+                        && recorded != previous)
+                    {
+                        mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingSlotHistory, previous, recorded));
+                    }
+
+                    lastAccountStorageRoots[identity] = recorded;
                 }
             }
 

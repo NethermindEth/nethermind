@@ -36,8 +36,20 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,
+        ILogManager logManager)
+        : this(db, history, headers, availability, rowFormat, config, logManager, pollDelay: null)
+    {
+    }
+
+    internal HistoryWalkVerificationCoordinator(
+        IColumnsDb<FlatDbColumns> db,
+        IColumnsDb<FlatHistoryColumns> history,
+        IHistoryHeaderSource headers,
+        HistoryAvailability availability,
+        HistoryRowFormat rowFormat,
+        IFlatDbConfig config,
         ILogManager logManager,
-        TimeSpan? pollDelay = null)
+        TimeSpan? pollDelay)
     {
         _availability = availability;
         _config = config;
@@ -67,7 +79,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     public bool Started { get; }
 
     /// <summary>The completed run's verdict, or <c>null</c> while none has finished.</summary>
-    public HistoryWalkVerdict? LastVerdict => _verdict is HistoryWalkVerdict verdict ? verdict : null;
+    public HistoryWalkVerdict? LastVerdict => Volatile.Read(ref _verdict) is HistoryWalkVerdict verdict ? verdict : null;
+
+    /// <summary>The running verification, completed once a verdict has published; tests await this instead of polling.</summary>
+    internal Task VerificationLoop => _loop;
 
     private async Task RunAsync()
     {
@@ -87,7 +102,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
 
                     long startedAt = Stopwatch.GetTimestamp();
                     HistoryWalkVerdict verdict = await Task.Run(() => _verifier!.VerifyRangeParallel(0, watermark, segments, token), token);
-                    _verdict = verdict;
+                    Volatile.Write(ref _verdict, verdict);
                     TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
 
                     if (verdict.Verified)

@@ -230,10 +230,13 @@ public class HistoryWindowPrunerTests
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
         HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        using ManualResetEventSlim firstPass = new();
+        pruner.PassCompleted = firstPass.Set;
         pruner.Start();
 
-        Assert.That(() => _reader.IsPrunedBelowFloor(11), Is.True.After(5000, 25),
+        Assert.That(firstPass.Wait(TimeSpan.FromSeconds(10)), Is.True,
             "a restarted node must not wait for the first persistence flush before pruning");
+        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
 
         pruner.Dispose();
     }

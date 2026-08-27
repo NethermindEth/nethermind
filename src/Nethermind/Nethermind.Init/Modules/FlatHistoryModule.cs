@@ -53,13 +53,6 @@ public class FlatHistoryModule : Module
             // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps
             // the default that never retains, and never pays for the bloom probe or the log-index lookup.
             .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>()
-            .AddSingleton<HistoryWalkVerificationCoordinator>(ctx => new HistoryWalkVerificationCoordinator(
-                ctx.Resolve<IColumnsDb<FlatDbColumns>>(),
-                ctx.Resolve<IColumnsDb<FlatHistoryColumns>>(),
-                ctx.Resolve<IHistoryHeaderSource>(),
-                ctx.Resolve<HistoryAvailability>(),
-                ctx.Resolve<HistoryRowFormat>(),
-                ctx.Resolve<IFlatDbConfig>(),
-                ctx.Resolve<ILogManager>()))
+            .AddSingleton<HistoryWalkVerificationCoordinator>()
             .AddStep(typeof(StartHistoryWalkVerification));
 }

@@ -357,7 +357,7 @@ public class SlicedReceiptRetentionTests
     [Test]
     public void ShouldRetainReceipts_returns_false_when_no_addresses_are_configured()
     {
-        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>());
+        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
 
         Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA).Header), Is.False);
     }
@@ -376,7 +376,7 @@ public class SlicedReceiptRetentionTests
         logIndexStorage.MaxBlockNumber.Returns(1000);
         logIndexStorage.GetEnumerator(TestItem.AddressA, 5, 5).Returns(_ =>
             (indexHits ? new[] { 5 }.AsEnumerable() : Enumerable.Empty<int>()).GetEnumerator());
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, Substitute.For<IBlockTree>());
 
         Block block = BlockWithBloom(bloomMatches ? TestItem.AddressA : TestItem.AddressB, 5);
         Assert.That(retention.ShouldRetainReceipts(block.Header), Is.EqualTo(expected));
@@ -390,7 +390,7 @@ public class SlicedReceiptRetentionTests
         logIndexStorage.Enabled.Returns(true);
         logIndexStorage.MinBlockNumber.Returns(0);
         logIndexStorage.MaxBlockNumber.Returns(int.MaxValue);
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, Substitute.For<IBlockTree>());
 
         Block block = BlockWithBloom(TestItem.AddressA, (ulong)int.MaxValue + 1);
 
@@ -412,7 +412,7 @@ public class SlicedReceiptRetentionTests
         logIndexStorage.MinBlockNumber.Returns(0);
         logIndexStorage.MaxBlockNumber.Returns(1000);
         logIndexStorage.GetEnumerator(TestItem.AddressA, 100, 199).Returns(_ => new[] { 120, 150 }.AsEnumerable().GetEnumerator());
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, Substitute.For<IBlockTree>());
 
         IReadOnlySet<ulong> retained = retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
 
@@ -435,7 +435,7 @@ public class SlicedReceiptRetentionTests
         logIndexStorage.MinBlockNumber.Returns(150);
         logIndexStorage.MaxBlockNumber.Returns(179);
         logIndexStorage.GetEnumerator(TestItem.AddressA, 150, 179).Returns(_ => Enumerable.Empty<int>().GetEnumerator());
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, Substitute.For<IBlockTree>());
 
         retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
 
@@ -455,7 +455,7 @@ public class SlicedReceiptRetentionTests
         logIndexStorage.Enabled.Returns(enabled);
         logIndexStorage.MinBlockNumber.Returns((int?)null);
         logIndexStorage.MaxBlockNumber.Returns((int?)null);
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, Substitute.For<IBlockTree>());
 
         retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
 
@@ -464,9 +464,56 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
+    public void ShouldRetainReceipts_ForABoundedSlice_StopsRetainingBelowItsOwnWindow()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = $"{TestItem.AddressA}:100" };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(1000).TestObject);
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree);
+
+        Bloom bloom = new();
+        bloom.Add([Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]);
+        BlockHeader inside = Build.A.BlockHeader.WithNumber(950).WithBloom(bloom).TestObject;
+        BlockHeader below = Build.A.BlockHeader.WithNumber(850).WithBloom(bloom).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retention.ShouldRetainReceipts(inside), Is.True);
+            Assert.That(retention.ShouldRetainReceipts(below), Is.False,
+                "a bounded slice must not retain bodies and receipts below its own window");
+        }
+    }
+
+    [Test]
+    public void RetainedHeights_ForABoundedSlice_AnswersHeightsBelowItsWindowAsNotRetained()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = $"{TestItem.AddressA}:100" };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(1000).TestObject);
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.MaxBlockNumber.Returns(1000);
+        logIndexStorage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(call => ((IEnumerable<int>)[System.Math.Max((int)call.ArgAt<int>(1), 850), 950]).GetEnumerator());
+
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage, blockTree);
+
+        IReadOnlySet<ulong> retained = retention.RetainedHeights(800, 1000, out ulong answeredFrom, out ulong answeredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Does.Contain(950UL));
+            Assert.That(retained, Does.Not.Contain(850UL), "a hit below the slice's own window is not retained");
+            Assert.That(answeredFrom, Is.EqualTo(800UL));
+            Assert.That(answeredTo, Is.EqualTo(1000UL), "heights below the window are answered, answered as not retained");
+        }
+    }
+
+    [Test]
     public void RetainedHeights_with_no_addresses_answers_for_the_whole_span()
     {
-        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>());
+        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
 
         IReadOnlySet<ulong> retained = retention.RetainedHeights(100, 200, out ulong answeredFrom, out ulong answeredTo);
 

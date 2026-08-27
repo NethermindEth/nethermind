@@ -552,7 +552,12 @@ public class HistoryPruner : IHistoryPruner
                     ChainLevelInfo? level = index < levels.Count ? levels[index] : null;
 
                     // A height whose level will not load has to lose both whatever its hashes are.
-                    if (!RemoveBothAt(number, level)) unreachable.Add((number, number + 1));
+                    if (!RemoveBothAt(number, level))
+                    {
+                        int last = unreachable.Count - 1;
+                        if (last >= 0 && unreachable[last].ToExclusive == number) unreachable[last] = (unreachable[last].FromInclusive, number + 1);
+                        else unreachable.Add((number, number + 1));
+                    }
                 }
 
                 if (unreachable.Count != 0)
