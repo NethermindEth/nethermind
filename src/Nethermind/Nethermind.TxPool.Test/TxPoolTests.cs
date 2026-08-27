@@ -2653,7 +2653,7 @@ namespace Nethermind.TxPool.Test
             // bounds how many of its sponsored transactions may be pending at once.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
@@ -2676,6 +2676,60 @@ namespace Nethermind.TxPool.Test
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
                 Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx freed the paymaster's slot");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_ConcurrentFrameTransactions_SharingNonCanonicalPaymaster_AdmitsOnlyTheCap()
+        {
+            // Reading the count and then inserting would let every submission observe the same free slot,
+            // leaving the sponsor over its cap for as long as the transactions stay pending.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+            foreach (PrivateKey sender in senders)
+            {
+                EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            }
+
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction[] sponsored = [.. senders.Select(sender => SponsoredFrameTx(sender, TestItem.PrivateKeyD))];
+            AcceptTxResult[] results = new AcceptTxResult[sponsored.Length];
+
+            Parallel.For(0, sponsored.Length, i => results[i] = _txPool.SubmitTx(sponsored[i], TxHandlingOptions.PersistentBroadcast));
+
+            Assert.That(results.Count(static result => result == AcceptTxResult.Accepted),
+                Is.EqualTo(Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster),
+                "concurrent submissions must not admit more than the cap");
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_RejectedAfterTheCapIsCounted_ReleasesThePaymasterSlot()
+        {
+            // The cap counts ahead of the filters that resolve the payer, so a rejection there must hand the
+            // slot back or the sponsor is locked out for the life of the pool.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Reject("declined"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            AcceptTxResult rejected = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
+
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            AcceptTxResult afterRelease = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.Not.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(afterRelease, Is.EqualTo(AcceptTxResult.Accepted), "the refused transaction must have released the slot it counted");
             }
         }
 
