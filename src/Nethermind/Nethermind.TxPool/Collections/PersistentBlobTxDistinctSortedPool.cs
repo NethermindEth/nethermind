@@ -749,7 +749,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         return false;
     }
 
-    internal void UpdatePoolWithBatchedStorageDeletes(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
+    internal override void UpdatePoolForRevalidation(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 

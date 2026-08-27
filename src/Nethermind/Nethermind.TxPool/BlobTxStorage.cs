@@ -200,7 +200,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         Span<bool> requiredLocks = stackalloc bool[TransactionLockCount];
         for (int i = 0; i < keys.Length; i++)
         {
-            requiredLocks[(int)((uint)keys[i].Hash.GetHashCode() % TransactionLockCount)] = true;
+            requiredLocks[GetTransactionLockIndex(keys[i].Hash)] = true;
         }
 
         Span<int> acquiredLocks = stackalloc int[TransactionLockCount];
@@ -351,8 +351,10 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
 
-    private static Lock GetTransactionLock(in ValueHash256 hash) =>
-        _transactionLocks[(uint)hash.GetHashCode() % TransactionLockCount];
+    private static Lock GetTransactionLock(in ValueHash256 hash) => _transactionLocks[GetTransactionLockIndex(hash)];
+
+    private static int GetTransactionLockIndex(in ValueHash256 hash) =>
+        (int)((uint)hash.GetHashCode() % TransactionLockCount);
 
     private static Lock[] CreateTransactionLocks()
     {

@@ -11,7 +11,6 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;

@@ -283,6 +283,55 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_revalidate_blob_body_held_by_pending_storage_update()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4
+            };
+            FailingBlobTxUpdateStorage storage = new();
+            await using TxPool txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            _txPool = txPool;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Osaka.Instance);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.True);
+
+            Transaction cacheEvictor = CreateBlobTx(TestItem.PrivateKeyB, releaseSpec: Osaka.Instance);
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            storage.DeletePersistedTransaction(transaction);
+
+            await AddEmptyBlock();
+
+            bool found = _txPool.TryGetPendingBlobTransaction(transaction.Hash!, out Transaction pendingTransaction);
+            BlobCellMask pendingMask = found
+                ? ((ShardBlobNetworkWrapper)pendingTransaction.NetworkWrapper!).CellMask
+                : BlobCellMask.Empty;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+                Assert.That(found, Is.True);
+                Assert.That(pendingMask, Is.EqualTo(initialMask | updateMask));
+            }
+        }
+
+        [Test]
         public async Task should_revalidate_persistent_blob_transactions_on_startup()
         {
             Block head = _blockTree.Head;
@@ -3788,6 +3837,9 @@ namespace Nethermind.TxPool.Test
 
                 _inner.Add(transaction);
             }
+
+            public void DeletePersistedTransaction(Transaction transaction) =>
+                _inner.Delete(transaction.Hash!, transaction.Timestamp);
 
             public void Delete(in ValueHash256 hash, in UInt256 timestamp)
             {

@@ -30,7 +30,6 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;

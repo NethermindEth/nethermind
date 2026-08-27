@@ -79,6 +79,9 @@ namespace Nethermind.TxPool.Collections
             UpdatePoolNonLocked(accounts, updateElements);
         }
 
+        internal virtual void UpdatePoolForRevalidation(IAccountStateProvider accounts, UpdateGroupDelegate updateElements) =>
+            UpdatePool(accounts, updateElements);
+
         private protected void UpdatePoolNonLocked(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
         {
             EnsureCapacity();

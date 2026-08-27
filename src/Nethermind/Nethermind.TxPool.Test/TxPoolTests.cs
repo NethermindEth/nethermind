@@ -683,19 +683,37 @@ namespace Nethermind.TxPool.Test
 
             _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction transaction = Build.A.Transaction
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
+            Transaction unaffordableTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(unaffordableTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            EnsureSenderBalance(TestItem.AddressB, UInt256.Zero);
 
             Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
             _blockTree.BestSuggestedHeader = forkBlock.Header;
+            Task forkHeadProcessed = Wait.ForEventCondition<Block>(
+                CancellationToken.None,
+                handler => _txPool.TxPoolHeadChanged += handler,
+                handler => _txPool.TxPoolHeadChanged -= handler,
+                block => block.Hash == forkBlock.Hash);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
             await revalidationFailed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await forkHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.That(_txPool.IsRevalidatedFor(forkBlock.Header), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsRevalidatedFor(forkBlock.Header), Is.False);
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.ContainsTx(transaction.Hash!, transaction.Type), Is.True);
+            }
+
             allowRevalidation.Set();
 
             Block nextBlock = Build.A.Block.WithNumber(forkBlock.Number + 1).TestObject;
@@ -822,7 +840,7 @@ namespace Nethermind.TxPool.Test
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
             await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = Task.Run(() =>
+            Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = RunOnDedicatedThread(() =>
             {
                 PendingTransactionsView view = _txPool.GetPendingForProduction(forkBlock.Header, filterToReadyTx: false, UInt256.Zero);
                 AcceptTxResult result = _txPool.SubmitTx(concurrentTransaction, TxHandlingOptions.None);
