@@ -172,6 +172,10 @@ namespace Nethermind.Network
 
         public void Start()
         {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
+                _networkConfig.PeersUpdateInterval,
+                nameof(_networkConfig.PeersUpdateInterval));
+
             lock (_sessionLock)
             {
                 _isStopping = false;
@@ -625,11 +629,11 @@ namespace Nethermind.Network
 
             try
             {
-                await RunPeriodicPeerUpdatesAsync(
-                    TimeSpan.FromMilliseconds(_networkConfig.PeersUpdateInterval),
-                    TimeProvider.System,
-                    SignalPeerUpdateNeeded,
-                    _cancellationTokenSource.Token);
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_networkConfig.PeersUpdateInterval));
+                while (await timer.WaitForNextTickAsync(_cancellationTokenSource.Token))
+                {
+                    SignalPeerUpdateNeeded();
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -638,19 +642,6 @@ namespace Nethermind.Network
             catch (OperationCanceledException)
             {
                 if (_logger.IsDebug) _logger.Debug("Peer update timer stopped.");
-            }
-        }
-
-        internal static async Task RunPeriodicPeerUpdatesAsync(
-            TimeSpan interval,
-            TimeProvider timeProvider,
-            Action signalPeerUpdateNeeded,
-            CancellationToken cancellationToken)
-        {
-            using PeriodicTimer timer = new(interval, timeProvider);
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                signalPeerUpdateNeeded();
             }
         }
 

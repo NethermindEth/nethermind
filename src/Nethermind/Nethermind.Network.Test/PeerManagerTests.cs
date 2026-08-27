@@ -13,7 +13,6 @@ using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -41,41 +40,59 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
         }
 
-        [Test]
-        public async Task Periodic_peer_update_timer_signals_each_tick_and_stops_on_cancellation()
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task Start_rejects_non_positive_peer_update_interval(int interval)
         {
-            ManualTimeProvider timeProvider = new();
-            using CancellationTokenSource cancellationTokenSource = new();
-            using SemaphoreSlim signal = new(0);
-            TimeSpan interval = TimeSpan.FromMilliseconds(250);
-            Task timerTask = PeerManager.RunPeriodicPeerUpdatesAsync(
-                interval,
-                timeProvider,
-                () => signal.Release(),
-                cancellationTokenSource.Token);
+            await using Context ctx = new();
+            ctx.NetworkConfig.PeersUpdateInterval = interval;
 
-            timeProvider.AdvanceAndFireTimer(interval);
-            bool firstTickSignaled = await signal.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(() => ctx.PeerManager.Start(), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
 
-            timeProvider.AdvanceAndFireTimer(interval);
-            bool secondTickSignaled = await signal.WaitAsync(TimeSpan.FromSeconds(5));
+        [Test]
+        public async Task Periodic_peer_update_continues_after_no_candidate_iterations()
+        {
+            const int expectedSelectionCount = 3;
+            int selectionCount = 0;
+            TaskCompletionSource thirdSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                if (Interlocked.Increment(ref selectionCount) == expectedSelectionCount)
+                {
+                    thirdSelection.TrySetResult();
+                }
 
-            cancellationTokenSource.Cancel();
-            OperationCanceledException? cancellationException = null;
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(Array.Empty<Peer>());
+
+            INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
+            networkConfig.MaxActivePeers.Returns(1);
+            networkConfig.NumConcurrentOutgoingConnects.Returns(1);
+            networkConfig.MaxOutgoingConnectPerSec.Returns(20);
+            networkConfig.PeersUpdateInterval.Returns(10);
+
+            PeerManager peerManager = new(
+                Substitute.For<IRlpxHost>(),
+                peerPool,
+                Substitute.For<INodeStatsManager>(),
+                networkConfig,
+                Substitute.For<IEnode>(),
+                LimboLogs.Instance);
+
+            peerManager.Start();
             try
             {
-                await timerTask;
+                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(Volatile.Read(ref selectionCount), Is.GreaterThanOrEqualTo(expectedSelectionCount));
             }
-            catch (OperationCanceledException e)
+            finally
             {
-                cancellationException = e;
-            }
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(firstTickSignaled, Is.True);
-                Assert.That(secondTickSignaled, Is.True);
-                Assert.That(cancellationException, Is.Not.Null);
+                await peerManager.StopAsync();
             }
         }
 
