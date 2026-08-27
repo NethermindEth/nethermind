@@ -524,6 +524,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <summary>Resolves the oldest touches from the persisted flat column, which still holds pre-walk values.</summary>
+    private const int PreValueMultiGetChunkSize = 1024;
+
     private void ResolvePendingV3(PendingV3Writes pending, in HistoryColumnBatches columns)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
@@ -532,18 +534,38 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch storageBatch = columns.StorageHistory;
 
         Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-        Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];
-        foreach (KeyValuePair<ValueHash256, ulong> entry in SortedAccounts(pending.Accounts))
+        KeyValuePair<ValueHash256, ulong>[] accounts = SortedAccounts(pending.Accounts);
+        for (int offset = 0; offset < accounts.Length; offset += PreValueMultiGetChunkSize)
         {
-            int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(entry.Key.Bytes), valueBuffer);
-            _accountHistoryV3!.RecordPreValue(entry.Value, entry.Key.Bytes, valueBuffer[..Math.Max(written, 0)], accountBatch);
+            int count = Math.Min(PreValueMultiGetChunkSize, accounts.Length - offset);
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
+            }
+
+            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+            for (int i = 0; i < count; i++)
+            {
+                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
+            }
         }
 
-        foreach (KeyValuePair<PendingV3Writes.SlotKey, ulong> entry in SortedStorages(pending.Storages))
+        KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = SortedStorages(pending.Storages);
+        for (int offset = 0; offset < storages.Length; offset += PreValueMultiGetChunkSize)
         {
-            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, entry.Key.AddrPath, entry.Key.SlotHash);
-            int written = _persistedStorage.Get(flatKey, valueBuffer);
-            _storageHistoryV3!.RecordPreValue(entry.Value, flatKey, valueBuffer[..Math.Max(written, 0)], storageBatch);
+            int count = Math.Min(PreValueMultiGetChunkSize, storages.Length - offset);
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+            }
+
+            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+            for (int i = 0; i < count; i++)
+            {
+                _storageHistoryV3!.RecordPreValue(storages[offset + i].Value, keys[i], preValues[i].Value ?? ReadOnlySpan<byte>.Empty, storageBatch);
+            }
         }
     }
 
