@@ -58,30 +58,55 @@ public interface IXdcMasternodeEthRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<uint> eth_getBlockFinalityByNumber(BlockParameter? blockParameter = null);
 
+    /// <summary>Returns the status and stake of every masternode candidate in the given epoch.</summary>
+    /// <param name="epoch">Epoch to report; omitted or <c>"latest"</c> for the epoch containing the head.</param>
+    /// <returns>
+    /// Candidates keyed by address. <c>Success</c> is <see langword="false"/> when the epoch has no candidate
+    /// list or no masternodes to classify them against, in which case no candidates are returned.
+    /// </returns>
     [JsonRpcMethod(
         Description = "Returns the status and stake of every masternode candidate in the given epoch.",
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<XdcCandidatesResult> eth_getCandidates(XdcEpochParameter? epoch = null);
 
+    /// <summary>Returns the status and stake of one masternode candidate in the given epoch.</summary>
+    /// <param name="coinbase">Candidate to report on.</param>
+    /// <inheritdoc cref="eth_getCandidates" path="/param[@name='epoch']"/>
+    /// <returns>An empty status when the address is neither a candidate nor a masternode for the epoch.</returns>
     [JsonRpcMethod(
         Description = "Returns the status and stake of one masternode candidate in the given epoch.",
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<XdcCandidateStatusResult> eth_getCandidateStatus(Address coinbase, XdcEpochParameter? epoch = null);
 
+    /// <summary>Estimates the annual return, in percent, for staking anywhere on the network.</summary>
+    /// <remarks>
+    /// Projects the last settled epoch's staker reward over a year against the total staked. Coarse by
+    /// construction: the projection is divided into the staked total as integers, so inputs of a similar
+    /// magnitude move the result in large steps. Returns zero when no stake or reward is recorded.
+    /// </remarks>
     [JsonRpcMethod(
         Description = "Estimates the annual return, in percent, for staking on the network.",
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<double> eth_getStakerROI();
 
+    /// <summary>Estimates the annual return, in percent, for staking on one masternode.</summary>
+    /// <param name="masternode">Masternode whose voters the estimate is for.</param>
+    /// <inheritdoc cref="eth_getStakerROI" path="/remarks"/>
     [JsonRpcMethod(
         Description = "Estimates the annual return, in percent, for staking on a specific masternode.",
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<double> eth_getStakerROIMasternode(Address masternode);
 
+    /// <summary>Returns the minted and burned token totals as of the given epoch.</summary>
+    /// <inheritdoc cref="eth_getCandidates" path="/param[@name='epoch']"/>
+    /// <returns>
+    /// Supply split across the pre- and post-reward-upgrade regimes. Fails when the reward upgrade has not
+    /// been applied, or when the epoch predates the upgrade or postdates the head.
+    /// </returns>
     [JsonRpcMethod(
         Description = "Returns the minted and burned token totals as of the given epoch.",
         IsSharable = true,

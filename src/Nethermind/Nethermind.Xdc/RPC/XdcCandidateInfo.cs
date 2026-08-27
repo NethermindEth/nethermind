@@ -22,15 +22,23 @@ public class XdcCandidateInfo
 /// <summary>Candidate set of one epoch, keyed by candidate address.</summary>
 public class XdcCandidatesResult
 {
+    /// <summary>Epoch the candidate set describes.</summary>
     public long Epoch { get; set; }
+
+    /// <summary>Whether the epoch could be classified; <see langword="false"/> leaves <see cref="Candidates"/> unset.</summary>
     public bool Success { get; set; }
+
+    /// <summary>Candidates keyed by address.</summary>
     public Dictionary<string, XdcCandidateInfo>? Candidates { get; set; }
 }
 
 /// <summary>Status of a single candidate within one epoch.</summary>
 public class XdcCandidateStatusResult
 {
+    /// <inheritdoc cref="XdcCandidatesResult.Epoch"/>
     public long Epoch { get; set; }
+
+    /// <summary>Whether the epoch could be classified; <see langword="false"/> leaves the status empty.</summary>
     public bool Success { get; set; }
 
     /// <inheritdoc cref="XdcCandidateInfo.Status"/>

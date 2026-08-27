@@ -45,17 +45,30 @@ public sealed class XdcEpochParameter : IJsonRpcParam
 
     private static ulong? ParseEpoch(string value)
     {
-        if (value.Length == 0
-            || value[0] == '-'
-            || string.Equals(value, LatestKeyword, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(value, LatestKeyword, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        bool parsed = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? ulong.TryParse(value.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong epoch)
-            : ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out epoch);
+        ReadOnlySpan<char> digits = value.AsSpan();
+        bool negative = digits.StartsWith("-");
+        if (negative)
+        {
+            digits = digits[1..];
+        }
 
-        return parsed ? epoch : throw new JsonException($"Cannot parse '{value}' as an epoch number.");
+        bool hex = digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        if (hex)
+        {
+            digits = digits[2..];
+        }
+
+        if (!ulong.TryParse(digits, hex ? NumberStyles.HexNumber : NumberStyles.None, CultureInfo.InvariantCulture, out ulong epoch))
+        {
+            throw new JsonException($"Cannot parse '{value}' as an epoch number.");
+        }
+
+        // Only a well-formed negative number is the latest sentinel; "-" or "-abc" is malformed input.
+        return negative ? null : epoch;
     }
 }

@@ -380,6 +380,15 @@ public class XdcMasternodeEthModuleTests
     public void XdcEpochParameter_parses_the_reference_epoch_encodings(string json, ulong? expected) =>
         Assert.That(ParseEpochJson(json).EpochNumber, Is.EqualTo(expected));
 
+    [TestCase("\"\"", TestName = "An empty string is not an epoch")]
+    [TestCase("\"-\"", TestName = "A bare minus sign is not the latest sentinel")]
+    [TestCase("\"-abc\"", TestName = "A malformed negative is not the latest sentinel")]
+    [TestCase("\"0xzz\"", TestName = "A malformed hex string is rejected")]
+    [TestCase("\"later\"", TestName = "A misspelt keyword is rejected")]
+    [TestCase("true", TestName = "A non-numeric JSON value is rejected")]
+    public void XdcEpochParameter_rejects_malformed_epochs_instead_of_defaulting_to_latest(string json) =>
+        Assert.That(() => ParseEpochJson(json), Throws.InstanceOf<JsonException>());
+
     private static XdcEpochParameter ParseEpoch(string value) => ParseEpochJson($"\"{value}\"");
 
     private static XdcEpochParameter ParseEpochJson(string json)
@@ -476,17 +485,16 @@ public class XdcMasternodeEthModuleTests
         return (XdcBlockHeader)_blockTree.Head!.Header;
     }
 
-    // A head at round 2000 sits in epoch 2, so the last fully rewarded epoch is epoch 0.
+    // A head at round 2000 sits in epoch 2, so the last settled epoch is epoch 1.
     private const ulong RoiHeadNumber = 2000;
     private const ulong RoiCurrentEpoch = 2;
 
-    /// <summary>Lays out the three most recent epoch checkpoints <see cref="EpochDuration"/> apart.</summary>
+    /// <summary>Lays out the two most recent epoch checkpoints <see cref="EpochDuration"/> apart.</summary>
     /// <returns>The checkpoint of the last settled epoch, which is where the reference reads staked totals.</returns>
     private XdcBlockHeader SetUpEpochTimeline()
     {
         SetHead(RoiHeadNumber);
         AddCheckpoint(RoiCurrentEpoch, 1800, 2 * EpochDuration);
-        AddCheckpoint(RoiCurrentEpoch - 2, 1, 0);
         return AddCheckpoint(RoiCurrentEpoch - 1, 900, EpochDuration);
     }
 
