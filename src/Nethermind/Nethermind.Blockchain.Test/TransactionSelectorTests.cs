@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -566,7 +567,8 @@ namespace Nethermind.Blockchain.Test
             Hash256 stateRoot = SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig,
+                new SpecChangeTxValidator(specProvider.ChainId));
 
             BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)

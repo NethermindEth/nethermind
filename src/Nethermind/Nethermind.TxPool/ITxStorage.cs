@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -18,6 +19,11 @@ public interface ITxStorage
     IEnumerable<LightTransaction> GetAll();
     void Add(Transaction transaction);
     void Delete(in ValueHash256 hash, in UInt256 timestamp);
+}
+
+internal interface IBatchDeleteTxStorage
+{
+    void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys);
 }
 
 internal interface ISpecChangeValidationStorage

@@ -33,6 +33,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
     private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
+    private readonly List<TxLookupKey> _batchedDeletes = [];
+    private bool _batchStorageDeletes;
     private readonly int _maxPendingBlobUpdates;
     private const int MaxBlobUpdateWriteAttempts = 2;
     private const int MaxBlobUpdateRetryExponent = 5;
@@ -724,7 +726,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
             if (tx is not null && !hasPendingUpdate)
             {
-                _blobTxStorage.Delete(hash, tx.Timestamp);
+                if (_batchStorageDeletes)
+                {
+                    _batchedDeletes.Add(new TxLookupKey(hash, tx.SenderAddress!, tx.Timestamp));
+                }
+                else
+                {
+                    _blobTxStorage.Delete(hash, tx.Timestamp);
+                }
             }
 
             _blobTxCache.Delete(hash);
@@ -738,6 +747,41 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         return false;
+    }
+
+    internal void UpdatePoolWithBatchedStorageDeletes(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+
+        Debug.Assert(!_batchStorageDeletes);
+        _batchStorageDeletes = true;
+        try
+        {
+            UpdatePoolNonLocked(accounts, updateElements);
+        }
+        finally
+        {
+            _batchStorageDeletes = false;
+            try
+            {
+                if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
+                {
+                    batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
+                }
+                else
+                {
+                    for (int i = 0; i < _batchedDeletes.Count; i++)
+                    {
+                        TxLookupKey key = _batchedDeletes[i];
+                        _blobTxStorage.Delete(key.Hash, key.Timestamp);
+                    }
+                }
+            }
+            finally
+            {
+                _batchedDeletes.Clear();
+            }
+        }
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)

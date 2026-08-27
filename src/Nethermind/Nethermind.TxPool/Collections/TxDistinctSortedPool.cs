@@ -76,6 +76,11 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
+            UpdatePoolNonLocked(accounts, updateElements);
+        }
+
+        private protected void UpdatePoolNonLocked(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
+        {
             EnsureCapacity();
             foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {

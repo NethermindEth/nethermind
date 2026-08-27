@@ -392,8 +392,8 @@ namespace Nethermind.TxPool.Test
                 PersistentBlobStorageSize = 1
             };
             TrackingBlobTxStorage storage = new();
-            IReleaseSpec preForkSpec = new SameNameReleaseSpec(Prague.Instance);
-            IReleaseSpec postForkSpec = new SameNameReleaseSpec(Osaka.Instance);
+            IReleaseSpec preForkSpec = new NamedReleaseSpec(Prague.Instance, "Custom");
+            IReleaseSpec postForkSpec = new NamedReleaseSpec(Osaka.Instance, "Custom");
 
             _txPool = CreatePool(txPoolConfig, new TestSpecProvider(preForkSpec), txStorage: storage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -413,6 +413,36 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
                 Assert.That(() => _txPool.IsRevalidatedFor(head), Is.True.After(Timeout, 10));
+            }
+        }
+
+        [Test]
+        public async Task should_revalidate_differently_named_spec_on_restart()
+        {
+            BlockHeader head = _blockTree.Head.Header;
+            _blockTree.BestSuggestedHeader = head;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TrackingBlobTxStorage storage = new();
+            IReleaseSpec preForkSpec = new NamedReleaseSpec(Cancun.Instance, "Fork A");
+            IReleaseSpec postForkSpec = new NamedReleaseSpec(Cancun.Instance, "Fork B");
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(preForkSpec), txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            storage.ResetFullReadCount();
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(postForkSpec), txStorage: storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => _txPool.IsRevalidatedFor(head), Is.True.After(Timeout, 10));
+                Assert.That(storage.FullReadCount, Is.GreaterThan(0));
             }
         }
 
@@ -1588,9 +1618,9 @@ namespace Nethermind.TxPool.Test
             public void ResetFullReadCount() => FullReadCount = 0;
         }
 
-        private sealed class SameNameReleaseSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+        private sealed class NamedReleaseSpec(IReleaseSpec spec, string name) : ReleaseSpecDecorator(spec)
         {
-            public override string Name => "Custom";
+            public override string Name => name;
         }
 
         private Transaction CreateBlobTx(PrivateKey sender, ulong nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction

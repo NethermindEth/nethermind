@@ -18,7 +18,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IBatchDeleteTxStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -187,6 +187,56 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             fullBlobTxsBatch.Remove(txHashPrefixed);
             fullBlobTxsBatch.Remove(elidedKey);
             batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+        }
+    }
+
+    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
+    {
+        if (keys.IsEmpty)
+        {
+            return;
+        }
+
+        Span<bool> requiredLocks = stackalloc bool[TransactionLockCount];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            requiredLocks[(int)((uint)keys[i].Hash.GetHashCode() % TransactionLockCount)] = true;
+        }
+
+        Span<int> acquiredLocks = stackalloc int[TransactionLockCount];
+        int acquiredLockCount = 0;
+        try
+        {
+            for (int i = 0; i < requiredLocks.Length; i++)
+            {
+                if (requiredLocks[i])
+                {
+                    _transactionLocks[i].Enter();
+                    acquiredLocks[acquiredLockCount++] = i;
+                }
+            }
+
+            using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+            IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
+            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                ref readonly TxLookupKey key = ref keys[i];
+                GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
+                GetElidedTxKey(key.Hash, elidedKey);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
+                fullBlobTxsBatch.Remove(elidedKey);
+                lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
+            }
+        }
+        finally
+        {
+            for (int i = acquiredLockCount - 1; i >= 0; i--)
+            {
+                _transactionLocks[acquiredLocks[i]].Exit();
+            }
         }
     }
 

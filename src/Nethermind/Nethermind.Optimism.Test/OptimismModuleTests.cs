@@ -5,8 +5,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -32,5 +37,26 @@ public class OptimismModuleTests
             .Any(step => step.StepType == typeof(StartOptimismCl));
 
         Assert.That(clStepRegistered, Is.EqualTo(clEnabled));
+    }
+
+    [Test]
+    public void Spec_change_validator_preserves_pre_bedrock_legacy_validation()
+    {
+        const ulong chainId = 10;
+        IOptimismReleaseSpec preBedrock = OptimismReleaseSpecSubstitute.Create();
+        preBedrock.IsEip1559Enabled.Returns(false);
+        IOptimismReleaseSpec postBedrock = OptimismReleaseSpecSubstitute.Create();
+        postBedrock.IsEip1559Enabled.Returns(true);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(0)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+        OptimismSpecChangeTxValidator validator = new(chainId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.IsWellFormed(transaction, preBedrock).AsBool(), Is.True);
+            Assert.That(validator.IsWellFormed(transaction, postBedrock).AsBool(), Is.False);
+        }
     }
 }

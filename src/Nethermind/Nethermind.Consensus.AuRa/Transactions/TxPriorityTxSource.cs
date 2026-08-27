@@ -25,9 +25,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
         IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
         ISpecProvider specProvider,
         ITransactionComparerProvider transactionComparerProvider, // expected SortedList based
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ITxValidator specChangeTxValidator)
         : TxPoolTxSource(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline,
-            blocksConfig)
+            blocksConfig, specChangeTxValidator)
     {
         private readonly IContractDataStore<Address> _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

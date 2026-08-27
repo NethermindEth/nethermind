@@ -10,6 +10,7 @@ using NUnit.Framework;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Eip2930;
+using Nethermind.Consensus.Validators;
 using Nethermind.Specs;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -45,6 +46,9 @@ public class TxPoolSourceTests
         return accessListBuilder.Build();
     }
 
+    private static ITxValidator CreateSpecChangeTxValidator(ISpecProvider specProvider) =>
+        new SpecChangeTxValidator(specProvider.ChainId);
+
     private static void SetPendingForProduction(
         ITxPool txPool,
         IDictionary<AddressAsKey, Transaction[]>? transactions = null,
@@ -74,7 +78,7 @@ public class TxPoolSourceTests
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
-        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
+        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit }, CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
@@ -170,7 +174,7 @@ public class TxPoolSourceTests
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 });
+            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
@@ -209,7 +213,7 @@ public class TxPoolSourceTests
             .Build;
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig());
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
@@ -219,12 +223,11 @@ public class TxPoolSourceTests
     }
 
     [Test]
-    public void GetTransactions_should_apply_fork_sensitive_checks_when_pool_is_not_revalidated()
+    public void GetTransactions_should_use_injected_fork_sensitive_validator_when_pool_is_not_revalidated()
     {
         TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
         Transaction transaction = Build.A.Transaction
-            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -234,14 +237,18 @@ public class TxPoolSourceTests
         });
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+        specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>())
+            .Returns(new ValidationResult("chain-specific rejection"));
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig());
+            txFilterPipeline, new BlocksConfig(), specChangeTxValidator);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         Assert.That(result, Is.Empty);
+        specChangeTxValidator.Received(1).IsWellFormed(transaction, Osaka.Instance);
     }
 
     [Test]
@@ -304,12 +311,11 @@ public class TxPoolSourceTests
             });
         txPool.SupportsBlobs.Returns(true);
 
-        ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-            .WithHeadTxFilter()
-            .Build;
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 });
+            txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
@@ -320,6 +326,8 @@ public class TxPoolSourceTests
         {
             Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
             txPool.Received(1).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
+            txFilterPipeline.DidNotReceive().Execute(invalidBlob, parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(validBlob, parent, Amsterdam.Instance);
         }
     }
 
@@ -354,7 +362,7 @@ public class TxPoolSourceTests
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig());
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
@@ -388,7 +396,7 @@ public class TxPoolSourceTests
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig());
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
@@ -459,7 +467,8 @@ public class TxPoolSourceTests
             comparerProvider,
             LimboLogs.Instance,
             filterPipeline,
-            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 1 });
+            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 1 },
+            CreateSpecChangeTxValidator(specProvider));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
@@ -522,7 +531,8 @@ public class TxPoolSourceTests
             comparerProvider,
             LimboLogs.Instance,
             filterPipeline,
-            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 2 });
+            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 2 },
+            CreateSpecChangeTxValidator(specProvider));
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
@@ -557,7 +567,8 @@ public class TxPoolSourceTests
             transactionComparerProvider,
             LimboLogs.Instance,
             txFilterPipeline,
-            new BlocksConfig { SecondsPerSlot = 12 });
+            new BlocksConfig { SecondsPerSlot = 12 },
+            CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;

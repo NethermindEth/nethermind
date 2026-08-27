@@ -5,12 +5,12 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
@@ -23,10 +23,15 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
+    public class InitializeBlockchain(
+        INethermindApi api,
+        IChainHeadInfoProvider chainHeadInfoProvider,
+        ITxGossipPolicy txGossipPolicy,
+        [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator) : IStep
     {
         private readonly INethermindApi _api = api;
         protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
+        protected readonly ITxValidator _specChangeTxValidator = specChangeTxValidator;
 
         public async Task Execute(CancellationToken _) => await InitBlockchain();
 
@@ -61,7 +66,7 @@ namespace Nethermind.Init.Steps
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
-                new SpecChangeTxValidator(_api.SpecProvider!.ChainId),
+                _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy

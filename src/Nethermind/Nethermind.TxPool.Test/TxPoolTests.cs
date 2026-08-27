@@ -357,6 +357,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_remember_fork_invalidated_transaction_when_insufficient_balance_dumps_bucket()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            Transaction transaction = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool = CreatePool(specProvider: provider);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
+            await AddEmptyBlock();
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            int pendingTransactionsCount = _txPool.GetPendingTransactionsCount();
+            AcceptTxResult resubmissionResult = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pendingTransactionsCount, Is.Zero);
+                Assert.That(resubmissionResult, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            }
+        }
+
+        [Test]
         public async Task should_evict_transactions_that_exceed_the_gas_limit_cap_after_fork()
         {
             Block head = _blockTree.Head;
@@ -549,8 +582,8 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            specChangeTxValidator.Received(1).IsWellFormed(transaction, Prague.Instance);
             specChangeTxValidator.ClearReceivedCalls();
-            specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
             Assert.That(_txPool.IsRevalidatedFor(Build.A.BlockHeader.WithNumber(head.Number + 1).TestObject), Is.True);
 
             await AddEmptyBlock();

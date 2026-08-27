@@ -36,6 +36,8 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
+        private const int RevalidationAbandonmentWarningThreshold = 3;
+
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
@@ -69,6 +71,7 @@ namespace Nethermind.TxPool
         private readonly Lock _forkStateLock = new();
         private long _headGeneration;
         private long _forkStateVersion;
+        private int _consecutiveRevalidationAbandonments;
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
@@ -381,7 +384,10 @@ namespace Nethermind.TxPool
                                 _hashCache.ClearCurrentBlockCache();
                             }
 
-                            UpdateBucketsWithoutRevalidation();
+                            if (ReferenceEquals(Volatile.Read(ref _validatedSpec), _specProvider.GetCurrentHeadSpec()))
+                            {
+                                UpdateBucketsWithoutRevalidation();
+                            }
                         }
                         finally
                         {
@@ -1029,15 +1035,24 @@ namespace Nethermind.TxPool
             {
                 if (!CanApplyRevalidation(spec, generation))
                 {
+                    RecordAbandonedRevalidation(spec, generation);
                     return;
                 }
 
                 _transactions.UpdatePool(_accounts, revalidation.UpdateBucket);
-                _blobTransactions.UpdatePool(_accounts, revalidation.UpdateBlobBucket);
+                if (_blobTransactions is PersistentBlobTxDistinctSortedPool persistentBlobTransactions)
+                {
+                    persistentBlobTransactions.UpdatePoolWithBatchedStorageDeletes(_accounts, revalidation.UpdateBlobBucket);
+                }
+                else
+                {
+                    _blobTransactions.UpdatePool(_accounts, revalidation.UpdateBlobBucket);
+                }
 
                 if (!CanApplyRevalidation(spec, generation))
                 {
                     InvalidateValidatedSpec();
+                    RecordAbandonedRevalidation(spec, generation);
                     return;
                 }
 
@@ -1060,6 +1075,39 @@ namespace Nethermind.TxPool
 
         private bool CanApplyRevalidation(IReleaseSpec spec, long generation) =>
             IsRevalidationGenerationCurrent(generation) && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
+
+        private bool CanContinueRevalidation(IReleaseSpec spec, long generation)
+        {
+            if (IsRevalidationGenerationCurrent(generation))
+            {
+                return true;
+            }
+
+            RecordAbandonedRevalidation(spec, generation);
+            return false;
+        }
+
+        private void RecordAbandonedRevalidation(IReleaseSpec spec, long generation)
+        {
+            bool isCancellationRequested = _cts.IsCancellationRequested;
+            long currentGeneration = Volatile.Read(ref _headGeneration);
+            string reason = isCancellationRequested
+                ? "shutdown was requested"
+                : generation != currentGeneration
+                    ? $"head generation advanced from {generation} to {currentGeneration}"
+                    : $"the head specification changed from {spec.Name} to {_specProvider.GetCurrentHeadSpec().Name}";
+
+            if (_logger.IsDebug) _logger.Debug($"Abandoned transaction pool revalidation for {spec.Name} because {reason}.");
+
+            if (!isCancellationRequested)
+            {
+                int consecutiveAbandonments = Interlocked.Increment(ref _consecutiveRevalidationAbandonments);
+                if (consecutiveAbandonments == RevalidationAbandonmentWarningThreshold && _logger.IsWarn)
+                {
+                    _logger.Warn($"Transaction pool revalidation was abandoned for {RevalidationAbandonmentWarningThreshold} consecutive heads; block production will validate fork-sensitive transaction state until a pass completes.");
+                }
+            }
+        }
 
         private void ReleaseForkInvalidatedHashesFor(IReleaseSpec spec)
         {
@@ -1092,6 +1140,7 @@ namespace Nethermind.TxPool
                 {
                     _specChangeValidationStorage?.SetSpecChangeValidationMarker(GetSpecChangeValidationMarker(spec));
                     Volatile.Write(ref _validatedSpec, spec);
+                    Interlocked.Exchange(ref _consecutiveRevalidationAbandonments, 0);
                 }
                 finally
                 {
@@ -1125,7 +1174,7 @@ namespace Nethermind.TxPool
         private string GetSpecChangeValidationMarker(IReleaseSpec spec)
         {
             SpecGasCosts gasCosts = spec.GasCosts;
-            return FormattableString.Invariant($"1|{ProductInfo.Version}|{ProductInfo.Commit}|{_specChangeValidationFingerprint}")
+            return FormattableString.Invariant($"1|{ProductInfo.Version}|{ProductInfo.Commit}|{_specChangeValidationFingerprint}|{spec.Name}")
                 + FormattableString.Invariant($"|{spec.IsEip2Enabled}|{spec.IsEip155Enabled}|{spec.ValidateChainId}|{spec.IsEip2028Enabled}")
                 + FormattableString.Invariant($"|{spec.IsEip2780Enabled}|{spec.IsEip2930Enabled}|{spec.MaxInitCodeSize}")
                 + FormattableString.Invariant($"|{spec.IsEip1559Enabled}|{spec.IsEip3860Enabled}|{spec.IsEip4844Enabled}|{spec.IsEip7623Enabled}")
@@ -1191,7 +1240,7 @@ namespace Nethermind.TxPool
                 Transaction[] transactions = _pool._transactions.GetSnapshot();
                 for (int i = 0; i < transactions.Length; i++)
                 {
-                    if (!_pool.IsRevalidationGenerationCurrent(generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation))
                     {
                         return false;
                     }
@@ -1207,7 +1256,7 @@ namespace Nethermind.TxPool
 
                 for (int i = 0; i < blobTransactions.Length; i++)
                 {
-                    if (!_pool.IsRevalidationGenerationCurrent(generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation))
                     {
                         return false;
                     }
@@ -1260,7 +1309,7 @@ namespace Nethermind.TxPool
 
                 for (int i = 0; i < count; i++)
                 {
-                    if (!_pool.IsRevalidationGenerationCurrent(generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation))
                     {
                         return false;
                     }
@@ -1341,16 +1390,29 @@ namespace Nethermind.TxPool
 
             if (shouldBeDumped)
             {
+                int invalidatedByFork = 0;
                 foreach (Transaction transaction in transactions)
                 {
-                    // transaction removed from TxPool because of insufficient balance should have opportunity
-                    // to come back in the future, so it is removed from long term cache as well.
-                    _hashCache.DeleteFromLongTerm(transaction.Hash!);
+                    bool allowLaterPoolReentrance = true;
+                    if (revalidation is not null)
+                    {
+                        ForkValidationResult validation = revalidation.Validate(transaction);
+                        if (!validation.Validation)
+                        {
+                            invalidatedByFork++;
+                            allowLaterPoolReentrance = revalidation.RecordEviction(transaction, validation);
+                        }
+                    }
+
+                    if (allowLaterPoolReentrance)
+                    {
+                        _hashCache.DeleteFromLongTerm(transaction.Hash!);
+                    }
 
                     updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                 }
 
-                return 0;
+                return invalidatedByFork;
             }
 
             return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation);

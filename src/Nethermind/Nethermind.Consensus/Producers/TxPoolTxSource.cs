@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
@@ -33,14 +34,15 @@ namespace Nethermind.Consensus.Producers
         ITransactionComparerProvider? transactionComparerProvider,
         ILogManager? logManager,
         ITxFilterPipeline? txFilterPipeline,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator? specChangeTxValidator)
         : ITxSource
     {
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
         private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly ITxValidator _specChangeTxValidator = new SpecChangeTxValidator(specProvider?.ChainId ?? throw new ArgumentNullException(nameof(specProvider)));
+        private readonly ITxValidator _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
         protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<Transaction> GetTransactions(
@@ -195,7 +197,6 @@ namespace Nethermind.Consensus.Producers
                 if (validateForkSensitiveState)
                 {
                     if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                        || !_txFilterPipeline.Execute(fullBlobTx, parent, spec)
                         || !IsForkSensitiveStateValid(fullBlobTx, spec))
                     {
                         if (reachedConsiderationLimit)
