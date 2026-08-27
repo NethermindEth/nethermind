@@ -564,17 +564,20 @@ internal sealed class XdcMasternodeEthModule(
         return [.. stakes];
     }
 
-    /// <inheritdoc cref="GetCandidateStakes" path="/remarks"/>
+    /// <remarks>
+    /// Voters are read from contract storage rather than through the EVM: the list is unbounded, and this is a
+    /// sharable method, so a call per voter would let one request amplify into arbitrarily many.
+    /// </remarks>
     private UInt256 GetTotalVoterStake(BlockHeader stateHeader, Address masternode)
     {
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(stateHeader);
-        ITransactionProcessor processor = scope.TransactionProcessor;
+        IWorldState worldState = scope.WorldState;
 
         UInt256 totalStake = UInt256.Zero;
-        foreach (Address voter in masternodeVotingContract.GetVoters(processor, stateHeader, masternode))
+        foreach (Address voter in masternodeVotingContract.GetVoters(worldState, masternode))
         {
-            totalStake += masternodeVotingContract.GetVoterStake(processor, stateHeader, masternode, voter);
+            totalStake += masternodeVotingContract.GetVoterStake(worldState, masternode, voter);
         }
 
         return totalStake;

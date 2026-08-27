@@ -351,8 +351,8 @@ public class XdcMasternodeEthModuleTests
         };
         _rewardsStore.TryGetEpochRewards(Arg.Any<Hash256>(), out Arg.Any<XdcEpochRewards?>())
             .Returns(x => { x[1] = rewards; return true; });
-        _votingContract.GetVoters(_transactionProcessor, current, TestItem.AddressA).Returns([TestItem.AddressB]);
-        _votingContract.GetVoterStake(_transactionProcessor, current, TestItem.AddressA, TestItem.AddressB)
+        _votingContract.GetVoters(_worldState, TestItem.AddressA).Returns([TestItem.AddressB]);
+        _votingContract.GetVoterStake(_worldState, TestItem.AddressA, TestItem.AddressB)
             .Returns((UInt256)StakeForOnePercentRoi * Unit.Ether);
 
         ResultWrapper<double> result = _module.eth_getStakerROIMasternode(TestItem.AddressA);
