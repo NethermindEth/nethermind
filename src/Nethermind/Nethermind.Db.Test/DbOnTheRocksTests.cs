@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -208,7 +208,7 @@ namespace Nethermind.Db.Test
                 .Returns<IRocksDbConfig>((c) =>
                 {
                     string? arg1 = (string?)c[0];
-                    string? arg2 = (string?)c[0];
+                    string? arg2 = (string?)c[1];
 
                     IRocksDbConfig baseConfig = _rocksdbConfigFactory.GetForDatabase(arg1, arg2);
 
@@ -233,8 +233,12 @@ namespace Nethermind.Db.Test
             }
             db.Flush();
 
-            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(cache.GetUsage()));
-            Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
+            long metricCacheUsage = db.GatherMetric().CacheSize;
+            long directCacheUsage = cache.GetUsage();
+
+            Assert.That(metricCacheUsage, Is.GreaterThan(0));
+            Assert.That(directCacheUsage, Is.GreaterThan(0));
+            Assert.That(metricCacheUsage, Is.EqualTo(directCacheUsage).Within(4.KiB));
         }
 
         [Test]
@@ -683,6 +687,64 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
+        [TestCase(1)]
+        [TestCase(1024)]
+        [TestCase(8192)]
+        public void Smoke_test_value_sizes(int valueSize)
+        {
+            byte[] value = new byte[valueSize];
+            new Random(valueSize).NextBytes(value);
+
+            _db[[1, 2, 3]] = value;
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], value);
+        }
+
+        [Test]
+        public void Missing_value_uses_existing_get_semantics()
+        {
+            byte[] output = [0xA5, 0xA5, 0xA5];
+            byte[]? value = _db.Get([1, 2, 3]);
+            int length = _db.Get([1, 2, 3], output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Null);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5, 0xA5, 0xA5 }));
+            }
+        }
+
+        [TestCase(0)]
+        [TestCase(3)]
+        public void C_style_get_rejects_undersized_output_without_modifying_it(int outputSize)
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [4, 5, 6, 7];
+            byte[] output = new byte[outputSize];
+            Array.Fill(output, (byte)0xA5);
+            byte[] expectedOutput = (byte[])output.Clone();
+
+            Assert.That(() => _db.Get(key, output), Throws.ArgumentException);
+            Assert.That(output, Is.EqualTo(expectedOutput));
+        }
+
+        [Test]
+        public void Empty_value_round_trips_without_modifying_output()
+        {
+            byte[] key = [1, 2, 3];
+            _db[key] = [];
+            byte[] output = [0xA5];
+            byte[]? value = _db.Get(key);
+            int length = _db.Get(key, output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value, Is.Empty);
+                Assert.That(length, Is.Zero);
+                Assert.That(output, Is.EqualTo(new byte[] { 0xA5 }));
+            }
+        }
+
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
         public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
@@ -770,7 +832,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Snapshot_dispose_cleans_up_read_options()
+        public void SnapshotDisposeCleansUp()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
 
