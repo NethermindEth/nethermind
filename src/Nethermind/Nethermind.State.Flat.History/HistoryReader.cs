@@ -148,7 +148,7 @@ public sealed class HistoryReader
         {
             // Seek, live only on a miss, then seek again only if a capture landed - see TryGetAccountV3's remarks.
             long generation = _availability.CaptureGeneration;
-            int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+            int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out ulong rowBlock);
             if (written < 0)
             {
                 Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
@@ -156,24 +156,25 @@ public sealed class HistoryReader
 
                 if (_availability.HasCapturedSince(generation))
                 {
-                    written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+                    written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out rowBlock);
                 }
 
                 if (written < 0)
                 {
-                    // An over-cap destruct left no per-slot rows, so fail closed rather than omit slots.
-                    bool poisoned = clearsCache is not null
-                        ? clearsCache.HasPoisonedClearAbove(addrHash, _storageClears, block)
-                        : _storageClears.HasPoisonedClearAbove(addrHash.Bytes, block);
-                    if (poisoned)
-                        throw new StateUnavailableException(
-                            $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
-                            "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
-
+                    rowBlock = ulong.MaxValue;
                     if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
                     written = live;
                 }
             }
+
+            // An over-cap destruct left no per-slot rows, so fail closed rather than omit slots.
+            bool poisoned = clearsCache is not null
+                ? clearsCache.TryGetPoisonedClearAbove(addrHash, _storageClears, block, out ulong poisonBlock)
+                : _storageClears.TryGetPoisonedClearAbove(addrHash.Bytes, block, out poisonBlock);
+            if (poisoned && rowBlock > poisonBlock)
+                throw new StateUnavailableException(
+                    $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
+                    "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
 
             if (written <= 0) { value = default; return false; }
             value = DecodeSlotValue(valueBuffer[..written]);

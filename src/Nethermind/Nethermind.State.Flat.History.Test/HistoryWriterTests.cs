@@ -1055,6 +1055,50 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_OverCapDestruct_ARowWrittenByALaterWalk_DoesNotAnswerReadsBelowTheDestruct()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (InvalidOperationException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
+        }
+
+        CommitBlock(1, 2, storageChanges: [(AddrA, missedSlot, HistorySlot(0x0b))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _),
+            Throws.InstanceOf<InvalidOperationException>(),
+            "the rewrite's row resolved its pre-value through a live column the destruct already truncated - believing it reports the slot unset where it held a value");
+    }
+
+    [Test]
     public void SeedPivot_InsideTheAlreadyCapturedWindow_Throws_AndWritesNothing()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);

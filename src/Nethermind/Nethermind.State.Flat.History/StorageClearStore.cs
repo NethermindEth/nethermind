@@ -49,10 +49,13 @@ internal sealed class StorageClearStore
         batch.PutSpan(key, PoisonedMarker);
     }
 
-    /// <summary>Whether an over-cap destruct is recorded above <paramref name="afterBlockExclusive"/>.</summary>
+    /// <summary>The lowest over-cap destruct recorded above <paramref name="afterBlockExclusive"/>, if any. A
+    /// recorded row at or below it is authoritative; a row above it resolved its pre-value through a live column
+    /// the destruct had already truncated.</summary>
     [SkipLocalsInit]
-    public bool HasPoisonedClearAbove(scoped ReadOnlySpan<byte> accountKey, ulong afterBlockExclusive)
+    public bool TryGetPoisonedClearAbove(scoped ReadOnlySpan<byte> accountKey, ulong afterBlockExclusive, out ulong clearBlock)
     {
+        clearBlock = 0;
         if (afterBlockExclusive == ulong.MaxValue) return false;
 
         Span<byte> lowerBound = stackalloc byte[accountKey.Length + BlockBytes];
@@ -69,7 +72,11 @@ internal sealed class StorageClearStore
             if (foundKey.Length != accountKey.Length + BlockBytes || !foundKey[..accountKey.Length].SequenceEqual(accountKey))
                 return false; // ran past this account's key range
 
-            if (view.CurrentValue.SequenceEqual(PoisonedMarker)) return true;
+            if (view.CurrentValue.SequenceEqual(PoisonedMarker))
+            {
+                clearBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[accountKey.Length..]);
+                return true;
+            }
         }
 
         return false;
