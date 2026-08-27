@@ -139,7 +139,7 @@ jobs:
           convert_to_paprika="${{ inputs.convert_to_paprika }}"
           machine_type=""
           if [[ "$convert_to_paprika" == 'true' ]]; then
-            machine_type="n2d-custom-8-32768"
+            machine_type="n2d-standard-8"
           fi
           echo "custom_machine_type=$machine_type" >> $GITHUB_OUTPUT
 
