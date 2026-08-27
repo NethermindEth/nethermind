@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -137,8 +136,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() =>
-        _rocksDb.CompactRange((byte[]?)null, null, _columnFamily);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle);
 
     public bool CompactIfDeadWeightExceeds(double deadRatio)
     {

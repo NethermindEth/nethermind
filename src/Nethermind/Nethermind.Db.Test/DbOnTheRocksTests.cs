@@ -1232,9 +1232,34 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void DeadWeight_AgainstARealDatabase_TheAggregatedPropertiesParseAndTheOpenRangeCompactionDigestsTombstones()
+        {
+            RocksDbConfigFactory configFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
+            IDb store = db;
+            byte[] value = new byte[64];
+            for (int i = 0; i < 2000; i++) store[Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray()] = value;
+            db.Flush();
+            for (int i = 0; i < 2000; i++) store.Remove(Keccak.Compute(i.ToBigEndianByteArray()).Bytes);
+            db.Flush();
+
+            string? aggregated = db.GatherProperty("rocksdb.aggregated-table-properties");
+
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, long.MaxValue.ToString(), 0.5), Is.True,
+                "the real property string of the shipped RocksDB version must parse and report the tombstones");
+
+            db.Compact();
+
+            string? afterwards = db.GatherProperty("rocksdb.aggregated-table-properties");
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(afterwards, long.MaxValue.ToString(), 0.5), Is.False,
+                "the open-range compaction must digest the tombstones, after which the trigger stands down");
+        }
+
         [TestCase("# entries=6250000000; # deletions=3050000000;", "1000000000000", 0.5, true, TestName = "DeadWeight_TombstonesShadowMostPuts_Compacts")]
         [TestCase("# entries=3300000000; # deletions=100000000;", "1000000000000", 0.5, false, TestName = "DeadWeight_MostlyLivePuts_Declines")]
         [TestCase("# entries=100; # deletions=100;", "1000000000000", 0.5, true, TestName = "DeadWeight_OnlyTombstonesLeft_Compacts")]
+        [TestCase("# entries=0; # deletions=0;", "1000000000000", 0.5, false, TestName = "DeadWeight_EmptyStore_Declines")]
         [TestCase("# entries=6250000000; # deletions=3050000000;", "999999999", 0.5, false, TestName = "DeadWeight_SmallStore_Declines")]
         [TestCase(null, "1000000000000", 0.5, false, TestName = "DeadWeight_NoTableProperties_Declines")]
         [TestCase("# entries=garbage; # deletions=1;", "1000000000000", 0.5, false, TestName = "DeadWeight_UnparsableEntries_Declines")]

@@ -22,7 +22,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -1674,7 +1673,31 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const ulong CompactOnDeletionTriggerKeys = 50_000;
     private const double CompactOnDeletionFileRatio = 0.3;
 
-    public virtual void Compact() => _db.CompactRange((byte[]?)null, null);
+    /// <summary>The whole store, as true open bounds at the native layer - a managed null can marshal as an empty
+    /// key, and an [empty, empty) range compacts nothing - and with the bottommost level forced: the default moves
+    /// tombstones down and leaves them there, which returns no space at all.</summary>
+    public virtual void Compact() => CompactOpenRange(cf: null);
+
+    internal void CompactOpenRange(IntPtr? cf)
+    {
+        IntPtr compactOptions = _rocksDbNative.rocksdb_compactoptions_create();
+        try
+        {
+            _rocksDbNative.rocksdb_compactoptions_set_bottommost_level_compaction(compactOptions, 2);
+            if (cf is { } columnFamily)
+            {
+                _rocksDbNative.rocksdb_compact_range_cf_opt(_db.Handle, columnFamily, compactOptions, (byte[])null!, UIntPtr.Zero, (byte[])null!, UIntPtr.Zero);
+            }
+            else
+            {
+                _rocksDbNative.rocksdb_compact_range_opt(_db.Handle, compactOptions, (byte[])null!, UIntPtr.Zero, (byte[])null!, UIntPtr.Zero);
+            }
+        }
+        finally
+        {
+            _rocksDbNative.rocksdb_compactoptions_destroy(compactOptions);
+        }
+    }
 
     public virtual bool CompactIfDeadWeightExceeds(double deadRatio)
     {
@@ -1687,6 +1710,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public virtual void InterruptCompactions() => _rocksDbNative.rocksdb_disable_manual_compaction(_db.Handle);
 
+    internal string? GatherProperty(string name) => _db.GetProperty(name);
+
     /// <summary>Decided from the tombstone counts the SST files themselves aggregate, never from a live-size
     /// estimate: that estimate reads file key ranges and cannot see puts shadowed by higher-level tombstones,
     /// which is exactly the shape mass deletion leaves. Small stores never qualify: their debt is not worth a
@@ -1698,7 +1723,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             || !TryParseTableProperty(aggregatedTableProperties, "# deletions=", out long deletions)) return false;
 
         long puts = entries - deletions;
-        return puts <= 0 || deletions >= puts * deadRatio;
+        return deletions > 0 && (puts <= 0 || deletions >= puts * deadRatio);
     }
 
     private static bool TryParseTableProperty(string? aggregated, string key, out long value)
