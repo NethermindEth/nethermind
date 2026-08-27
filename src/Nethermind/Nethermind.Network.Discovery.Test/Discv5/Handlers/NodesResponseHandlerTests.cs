@@ -35,6 +35,35 @@ public class NodesResponseHandlerTests
     }
 
     [Test]
+    public void ShouldUseRoutableIpv6WhenIpv4IsPrivate()
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+        IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("10.0.0.1"),
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(ip6));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
+
+        using NodesMsg nodes = new([1], 1, [record]);
+        handler.Handle(nodes);
+
+        Node[] result = handler.GetNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Length.EqualTo(1));
+            Assert.That(result[0].Host, Is.EqualTo(ip6.ToString()));
+            Assert.That(result[0].DiscoveryPort, Is.EqualTo(30305));
+        }
+    }
+
+    [Test]
     public void ShouldRejectNodesReadBeforeCompletion()
     {
         Node receiver = new(TestItem.PublicKeyA, "127.0.0.1", 30303);

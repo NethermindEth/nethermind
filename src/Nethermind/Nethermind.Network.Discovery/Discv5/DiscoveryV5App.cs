@@ -188,7 +188,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
-        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.DiscoveryAddress.Address, _allowNonRoutableEnrs))
+        if (KademliaAdapter.TryGetAcceptableNode(enr, _allowNonRoutableEnrs, out Node? enrNode))
         {
             node = enrNode;
             return true;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -21,6 +22,9 @@ public abstract class KademliaAdapterBase(
     protected abstract void AddOrRefreshRemoteNode(Node node);
 
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
+
+    protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+        => Node.TryFromDiscoveryEnr(record, out refreshedNode);
 
     protected async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
     {
@@ -89,7 +93,7 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
+                if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
                     if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record has no usable discovery endpoint.");
                     if (node.TryClearEnrRequest(requestedSequence))

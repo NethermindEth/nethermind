@@ -113,7 +113,7 @@ namespace Nethermind.Network.Test.Stats
         [TestCase(NodeFromEnrMode.Discovery)]
         public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing(NodeFromEnrMode mode)
         {
-            NodeRecord enr = CreateDualStackIpv6EndpointEnr(TestItem.PrivateKeyA);
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: false);
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
@@ -132,7 +132,7 @@ namespace Nethermind.Network.Test.Stats
         [TestCase(NodeFromEnrMode.Discovery)]
         public void TryFromEnr_accepts_dual_stack_endpoint_entries(NodeFromEnrMode mode)
         {
-            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
@@ -268,29 +268,18 @@ namespace Nethermind.Network.Test.Stats
             return enr;
         }
 
-        private static NodeRecord CreateDualStackIpv6EndpointEnr(PrivateKey privateKey)
+        private static NodeRecord CreateDualStackEnr(PrivateKey privateKey, bool includeIpv4Ports)
         {
             NodeRecord enr = new();
             enr.SetEntry(IdEntry.Instance);
             enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
             enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
             enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            enr.SetEntry(new Tcp6Entry(30303));
-            enr.SetEntry(new Udp6Entry(30304));
-            enr.EnrSequence = 1;
-            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-            return enr;
-        }
-
-        private static NodeRecord CreateDualStackEnr(PrivateKey privateKey)
-        {
-            NodeRecord enr = new();
-            enr.SetEntry(IdEntry.Instance);
-            enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
-            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
-            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            enr.SetEntry(new TcpEntry(30303));
-            enr.SetEntry(new UdpEntry(30304));
+            if (includeIpv4Ports)
+            {
+                enr.SetEntry(new TcpEntry(30303));
+                enr.SetEntry(new UdpEntry(30304));
+            }
             enr.SetEntry(new Tcp6Entry(30303));
             enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;

@@ -108,6 +108,57 @@ public class NodeRecordProviderTests
         Assert.That(currentRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence));
     }
 
+    [Test]
+    public async Task NewHeadBlock_DoesNotRepeatUnchangedEndpointWarnings()
+    {
+        Block initialHead = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        Block newHead = Build.A.Block.WithNumber(2).WithTimestamp(20).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(initialHead);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        NetworkForkId forkId = new(0x01020304, 20);
+        forkInfo.GetForkId(1, 10).Returns(forkId);
+        forkInfo.GetForkId(2, 20).Returns(forkId);
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);
+        NodeRecordProvider provider = CreateProvider(
+            blockTree,
+            forkInfo,
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Parse("2001:db8::1")),
+            timestampMilliseconds: 1_000,
+            logManager);
+
+        await provider.GetCurrentAsync();
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(newHead));
+        await provider.GetCurrentAsync();
+
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("External IPv6 address")));
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("No external IP address")));
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_WarnsWhenIpv4IsNotAdvertised()
+    {
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);
+        NodeRecordProvider provider = CreateProvider(
+            Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
+            new NetworkForkId(0x01020304, 20),
+            new IIPResolver.NethermindIp(IPAddress.IPv6Loopback, IPAddress.Parse("192.0.2.1")),
+            logManager: logManager);
+
+        await provider.GetCurrentAsync();
+
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("External IPv4 address")));
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("No external IP address")));
+    }
+
     [TestCase("192.0.2.1", "192.0.2.1", null)]
     [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
     [TestCase("2001:db8::1", null, null)] // IPv6 external with an IPv4 listener: endpoint suppressed
@@ -150,7 +201,7 @@ public class NodeRecordProviderTests
         NodeRecordProvider provider = CreateProvider(
             head,
             new NetworkForkId(0x01020304, 20),
-            new IIPResolver.NethermindIp(IPAddress.IPv6Loopback, IPAddress.Parse("2001:db8::1")));
+            new IIPResolver.NethermindIp(IPAddress.IPv6Any, IPAddress.Parse("2001:db8::1")));
 
         NodeRecord record = await provider.GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
@@ -167,6 +218,25 @@ public class NodeRecordProviderTests
             new NetworkForkId(0x01020304, 20),
             new IIPResolver.NethermindIp(
                 IPAddress.Loopback,
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("2001:db8::1")));
+
+        NodeRecord record = await provider.GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        AssertEndpointEntries(decoded, "192.0.2.1", null);
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_PublishesIpv4WhenListeningOnMappedIpv4()
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        NodeRecordProvider provider = CreateProvider(
+            head,
+            new NetworkForkId(0x01020304, 20),
+            new IIPResolver.NethermindIp(
+                IPAddress.Parse("::ffff:0.0.0.0"),
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("2001:db8::1")));
@@ -201,13 +271,17 @@ public class NodeRecordProviderTests
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
         => CreateProvider(head, forkId, new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp));
 
-    private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IIPResolver.NethermindIp resolvedIp)
+    private static NodeRecordProvider CreateProvider(
+        Block head,
+        NetworkForkId forkId,
+        IIPResolver.NethermindIp resolvedIp,
+        ILogManager? logManager = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(head);
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(forkId);
-        return CreateProvider(blockTree, forkInfo, resolvedIp, timestampMilliseconds: 1_000);
+        return CreateProvider(blockTree, forkInfo, resolvedIp, timestampMilliseconds: 1_000, logManager: logManager);
     }
 
     private static NodeRecordProvider CreateProvider(
@@ -225,7 +299,8 @@ public class NodeRecordProviderTests
         IBlockTree blockTree,
         IForkInfo forkInfo,
         IIPResolver.NethermindIp resolvedIp,
-        long timestampMilliseconds)
+        long timestampMilliseconds,
+        ILogManager? logManager = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
@@ -247,19 +322,20 @@ public class NodeRecordProviderTests
             blockTree,
             forkInfo,
             timestamper,
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
     }
 
     private static void AssertEndpointEntries(NodeRecord decoded, string? expectedIp, string? expectedIp6)
     {
+        int? expectedIpV6Port = expectedIp6 is not null && expectedIp is null ? 30303 : null;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(expectedIp is null ? null : IPAddress.Parse(expectedIp)));
             Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp), Is.EqualTo(expectedIp is null ? null : (int?)30303));
             Assert.That(decoded.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(expectedIp is null ? null : (int?)30303));
             Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip6), Is.EqualTo(expectedIp6 is null ? null : IPAddress.Parse(expectedIp6)));
-            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp6), Is.EqualTo(expectedIp6 is null ? null : (int?)30303));
-            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp6), Is.EqualTo(expectedIp6 is null ? null : (int?)30303));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp6), Is.EqualTo(expectedIpV6Port));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp6), Is.EqualTo(expectedIpV6Port));
         }
     }
 

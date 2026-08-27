@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test;
@@ -14,12 +15,26 @@ namespace Nethermind.Network.Discovery.Test;
 public class IPResolverTests
 {
     [Test]
-    public async Task Can_resolve_ip_without_override()
+    public async Task Ipv6_only_override_does_not_become_primary()
     {
-        IPResolver ipResolver = new(new NetworkConfig(), LimboLogs.Instance);
+        IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
+        IPResolver ipResolver = new(
+            new NetworkConfig { ExternalIpV6 = externalIpV6.ToString() },
+            LimboLogs.Instance);
+
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
-        Assert.That(ip.LocalIp, Is.Not.Null);
-        Assert.That(ip.ExternalIp, Is.Not.Null);
+        IPAddress? expectedExternalIpV4 = ip.ExternalIp.AddressFamily == AddressFamily.InterNetwork &&
+            !ip.ExternalIp.Equals(IPAddress.Any) &&
+            !ip.ExternalIp.Equals(IPAddress.None)
+            ? ip.ExternalIp
+            : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.Not.EqualTo(externalIpV6));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(expectedExternalIpV4));
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(externalIpV6));
+        }
     }
 
     [TestCase("99.99.99.99", "99.99.99.99", null)]
@@ -59,21 +74,6 @@ public class IPResolverTests
     }
 
     [Test]
-    public async Task Can_resolve_ipv6_only_override_without_becoming_primary()
-    {
-        INetworkConfig networkConfig = new NetworkConfig { ExternalIpV6 = "2001:db8::1" };
-        IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
-
-        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ip.ExternalIpV6, Is.EqualTo(IPAddress.Parse("2001:db8::1")));
-            Assert.That(ip.ExternalIp.AddressFamily, Is.EqualTo(AddressFamily.InterNetwork));
-        }
-    }
-
-    [Test]
     public async Task Mapped_unspecified_ipv4_override_does_not_suppress_resolution()
     {
         INetworkConfig networkConfig = new NetworkConfig
@@ -91,13 +91,13 @@ public class IPResolverTests
     }
 
     [Test]
-    public void NethermindIp_with_ExternalIp_recomputes_family_addresses()
+    public void NethermindIp_equality_compares_resolved_family_addresses()
     {
-        IIPResolver.NethermindIp ip = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"));
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp derived = new(IPAddress.Loopback, externalIp);
+        IIPResolver.NethermindIp explicitlyOverridden = new(IPAddress.Loopback, externalIp, externalIp, null);
 
-        IIPResolver.NethermindIp copied = ip with { ExternalIp = IPAddress.Parse("198.51.100.2") };
-
-        Assert.That(copied.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.2")));
+        Assert.That(explicitlyOverridden, Is.EqualTo(derived));
     }
 
     [Test]
@@ -171,6 +171,34 @@ public class IPResolverTests
             Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
             Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.2")));
         }
+    }
+
+    [TestCase("192.0.2.1", "198.51.100.2", null, nameof(NetworkConfig.ExternalIpV4))]
+    [TestCase("2001:db8::1", null, "2001:db8::2", nameof(NetworkConfig.ExternalIpV6))]
+    public async Task Warns_when_primary_and_family_override_disagree(
+        string externalIp,
+        string? externalIpV4,
+        string? externalIpV6,
+        string conflictingConfigName)
+    {
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<IPResolver>().Returns(logger);
+        IPResolver ipResolver = new(
+            new NetworkConfig
+            {
+                ExternalIp = externalIp,
+                ExternalIpV4 = externalIpV4,
+                ExternalIpV6 = externalIpV6
+            },
+            logManager);
+
+        await ipResolver.Resolve();
+
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
+            message.Contains($"disagrees with {conflictingConfigName}")));
     }
 
     [Test]

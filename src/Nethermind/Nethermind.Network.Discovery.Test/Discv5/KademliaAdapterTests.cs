@@ -140,8 +140,10 @@ public class KademliaAdapterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, endpoint), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(endpoint.Address.MapToIPv6(), endpoint.Port)), Is.True);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.17.0.1:30304")), Is.False);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.19.0.2:30305")), Is.False);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(endpoint.Address.MapToIPv6(), 30305)), Is.False);
         }
     }
 
@@ -177,10 +179,10 @@ public class KademliaAdapterTests
     }
 
     [Test]
-    public void HasDiscoveryEndpoint_DoesNotThrowForNativeIpv6InIpEntry()
+    public void HasDiscoveryEndpoint_RejectsNativeIpv6InIpEntry()
     {
-        // A peer can place a 16-byte native IPv6 address under the 4-byte `ip` key (decoding does not
-        // enforce length); MapToIPv4 on such a value throws, so it must be treated as a non-match.
+        // Decoding does not enforce the 4-byte length of the `ip` key, so a peer can put a native IPv6
+        // address there; the family check must reject it rather than match it as IPv4.
         NodeRecord record = new();
         record.SetEntry(new IpEntry(IPAddress.Parse("2001:db8::1")));
         record.SetEntry(new UdpEntry(30304));
@@ -201,6 +203,67 @@ public class KademliaAdapterTests
                 testCase.ExpectedNodeId,
                 testCase.AllowNonRoutable),
             Is.EqualTo(testCase.ExpectedResult));
+    }
+
+    [TestCase("10.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1111", 30306, 30305)]
+    [TestCase("8.8.8.8", "fd00::1", "8.8.8.8", 30303, 30304)]
+    public void TryGetAcceptableNode_SelectsRoutableFamily(
+        string ip,
+        string ip6,
+        string expectedIp,
+        int expectedTcpPort,
+        int expectedUdpPort)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse(ip),
+            tcpPort: 30303,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(IPAddress.Parse(ip6)));
+                enr.SetEntry(new Tcp6Entry(30306));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+
+        bool result = KademliaAdapter.TryGetAcceptableNode(record, allowNonRoutable: false, node: out Node? node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.Host, Is.EqualTo(expectedIp));
+            Assert.That(node.Port, Is.EqualTo(expectedTcpPort));
+            Assert.That(node.DiscoveryPort, Is.EqualTo(expectedUdpPort));
+            Assert.That(KademliaAdapter.IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutable: false), Is.True);
+        }
+    }
+
+    [Test]
+    public void TryGetAcceptableNode_PreservesSourceMatchedIpv6WithSharedPorts()
+    {
+        IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("8.8.8.8"),
+            tcpPort: 30303,
+            udpPort: 30304,
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(ip6)));
+
+        bool result = KademliaAdapter.TryGetAcceptableNode(
+            record,
+            allowNonRoutable: false,
+            preferredEndpoint: new IPEndPoint(ip6, 30304),
+            node: out Node? node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.Host, Is.EqualTo(ip6.ToString()));
+            Assert.That(node.Port, Is.EqualTo(30303));
+            Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+        }
     }
 
     private KademliaAdapter CreateAdapter(Node? currentNode = null)

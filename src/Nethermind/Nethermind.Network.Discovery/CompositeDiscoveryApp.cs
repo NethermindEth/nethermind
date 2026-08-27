@@ -1,8 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -23,6 +23,7 @@ namespace Nethermind.Network.Discovery;
 public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
+    private readonly IIPResolver _ipResolver;
     private readonly IConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
@@ -40,6 +41,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     )
     {
         _networkConfig = networkConfig;
+        _ipResolver = ipResolver;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
@@ -67,6 +69,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     {
         if (_discoveryApps.Length == 0) return;
 
+        IPAddress localIp = (await _ipResolver.Resolve()).LocalIp;
         Bootstrap bootstrap = new Bootstrap()
             .Group(new MultithreadEventLoopGroup(1))
             .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
@@ -75,16 +78,25 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
 
         if (_channelFactory is not null)
             bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
         else
-            bootstrap.Channel<SocketDatagramChannel>();
+            bootstrap.ChannelFactory(() => new SocketDatagramChannel(CreateDatagramSocket(localIp)));
 
         bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
 
         await _connections.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
 
         await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+    }
+
+    internal static Socket CreateDatagramSocket(IPAddress localIp)
+    {
+        Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+        if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            socket.DualMode = localIp.Equals(IPAddress.IPv6Any) || localIp.IsIPv4MappedToIPv6;
+        }
+
+        return socket;
     }
 
     public async Task StopAsync()

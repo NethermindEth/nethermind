@@ -635,6 +635,13 @@ public sealed class KademliaAdapter(
         return responseHandler.GetRecord();
     }
 
+    protected override bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+        => TryGetAcceptableNode(
+            record,
+            currentNode.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal,
+            currentNode.DiscoveryAddress,
+            out refreshedNode);
+
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 
@@ -898,41 +905,143 @@ public sealed class KademliaAdapter(
     }
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
-        => record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) &&
-            DiscoveryV5App.IsDiscoveryAddressAcceptable(discoveryEndpoint.Address, allowNonRoutable) &&
+        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, preferredEndpoint: null, out _) &&
             HasExpectedNodeId(record, expectedNodeId);
+
+    internal static bool TryGetAcceptableNode(
+        NodeRecord record,
+        bool allowNonRoutable,
+        [NotNullWhen(true)] out Node? node)
+        => TryGetAcceptableNodeCore(record, allowNonRoutable, preferredEndpoint: null, out node);
+
+    internal static bool TryGetAcceptableNode(
+        NodeRecord record,
+        bool allowNonRoutable,
+        IPEndPoint preferredEndpoint,
+        [NotNullWhen(true)] out Node? node)
+        => TryGetAcceptableNodeCore(record, allowNonRoutable, preferredEndpoint, out node);
+
+    private static bool TryGetAcceptableNodeCore(
+        NodeRecord record,
+        bool allowNonRoutable,
+        IPEndPoint? preferredEndpoint,
+        [NotNullWhen(true)] out Node? node)
+    {
+        node = null;
+        if (!TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, preferredEndpoint, out IPEndPoint? discoveryEndpoint))
+        {
+            return false;
+        }
+
+        PublicKey? publicKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+        if (publicKey is null)
+        {
+            return false;
+        }
+
+        IPEndPoint tcpEndpoint = TryGetEndpoint(
+            record,
+            discoveryEndpoint.Address.AddressFamily,
+            EnrContentKey.Tcp,
+            EnrContentKey.Tcp6,
+            out IPEndPoint? matchingTcpEndpoint)
+            ? matchingTcpEndpoint
+            : new IPEndPoint(discoveryEndpoint.Address, 0);
+
+        node = new Node(publicKey, tcpEndpoint, discoveryEndpoint.Port)
+        {
+            Enr = record
+        };
+        return true;
+    }
+
+    private static bool TryGetAcceptableDiscoveryEndpoint(
+        NodeRecord record,
+        bool allowNonRoutable,
+        IPEndPoint? preferredEndpoint,
+        [NotNullWhen(true)] out IPEndPoint? endpoint)
+    {
+        if (preferredEndpoint is not null)
+        {
+            IPAddress preferredAddress = preferredEndpoint.Address;
+            AddressFamily preferredFamily = preferredAddress.AddressFamily == AddressFamily.InterNetworkV6 && !preferredAddress.IsIPv4MappedToIPv6
+                ? AddressFamily.InterNetworkV6
+                : AddressFamily.InterNetwork;
+            IPAddress normalizedPreferredAddress = preferredAddress.IsIPv4MappedToIPv6 ? preferredAddress.MapToIPv4() : preferredAddress;
+            if (TryGetDiscoveryEndpoint(record, preferredFamily, out IPEndPoint? candidate) &&
+                candidate.Address.Equals(normalizedPreferredAddress) &&
+                candidate.Port == preferredEndpoint.Port &&
+                DiscoveryV5App.IsDiscoveryAddressAcceptable(candidate.Address, allowNonRoutable))
+            {
+                endpoint = candidate;
+                return true;
+            }
+        }
+
+        if (TryGetDiscoveryEndpoint(record, AddressFamily.InterNetwork, out endpoint) &&
+            DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
+        {
+            return true;
+        }
+
+        if (TryGetDiscoveryEndpoint(record, AddressFamily.InterNetworkV6, out endpoint) &&
+            DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
+        {
+            return true;
+        }
+
+        endpoint = null;
+        return false;
+    }
 
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
     {
         IPAddress endpointAddress = endpoint.Address;
-        if (endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6)
-        {
-            return record.GetObj<IPAddress>(EnrContentKey.Ip6)?.Equals(endpointAddress) == true &&
-                   HasIPv6Port(record, endpoint.Port);
-        }
-
-        IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
-        return record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) &&
-               discoveryEndpoint.Address.AddressFamily == AddressFamily.InterNetwork &&
-               discoveryEndpoint.Address.Equals(endpointIpV4) &&
+        AddressFamily family = endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6
+            ? AddressFamily.InterNetworkV6
+            : AddressFamily.InterNetwork;
+        IPAddress normalizedAddress = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
+        return TryGetDiscoveryEndpoint(record, family, out IPEndPoint? discoveryEndpoint) &&
+               discoveryEndpoint.Address.Equals(normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;
     }
 
-    private static bool HasIPv6Port(NodeRecord record, int expectedPort)
-    {
-        int? port = GetValidPort(record, EnrContentKey.Udp6);
-        return port is not null
-            ? port == expectedPort
-            : HasPort(record, EnrContentKey.Udp, expectedPort);
-    }
+    private static bool TryGetDiscoveryEndpoint(
+        NodeRecord record,
+        AddressFamily family,
+        [NotNullWhen(true)] out IPEndPoint? endpoint)
+        => TryGetEndpoint(record, family, EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
 
-    private static bool HasPort(NodeRecord record, string portKey, int expectedPort)
-        => GetValidPort(record, portKey) == expectedPort;
+    private static bool TryGetEndpoint(
+        NodeRecord record,
+        AddressFamily family,
+        string ipv4PortKey,
+        string ipv6PortKey,
+        [NotNullWhen(true)] out IPEndPoint? endpoint)
+    {
+        string addressKey = family == AddressFamily.InterNetwork ? EnrContentKey.Ip : EnrContentKey.Ip6;
+        IPAddress? address = record.GetObj<IPAddress>(addressKey);
+        bool hasExpectedFamily = family == AddressFamily.InterNetwork
+            ? address?.AddressFamily == AddressFamily.InterNetwork
+            : address?.AddressFamily == AddressFamily.InterNetworkV6 && !address.IsIPv4MappedToIPv6;
+        int? port = family == AddressFamily.InterNetwork
+            ? GetValidPort(record, ipv4PortKey)
+            : GetValidPort(record, ipv6PortKey) ?? GetValidPort(record, ipv4PortKey);
+
+        if (hasExpectedFamily && port is not null)
+        {
+            endpoint = new IPEndPoint(address!, port.Value);
+            return true;
+        }
+
+        endpoint = null;
+        return false;
+    }
 
     private static int? GetValidPort(NodeRecord record, string portKey)
     {
-        // Mirrors NodeRecord.TryGetPort (the canonical EIP-778 port validity rule); kept local to
-        // avoid widening NodeRecord's surface for the udp6-then-udp fallback in HasIPv6Port.
+        // Mirrors NodeRecord.TryGetPort (the canonical EIP-778 port validity rule); kept local so
+        // discovery can select and preserve an acceptable address family without widening NodeRecord.
         int? port = record.GetValue<int>(portKey);
         return port is > 0 && (uint)port.Value <= ushort.MaxValue ? port.Value : null;
     }

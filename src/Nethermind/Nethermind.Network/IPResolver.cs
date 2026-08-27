@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -61,12 +61,8 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             ?? configuredExternalIpV4
             ?? await ResolveExternalIp(cancellationToken);
 
-        if (configuredExternalIpV4 is not null &&
-            configuredExternalIp?.AddressFamily == AddressFamily.InterNetwork &&
-            !configuredExternalIpV4.Equals(configuredExternalIp))
-        {
-            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {nameof(NetworkConfig.ExternalIpV4)} = {configuredExternalIpV4}. The ENR advertises {nameof(NetworkConfig.ExternalIpV4)} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
-        }
+        WarnIfFamilyOverrideDiffers(configuredExternalIp, configuredExternalIpV4, nameof(NetworkConfig.ExternalIpV4));
+        WarnIfFamilyOverrideDiffers(configuredExternalIp, configuredExternalIpV6, nameof(NetworkConfig.ExternalIpV6));
 
         if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
         {
@@ -74,6 +70,18 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         }
 
         return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
+    }
+
+    private void WarnIfFamilyOverrideDiffers(IPAddress? configuredExternalIp, IPAddress? familyOverride, string familyConfigName)
+    {
+        if (configuredExternalIp is not null &&
+            familyOverride is not null &&
+            configuredExternalIp.AddressFamily == familyOverride.AddressFamily &&
+            !configuredExternalIp.Equals(familyOverride) &&
+            _logger.IsWarn)
+        {
+            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {familyConfigName} = {familyOverride}. The ENR advertises {familyConfigName} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+        }
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)

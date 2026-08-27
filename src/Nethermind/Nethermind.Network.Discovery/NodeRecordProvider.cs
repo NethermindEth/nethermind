@@ -83,6 +83,11 @@ public sealed class NodeRecordProvider(
                 return current;
             }
 
+            if (current.State.EndpointIssues != state.EndpointIssues)
+            {
+                LogEndpointIssues(state.EndpointIssues);
+            }
+
             return CreateSignedRecord(state, NextSequence(current.Record.EnrSequence));
         }
         catch (Exception e)
@@ -95,6 +100,7 @@ public sealed class NodeRecordProvider(
     private async Task<LocalNodeRecord> PrepareNodeRecord(BlockHeader? effectiveHeader, ulong previousSequence, CancellationToken cancellationToken)
     {
         LocalNodeRecordState state = await CreateState(effectiveHeader, cancellationToken);
+        LogEndpointIssues(state.EndpointIssues);
         return CreateSignedRecord(state, NextSequence(previousSequence));
     }
 
@@ -106,27 +112,60 @@ public sealed class NodeRecordProvider(
 
         // RLPx and discovery each bind a single socket to LocalIp, so advertise an address family only
         // when that socket can receive it; otherwise peers would dial an endpoint nothing is listening on.
-        IPAddress? externalIpV4 = ListensOnIPv4(ip.LocalIp) ? ip.ExternalIpV4 : null;
-        IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? ip.ExternalIpV6 : null;
+        IPAddress? resolvedExternalIpV4 = ip.ExternalIpV4;
+        IPAddress? externalIpV4 = ListensOnIPv4(ip.LocalIp) ? resolvedExternalIpV4 : null;
+        IPAddress? resolvedExternalIpV6 = ip.ExternalIpV6;
+        IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? resolvedExternalIpV6 : null;
+        EndpointIssues endpointIssues = EndpointIssues.None;
 
-        if (ip.ExternalIpV6 is not null && externalIpV6 is null)
+        if (resolvedExternalIpV4 is not null && externalIpV4 is null)
         {
-            if (_logger.IsWarn) _logger.Warn("External IPv6 address is configured but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+            endpointIssues |= EndpointIssues.IPv4NotAdvertised;
+        }
+
+        if (resolvedExternalIpV6 is not null && externalIpV6 is null)
+        {
+            endpointIssues |= EndpointIssues.IPv6NotAdvertised;
         }
 
         if (externalIpV4 is null && externalIpV6 is null)
         {
-            if (_logger.IsWarn) _logger.Warn("No external IP address is advertised; the node will not be discoverable by peers.");
+            endpointIssues |= EndpointIssues.NoExternalIpAdvertised;
         }
 
-        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId, endpointIssues);
     }
 
     private static bool ListensOnIPv4(IPAddress localIp)
-        => localIp.AddressFamily == AddressFamily.InterNetwork || localIp.Equals(IPAddress.IPv6Any);
+        => localIp.AddressFamily == AddressFamily.InterNetwork ||
+           localIp.IsIPv4MappedToIPv6 ||
+           localIp.Equals(IPAddress.IPv6Any);
 
     private static bool ListensOnIPv6(IPAddress localIp)
         => localIp.AddressFamily == AddressFamily.InterNetworkV6 && !localIp.IsIPv4MappedToIPv6;
+
+    private void LogEndpointIssues(EndpointIssues endpointIssues)
+    {
+        if (!_logger.IsWarn)
+        {
+            return;
+        }
+
+        if ((endpointIssues & EndpointIssues.IPv4NotAdvertised) != 0)
+        {
+            _logger.Warn("External IPv4 address is available but not advertised because the node does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+        }
+
+        if ((endpointIssues & EndpointIssues.IPv6NotAdvertised) != 0)
+        {
+            _logger.Warn("External IPv6 address is available but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+        }
+
+        if ((endpointIssues & EndpointIssues.NoExternalIpAdvertised) != 0)
+        {
+            _logger.Warn("No external IP address is advertised; the node will not be discoverable by peers.");
+        }
+    }
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
 
@@ -144,8 +183,13 @@ public sealed class NodeRecordProvider(
         if (state.ExternalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
-            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
-            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
+            // EIP-778 applies tcp/udp to both families when tcp6/udp6 are absent and recommends not
+            // duplicating equal ports. An IPv6-only record still needs its family-specific port keys.
+            if (state.ExternalIpV4 is null)
+            {
+                selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
+                selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
+            }
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = sequence;
@@ -166,5 +210,20 @@ public sealed class NodeRecordProvider(
 
     private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State);
 
-    private readonly record struct LocalNodeRecordState(IPAddress? ExternalIpV4, IPAddress? ExternalIpV6, int TcpPort, int UdpPort, NetworkForkId ForkId);
+    private readonly record struct LocalNodeRecordState(
+        IPAddress? ExternalIpV4,
+        IPAddress? ExternalIpV6,
+        int TcpPort,
+        int UdpPort,
+        NetworkForkId ForkId,
+        EndpointIssues EndpointIssues);
+
+    [Flags]
+    private enum EndpointIssues
+    {
+        None = 0,
+        IPv4NotAdvertised = 1,
+        IPv6NotAdvertised = 2,
+        NoExternalIpAdvertised = 4
+    }
 }

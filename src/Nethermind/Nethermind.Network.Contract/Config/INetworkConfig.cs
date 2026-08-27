@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -24,7 +24,7 @@ public interface INetworkConfig : IConfig
     /// User-facing override only. Code that needs the actual external IPv4 address must resolve it
     /// through <c>IIPResolver.Resolve</c>.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise in the ENR. Defaults to `{nameof(ExternalIp)}` when it is an IPv4 address. Use with `{nameof(ExternalIpV6)}` to advertise both address families.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise in the ENR. Only advertised when the node listens on IPv4 (`{nameof(LocalIp)}` unset, an IPv4 address, an IPv4-mapped IPv6 address, or `::`). Defaults to `{nameof(ExternalIp)}` when it is an IPv4 address. Use with `{nameof(ExternalIpV6)}` to advertise both address families.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
