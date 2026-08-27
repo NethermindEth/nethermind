@@ -318,7 +318,9 @@ jobs:
 
   cleanup:
     needs: [resolve-inputs, setup, gas-benchmark]
-    if: always() && needs.resolve-inputs.outputs.should-run == 'true'
+    # A skipped setup means no VM was ever requested, so there is nothing to reap. A failed
+    # setup still needs teardown: creation may have got part way before giving up.
+    if: always() && needs.resolve-inputs.outputs.should-run == 'true' && needs.setup.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
       contents: read
