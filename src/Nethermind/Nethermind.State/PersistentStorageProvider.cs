@@ -152,67 +152,30 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
-        bool isTracing = tracer.IsTracingStorage;
-        Dictionary<StorageCell, StorageChangeTrace>? trace = null;
-        if (isTracing)
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        Dictionary<StorageCell, StorageChangeTrace>? trace;
+        if (tracer.IsTracingStorage)
         {
             trace = [];
+            if (_destroyedThisRound.Count == 0)
+            {
+                CommitChanges<OnFlag, OffFlag>(changes, toUpdateRoots, trace);
+            }
+            else
+            {
+                CommitChanges<OnFlag, OnFlag>(changes, toUpdateRoots, trace);
+            }
         }
-
-        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
-        for (int i = 0; i <= currentPosition; i++)
+        else
         {
-            ref readonly Change change = ref changes[currentPosition - i];
-            if (change.ChangeType == StorageChangeType.StorageClear)
+            trace = null;
+            if (_destroyedThisRound.Count == 0)
             {
-                continue;
+                CommitChanges<OffFlag, OffFlag>(changes, toUpdateRoots, null);
             }
-
-            if (!_committedThisRound.Add(change!.StorageCell))
+            else
             {
-                continue;
-            }
-
-            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
-            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == currentPosition - i,
-                $"Expected the cached index to equal {currentPosition} - {i}");
-
-            if (change.ChangeType == StorageChangeType.Update)
-            {
-                // A SaveChange would resurrect the dead value over the Clear() marker;
-                // tracers still see the cell zeroed, as the journaled path reported it.
-                if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
-                {
-                    if (isTracing)
-                    {
-                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
-                    }
-
-                    continue;
-                }
-
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
-                }
-
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                    initialValue.AsSpan().SequenceEqual(change.Value))
-                {
-                    // no need to update the tree if the value is the same
-                }
-                else
-                {
-                    toUpdateRoots.Add(change.StorageCell.Address);
-
-                    GetOrCreateStorage(change.StorageCell.Address)
-                        .SaveChange(change.StorageCell, change.Value);
-                }
-
-                if (isTracing)
-                {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
-                }
+                CommitChanges<OffFlag, OnFlag>(changes, toUpdateRoots, null);
             }
         }
 
@@ -238,11 +201,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         toUpdateRoots.Clear();
 
-        if (isTracing)
+        if (trace is not null)
         {
             foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
             {
-                if (trace!.TryGetValue(cell, out StorageChangeTrace changeTrace))
+                if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
                 {
                     trace[cell] = new StorageChangeTrace(originalValue, changeTrace.After);
                 }
@@ -259,11 +222,82 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _destroyedThisRound.ClearAndTrim();
         _storageClearJournal.Clear();
 
-        if (isTracing)
+        if (trace is not null)
         {
-            ReportChanges(tracer!, trace!);
+            ReportChanges(tracer, trace);
         }
     }
+
+    private void CommitChanges<TStorageTracing, HasDestroyedAccounts>(
+        ReadOnlySpan<Change> changes,
+        HashSet<AddressAsKey> toUpdateRoots,
+        Dictionary<StorageCell, StorageChangeTrace>? trace)
+        where TStorageTracing : struct, IFlag
+        where HasDestroyedAccounts : struct, IFlag
+    {
+        Debug.Assert(TStorageTracing.IsActive == (trace is not null));
+        Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
+
+        for (int i = changes.Length - 1; i >= 0; i--)
+        {
+            ref readonly Change change = ref changes[i];
+            if (change.ChangeType == StorageChangeType.StorageClear)
+            {
+                continue;
+            }
+
+            if (!_committedThisRound.Add(change!.StorageCell))
+            {
+                continue;
+            }
+
+            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == i,
+                $"Expected the cached index to equal {i}");
+
+            if (change.ChangeType == StorageChangeType.Update)
+            {
+                // A SaveChange would resurrect the dead value over the Clear() marker;
+                // tracers still see the cell zeroed, as the journaled path reported it.
+                if (HasDestroyedAccounts.IsActive && _destroyedThisRound.Contains(change.StorageCell.Address))
+                {
+                    if (TStorageTracing.IsActive)
+                    {
+                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                    }
+
+                    continue;
+                }
+
+                if (_logger.IsTrace)
+                {
+                    TraceUpdate(change);
+                }
+
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                    initialValue.AsSpan().SequenceEqual(change.Value))
+                {
+                    // no need to update the tree if the value is the same
+                }
+                else
+                {
+                    toUpdateRoots.Add(change.StorageCell.Address);
+
+                    GetOrCreateStorage(change.StorageCell.Address)
+                        .SaveChange(change.StorageCell, change.Value);
+                }
+
+                if (TStorageTracing.IsActive)
+                {
+                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
+                }
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUpdate(in Change change)
+        => _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
