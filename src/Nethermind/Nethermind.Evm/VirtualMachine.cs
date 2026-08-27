@@ -62,6 +62,22 @@ public static class VirtualMachineStatics
 
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
+    internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+
+    /// <summary>
+    /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
+    /// </summary>
+    /// <remarks>
+    /// The historical <see href="https://eips.ethereum.org/EIPS/eip-161">EIP-161</see> exception keeps
+    /// this touch alive for the rest of the transaction, matching Geth's non-revertible dirty marker.
+    /// </remarks>
+    internal static void RestoreRipemdTouch(IWorldState worldState, IReleaseSpec spec, bool shouldRestore)
+    {
+        if (shouldRestore && worldState.AccountExists(Ripemd160Address))
+        {
+            worldState.AddToBalance(Ripemd160Address, UInt256.Zero, spec);
+        }
+    }
 
     [DoesNotReturn]
     internal static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
@@ -81,7 +97,7 @@ public partial class VirtualMachine<TGasPolicy>(
     protected readonly VmStateStack<TGasPolicy> _stateStack = new(MaxCallDepth + 1);
 
     protected IWorldState _worldState;
-    private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
+    private bool _shouldRestoreRipemdTouch;
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
 
@@ -152,8 +168,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _isTracingActionsCached = txTracer.IsTracingActions;
         _worldState = worldState;
 
-        // Reset Parity touch bug state to prevent cross-transaction leakage.
-        _parityTouchBugAccount.ShouldDelete = false;
+        _shouldRestoreRipemdTouch = false;
 
         // Prepare the specification and opcode mapping based on the current block header.
         IReleaseSpec spec = BlockExecutionContext.Spec;
@@ -458,7 +473,10 @@ public partial class VirtualMachine<TGasPolicy>(
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
             callResult.ExceptionType,
-            _logger);
+            _logger)
+        {
+            ShouldRestoreRipemdTouch = _shouldRestoreRipemdTouch,
+        };
     }
 
     private void TryChargeAndDepositCode(
@@ -514,6 +532,7 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _worldState.DeleteAccount(callCodeOwner);
             }
+            RestoreRipemdTouch(_worldState, spec, _shouldRestoreRipemdTouch);
 
             _previousCallResult = BytesZero;
             previousStateSucceeded = false;
@@ -549,6 +568,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Restore the world state to the snapshot taken before the execution of the call.
         _worldState.Restore(previousState.Snapshot);
+        RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
         ReadOnlyMemory<byte> outputBytes = callResult.Output;
@@ -598,8 +618,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Revert the world state to the snapshot taken at the start of the current state's execution.
         _worldState.Restore(_currentState.Snapshot);
 
-        // Revert any modifications specific to the Parity touch bug, if applicable.
-        RevertParityTouchBugAccount();
+        RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
 
         // Cache the transaction tracer for local use.
         ITxTracer txTracer = _txTracer;
@@ -629,7 +648,10 @@ public partial class VirtualMachine<TGasPolicy>(
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
             shouldExit = true;
-            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError)
+            {
+                ShouldRestoreRipemdTouch = _shouldRestoreRipemdTouch,
+            };
         }
 
         _previousCallResult = StatusCode.FailureBytes;
@@ -803,8 +825,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Restore the world state to its snapshot before the current call execution.
         _worldState.Restore(_currentState.Snapshot);
 
-        // Revert any modifications that might have been applied due to the Parity touch bug.
-        RevertParityTouchBugAccount();
+        RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
 
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         // The state-gas reset is performed by TransactionProcessor.Refund (see top-level halt
@@ -812,7 +833,10 @@ public partial class VirtualMachine<TGasPolicy>(
         if (_currentState.IsTopLevel)
         {
             shouldExit = true;
-            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
+            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing)
+            {
+                ShouldRestoreRipemdTouch = _shouldRestoreRipemdTouch,
+            };
         }
 
         _previousCallResult = StatusCode.FailureBytes;
@@ -922,7 +946,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// EIP-161 empty-account deletion, which the inline path does not replay.
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
-        !codeSource.Equals(_parityTouchBugAccount.Address);
+        !codeSource.Equals(Ripemd160Address);
 
     /// <summary>
     /// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same
@@ -1068,17 +1092,6 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private void RevertParityTouchBugAccount()
-    {
-        if (_parityTouchBugAccount.ShouldDelete)
-        {
-            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
-            {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
-            }
-        }
-    }
-
     private CallResult RunPrecompile(VmState<TGasPolicy> state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
@@ -1102,9 +1115,10 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!wasCreated &&
             transferValue.IsZero &&
             spec.ClearEmptyAccountWhenTouched &&
-            state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address))
+            state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
+            _worldState.IsDeadAccount(Ripemd160Address))
         {
-            _parityTouchBugAccount.ShouldDelete = true;
+            _shouldRestoreRipemdTouch = true;
         }
 
         // The policy reads the precompile's own base/data cost (with the overflow guard inside).
