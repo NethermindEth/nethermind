@@ -42,6 +42,10 @@ public sealed class HistoryWindowPruner(
     private Thread? _loop;
     private ulong _lastFloorPublishWatermark;
     private bool _deletesOwed;
+    private bool _accountSwept;
+    private bool _storageSwept;
+    private bool _clearsSwept;
+    private bool _blocksSwept;
     private long _owedDrainGeneration;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
 
@@ -259,12 +263,20 @@ public sealed class HistoryWindowPruner(
         // Retained down to the deepest scope floor, so a sliced address stays answerable. Coarse, never wrong.
         ulong markersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
 
-        bool completedAccount = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
-        bool completedStorage = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
-        bool completedClears = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
-        bool completedBlocks = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
+        if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
+        if (!_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
+        if (!_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
+        if (!_blocksSwept) _blocksSwept = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
 
+        bool completedAccount = _accountSwept;
+        bool completedStorage = _storageSwept;
+        bool completedClears = _clearsSwept;
+        bool completedBlocks = _blocksSwept;
         bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
+        if (completed)
+        {
+            _accountSwept = _storageSwept = _clearsSwept = _blocksSwept = false;
+        }
 
         if (_logger.IsInfo)
         {

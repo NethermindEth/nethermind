@@ -224,6 +224,38 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void RunOnePass_AColumnSweptEarlierInTheCycle_IsNotRescannedWhileItsSiblingsFinish()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.Addresses[0], 1, new Account(0, 0));
+        for (int i = 1; i <= 6; i++)
+        {
+            HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.Addresses[i], 15, new Account((ulong)i, (ulong)i));
+        }
+
+        HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, 1, block: 1, [0x0a]);
+        for (int i = 1; i <= 15; i++)
+        {
+            HistoryColumnsWriter.RecordStorageV3(_historyColumns, TestItem.Addresses[i], (UInt256)i, block: 15, [0x0b]);
+        }
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+
+        bool completed = false;
+        for (int pass = 0; pass < 7 && !completed; pass++)
+        {
+            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(3));
+        }
+
+        Assert.That(completed, Is.True,
+            "a sweep spread over budgeted passes must converge in about max(per-column chunks) passes: a column finished earlier in the cycle stays finished instead of rescanning its live rows from scratch on every pass until the columns happen to align");
+        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+
+        pruner.Dispose();
+    }
+
+    [Test]
     public void Start_WithNoWatermarkEventSinceStartup_StillRunsAFirstPassAndPublishesTheFloor()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
