@@ -369,11 +369,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
-                    if (!isForward && (ulong)start < _blockTree.GetLowestBlock())
+                    ulong lowestStored = _blockTree.GetLowestBlock();
+                    if (!isForward && (ulong)start < lowestStored)
                     {
                         if (_logger.IsInfo) _logger.Info(
-                            $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {_blockTree.GetLowestBlock()} is pruned, so its receipts are not late, they are gone.");
-                        MarkCompleted(isForward);
+                            $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
+                        MarkCompleted(isForward: false);
                         return;
                     }
 
