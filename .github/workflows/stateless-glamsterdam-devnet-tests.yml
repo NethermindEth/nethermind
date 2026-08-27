@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 20
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
     env:
       SUMMARY_DIR: /tmp/stateless-devnet-${{ matrix.range }}
