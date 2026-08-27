@@ -173,9 +173,10 @@ namespace Nethermind.Network
 
         public void Start()
         {
-            if (_networkConfig.PeersUpdateInterval is <= 0)
+            int peersUpdateInterval = _networkConfig.PeersUpdateInterval;
+            if (peersUpdateInterval is <= 0)
             {
-                ThrowInvalidPeersUpdateInterval();
+                ThrowInvalidPeersUpdateInterval(peersUpdateInterval);
             }
 
             lock (_sessionLock)
@@ -1343,9 +1344,9 @@ namespace Nethermind.Network
             => throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
 
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidPeersUpdateInterval()
+        private static void ThrowInvalidPeersUpdateInterval(int peersUpdateInterval)
             => throw new InvalidConfigurationException(
-                $"{nameof(INetworkConfig.PeersUpdateInterval)} must be greater than zero.",
+                $"{nameof(INetworkConfig.PeersUpdateInterval)} must be greater than zero, but was {peersUpdateInterval}.",
                 ExitCodes.ForbiddenOptionValue);
     }
 }
