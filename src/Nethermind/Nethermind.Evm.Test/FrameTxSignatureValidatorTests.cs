@@ -73,7 +73,7 @@ public class FrameTxSignatureValidatorTests
         tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -94,7 +94,7 @@ public class FrameTxSignatureValidatorTests
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -167,7 +167,7 @@ public class FrameTxSignatureValidatorTests
         ];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -195,6 +195,29 @@ public class FrameTxSignatureValidatorTests
 
         Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_SignerMismatchAndFailedVerification_ReportedDistinctly()
+    {
+        // A signer that does not match and a signature that does not verify are different rejections,
+        // and the EIP-8141 fixtures name them differently, so neither may borrow the other's message.
+        Transaction mismatched = CreateFrameTx();
+        mismatched.FrameSignatures = [Secp256k1Entry(mismatched, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
+
+        Transaction unverifiable = CreateFrameTx();
+        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        raw[31] = 1; // r = 1 (canonical low-s range)
+        raw[63] = 1; // s = 1
+        raw.AsSpan(64).Fill(0x42); // qx || qy — a matching signer over non-verifying signature bytes
+        unverifiable.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeP256, new Address(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]), default, raw),
+        ];
+
+        Assert.That(Validate(mismatched, out string? mismatchError), Is.False);
+        Assert.That(Validate(unverifiable, out string? verifyError), Is.False);
+        Assert.That(mismatchError, Is.Not.EqualTo(verifyError));
     }
 
     [Test]
