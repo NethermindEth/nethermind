@@ -486,9 +486,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// Reads and writes register the address in <see cref="_storages"/>; <see cref="Set"/> does so
     /// explicitly because a cached write can bypass the loading path. Persisted trie storage is
     /// reachable only through the current account's storage root. <c>TrieStoreScopeProvider</c>
-    /// resolves from that root, while <c>FlatWorldStateScope</c> clears dirtied storage when the
-    /// account is absent. Therefore no registered state and no account storage root exhaust the
-    /// readable cases.
+    /// resolves from that root, while <c>FlatWorldStateScope</c> clears an account's storage when
+    /// it writes a null account record after storage changes are flushed. Therefore no registered
+    /// state and no account storage root exhaust the readable cases.
     /// </remarks>
     private bool HasStorageToClear(Address address)
     {
