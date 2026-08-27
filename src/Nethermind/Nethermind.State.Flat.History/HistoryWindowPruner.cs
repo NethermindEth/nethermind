@@ -48,6 +48,7 @@ public sealed class HistoryWindowPruner(
     private bool _clearsSwept;
     private bool _blocksSwept;
     private ulong _cycleFloor;
+    private ulong _cycleMarkersAndClearsFloor;
     private long _owedDrainGeneration;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
 
@@ -263,25 +264,26 @@ public sealed class HistoryWindowPruner(
         // Whatever the floor is now, including one an earlier pass published: a resumed sweep deletes against the
         // current floor, and anything it passed over is taken by the next sweep.
         if (!availability.TryGetGlobalFloor(out ulong floor)) return true;
+        bool hasScopes = availability.GetScopesArray().Length > 0;
+        ulong liveMarkersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
 
-        // Every column of a cycle sweeps against the floor the cycle began with: a column finished early would
+        // Every column of a cycle sweeps against the floors the cycle began with: a column finished early would
         // otherwise be skipped past rows a mid-cycle advance exposed, leaving the columns swept to different
-        // depths. Rows between the pinned floor and the live one wait for the next cycle - the live floor is
-        // already refusing their reads.
+        // depths. Rows between the pinned floors and the live ones belong to the next cycle - the live floors are
+        // already refusing their reads - and a completion that observes the live floors ahead of the pinned ones
+        // reports the pass as yielded, so the loop starts that cycle immediately instead of sleeping an interval.
         if (!_accountSwept && !_storageSwept && !_clearsSwept && !_blocksSwept)
         {
             _cycleFloor = floor;
+            _cycleMarkersAndClearsFloor = liveMarkersAndClearsFloor;
         }
 
         floor = _cycleFloor;
 
         long rowsBefore = Metrics.FlatHistoryPrunedRows;
 
-        // Its own budget per column, so a slow account column cannot starve the other three of all progress.
-        bool hasScopes = availability.GetScopesArray().Length > 0;
-
         // Retained down to the deepest scope floor, so a sliced address stays answerable. Coarse, never wrong.
-        ulong markersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
+        ulong markersAndClearsFloor = _cycleMarkersAndClearsFloor;
 
         if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
         if (!_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
@@ -310,6 +312,12 @@ public sealed class HistoryWindowPruner(
             if ((accountCompacted || storageCompacted) && _logger.IsInfo)
             {
                 _logger.Info("Compacted the flat history columns whose files were mostly tombstones; their space has been returned.");
+            }
+
+            availability.TryGetGlobalFloor(out ulong liveFloor);
+            if (liveFloor > _cycleFloor || liveMarkersAndClearsFloor > _cycleMarkersAndClearsFloor)
+            {
+                return false;
             }
         }
 

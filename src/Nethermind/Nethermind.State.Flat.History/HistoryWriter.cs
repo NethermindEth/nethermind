@@ -29,7 +29,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Above this, materializing a pre-value row per wiped slot is unbounded work on one block; poison instead.
     internal const int DestructSlotEnumerationCap = 10_000;
 
-    private const int PendingPreValueBufferSize = 512;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore? _accountHistory;
@@ -523,9 +522,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>Resolves the oldest touches from the persisted flat column, which still holds pre-walk values.</summary>
     private const int PreValueMultiGetChunkSize = 1024;
 
+    /// <summary>Resolves the oldest touches from the persisted flat column, which still holds pre-walk values.</summary>
     private void ResolvePendingV3(PendingV3Writes pending, in HistoryColumnBatches columns)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
@@ -569,8 +568,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    // Sorted so the point reads walk the persisted column in key order (grouped per account for storage), sharing
-    // index and data blocks instead of seeking randomly per key.
+    // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
+    // sharing index and data blocks instead of hitting them randomly per chunk.
     private static KeyValuePair<ValueHash256, ulong>[] SortedAccounts(Dictionary<ValueHash256, ulong> map)
     {
         KeyValuePair<ValueHash256, ulong>[] entries = new KeyValuePair<ValueHash256, ulong>[map.Count];

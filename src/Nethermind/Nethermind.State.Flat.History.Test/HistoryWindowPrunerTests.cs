@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -257,36 +258,49 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
-    public void RunOnePass_AFloorAdvanceMidCycle_IsSweptByTheNextCycleForEveryColumn()
+    public void RunOnePass_AFloorAdvanceMidCycle_HoldsEveryColumnToThePinnedFloorAndQueuesTheNextCycle()
     {
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 10, new Account(1, 1));
-        HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, 1, block: 10, [0x0a]);
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.Addresses[0], 1, new Account(0, 0));
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 15, new Account(1, 1));
+        HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, 1, block: 15, [0x0a]);
+        for (int i = 1; i <= 5; i++)
+        {
+            HistoryColumnsWriter.RecordStorageV3(_historyColumns, TestItem.Addresses[i], (UInt256)i, block: 25, [0x0b]);
+        }
+
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
         using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-        pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(1));
+        bool firstPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(3));
 
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 30);
-        bool completed = false;
-        for (int pass = 0; pass < 8 && !completed; pass++)
-        {
-            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(2));
-        }
+        bool completingPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(100));
 
-        Assert.That(completed, Is.True);
+        int accountRowsAfterPinnedCycle = CountRows(FlatHistoryColumns.AccountHistory);
+        int storageRowsAfterPinnedCycle = CountRows(FlatHistoryColumns.StorageHistory);
 
-        completed = false;
-        for (int pass = 0; pass < 8 && !completed; pass++)
-        {
-            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(4));
-        }
+        bool queuedCycle = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(100));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(completed, Is.True);
-            Assert.That(_reader.IsPrunedBelowFloor(21), Is.True,
-                "rows a mid-cycle floor advance exposed belong to the next cycle, for every column - not just the ones that had not finished yet");
+            Assert.That(firstPass, Is.False, "the first pass yields with the storage column mid-scan");
+            Assert.That(completingPass, Is.False,
+                "a cycle completing while the live floor is already ahead of its pinned one reports yielded, so the loop starts the next cycle without waiting for another watermark event");
+            Assert.That(accountRowsAfterPinnedCycle, Is.EqualTo(1),
+                "the finished account column holds its block-15 row through the pinned cycle");
+            Assert.That(storageRowsAfterPinnedCycle, Is.EqualTo(6),
+                "the unfinished storage column sweeps to the pinned floor, not the live one");
+            Assert.That(queuedCycle, Is.True, "the queued cycle pins the advanced floor and finishes against it");
+            Assert.That(CountRows(FlatHistoryColumns.AccountHistory), Is.EqualTo(0));
+            Assert.That(CountRows(FlatHistoryColumns.StorageHistory), Is.EqualTo(5));
         }
+    }
+
+    private int CountRows(FlatHistoryColumns column)
+    {
+        int count = 0;
+        foreach (KeyValuePair<byte[], byte[]?> _ in _historyColumns.GetColumnDb(column).GetAll()) count++;
+        return count;
     }
 
     [Test]

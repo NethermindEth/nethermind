@@ -1674,16 +1674,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const double CompactOnDeletionFileRatio = 0.3;
 
     /// <summary>The whole store, as true open bounds at the native layer - a managed null can marshal as an empty
-    /// key, and an [empty, empty) range compacts nothing - and with the bottommost level forced: the default moves
-    /// tombstones down and leaves them there, which returns no space at all.</summary>
-    public virtual void Compact() => CompactOpenRange(cf: null);
+    /// key, and an [empty, empty) range compacts nothing at all.</summary>
+    public virtual void Compact() => CompactOpenRange(cf: null, forceBottommost: false);
 
-    internal void CompactOpenRange(IntPtr? cf)
+    /// <summary>Forcing the bottommost level is what makes a dead-weight compaction return space - the default
+    /// moves tombstones down and leaves them there - and is exactly wrong for routine compactions, which would
+    /// rewrite every already-settled file on every call.</summary>
+    internal void CompactOpenRange(IntPtr? cf, bool forceBottommost)
     {
         IntPtr compactOptions = _rocksDbNative.rocksdb_compactoptions_create();
         try
         {
-            _rocksDbNative.rocksdb_compactoptions_set_bottommost_level_compaction(compactOptions, 2);
+            if (forceBottommost) _rocksDbNative.rocksdb_compactoptions_set_bottommost_level_compaction(compactOptions, 2);
             if (cf is { } columnFamily)
             {
                 _rocksDbNative.rocksdb_compact_range_cf_opt(_db.Handle, columnFamily, compactOptions, (byte[])null!, UIntPtr.Zero, (byte[])null!, UIntPtr.Zero);
@@ -1705,7 +1707,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.aggregated-table-properties"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
 
         if (_logger.IsInfo) _logger.Info($"Compacting {Name}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
-        Compact();
+        CompactOpenRange(cf: null, forceBottommost: true);
         return true;
     }
 
@@ -1713,6 +1715,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public virtual void InterruptCompactions() => _rocksDbNative.rocksdb_disable_manual_compaction(_db.Handle);
 
     internal string? GatherProperty(string name) => _db.GetProperty(name);
+
+    internal void LogColumnDeadWeightCompaction(string columnName)
+    {
+        if (_logger.IsInfo) _logger.Info($"Compacting the {columnName} column of {Name}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
+    }
 
     /// <summary>Decided from the tombstone counts the SST files themselves aggregate, never from a live-size
     /// estimate: that estimate reads file key ranges and cannot see puts shadowed by higher-level tombstones,

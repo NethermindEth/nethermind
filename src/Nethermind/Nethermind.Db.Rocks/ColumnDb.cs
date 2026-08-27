@@ -136,7 +136,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: false);
 
     /// <inheritdoc/>
     public bool CompactIfDeadWeightExceeds(double deadRatio)
@@ -149,7 +149,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             return false;
         }
 
-        Compact();
+        _mainDb.LogColumnDeadWeightCompaction(Name);
+        _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: true);
         return true;
     }
 

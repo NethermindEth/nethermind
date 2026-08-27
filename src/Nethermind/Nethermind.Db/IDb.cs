@@ -32,9 +32,11 @@ namespace Nethermind.Db
         void Clear() { }
         void Compact() { }
 
-        /// <summary>Compacts only when live data is a small fraction of the store's files - the shape mass deletion
-        /// leaves behind - so a caller can offer the space back without forcing a rewrite of healthy data. Blocks
-        /// until done. Returns whether it compacted; the default declines.</summary>
+        /// <summary>Compacts only when the store's files carry at least <paramref name="deadRatio"/> tombstones per
+        /// surviving put - the shape mass deletion leaves behind - so a caller can offer the space back without
+        /// forcing a rewrite of healthy data. Blocks until done. Returns whether it compacted; the default
+        /// declines. A decorator must forward this together with <see cref="InterruptCompactions"/>, or a shutdown
+        /// during the rewrite loses its ability to abort it.</summary>
         bool CompactIfDeadWeightExceeds(double deadRatio) => false;
 
         /// <summary>Aborts any manual compaction in flight and refuses new ones, so a shutdown joining the thread
