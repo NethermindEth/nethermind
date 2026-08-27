@@ -480,7 +480,7 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>Reclaims <c>[from, to)</c> except the heights still answered for, and returns the
     /// height it reached - <paramref name="to"/> unless the budget ran out between two slices.</summary>
-    private ulong RetainSlicedAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken)
+    private ulong RetainSlicedAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken, bool meterRetained = true)
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
@@ -491,7 +491,7 @@ public class HistoryPruner : IHistoryPruner
         // A single wide range beats a hundred narrow ones, which unlink fewer whole files between them.
         if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
         {
-            ReclaimSlice(from, to, sortedAnswered);
+            ReclaimSlice(from, to, sortedAnswered, meterRetained);
             return to;
         }
 
@@ -504,7 +504,7 @@ public class HistoryPruner : IHistoryPruner
             else if (cursor < answeredTo) sliceEnd = ulong.Min(sliceEnd, answeredTo);
 
             bool alreadyAnswered = cursor >= answeredFrom && cursor < answeredTo;
-            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? sortedAnswered : null);
+            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? sortedAnswered : null, meterRetained);
             cursor = sliceEnd;
 
             // Slices decide where a pass may stop, not how early. ChunkStep already narrowed the chunk to the
@@ -519,7 +519,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary><paramref name="sortedAnswered"/> is null where the headers have to be read instead.</summary>
-    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ulong[]? sortedAnswered)
+    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ulong[]? sortedAnswered, bool meterRetained = true)
     {
         IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
         try
@@ -541,7 +541,7 @@ public class HistoryPruner : IHistoryPruner
                 return;
             }
 
-            Metrics.SlicedReceiptsRetained += candidates.Count;
+            if (meterRetained) Metrics.SlicedReceiptsRetained += candidates.Count;
 
             if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
             {
@@ -690,13 +690,18 @@ public class HistoryPruner : IHistoryPruner
         ulong start = ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
         if (start >= target) return;
 
-        ulong to = ulong.Min(target, start + ReclaimChunkBlocks);
-        ulong reached = RetainSlicedAndReclaimTheRest(start, to, cancellationToken);
+        // One minimum chunk, not a full one: this runs inside a pass whose budget the main reclaim already spent,
+        // so it adds at most the same uninterruptible floor every other consumer of the pass accepts.
+        ulong to = ulong.Min(target, start + MinimumReclaimChunkBlocks);
+        ulong reached = RetainSlicedAndReclaimTheRest(start, to, cancellationToken, meterRetained: false);
         if (reached > _sliceCleanupCursor)
         {
             _sliceCleanupCursor = reached;
             SaveDeletePointers();
         }
+
+        if (_logger.IsInfo) _logger.Info(
+            $"Expired slice retention cleanup reached #{reached}; {target.SaturatingSub(reached)} heights of expired band remain.");
     }
 
     /// <summary>Only ground the main reclaim has already covered can be cleaned, or the two cursors would race.</summary>
@@ -755,6 +760,8 @@ public class HistoryPruner : IHistoryPruner
                 ulong[] bitmap = new ulong[(ReceiptRetentionSlice + 63) / 64];
                 foreach (ulong retainedHeight in retained)
                 {
+                    if (retainedHeight < bucketStart || retainedHeight >= bucketStart + ReceiptRetentionSlice) continue;
+
                     ulong offset = retainedHeight - bucketStart;
                     bitmap[offset / 64] |= 1UL << (int)(offset % 64);
                 }

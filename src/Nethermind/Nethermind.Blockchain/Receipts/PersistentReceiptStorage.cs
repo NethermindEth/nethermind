@@ -954,6 +954,9 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed) =>
+            SweepTransactionIndex(retainedFromBlock, resumeFrom, maxEntries, isHeightRetained: null, cancellationToken, out removed);
+
         [SkipLocalsInit]
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
         {

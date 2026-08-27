@@ -1674,22 +1674,46 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const ulong CompactOnDeletionTriggerKeys = 50_000;
     private const double CompactOnDeletionFileRatio = 0.3;
 
-    public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
+    public virtual void Compact() => _db.CompactRange((byte[]?)null, null);
 
     public virtual bool CompactIfDeadWeightExceeds(double deadRatio)
     {
-        if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.estimate-live-data-size"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
+        if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.aggregated-table-properties"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
 
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
         Compact();
         return true;
     }
 
-    /// <summary>Small stores never qualify: their debt is not worth a rewrite, and the live-data estimate is too
-    /// coarse to trust at that size anyway.</summary>
-    internal static bool ExceedsDeadWeight(string? liveDataSize, string? totalFilesSize, double deadRatio) =>
-        long.TryParse(totalFilesSize, out long totalBytes) && totalBytes > MinDeadWeightCompactionBytes
-        && long.TryParse(liveDataSize, out long liveBytes)
-        && liveBytes < totalBytes * (1 - deadRatio);
+    public virtual void InterruptCompactions() => _rocksDbNative.rocksdb_disable_manual_compaction(_db.Handle);
+
+    /// <summary>Decided from the tombstone counts the SST files themselves aggregate, never from a live-size
+    /// estimate: that estimate reads file key ranges and cannot see puts shadowed by higher-level tombstones,
+    /// which is exactly the shape mass deletion leaves. Small stores never qualify: their debt is not worth a
+    /// rewrite.</summary>
+    internal static bool ExceedsDeadWeight(string? aggregatedTableProperties, string? totalFilesSize, double deadRatio)
+    {
+        if (!long.TryParse(totalFilesSize, out long totalBytes) || totalBytes <= MinDeadWeightCompactionBytes) return false;
+        if (!TryParseTableProperty(aggregatedTableProperties, "# entries=", out long entries)
+            || !TryParseTableProperty(aggregatedTableProperties, "# deletions=", out long deletions)) return false;
+
+        long puts = entries - deletions;
+        return puts <= 0 || deletions >= puts * deadRatio;
+    }
+
+    private static bool TryParseTableProperty(string? aggregated, string key, out long value)
+    {
+        value = 0;
+        if (aggregated is null) return false;
+
+        int start = aggregated.IndexOf(key, StringComparison.Ordinal);
+        if (start < 0) return false;
+        start += key.Length;
+
+        int end = start;
+        while (end < aggregated.Length && char.IsAsciiDigit(aggregated[end])) end++;
+        return end > start && long.TryParse(aggregated.AsSpan(start, end - start), out value);
+    }
 
     private const long MinDeadWeightCompactionBytes = 1L << 30;
 

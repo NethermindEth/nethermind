@@ -1232,13 +1232,15 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase("400000000000", "1000000000000", 0.5, true, TestName = "DeadWeight_MostlyDead_Compacts")]
-        [TestCase("600000000000", "1000000000000", 0.5, false, TestName = "DeadWeight_MostlyLive_Declines")]
-        [TestCase("1", "999999999", 0.5, false, TestName = "DeadWeight_SmallStore_Declines")]
-        [TestCase(null, "1000000000000", 0.5, false, TestName = "DeadWeight_NoLiveEstimate_Declines")]
-        [TestCase("400000000000", null, 0.5, false, TestName = "DeadWeight_NoTotalSize_Declines")]
-        public void ExceedsDeadWeight_DecidesFromTheTwoProperties(string? live, string? total, double ratio, bool expected) =>
-            Assert.That(DbOnTheRocks.ExceedsDeadWeight(live, total, ratio), Is.EqualTo(expected));
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "1000000000000", 0.5, true, TestName = "DeadWeight_TombstonesShadowMostPuts_Compacts")]
+        [TestCase("# entries=3300000000; # deletions=100000000;", "1000000000000", 0.5, false, TestName = "DeadWeight_MostlyLivePuts_Declines")]
+        [TestCase("# entries=100; # deletions=100;", "1000000000000", 0.5, true, TestName = "DeadWeight_OnlyTombstonesLeft_Compacts")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "999999999", 0.5, false, TestName = "DeadWeight_SmallStore_Declines")]
+        [TestCase(null, "1000000000000", 0.5, false, TestName = "DeadWeight_NoTableProperties_Declines")]
+        [TestCase("# entries=garbage; # deletions=1;", "1000000000000", 0.5, false, TestName = "DeadWeight_UnparsableEntries_Declines")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", null, 0.5, false, TestName = "DeadWeight_NoTotalSize_Declines")]
+        public void ExceedsDeadWeight_DecidesFromTheAggregatedTombstoneCounts(string? aggregated, string? total, double ratio, bool expected) =>
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, total, ratio), Is.EqualTo(expected));
     }
 
     class CorruptedDbOnTheRocks(

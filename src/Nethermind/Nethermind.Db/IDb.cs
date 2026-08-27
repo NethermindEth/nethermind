@@ -36,6 +36,10 @@ namespace Nethermind.Db
         /// leaves behind - so a caller can offer the space back without forcing a rewrite of healthy data. Blocks
         /// until done. Returns whether it compacted; the default declines.</summary>
         bool CompactIfDeadWeightExceeds(double deadRatio) => false;
+
+        /// <summary>Aborts any manual compaction in flight and refuses new ones, so a shutdown joining the thread
+        /// that called <see cref="CompactIfDeadWeightExceeds"/> is not held for the rewrite's duration.</summary>
+        void InterruptCompactions() { }
         void SetWriteBuffer(long sizeBytes) { }
 
         readonly struct DbMetric

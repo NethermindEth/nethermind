@@ -297,7 +297,7 @@ public sealed class HistoryWindowPruner(
             bool storageCompacted = _storageHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
             if ((accountCompacted || storageCompacted) && _logger.IsInfo)
             {
-                _logger.Info("Compacted the flat history columns whose files were mostly dead weight; their space is being returned.");
+                _logger.Info("Compacted the flat history columns whose files were mostly tombstones; their space has been returned.");
             }
         }
 
@@ -507,6 +507,7 @@ public sealed class HistoryWindowPruner(
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+        _accountHistory.InterruptCompactions();
         if (_started)
         {
             writer.WatermarkAdvanced -= OnWatermarkAdvanced;
