@@ -1426,9 +1426,9 @@ public partial class EngineModuleTests
 
         (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
 
-        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         Hash256 parentHash = chain.BlockTree.HeadHash;
         PayloadAttributes payloadAttributes = new()

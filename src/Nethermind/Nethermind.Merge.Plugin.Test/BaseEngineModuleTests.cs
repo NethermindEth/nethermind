@@ -164,6 +164,8 @@ public abstract partial class BaseEngineModuleTests
         /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
         /// <paramref name="minTransactions"/> transactions.
         /// </summary>
+        /// <param name="parentHash">The required parent hash, or <see langword="null"/> to match any parent.</param>
+        /// <param name="minTransactions">The minimum transaction count, or zero to impose no transaction requirement.</param>
         public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
                 b => (parentHash is null || b.Header.ParentHash == parentHash)
