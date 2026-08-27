@@ -546,7 +546,7 @@ public class DiscoveryMessageSerializerTests
         // A full batch of the widest (IPv6) entries must still fit into a single discv4 datagram,
         // otherwise the receiving side drops it as oversized.
         Node[] nodes = Enumerable.Range(0, KademliaAdapter.MaxNodesPerNeighborsMsg)
-            .Select(i => new Node(TestItem.PublicKeys[i], $"2001:db8::{i + 1}", i + 1, i + 11))
+            .Select(i => new Node(TestItem.PublicKeys[i], $"2001:db8::{i + 1}", 30303, 30304))
             .ToArray();
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, nodes)

@@ -5,7 +5,6 @@ using System.Net;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery;
@@ -53,7 +52,7 @@ public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResol
         {
             return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(bindAddress, port), port);
         }
-        catch (Exception e) when (!bindAddress.Equals(fallbackIp) && e is not PortInUseException)
+        catch (Exception e) when (!bindAddress.Equals(fallbackIp))
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery udp channel on {bindAddress}:{port} ({e.Message}). Retrying on {fallbackIp}:{port}.");
             return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(fallbackIp, port), port);

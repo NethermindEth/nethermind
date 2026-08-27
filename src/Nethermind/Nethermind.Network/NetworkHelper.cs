@@ -25,9 +25,6 @@ public static class NetworkHelper
     /// its discovery datagram channel is deliberately created with
     /// <see cref="System.Net.Sockets.AddressFamily.InterNetwork"/> (see <c>CompositeDiscoveryApp</c>).
     /// </remarks>
-    public static IPAddress GetInboundBindAddress(IPAddress localIp)
-        => GetInboundBindAddress(localIp, localIpConfig: null, CanBindDualStack());
-
     public static IPAddress GetInboundBindAddress(IPAddress localIp, string? localIpConfig)
         => GetInboundBindAddress(localIp, localIpConfig, CanBindDualStack());
 
@@ -43,13 +40,11 @@ public static class NetworkHelper
     private static bool IsWildcardForDualStack(IPAddress localIp, string? localIpConfig)
     {
         if (!IsWildcard(localIp)) return false;
-        // Explicit IPv4 wildcard must stay IPv4-only; only the default (unset) wildcard is widened.
-        if (localIpConfig is not null && localIpConfig.Trim() == IPAddress.Any.ToString())
-        {
-            return false;
-        }
 
-        return true;
+        // Explicit IPv4 wildcard must stay IPv4-only; only the default (unset) wildcard is widened.
+        return localIpConfig is null
+            || !IPAddress.TryParse(localIpConfig, out IPAddress? configured)
+            || configured.AddressFamily != AddressFamily.InterNetwork;
     }
 
     private static bool CanBindDualStack()

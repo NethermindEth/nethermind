@@ -186,7 +186,7 @@ namespace Nethermind.Network.Rlpx
             {
                 return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(bindAddress, LocalPort), LocalPort);
             }
-            catch (Exception e) when (!bindAddress.Equals(_localIp) && e is not PortInUseException)
+            catch (Exception e) when (!bindAddress.Equals(_localIp))
             {
                 if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort} ({e.Message}). Retrying on {_localIp}:{LocalPort}.");
                 return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_localIp, LocalPort), LocalPort);
