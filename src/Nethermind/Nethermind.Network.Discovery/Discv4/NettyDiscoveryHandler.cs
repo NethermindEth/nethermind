@@ -151,13 +151,13 @@ public class NettyDiscoveryHandler(
 
         if (!_globalInboundMessageLimiter.TryAcquire())
         {
-            if (_logger.IsDebug) _logger.Debug($"Rate limiting discovery message globally, type: {type}, sender: {address}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
             return false;
         }
 
         if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rate limiting discovery message {type} from {remoteEndpoint}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {remoteEndpoint}");
             return false;
         }
 

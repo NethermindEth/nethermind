@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -284,6 +284,13 @@ public class TxPoolInfoProviderTests
         for (int i = 0; i < nonces.Length; i++) keys[i] = Key(nonces[i]);
         return keys;
     }
+
+    private Transaction GetBlobTransaction(ulong nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithNonce(nonce)
+            .WithSenderAddress(_address)
+            .TestObject;
 
     public record SenderScenario(uint AccountNonce, ulong[] TxNonces, ulong[] ExpectedPending, ulong[] ExpectedQueued);
 }

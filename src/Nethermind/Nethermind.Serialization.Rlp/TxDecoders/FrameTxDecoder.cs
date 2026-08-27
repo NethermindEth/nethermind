@@ -87,7 +87,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         if (transaction is not null)
         {
-            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext);
+            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, rlpBehaviors);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
             {
@@ -171,7 +171,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
 
-        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper);
+        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
         int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
@@ -192,7 +192,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             writer.StartSequence(payloadContentLength);
             // Elide on forSigning like payloadContentLength, or the declared length and the bytes drift.
             EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
-            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);
+            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper, rlpBehaviors);
         }
     }
 
@@ -208,7 +208,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         int bodyLength = wrapper is null
             ? payloadSequenceLength
-            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper));
+            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
 
         return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
             ? 1 + bodyLength

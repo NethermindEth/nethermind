@@ -71,6 +71,9 @@ public static class TxErrorMessages
     public const string InvalidBlobProofs =
         "InvalidBlobProof: Proofs do not match the blobs.";
 
+    public const string IncompleteBlobData =
+        "IncompleteBlobData: Blob transaction sidecar data is incomplete.";
+
     public const string InvalidProofVersion =
         "InvalidTxProofVersion: Version of network wrapper is not supported.";
 
