@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -38,6 +39,44 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
+        }
+
+        [Test]
+        public async Task Periodic_peer_update_timer_signals_each_tick_and_stops_on_cancellation()
+        {
+            ManualTimeProvider timeProvider = new();
+            using CancellationTokenSource cancellationTokenSource = new();
+            using SemaphoreSlim signal = new(0);
+            TimeSpan interval = TimeSpan.FromMilliseconds(250);
+            Task timerTask = PeerManager.RunPeriodicPeerUpdatesAsync(
+                interval,
+                timeProvider,
+                () => signal.Release(),
+                cancellationTokenSource.Token);
+
+            timeProvider.AdvanceAndFireTimer(interval);
+            bool firstTickSignaled = await signal.WaitAsync(TimeSpan.FromSeconds(5));
+
+            timeProvider.AdvanceAndFireTimer(interval);
+            bool secondTickSignaled = await signal.WaitAsync(TimeSpan.FromSeconds(5));
+
+            cancellationTokenSource.Cancel();
+            OperationCanceledException? cancellationException = null;
+            try
+            {
+                await timerTask;
+            }
+            catch (OperationCanceledException e)
+            {
+                cancellationException = e;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstTickSignaled, Is.True);
+                Assert.That(secondTickSignaled, Is.True);
+                Assert.That(cancellationException, Is.Not.Null);
+            }
         }
 
         [Test]
