@@ -42,5 +42,6 @@ public class AdjustedRocksdbConfig(
 
     public FlushOnExitMode FlushOnExit => baseConfig.FlushOnExit;
     public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
+    /// <inheritdoc/>
     public bool CompactOnDeletions => compactOnDeletions || baseConfig.CompactOnDeletions;
 }

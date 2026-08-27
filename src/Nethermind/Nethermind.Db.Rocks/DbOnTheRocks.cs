@@ -1699,6 +1699,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <inheritdoc/>
     public virtual bool CompactIfDeadWeightExceeds(double deadRatio)
     {
         if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.aggregated-table-properties"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
@@ -1708,6 +1709,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
+    /// <inheritdoc/>
     public virtual void InterruptCompactions() => _rocksDbNative.rocksdb_disable_manual_compaction(_db.Handle);
 
     internal string? GatherProperty(string name) => _db.GetProperty(name);

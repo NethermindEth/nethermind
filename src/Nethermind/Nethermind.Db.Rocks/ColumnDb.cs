@@ -138,6 +138,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle);
 
+    /// <inheritdoc/>
     public bool CompactIfDeadWeightExceeds(double deadRatio)
     {
         if (!DbOnTheRocks.ExceedsDeadWeight(
@@ -152,6 +153,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         return true;
     }
 
+    /// <inheritdoc/>
     public void InterruptCompactions() => _mainDb.InterruptCompactions();
 
     /// <summary>

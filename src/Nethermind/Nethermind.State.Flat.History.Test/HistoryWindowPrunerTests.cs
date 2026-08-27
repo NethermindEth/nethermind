@@ -240,7 +240,7 @@ public class HistoryWindowPrunerTests
 
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
 
         bool completed = false;
         for (int pass = 0; pass < 7 && !completed; pass++)
@@ -248,11 +248,45 @@ public class HistoryWindowPrunerTests
             completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(3));
         }
 
-        Assert.That(completed, Is.True,
-            "a sweep spread over budgeted passes must converge in about max(per-column chunks) passes: a column finished earlier in the cycle stays finished instead of rescanning its live rows from scratch on every pass until the columns happen to align");
-        Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True,
+                "a sweep spread over budgeted passes must converge in about max(per-column chunks) passes: a column finished earlier in the cycle stays finished instead of rescanning its live rows from scratch on every pass until the columns happen to align");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True);
+        }
+    }
 
-        pruner.Dispose();
+    [Test]
+    public void RunOnePass_AFloorAdvanceMidCycle_IsSweptByTheNextCycleForEveryColumn()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 10, new Account(1, 1));
+        HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, 1, block: 10, [0x0a]);
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(1));
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 30);
+        bool completed = false;
+        for (int pass = 0; pass < 8 && !completed; pass++)
+        {
+            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(2));
+        }
+
+        Assert.That(completed, Is.True);
+
+        completed = false;
+        for (int pass = 0; pass < 8 && !completed; pass++)
+        {
+            completed = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(4));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True);
+            Assert.That(_reader.IsPrunedBelowFloor(21), Is.True,
+                "rows a mid-cycle floor advance exposed belong to the next cycle, for every column - not just the ones that had not finished yet");
+        }
     }
 
     [Test]
