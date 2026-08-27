@@ -2886,7 +2886,10 @@ public class Eth72ProtocolHandlerTests
     }
 
     // Restoring the request mask would overwrite a broader announcement and downgrade a full
-    // provider, starving samplers gated on the full-provider count.
+    // provider, starving samplers gated on the full-provider count. The two cases share a requeue
+    // reason and separate its entry points: an empty response claimed from the wire, and a request
+    // the maintenance sweep found expired. The registry-refusal branch moved out to
+    // should_keep_announcement_when_registry_refuses_delivered_cells, which no longer strips.
     [TestCase(false, TestName = "should_restore_announced_mask_after_empty_cells_response")]
     [TestCase(true, TestName = "should_restore_announced_mask_after_cell_request_times_out")]
     public void should_restore_announced_mask_rather_than_request_mask(bool timeOutRequest)
@@ -3008,6 +3011,52 @@ public class Eth72ProtocolHandlerTests
         {
             registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
             registry.DidNotReceive().RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
+        }
+    }
+
+    // The restore is recorded outside _cellStateLock, so a park landing in that gap re-strips the
+    // announcement and owes a new restore. Clearing by mask could not see that, because the mask the
+    // park re-adds is the one just restored; only the epoch distinguishes them.
+    [Test]
+    public void should_not_clear_a_restore_re_added_while_the_previous_one_was_being_recorded()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+        bool reParked = false;
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+            .Returns(_ =>
+            {
+                if (!reParked)
+                {
+                    // Stand in for a concurrent CellsMessage72: strips the announcement again and
+                    // re-parks the very same mask before the maintenance tick retakes the lock.
+                    reParked = true;
+                    ParkEmptyCellsResponse(tx.Hash!, cellMask);
+                }
+
+                return true;
+            });
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+
+        HandleIncomingStatusMessage();
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
+        registry.ClearReceivedCalls();
+
+        // Past the 5s backoff but inside the 15s pending-request TTL, for both the original park
+        // and the one the callback interleaves.
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(11));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reParked, Is.True);
+            registry.Received(2).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
         }
     }
 
@@ -5279,6 +5328,14 @@ public class Eth72ProtocolHandlerTests
             Disconnecting?.Invoke();
             Disconnects.Add((reason, details));
         }
+    }
+
+    /// <summary>Requests cells and answers with an empty response, parking them with a restore owed.</summary>
+    private void ParkEmptyCellsResponse(Hash256 hash, BlobCellMask cellMask)
+    {
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(hash, cellMask), Is.True);
+        using CellsMessage72 empty = new(GetLastGetCellsRequestId(hash, cellMask), [], [], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(empty, Eth72MessageCode.Cells);
     }
 
     /// <summary>Runs every background task inline except those tagged with the rejected source.</summary>

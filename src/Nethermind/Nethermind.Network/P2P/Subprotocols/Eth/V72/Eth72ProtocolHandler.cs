@@ -88,7 +88,6 @@ public class Eth72ProtocolHandler(
     private static readonly TimeSpan CellResponseCorrelationTtl = Timeouts.Cleanup;
     private static readonly TimeSpan PartialCellResponseBackoff = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PendingCellStateTtl = TimeSpan.FromSeconds(15);
-    private const long NoRestoreEpoch = 0;
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly int _providerProbabilityPercent = txPoolConfig.SparseBlobProviderProbabilityPercent;
     private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
@@ -108,6 +107,8 @@ public class Eth72ProtocolHandler(
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = EnsureNotNull(sparseBlobPoolPeerRegistry, nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
     private Func<ClaimedCellsResponse, CancellationToken, ValueTask>? _handleCells;
+    /// <summary>Sentinel <c>RestoreEpoch</c> for a pending entry that owes no announcement restore.</summary>
+    private const long NoRestoreEpoch = 0;
     private long _cellStateRevision;
     private long _blobAnnouncementsReceived;
     private long _cellRequestsReceived;
@@ -1435,7 +1436,7 @@ public class Eth72ProtocolHandler(
     /// see that, so the epoch captured before the restore is what decides: a mismatch means a newer
     /// restore is owed and this one must not clear it.
     /// </remarks>
-    private void ClearPendingCellRestoreMaskLocked(ValueHash256 hash, long expectedRestoreEpoch)
+    private void ClearPendingCellRestoreLocked(ValueHash256 hash, long expectedRestoreEpoch)
     {
         ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrNullRef(_pendingCellRequests, hash);
         if (Unsafe.IsNullRef(ref state) || state.RestoreEpoch != expectedRestoreEpoch)
@@ -1551,7 +1552,7 @@ public class Eth72ProtocolHandler(
                 {
                     lock (_cellStateLock)
                     {
-                        ClearPendingCellRestoreMaskLocked(key, restoreEpoch);
+                        ClearPendingCellRestoreLocked(key, restoreEpoch);
                     }
                 }
 
