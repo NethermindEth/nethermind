@@ -19,8 +19,15 @@ internal sealed class PendingPaymasterCache
     /// <summary>Pending frame transactions currently paying through <paramref name="key"/>.</summary>
     public int GetPendingCount(AddressAsKey key) => _pending.TryGetValue(key, out int count) ? count : 0;
 
-    /// <summary>Counts one more pending frame transaction paying through <paramref name="key"/>.</summary>
-    public void Increment(AddressAsKey key) => _pending.AddOrUpdate(key, 1, static (_, count) => count + 1);
+#if DEBUG
+    /// <summary>Every count currently held, for the owning pool's bookkeeping check.</summary>
+    public IEnumerable<KeyValuePair<AddressAsKey, int>> Counts => _pending;
+#endif
+
+    /// <summary>Counts one more pending frame transaction paying through <paramref name="key"/>, returning the new total.</summary>
+    /// <remarks>The count is the reservation: taking it before the cap is judged is what stops two concurrent
+    /// submissions from both reading the same free slot. A caller that then rejects must <see cref="Decrement"/>.</remarks>
+    public int Reserve(AddressAsKey key) => _pending.AddOrUpdate(key, 1, static (_, count) => count + 1);
 
     /// <summary>Releases one pending frame transaction paying through <paramref name="key"/>.</summary>
     /// <remarks>Clamped at zero, so a double release cannot drive the count negative and permanently

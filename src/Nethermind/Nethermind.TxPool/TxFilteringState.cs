@@ -9,6 +9,11 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
 {
     private AccountStruct _senderAccount;
 
+    /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
+    /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
+    /// outcome is known rather than leaving the sponsor permanently short.</remarks>
+    public bool PaymasterReserved;
+
     /// <remarks>
     /// A failed lookup leaves the out-value undefined and the readers diverge on it, so a missing
     /// account is normalised to <see cref="AccountStruct.TotallyEmpty"/>. A zeroed code hash would

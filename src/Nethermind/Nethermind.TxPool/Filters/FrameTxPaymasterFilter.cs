@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
-using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -14,8 +13,9 @@ namespace Nethermind.TxPool.Filters;
 /// Enforces the EIP-8141 public-mempool cap on how many pending frame transactions may pay through one
 /// non-canonical paymaster.
 /// </summary>
-/// <remarks>Reads the pending count rather than reserving, so a later filter's rejection needs no release,
-/// at the cost of concurrent submissions naming one paymaster briefly exceeding the cap.</remarks>
+/// <remarks>Counting is the reservation: the slot is taken before the cap is judged, so two concurrent
+/// submissions cannot both read it free. The pool releases it again whenever the transaction does not
+/// end up pending.</remarks>
 internal sealed class FrameTxPaymasterFilter(
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
@@ -31,24 +31,27 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         Address? paymaster = FrameTxValidation.GetPrefixPaymaster(tx);
-        if (paymaster is null || !IsNonCanonicalPaymaster(paymaster))
+        if (paymaster is null)
         {
             return AcceptTxResult.Accepted;
         }
 
-        // A replacement takes over the slot of the tx it displaces, so the pending set does not grow. Below the
-        // cap the discount cannot change the verdict, so skip the bucket walk and its pool lock there.
-        int held = paymasters.GetPendingCount(paymaster);
-        int pending = held < Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
-            || !ReplacesPendingTxOfSamePaymaster(tx, paymaster)
-            ? held
-            : held - 1;
-        if (pending >= Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster)
+        // Taken before the verdict, so a concurrent submission naming this paymaster cannot also see the
+        // slot free; the pool releases it on every path that leaves the transaction unpooled.
+        int held = paymasters.Reserve(paymaster);
+        state.PaymasterReserved = true;
+
+        // Both remaining tests are deferred until the count could bite: below the cap neither the target's
+        // code nor a replacement it displaces can change the verdict, so neither is paid for.
+        if (held > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
+            && IsNonCanonicalPaymaster(paymaster)
+            && !ReplacesPendingTxOfSamePaymaster(tx, paymaster))
         {
-            // Atomic: this filter runs under the pool's head read lock, so paymasters reject concurrently.
+            paymasters.Decrement(paymaster);
+            state.PaymasterReserved = false;
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterLimitReached);
             if (logger.IsTrace)
-                logger.Trace($"Skipped adding frame transaction {tx.Hash}, non-canonical paymaster {paymaster} already sponsors {held} pending transactions.");
+                logger.Trace($"Skipped adding frame transaction {tx.Hash}, non-canonical paymaster {paymaster} already sponsors {held - 1} pending transactions.");
             return AcceptTxResult.NonCanonicalPaymasterLimitReached;
         }
 
@@ -59,38 +62,9 @@ internal sealed class FrameTxPaymasterFilter(
     private bool IsNonCanonicalPaymaster(Address paymaster) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
-    /// <remarks>
-    /// Matched on the pool's competing key, so the EIP-8250 nonce-key domain counts, and on the paymaster too:
-    /// displacing a tx sponsored elsewhere frees that sponsor's slot while still taking one here.
-    /// </remarks>
-    private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
-    {
-        ReplacementSearch search = new(tx, paymaster);
-        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
-        {
-            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
-            if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce > state.Nonce) return false;
-
-            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending))
-            {
-                state.Found = state.Paymaster == FrameTxValidation.GetPrefixPaymaster(pending);
-                return false;
-            }
-
-            // Same nonce, another domain: only one entry can compete, so keep looking for it.
-            return true;
-        });
-
-        return search.Found;
-    }
-
-    private struct ReplacementSearch(Transaction tx, Address paymaster)
-    {
-        public readonly Transaction Tx = tx;
-        public readonly ulong Nonce = tx.Nonce;
-        public readonly Address Paymaster = paymaster;
-        public bool Found;
-    }
+    /// <remarks>Matched on the paymaster too: displacing a tx sponsored elsewhere frees that sponsor's
+    /// slot while still taking one here.</remarks>
+    private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster) =>
+        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
+        && paymaster == FrameTxValidation.GetPrefixPaymaster(replaced);
 }
