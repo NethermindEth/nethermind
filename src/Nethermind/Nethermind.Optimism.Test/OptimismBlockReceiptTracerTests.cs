@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -18,15 +19,16 @@ public class OptimismBlockReceiptTracerTests
     [Test]
     public void FrameTxReceipt_CarriesPayerAndFrameReceipts()
     {
-        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).TestObject;
+        // No `to`, so IsContractCreation is true while CreatesTopLevelContract is not.
+        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).WithTo(null).TestObject;
         Block block = Build.A.Block.WithTransactions(frameTx).TestObject;
         LogEntry frameLog = new(TestItem.AddressC, [1], [TestItem.KeccakA]);
 
-        OptimismBlockReceiptTracer tracer = BuildTracer();
+        using OptimismBlockReceiptTracer tracer = BuildTracer();
         tracer.StartNewBlockTrace(block);
         tracer.StartNewTxTrace(frameTx);
         tracer.ReportFrameTxReceipt(TestItem.AddressD, [new TxFrameReceipt(TxFrameReceipt.StatusFailure, 21_000, 4_000, [frameLog])]);
-        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(25_000, 21_000, 21_000, 4_000, 25_000), [], [frameLog]);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(25_000, 20_000, 21_000, 4_000, 25_000), [], [frameLog]);
         tracer.EndTxTrace();
 
         TxReceipt receipt = tracer.LastReceipt;
@@ -37,8 +39,10 @@ public class OptimismBlockReceiptTracerTests
             Assert.That(receipt.Payer, Is.EqualTo(TestItem.AddressD));
             Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(1));
             Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure), "status is aggregated from the frames");
-            Assert.That(receipt.BlockGasUsed, Is.EqualTo(21_000UL), "EIP-7778 execution dimension");
+            Assert.That(receipt.BlockGasUsed, Is.EqualTo(21_000UL), "EIP-7778 execution dimension, pre-refund");
+            Assert.That(receipt.ExecutionGasUsed, Is.EqualTo(20_000UL), "EIP-7778 execution dimension, post-refund");
             Assert.That(receipt.StorageGasUsed, Is.EqualTo(4_000UL), "EIP-8037 state dimension");
+            Assert.That(receipt.ContractAddress, Is.Null, "a frame tx creates nothing at the top level (EIP-8141)");
         }
     }
 
@@ -50,7 +54,7 @@ public class OptimismBlockReceiptTracerTests
         Block block = Build.A.Block.WithTransactions(frameTx, plainTx).TestObject;
         LogEntry frameLog = new(TestItem.AddressC, [1], [TestItem.KeccakA]);
 
-        OptimismBlockReceiptTracer tracer = BuildTracer();
+        using OptimismBlockReceiptTracer tracer = BuildTracer();
         tracer.StartNewBlockTrace(block);
 
         tracer.StartNewTxTrace(frameTx);
@@ -81,9 +85,9 @@ public class OptimismBlockReceiptTracerTests
         IWorldState worldState = Substitute.For<IWorldState>();
         worldState.GetNonce(Arg.Any<Address>()).Returns(5UL);
 
-        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithSenderAddress(TestItem.AddressA).TestObject;
+        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithSenderAddress(TestItem.AddressA).WithGasPrice(7).TestObject;
 
-        OptimismBlockReceiptTracer tracer = BuildTracer(specHelper, worldState);
+        using OptimismBlockReceiptTracer tracer = BuildTracer(specHelper, worldState);
         // The block is left empty: the deposit tx decoder lives in the Optimism plugin, so putting it in a
         // block would make the builder compute a transaction root it cannot encode.
         tracer.StartNewBlockTrace(Build.A.Block.TestObject);
@@ -98,6 +102,7 @@ public class OptimismBlockReceiptTracerTests
             Assert.That(receipt.DepositNonce, Is.EqualTo(4UL), "the nonce is written before the receipt is built, so it is read back decremented");
             Assert.That(receipt.DepositReceiptVersion, Is.EqualTo(1UL));
             Assert.That(receipt.GasUsed, Is.EqualTo(21_000UL), "the shared population still runs for a deposit");
+            Assert.That(receipt.EffectiveGasPrice, Is.EqualTo((UInt256)7), "so does the diagnostic gas price");
         }
     }
 }
