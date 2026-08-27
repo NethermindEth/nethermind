@@ -2950,9 +2950,7 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
 
         HandleIncomingStatusMessage();
-        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
-        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
-        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
 
         registry.ClearReceivedCalls();
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
@@ -3111,9 +3109,7 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
 
         HandleIncomingStatusMessage();
-        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
-        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
-        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
         registry.ClearReceivedCalls();
 
         // Past the 15s pending-request TTL, so the entry is dropped on this tick.
@@ -3141,9 +3137,7 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
 
         HandleIncomingStatusMessage();
-        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
-        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
-        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
         registry.ClearReceivedCalls();
 
         // The restore is refused, but the cells are placed with another provider on the same tick.
@@ -3205,9 +3199,7 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
 
         HandleIncomingStatusMessage();
-        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
-        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
-        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
         registry.ClearReceivedCalls();
 
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
