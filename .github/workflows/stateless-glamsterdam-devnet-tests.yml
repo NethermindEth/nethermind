@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  CATALOG_ROOT: https://pub-df22334654034ebab51bc096137a59d8.r2.dev/devnets/glamsterdam-devnet-7
+  CATALOG_ROOT: https://pub-760ad8b3dd9547539f829c1ea30f18b5.r2.dev/devnets/glamsterdam-devnet-8
 
 jobs:
   build:
