@@ -415,7 +415,7 @@ public class LogFinderTests
     {
         SetUp(true);
         LogFinder logFinder = CreateLogFinder(receiptConfig: new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
-        LogFilter filter = FilterBuilder.New().FromBlock(0).ToBlock(4).Build();
+        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(4).Build();
 
         if (shouldThrow)
         {
@@ -442,7 +442,7 @@ public class LogFinderTests
 
         // range 0..9 (10 blocks) far exceeds the limit, but the index serves the middle (3..6) and the
         // out-of-index head/tail scans must bypass the cap since the query is already bounded by the index
-        LogFilter filter = FilterBuilder.New().FromBlock(0).ToBlock(9).WithAddress(TestItem.AddressA).Build();
+        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(9).WithAddress(TestItem.AddressA).Build();
 
         IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
