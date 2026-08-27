@@ -7,7 +7,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
-using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -57,38 +56,11 @@ internal sealed class FrameTxPayerExposureFilter(
 
     /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
     /// set instead.</summary>
-    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
-    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.</remarks>
-    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
-    {
-        ReplacementSearch search = new(tx, payer);
-        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
-        {
-            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
-            if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce > state.Nonce) return false;
-
-            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
-                && pending.PayerAddress == state.Payer
-                && !pending.IsOverflowInTxCostAndValue(out UInt256 cost))
-            {
-                state.Reserved = cost;
-                return false;
-            }
-
-            // Same nonce, another domain: only one entry can compete, so keep looking for it.
-            return true;
-        });
-
-        return search.Reserved;
-    }
-
-    private struct ReplacementSearch(Transaction tx, Address payer)
-    {
-        public readonly Transaction Tx = tx;
-        public readonly ulong Nonce = tx.Nonce;
-        public readonly Address Payer = payer;
-        public UInt256 Reserved;
-    }
+    /// <remarks>Matched on the payer too, since displacing another payer's tx frees that payer.</remarks>
+    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer) =>
+        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
+        && replaced.PayerAddress == payer
+        && !replaced.IsOverflowInTxCostAndValue(out UInt256 cost)
+            ? cost
+            : UInt256.Zero;
 }
