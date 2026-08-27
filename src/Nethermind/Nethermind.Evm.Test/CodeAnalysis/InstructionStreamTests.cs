@@ -376,6 +376,10 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public void StreamInterpreter_DefaultEnablement_IsArchitectureSpecific(Architecture architecture, bool expected) =>
         Assert.That(StreamInterpreter.IsEnabledByDefault(architecture), Is.EqualTo(expected));
 
+    [Test]
+    public void StreamInterpreter_ForceOverride_EnablesArm64() =>
+        Assert.That(StreamInterpreter.IsEnabledByDefault(Architecture.Arm64, forceEnabled: true), Is.True);
+
     private static readonly byte[] CalleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)
         .PushData(0).Op(Instruction.MSTORE)
