@@ -64,3 +64,23 @@ jobs:
       # published). Their suites are the only thing that verifies it, so CI must run them.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/rpc-bench -p 'test*.py' -v
+
+  ci-script-tests:
+    name: Test CI scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Covers the benchmark runners' overlay reaper: destructive root-level shell duplicated
+      # across three checkout-less workflow jobs. The suite runs the shipped step bodies against
+      # synthetic mount tables and fails if the copies drift apart.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
