@@ -347,8 +347,7 @@ public class BlockTreeTests
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         AddToMain(baseTree, block0);
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-        baseTree.SuggestBlock(block1);
-        baseTree.TryUpdateMainChain(block1.Header, wereProcessed: true, preloadedBlocks: new[] { block1 });
+        AddToMain(baseTree, block1);
 
         GeneratedBlockAccessList generatedBlockAccessList = new();
         byte[] encodedBlockAccessList = [1];

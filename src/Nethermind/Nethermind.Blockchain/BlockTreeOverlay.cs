@@ -23,7 +23,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         Block head = _baseTree.Head!;
         // BAL persistence clears fields on the block instance, so do not pass the base tree's live head.
         Block detachedHead = new(head.Header, head.Body);
-        _overlayTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { detachedHead });
+        _overlayTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [detachedHead]);
     }
 
     public ulong NetworkId => _baseTree.NetworkId;
