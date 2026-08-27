@@ -643,6 +643,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
+        if (dbConfig.CompactOnDeletions)
+        {
+            _rocksDbNative.rocksdb_options_add_compact_on_deletion_collector_factory_del_ratio(
+                options.Handle,
+                new UIntPtr(CompactOnDeletionSlidingWindowKeys),
+                new UIntPtr(CompactOnDeletionTriggerKeys),
+                CompactOnDeletionFileRatio);
+        }
+
         #endregion
 
         #region Other options
@@ -1661,7 +1670,28 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
+    private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;
+    private const ulong CompactOnDeletionTriggerKeys = 50_000;
+    private const double CompactOnDeletionFileRatio = 0.3;
+
     public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
+
+    public virtual bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.estimate-live-data-size"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
+
+        Compact();
+        return true;
+    }
+
+    /// <summary>Small stores never qualify: their debt is not worth a rewrite, and the live-data estimate is too
+    /// coarse to trust at that size anyway.</summary>
+    internal static bool ExceedsDeadWeight(string? liveDataSize, string? totalFilesSize, double deadRatio) =>
+        long.TryParse(totalFilesSize, out long totalBytes) && totalBytes > MinDeadWeightCompactionBytes
+        && long.TryParse(liveDataSize, out long liveBytes)
+        && liveBytes < totalBytes * (1 - deadRatio);
+
+    private const long MinDeadWeightCompactionBytes = 1L << 30;
 
     public virtual void SyncWal()
     {

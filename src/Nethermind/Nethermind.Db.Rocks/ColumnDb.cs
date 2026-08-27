@@ -140,6 +140,20 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public void Compact() =>
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
 
+    public bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!DbOnTheRocks.ExceedsDeadWeight(
+                _rocksDb.GetProperty("rocksdb.estimate-live-data-size", _columnFamily),
+                _rocksDb.GetProperty("rocksdb.total-sst-files-size", _columnFamily),
+                deadRatio))
+        {
+            return false;
+        }
+
+        Compact();
+        return true;
+    }
+
     /// <summary>
     /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
     /// </summary>

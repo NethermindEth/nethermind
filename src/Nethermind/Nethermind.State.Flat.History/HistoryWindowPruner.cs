@@ -27,6 +27,7 @@ public sealed class HistoryWindowPruner(
 {
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
+    private const double DeadWeightCompactionRatio = 0.5;
 
     private static ReadOnlySpan<byte> AccountCursorKey => "history:prune:cursor:account"u8;
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
@@ -291,6 +292,13 @@ public sealed class HistoryWindowPruner(
         if (completed)
         {
             _accountSwept = _storageSwept = _clearsSwept = _blocksSwept = false;
+
+            bool accountCompacted = _accountHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+            bool storageCompacted = _storageHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+            if ((accountCompacted || storageCompacted) && _logger.IsInfo)
+            {
+                _logger.Info("Compacted the flat history columns whose files were mostly dead weight; their space is being returned.");
+            }
         }
 
         return completed;

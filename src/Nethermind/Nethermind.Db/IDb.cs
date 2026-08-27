@@ -31,6 +31,11 @@ namespace Nethermind.Db
         void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
         void Compact() { }
+
+        /// <summary>Compacts only when live data is a small fraction of the store's files - the shape mass deletion
+        /// leaves behind - so a caller can offer the space back without forcing a rewrite of healthy data. Blocks
+        /// until done. Returns whether it compacted; the default declines.</summary>
+        bool CompactIfDeadWeightExceeds(double deadRatio) => false;
         void SetWriteBuffer(long sizeBytes) { }
 
         readonly struct DbMetric

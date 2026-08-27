@@ -9,7 +9,8 @@ public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
     ulong writeBufferSize,
-    IntPtr? blockCache = null
+    IntPtr? blockCache = null,
+    bool compactOnDeletions = false
 ) : IRocksDbConfig
 {
     public ulong? WriteBufferSize => writeBufferSize;
@@ -41,4 +42,5 @@ public class AdjustedRocksdbConfig(
 
     public FlushOnExitMode FlushOnExit => baseConfig.FlushOnExit;
     public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
+    public bool CompactOnDeletions => compactOnDeletions || baseConfig.CompactOnDeletions;
 }
