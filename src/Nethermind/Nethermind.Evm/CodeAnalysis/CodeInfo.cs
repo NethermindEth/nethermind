@@ -94,7 +94,8 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private void BuildStream()
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
+        if (stream is not null && (StreamInterpreter.ForceAllContexts || StreamInterpreter.IsProfitable(stream))
+            && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
         {
             InstructionStreamCache.Set(CodeHash, stream);
         }

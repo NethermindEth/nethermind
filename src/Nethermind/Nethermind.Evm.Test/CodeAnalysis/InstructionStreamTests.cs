@@ -180,6 +180,43 @@ public class InstructionStreamTests
     public void TryBuild_EmptyCode_ReturnsNull()
         => Assert.That(InstructionStream.TryBuild(ReadOnlySpan<byte>.Empty), Is.Null);
 
+    [TestCaseSource(nameof(ProfitabilityCases))]
+    public void IsProfitable_CountsDirectAndPrechargedEntries(byte[] code, bool expected)
+    {
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        Assert.That(StreamInterpreter.IsProfitable(stream), Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> ProfitabilityCases()
+    {
+        yield return new TestCaseData(
+            new byte[]
+            {
+                (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 2, (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1, 3, (byte)Instruction.PUSH1, 4, (byte)Instruction.MUL,
+                (byte)Instruction.STOP,
+            }, true) { TestName = "ComputeDenseStreamIsAccepted" };
+        yield return new TestCaseData(
+            new byte[] { (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.STOP }, false)
+        { TestName = "TwoToOneFastToBoundaryRatioIsRejected" };
+        yield return new TestCaseData(
+            new byte[]
+            {
+                (byte)Instruction.PUSH0, (byte)Instruction.MSTORE,
+                (byte)Instruction.PUSH0, (byte)Instruction.MLOAD,
+                (byte)Instruction.PUSH0, (byte)Instruction.MCOPY,
+                (byte)Instruction.STOP,
+            }, true) { TestName = "SpecializedMemoryEntriesAreAccepted" };
+        yield return new TestCaseData(
+            new byte[]
+            {
+                (byte)Instruction.PUSH0, (byte)Instruction.STOP,
+                (byte)Instruction.SLOAD, (byte)Instruction.SSTORE,
+                (byte)Instruction.CALL, (byte)Instruction.RETURN,
+            }, false) { TestName = "BoundaryHeavyStreamIsRejected" };
+    }
+
     [TestCase(Instruction.ADD, GasCostOf.VeryLow, TestName = "Add")]
     [TestCase(Instruction.MUL, GasCostOf.Low, TestName = "Mul")]
     [TestCase(Instruction.SDIV, GasCostOf.Low, TestName = "SDiv")]
@@ -375,6 +412,18 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     [TestCase(Architecture.X64, true)]
     public void StreamInterpreter_DefaultEnablement_IsArchitectureSpecific(Architecture architecture, bool expected) =>
         Assert.That(StreamInterpreter.IsEnabledByDefault(architecture), Is.EqualTo(expected));
+
+    [TestCase(Architecture.Arm64, false, false)]
+    [TestCase(Architecture.Arm64, true, true)]
+    [TestCase(Architecture.X64, false, true)]
+    public void StreamInterpreter_ForceOverride_EnablesAnyArchitecture(Architecture architecture, bool forceEnabled, bool expected) =>
+        Assert.That(StreamInterpreter.IsEnabled(architecture, forceEnabled), Is.EqualTo(expected));
+
+    [TestCase("1", true)]
+    [TestCase("0", false)]
+    [TestCase("true", false)]
+    public void StreamInterpreter_ForceOverride_OnlyAcceptsOne(string value, bool expected) =>
+        Assert.That(StreamInterpreter.IsForceEnabled(value), Is.EqualTo(expected));
 
     private static readonly byte[] CalleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)
