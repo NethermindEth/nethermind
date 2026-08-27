@@ -11,6 +11,8 @@ namespace Ethereum.Test.Base;
 
 internal static partial class FixtureExclusions
 {
+    private const int SourceCategorySearchDepth = 2;
+
     private static readonly Dictionary<string, string[]> ExcludedFixturePatterns = new(StringComparer.OrdinalIgnoreCase)
     {
         ["stCreate2"] =
@@ -39,18 +41,24 @@ internal static partial class FixtureExclusions
 
     public static IEnumerable<T> Filter<T>(IEnumerable<T> tests, string? sourceFile = null) where T : EthereumTest
     {
-        string? sourceCategory = sourceFile is null ? null : Path.GetFileName(Path.GetDirectoryName(sourceFile));
+        DirectoryInfo? sourceDirectory = sourceFile is null ? null : new FileInfo(sourceFile).Directory;
         foreach (T test in tests)
         {
-            if (!IsExcluded(test, sourceCategory))
+            if (!IsExcluded(test, sourceDirectory))
                 yield return test;
         }
     }
 
-    private static bool IsExcluded(EthereumTest test, string? sourceCategory)
+    private static bool IsExcluded(EthereumTest test, DirectoryInfo? sourceDirectory)
     {
         string fixtureName = GetFixtureName(test.Name);
-        return IsExcluded(sourceCategory, fixtureName) || IsExcluded(Path.GetFileName(test.Category), fixtureName);
+        for (int depth = 0; depth < SourceCategorySearchDepth && sourceDirectory is not null; depth++, sourceDirectory = sourceDirectory.Parent)
+        {
+            if (IsExcluded(sourceDirectory.Name, fixtureName))
+                return true;
+        }
+
+        return IsExcluded(Path.GetFileName(test.Category), fixtureName);
     }
 
     private static bool IsExcluded(string? category, string fixtureName)
