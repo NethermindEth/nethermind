@@ -20,7 +20,7 @@ namespace Nethermind.Facade.Find;
 /// When the log index is available and applicable, it uses the index to identify relevant blocks
 /// before fetching logs from those specific blocks.
 /// </summary>
-public class IndexedLogFinder(
+public sealed class IndexedLogFinder(
     IBlockFinder blockFinder,
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IReceiptStorage receiptStorage,
@@ -45,7 +45,7 @@ public class IndexedLogFinder(
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
-            foreach (FilterLog log in FindLogsUnbounded(filter, fromBlock, beforeIndex, cancellationToken))
+            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
         }
 
@@ -64,7 +64,7 @@ public class IndexedLogFinder(
 
         if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
-            foreach (FilterLog log in FindLogsUnbounded(filter, afterIndex, toBlock, cancellationToken))
+            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;
         }
     }
@@ -74,7 +74,7 @@ public class IndexedLogFinder(
         bool tryUseIndex = filter.UseIndex;
         filter.UseIndex = false;
 
-        if (!tryUseIndex || !_logIndexStorage.Enabled || filter.AcceptsAnyBlock)
+        if (!tryUseIndex || filter.AcceptsAnyBlock)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)

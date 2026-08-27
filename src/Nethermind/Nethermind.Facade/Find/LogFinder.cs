@@ -80,7 +80,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        protected IEnumerable<FilterLog> FindLogsUnbounded(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        private IEnumerable<FilterLog> FindLogsUnbounded(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
