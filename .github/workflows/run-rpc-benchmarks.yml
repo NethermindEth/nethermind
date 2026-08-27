@@ -536,13 +536,23 @@ jobs:
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
-        # The ARM box has a ~19G root disk; running it out kills the docker daemon and the runner with it. Docker uses the
-        # containerd image store there, so `image prune` frees nothing — only an explicit `docker rmi` does.
+        # Filling the disk docker writes to kills the daemon and takes the runner with it. That disk is not always `/`:
+        # the box may keep its image store on the data volume, so the pull headroom follows docker's configured store
+        # and `/` is only held to what RUNNER_TEMP needs. The containerd image store ignores `image prune`, so the
+        # reclaim below has to `docker rmi` explicitly.
         run: |
           set -uo pipefail
-          MIN_FREE_GB=6
-          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
-          report() { df -h /; du -xsh /var/lib/containerd /var/lib/docker 2>/dev/null || true; }
+          MIN_IMAGE_FREE_GB=6
+          MIN_ROOT_FREE_GB=2
+          avail_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
+          docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)"
+          [[ -d "${docker_root}" ]] || docker_root=/var/lib/docker
+          containerd_root="$(containerd config dump 2>/dev/null | awk -F'"' '/^root = /{print $2}')"
+          [[ -d "${containerd_root}" ]] || containerd_root=/var/lib/containerd
+          # `docker info` reports overlayfs for the containerd image store and overlay2 for the legacy graphdriver.
+          [[ "$(docker info -f '{{.Driver}}' 2>/dev/null)" == "overlayfs" ]] && image_store="${containerd_root}" || image_store="${docker_root}"
+          report() { df -h / "${image_store}"; du -xsh "${docker_root}" "${containerd_root}" 2>/dev/null || true; }
+          echo "Image store: ${image_store} (docker=${docker_root} containerd=${containerd_root})"
           echo "== before =="; report
           docker container prune -f || true
           docker network prune -f || true
@@ -553,24 +563,25 @@ jobs:
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
-          if (( $(avail_gb) < MIN_FREE_GB )); then
+          if (( $(avail_gb "${image_store}") < MIN_IMAGE_FREE_GB )); then
             sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n' | sed -E 's/.*@//; s/#[^[:space:]]*$//' | grep -v '^$' || true)"
             keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | sed -E 's/#[^[:space:]]*$//' | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
-              (( $(avail_gb) >= MIN_FREE_GB )) && break
+              (( $(avail_gb "${image_store}") >= MIN_IMAGE_FREE_GB )) && break
               [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
               [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
               [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
               docker rmi "${img}" >/dev/null 2>&1 && echo "  dropped ${img}"
             done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
           fi
-          free="$(avail_gb)"
+          image_free="$(avail_gb "${image_store}")"
+          root_free="$(avail_gb /)"
           echo "== after =="; report
-          echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / after reclaim — refusing to start rather than risk killing the runner daemon."
-            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
+          echo "Free after reclaim: ${image_free}G on ${image_store} (need ${MIN_IMAGE_FREE_GB}G), ${root_free}G on / (need ${MIN_ROOT_FREE_GB}G)"
+          if (( image_free < MIN_IMAGE_FREE_GB || root_free < MIN_ROOT_FREE_GB )); then
+            echo "::error::Not enough free space after reclaim (${image_free}G on the image store ${image_store}, ${root_free}G on /) — refusing to start rather than risk killing the runner daemon."
+            du -xh --max-depth=2 /var /usr /root "${image_store}" 2>/dev/null | sort -rh | head -15 || true
             exit 1
           fi
 
