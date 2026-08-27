@@ -63,7 +63,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             && ReturnData is null
             && stack.CodeLength != 0
             && programCounter >= stack.CodeLength
-            && HasImplicitStopTracer(_txTracer))
+            && _hasImplicitStopTracerCached)
         {
             if (TCancelable.IsActive && _txTracer.IsCancelled)
                 ThrowOperationCanceledException();

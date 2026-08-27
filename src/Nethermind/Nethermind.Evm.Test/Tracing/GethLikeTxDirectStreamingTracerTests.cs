@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -55,6 +56,34 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             logs.Last(l => l is { Op: "STOP", Depth: 1 }).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
             "parent refund must persist after the child frame reverts"
         );
+    }
+
+    [Test]
+    public void Streams_legacy_self_destruct_refund_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartArray();
+            GethLikeTxDirectStreamingTracer tracer = new(
+                null, GethTraceOptions.Default, writer, null, CancellationToken.None, destroyRefund: destroyRefund);
+            using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+                null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+            tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+            tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+            tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+            tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+            tracer.ReportActionEnd(25, default);
+            tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+            tracer.ReportActionEnd(50, default);
+            tracer.BuildResult();
+            writer.WriteEndArray();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        Assert.That(document.RootElement.EnumerateArray().Single().GetProperty("refund").GetInt64(), Is.EqualTo(destroyRefund));
     }
 
     [Test]

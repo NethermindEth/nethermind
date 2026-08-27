@@ -27,7 +27,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private readonly long _destroyRefund;
     private readonly JsonSerializerOptions _serializerOptions = new();
 
-    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem, long destroyRefund) : base(options?.TxHash)
+    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem, long destroyRefund = 0) : base(options?.TxHash)
     {
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));

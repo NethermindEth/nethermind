@@ -14,7 +14,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private readonly RefundTracker _refundTracker;
     private ulong? _startGas;
 
-    public GethLikeTxFileTracer(Action<GethTxFileTraceEntry> dumpCallback, GethTraceOptions options, long destroyRefund) : base(options)
+    public GethLikeTxFileTracer(Action<GethTxFileTraceEntry> dumpCallback, GethTraceOptions options, long destroyRefund = 0) : base(options)
     {
         _dumpCallback = dumpCallback ?? throw new ArgumentNullException(nameof(dumpCallback));
         _refundTracker = new(destroyRefund);
@@ -43,8 +43,6 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     public override void ReportRefund(long refund) => _refundTracker.Add(refund);
 
-    // Credit legacy refunds at the opcode boundary. TransactionProcessor reports the value again
-    // during post-execution finalization, after the last streamed entry has sampled the refund.
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
         _refundTracker.CreditSelfDestruct(address);
 

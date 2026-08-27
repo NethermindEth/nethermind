@@ -188,8 +188,6 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    // Credit legacy refunds at the opcode boundary. TransactionProcessor reports the value again
-    // during post-execution finalization, after the last EIP-3155 entry has sampled the refund.
     // EIP-3529 also zeroes destroyRefund before EIP-6780's same-transaction restriction applies.
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
         _refundTracker.CreditSelfDestruct(address);

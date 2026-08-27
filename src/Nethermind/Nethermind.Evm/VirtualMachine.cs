@@ -105,6 +105,7 @@ public partial class VirtualMachine<TGasPolicy>(
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
     // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
     private bool _isTracingActionsCached;
+    private bool _hasImplicitStopTracerCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -150,6 +151,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
+        _hasImplicitStopTracerCached = HasImplicitStopTracer(txTracer);
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -1387,6 +1389,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
         else if (tracer is ITxTracerWrapper wrapper)
         {
+            // Only opted-in inner tracers receive implicit STOP; the caller checks cancellation before unwrapping.
             TraceImplicitStop(wrapper.InnerTracer, gasAvailable, programCounter, in stackValue);
         }
         else if (tracer is CompositeTxTracer composite)

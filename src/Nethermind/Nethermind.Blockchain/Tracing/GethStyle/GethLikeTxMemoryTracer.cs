@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
@@ -16,12 +15,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    private long _refund;
-    private readonly Stack<long> _refundCheckpoints = new();
+    private readonly RefundTracker _refundTracker;
 
-    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
+    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options, long destroyRefund = 0) : base(options)
     {
         _transaction = transaction;
+        _refundTracker = new(destroyRefund);
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -68,7 +67,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         base.StartOperation(pc, opcode, gas, env);
-        CurrentTraceEntry.Refund = _refund != 0 ? _refund : null;
+        CurrentTraceEntry.Refund = _refundTracker.Refund != 0 ? _refundTracker.Refund : null;
     }
 
     public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
@@ -77,43 +76,38 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
     }
 
-    public override void ReportRefund(long refund) => _refund += refund;
+    public override void ReportRefund(long refund) => _refundTracker.Add(refund);
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
+        _refundTracker.CreditSelfDestruct(address);
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        _refundCheckpoints.Push(_refund);
+        _refundTracker.TakeSnapshot();
     }
 
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        _refundCheckpoints.TryPop(out _);
+        _refundTracker.CommitSnapshot();
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        _refundCheckpoints.TryPop(out _);
+        _refundTracker.CommitSnapshot();
     }
 
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
-        RestoreRefundCheckpoint();
+        _refundTracker.RestoreSnapshot();
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        RestoreRefundCheckpoint();
-    }
-
-    // A reverted or aborted frame rolls back every refund accrued within it (and its successful
-    // children), mirroring go-ethereum's journaled refund counter.
-    private void RestoreRefundCheckpoint()
-    {
-        if (_refundCheckpoints.TryPop(out long checkpoint))
-            _refund = checkpoint;
+        _refundTracker.RestoreSnapshot();
     }
 }

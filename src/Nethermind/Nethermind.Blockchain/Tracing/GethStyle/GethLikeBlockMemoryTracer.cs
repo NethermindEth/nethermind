@@ -5,10 +5,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public class GethLikeBlockMemoryTracer(GethTraceOptions options)
+public class GethLikeBlockMemoryTracer(GethTraceOptions options, long destroyRefund = 0)
     : BlockTracerBase<GethLikeTxTrace, GethLikeTxMemoryTracer>(options.TxHash)
 {
-    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, options);
+    protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(tx, options, destroyRefund);
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxMemoryTracer txTracer) => txTracer.BuildResult();
 }

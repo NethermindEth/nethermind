@@ -521,6 +521,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Legacy_self_destruct_refund_is_reported_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+
+        Assert.That(tracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
+    }
+
+    [Test]
     public void Can_trace_returndata_when_enabled()
     {
         const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
