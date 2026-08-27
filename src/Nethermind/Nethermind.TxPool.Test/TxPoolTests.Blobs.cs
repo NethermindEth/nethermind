@@ -2587,7 +2587,8 @@ namespace Nethermind.TxPool.Test
                 new FailingBlobTxUpdateStorage(),
                 txPoolConfig,
                 comparer,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new ManualTimeProvider());
             Transaction template = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
@@ -3458,8 +3459,9 @@ namespace Nethermind.TxPool.Test
             ITxStorage blobTxStorage,
             ITxPoolConfig txPoolConfig,
             IComparer<Transaction> comparer,
-            ILogManager logManager)
-            : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager)
+            ILogManager logManager,
+            TimeProvider timeProvider)
+            : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager, timeProvider)
         {
             private Action _nextUpdate;
             private ValueHash256 _nextUpdateHash;
