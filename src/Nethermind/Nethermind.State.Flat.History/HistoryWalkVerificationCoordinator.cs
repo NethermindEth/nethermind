@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -112,7 +113,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
                     }
                     else if (_logger.IsError)
                     {
-                        string sample = string.Join(", ", verdict.Mismatches.Take(MismatchesLogged).Select(m => $"{m.Block}:{m.Kind}"));
+                        StringBuilder sample = new();
+                        for (int i = 0; i < verdict.Mismatches.Count && i < MismatchesLogged; i++)
+                        {
+                            if (i > 0) sample.Append(", ");
+                            sample.Append(verdict.Mismatches[i].Block).Append(':').Append(verdict.Mismatches[i].Kind);
+                        }
+
                         _logger.Error(
                             $"History walk verification FAILED after {elapsed}: {verdict.Mismatches.Count} mismatches over {verdict.BlocksCompared} compared blocks. " +
                             $"First {Math.Min(verdict.Mismatches.Count, MismatchesLogged)}: {sample}. " +

@@ -799,6 +799,7 @@ namespace Nethermind.Blockchain
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
             => _blockStore.DeleteRange(fromInclusive, toExclusive);
 
+        /// <inheritdoc/>
         public void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
             => _blockStore.DeleteRanges(ranges);
 

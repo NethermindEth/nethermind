@@ -26,4 +26,9 @@ public interface IPrunedReceiptRetention
     /// <see cref="ShouldRetainReceipts"/>, which costs a header per height but still reclaims the rest by range.
     /// </remarks>
     IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo);
+
+    /// <summary>Heights below this may have stopped qualifying for retention as the chain advanced, so a caller
+    /// holding previously retained data below it should re-ask. Zero - the default - promises no retention ever
+    /// expires, so nothing already retained needs revisiting.</summary>
+    ulong ExpiredRetentionUpperBound() => 0;
 }

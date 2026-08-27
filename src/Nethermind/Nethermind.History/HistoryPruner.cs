@@ -62,6 +62,8 @@ public class HistoryPruner : IHistoryPruner
     private ulong _balsDeletePointer = 1;
     private ulong _lastSavedBlocksDeletePointer = 1;
     private ulong _lastSavedBlocksReclaimCursor = 1;
+    private ulong _sliceCleanupCursor = 1;
+    private ulong _lastSavedSliceCleanupCursor = 1;
     private ulong _lastSavedBalsDeletePointer = 1;
     // Read by JSON-RPC and the sync server while the pruner writes them under a lock it can hold for a whole reclaim.
     private volatile BlockHeader? _oldestBlockHeader;
@@ -278,6 +280,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
+                CleanupExpiredSliceRetention(cancellationToken);
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
                 // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
@@ -375,7 +378,8 @@ public class HistoryPruner : IHistoryPruner
             // other pass happens to be due, which is not a property either of them promises the other. Note this
             // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
             // still started incidentally by the access-list clause above, which is rolling in every mode.
-            || _txIndexSweepCursor is not null;
+            || _txIndexSweepCursor is not null
+            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
     }
 
     private bool PruningIntervalHasElapsed()
@@ -677,6 +681,28 @@ public class HistoryPruner : IHistoryPruner
         _blockAccessListStore.DeleteRange(0, 0);
     }
 
+    /// <summary>Heights a bounded slice retained while they were inside its window fall out of it as the head
+    /// advances, and the main reclaim cursor never returns to them - this cursor does, re-asking the retention over
+    /// the expired band so what no entry still claims is reclaimed after all.</summary>
+    private void CleanupExpiredSliceRetention(CancellationToken cancellationToken)
+    {
+        ulong target = SliceCleanupTarget();
+        ulong start = ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
+        if (start >= target) return;
+
+        ulong to = ulong.Min(target, start + ReclaimChunkBlocks);
+        ulong reached = RetainSlicedAndReclaimTheRest(start, to, cancellationToken);
+        if (reached > _sliceCleanupCursor)
+        {
+            _sliceCleanupCursor = reached;
+            SaveDeletePointers();
+        }
+    }
+
+    /// <summary>Only ground the main reclaim has already covered can be cleaned, or the two cursors would race.</summary>
+    private ulong SliceCleanupTarget() =>
+        ulong.Min(_receiptRetention.ExpiredRetentionUpperBound(), ulong.Min(_blocksReclaimCursor, _blocksDeletePointer));
+
     private void SweepTransactionIndex(CancellationToken cancellationToken)
     {
         // No token check: running last, this is the pass most likely to arrive with the budget gone, and refusing to
@@ -818,6 +844,12 @@ public class HistoryPruner : IHistoryPruner
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
 
+        byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
+        _sliceCleanupCursor = cleanupVal is null
+            ? _minDeletableBlockNumber
+            : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
+        _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
+
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
         LoadTxIndexSweepCursor();
@@ -847,6 +879,12 @@ public class HistoryPruner : IHistoryPruner
             _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
+        }
+
+        if (_sliceCleanupCursor != _lastSavedSliceCleanupCursor)
+        {
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
+            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
         }
 
         if (_balsDeletePointer != _lastSavedBalsDeletePointer)

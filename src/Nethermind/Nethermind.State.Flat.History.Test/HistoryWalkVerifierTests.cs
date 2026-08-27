@@ -234,6 +234,30 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void A_contract_born_inside_the_range_with_no_slot_history_is_caught_against_the_empty_tree()
+    {
+        byte[] value = [0xAB];
+        Account born = new(1, 50, StorageRootOf((Slot, value)), Keccak.OfAnEmptyString);
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, born);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf();
+        headers.Roots[1] = StateRootOf((AddrB, born));
+
+        MarkAll(headers);
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.False,
+                "an account first seen inside the range has no prior root to compare against, so its baseline must be the empty tree - not a free pass");
+            Assert.That(verdict.Mismatches.Select(m => m.Kind), Is.EquivalentTo(new[] { HistoryWalkMismatchKind.MissingSlotHistory }));
+            Assert.That(verdict.Mismatches[0].Block, Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
     public void Parallel_segments_verify_the_same_history_each_anchored_at_its_own_start()
     {
         Account a0 = new(1, 100);

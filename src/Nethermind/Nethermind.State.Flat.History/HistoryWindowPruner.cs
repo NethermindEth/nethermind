@@ -152,7 +152,14 @@ public sealed class HistoryWindowPruner(
         // Written on the prune loop, read on the capture path, so Volatile is required.
         if (Volatile.Read(ref _disposed) != 0) return;
         if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + config.HistoryPruneIntervalBlocks) return;
-        try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
+        try
+        {
+            _wakeSignal.Release();
+        }
+        catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"A pruner wake signal was dropped as already pending or torn down: {e.Message}");
+        }
     }
 
     private void RunLoop()

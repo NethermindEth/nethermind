@@ -121,6 +121,22 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return retained;
     }
 
+    /// <inheritdoc/>
+    public ulong ExpiredRetentionUpperBound()
+    {
+        ulong upperBound = 0;
+        ulong head = HeadNumber;
+        foreach ((_, ulong? retention) in _slices)
+        {
+            if (retention is not { } bound || head <= bound) continue;
+
+            ulong sliceFloor = head - bound;
+            if (upperBound == 0 || sliceFloor < upperBound) upperBound = sliceFloor;
+        }
+
+        return upperBound;
+    }
+
     private ulong HeadNumber => blockTree.Head?.Number ?? 0;
 
     private static bool InsideSliceWindow(ulong height, ulong? retention, ulong head) =>

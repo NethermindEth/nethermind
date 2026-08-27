@@ -530,7 +530,61 @@ public class HistoryPrunerTests
         }
     }
 
-    private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain) => new(
+    [Test]
+    public async Task Cleanup_reclaims_a_height_a_bounded_slice_retained_once_its_window_has_moved_past_it()
+    {
+        const int blocks = 100;
+        const ulong retainedHeight = 10;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        MutableRetention retention = new();
+        retention.Retained.Add(retainedHeight);
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+        Assert.That(testBlockchain.BlockTree.FindBlock(retainedHeight, BlockTreeLookupOptions.None), Is.Not.Null,
+            "while inside the slice window the height keeps its body");
+
+        retention.Retained.Clear();
+        retention.ExpiredUpperBound = 20;
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(retainedHeight, BlockTreeLookupOptions.None), Is.Null,
+                "once the slice window has moved past it, the cleanup cursor reclaims what the main cursor never revisits");
+            IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+            Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor), Is.Not.Null,
+                "the cleanup cursor survives a restart or it re-tombstones the same ground forever");
+        }
+    }
+
+    private sealed class MutableRetention : IPrunedReceiptRetention
+    {
+        public readonly HashSet<ulong> Retained = [];
+        public ulong ExpiredUpperBound;
+
+        public bool ShouldRetainReceipts(BlockHeader header) => Retained.Contains(header.Number);
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = toExclusive;
+            HashSet<ulong> answer = [];
+            foreach (ulong height in Retained)
+            {
+                if (height >= fromInclusive && height < toExclusive) answer.Add(height);
+            }
+
+            return answer;
+        }
+
+        public ulong ExpiredRetentionUpperBound() => ExpiredUpperBound;
+    }
+
+    private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain, IPrunedReceiptRetention retention = null) => new(
         testBlockchain.Container.Resolve<IBlockTree>(),
         testBlockchain.Container.Resolve<IReceiptStorage>(),
         testBlockchain.Container.Resolve<IBlockAccessListStore>(),
@@ -544,7 +598,7 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IProcessExitSource>(),
         testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
         testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
-        testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
+        retention ?? testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
         LimboLogs.Instance);
 
     [Test]

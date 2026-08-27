@@ -284,9 +284,12 @@ public sealed class HistoryWalkVerifier
                     }
 
                     ValueHash256 recorded = new(account.StorageRoot.Bytes);
-                    if ((touched is null || !touched.Contains(identity))
-                        && lastAccountStorageRoots.TryGetValue(identity, out ValueHash256 previous)
-                        && recorded != previous)
+                    if (!lastAccountStorageRoots.TryGetValue(identity, out ValueHash256 previous))
+                    {
+                        previous = new ValueHash256(Keccak.EmptyTreeHash.Bytes);
+                    }
+
+                    if ((touched is null || !touched.Contains(identity)) && recorded != previous)
                     {
                         mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingSlotHistory, previous, recorded));
                     }

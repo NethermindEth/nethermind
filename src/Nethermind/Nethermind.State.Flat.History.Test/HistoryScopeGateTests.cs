@@ -37,7 +37,7 @@ public class HistoryScopeGateTests
         HistoryScopeGate gate = new();
         long stuckScope = gate.EnterScope();
 
-        bool drained = gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        bool drained = gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None);
 
         Assert.That(drained, Is.False, "a scope that never closes must time out the drain, not hang forever");
 
@@ -50,7 +50,7 @@ public class HistoryScopeGateTests
         HistoryScopeGate gate = new();
         long stuckScope = gate.EnterScope();
 
-        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False,
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.False,
             "precondition: the stuck scope times the first drain out");
 
         gate.ExitScope(gate.EnterScope());
@@ -66,8 +66,8 @@ public class HistoryScopeGateTests
         HistoryScopeGate gate = new();
         long stuckScope = gate.EnterScope();
 
-        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False);
-        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False,
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.False);
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.False,
             "the stuck scope was admitted under an older floor generation, so a retry must keep waiting on it");
 
         gate.ExitScope(stuckScope);
@@ -83,7 +83,7 @@ public class HistoryScopeGateTests
             "precondition: draining an empty gate succeeds");
 
         long scope = gate.EnterScope();
-        bool secondDrain = gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        bool secondDrain = gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None);
 
         Assert.That(secondDrain, Is.False, "a scope opened after the drain must be waited on by the next one, not skipped");
 

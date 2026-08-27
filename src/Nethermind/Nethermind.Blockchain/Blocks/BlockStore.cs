@@ -124,6 +124,7 @@ public class BlockStore : IBlockStore, IClearableCache
     /// the announced boundary. Accepted: it needs a node that never resynced since keys gained their prefix.</remarks>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive) => DeleteRanges([(fromInclusive, toExclusive)]);
 
+    /// <inheritdoc/>
     public void DeleteRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
     {
         bool removedAny = false;

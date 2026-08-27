@@ -12,8 +12,12 @@ namespace Nethermind.Db;
 /// blocks below the watermark) the operator wants for it. Absent retention means unbounded intent.</summary>
 public readonly record struct SliceScopeEntry(Address Address, ulong? RetentionBlocks);
 
+/// <summary>Parses <c>FlatDb.HistorySliceAddresses</c>: a comma-separated list of <c>address</c> or
+/// <c>address:retentionBlocks</c> entries, where a bare address retains without bound.</summary>
 public static class SliceScopeConfig
 {
+    /// <summary>Entries in configuration order, empty for an unset or blank value.</summary>
+    /// <exception cref="InvalidConfigurationException">A token whose address or retention does not parse.</exception>
     public static IReadOnlyList<SliceScopeEntry> Parse(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return [];

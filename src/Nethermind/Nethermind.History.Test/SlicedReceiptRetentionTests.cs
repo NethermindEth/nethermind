@@ -510,6 +510,28 @@ public class SlicedReceiptRetentionTests
         }
     }
 
+    [TestCase("", 0ul, TestName = "ExpiredRetentionUpperBound_with_no_slices_is_zero")]
+    [TestCase("unbounded", 0ul, TestName = "ExpiredRetentionUpperBound_with_only_unbounded_slices_is_zero")]
+    [TestCase("bounded:100", 900ul, TestName = "ExpiredRetentionUpperBound_for_a_bounded_slice_is_head_minus_its_bound")]
+    [TestCase("bounded:100,deeper:300", 700ul, TestName = "ExpiredRetentionUpperBound_across_bounds_is_the_deepest_window_floor")]
+    public void ExpiredRetentionUpperBound_FollowsTheDeepestBoundedWindow(string shape, ulong expected)
+    {
+        string addresses = shape switch
+        {
+            "" => "",
+            "unbounded" => TestItem.AddressA.ToString(),
+            "bounded:100" => $"{TestItem.AddressA}:100",
+            _ => $"{TestItem.AddressA}:100,{TestItem.AddressB}:300"
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = addresses };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(1000).TestObject);
+
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree);
+
+        Assert.That(retention.ExpiredRetentionUpperBound(), Is.EqualTo(expected));
+    }
+
     [Test]
     public void RetainedHeights_with_no_addresses_answers_for_the_whole_span()
     {
