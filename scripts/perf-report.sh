@@ -62,6 +62,14 @@ require_file() {
         echo "error: '$1' is missing or empty" >&2
         exit 1
     fi
+    # Every view divides by the profile's total sample count. A profile whose counts are all zero,
+    # or one truncated mid-write so the last field is not a number, would abort awk with a fatal
+    # division by zero instead — and inside compare's process substitution, silently. This stops at
+    # the first positive count, so a healthy profile costs one line.
+    if ! awk '{ if ($NF + 0 > 0) { found = 1; exit } } END { exit !found }' "$1"; then
+        echo "error: '$1' has no positive sample counts" >&2
+        exit 1
+    fi
 }
 
 print_table() {
@@ -106,10 +114,10 @@ cmd_compare() {
     LC_ALL=C join -t$'\t' -a1 -a2 -e 0 -o '0,1.3,2.3' \
         <(self_time "$1" | LC_ALL=C sort -t$'\t' -k1,1) \
         <(self_time "$2" | LC_ALL=C sort -t$'\t' -k1,1) \
-        | awk -F'\t' -v a="$(basename "$1")" -v b="$(basename "$2")" -v n="$n" '
+        | awk -F'\t' '
             { delta = $3 - $2; printf "%s\t%.4f\t%.4f\t%.4f\n", $1, $2, $3, delta }' \
         | LC_ALL=C sort -t$'\t' -k4 -g \
-        | awk -F'\t' -v n="$n" '
+        | awk -F'\t' -v n="$n" -v a="$(basename "$1")" -v b="$(basename "$2")" '
             function display_frame(frame, width) {
                 return length(frame) > width ? "..." substr(frame, length(frame) - width + 4) : frame
             }
@@ -118,7 +126,7 @@ cmd_compare() {
                 printf "  %-64s %8.2f%% %8.2f%% %+8.2f\n", display_frame(fields[1], 64), fields[2], fields[3], fields[4]
             }
             BEGIN {
-                printf "\n  Largest self-time shifts (percentage points of profile)\n\n"
+                printf "\n  Largest self-time shifts, %s -> %s (percentage points of profile)\n\n", a, b
                 printf "  %-64s %9s %9s %9s\n", "Frame", "A %", "B %", "Delta"
                 printf "  %-64s %9s %9s %9s\n", \
                     "--------------------------------------------------", \

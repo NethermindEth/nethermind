@@ -88,7 +88,8 @@ if [[ "${PERF:-false}" == "true" ]]; then
         perf_fail=1
       fi
     fi
-    wait "$PERF_PID" 2>/dev/null || true
+    # No `wait` here: start-node.sh launched the recorder, so it is not a child of this shell.
+    # The identity-checked poll above is what confirms it exited and finished writing perf.data.
 
     perf_data="$DIAG_DIR/perf/perf$SUFFIX.data"
     folded_profile="$DIAG_DIR/perf/perf$SUFFIX.folded"

@@ -545,7 +545,8 @@ directly — not through `sudo` — so the recorder PID can be retained for
 identity-safe teardown. Host `perf` must be able to sample `cycles:u` (or falls
 back to `cpu-clock:u`). Sampling starts once the node serves RPC — startup is
 excluded — or, with a `jsonbench` `corpus_warmup_duration`, only after that
-warm-up, so the profile covers the measured cell alone.
+warm-up, so the profile covers the measured cell alone. A `comparison` dispatch
+produces **one** profile: the reference instance is started with perf off.
 
 Shutdown folds the recording into `perf.folded`; collection fails when it has
 no managed-symbol leaf/self samples, including all-native or all-unknown
@@ -563,8 +564,11 @@ scripts/perf-report.sh compare before.folded after.folded 30
 Set `dotnet_trace: true` (single-node Nethermind tools; rejected for `jsonbench-sweep`
 like `perf`) to collect an EventPipe `.nettrace` of **runtime events** — GC start/end
 and pause durations, monitor contention with the owning thread's stack, thread-pool
-adjustments, exception throws — during the **measured phase only**. It records no CPU
-samples, so it can run next to `dottrace` and `perf` without double-sampling the node;
+adjustments, exception throws. With a `corpus_warmup_duration` it covers the **measured
+phase only**; without one the collector attaches as soon as RPC is ready, so the window also
+holds json-bench's clone, image build and corpus conversion — and the report's per-window
+percentages (GC pause share, contention share) are diluted by exactly that padding. It records
+no CPU samples, so it can run next to `dottrace` and `perf` without double-sampling the node;
 its providers are `gc+contention+threading+exception` at level **verbose**, which is
 required because informational `Contention` events carry no stacks and lock-owner
 attribution is the point.
@@ -581,8 +585,11 @@ it after a `jsonbench` warm-up (or `start-node.sh` once RPC is ready without one
 loudly if the collector exits within a second (the apphost's ".NET location: Not found" is
 otherwise a silent 400-byte log), and `stop-node.sh` sends it SIGINT inside the container
 and waits for the `.nettrace` to finalize **before** the node is stopped. With a plain
-`tool_config.duration` the session is also capped at that duration plus ten minutes
-(`--duration`), so a hung cell cannot grow the file until the job times out.
+`tool_config.duration` the session is also capped (`--duration`) at that duration plus ten
+minutes, and plus a further thirty without a warm-up, where the cap starts ahead of the
+preparation rather than at the cell — so a hung cell cannot grow the file until the job times
+out. A collector that ended before teardown reached it fails the run instead of shipping a
+trace that misses the cell.
 
 The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log.
 [`scripts/nettrace-report.cs`](../nettrace-report.cs) summarizes it — GC count and pause per
@@ -616,8 +623,9 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
   `/opt/dottrace` / `/opt/dotnet-trace` are not already installed by previous runs).
-- **Host `perf` and a root runner process** when using `perf: true`; `perf` must
-  be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
+- **Host `perf` and a root runner process** on *either* runner when using
+  `perf: true` — it is available for `arch=amd64` too, and that is the default;
+  `perf` must be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
 
 ## Files
 

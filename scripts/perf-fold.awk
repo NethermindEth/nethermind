@@ -38,9 +38,11 @@ BEGIN { depth = 0; comm = "" }
 /^[[:space:]]/ {
     line = $0
     dso = ""
-    if (match(line, /\([^)]*\)[[:space:]]*$/)) {
+    # Strip first: with trailing whitespace inside the match, RLENGTH - 2 would leave the closing
+    # paren in the name, and "[unknown] (libcoreclr.so))" would split one library's samples in two.
+    sub(/[[:space:]]+$/, "", line)
+    if (match(line, /\([^)]*\)$/)) {
         dso = substr(line, RSTART + 1, RLENGTH - 2)
-        sub(/[[:space:]]*$/, "", dso)
         line = substr(line, 1, RSTART - 1)
     }
     # Drop the leading address, then a trailing +0x<offset>.

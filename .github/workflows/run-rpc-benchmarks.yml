@@ -94,9 +94,12 @@ on:
       dotnet_trace:
         description: >-
           Collect a dotnet-trace EventPipe .nettrace of runtime events (GC pauses, lock contention with
-          owner stacks, thread pool, exceptions) from the node during the measured phase only (nethermind,
-          single-node tools). Attached inside the container after the warm-up, so it coexists with dottrace
-          and perf. Ships as the dotnet-trace-rpcbench artifact; read it with PerfView/TraceEvent.
+          owner stacks, thread pool, exceptions) from the node (nethermind, single-node tools). With
+          tool_config.corpus_warmup_duration set it is attached inside the container after the warm-up
+          and covers the measured phase alone; without one it attaches once RPC is ready, so the window
+          also holds the tool's preparation and every per-window percentage in the report is diluted by
+          it. Coexists with dottrace and perf. Ships as the dotnet-trace-rpcbench artifact; read it with
+          scripts/nettrace-report.cs or PerfView/TraceEvent.
         required: false
         type: boolean
         default: false
@@ -298,6 +301,10 @@ jobs:
             echo "::error::perf=true is not supported with benchmark_tool=jsonbench-sweep. Use a single-node benchmark tool; sweep capture needs per-cell profile isolation."
             exit 1
           fi
+          if [[ "${perf}" == "true" && "${client}" != "nethermind" ]]; then
+            echo "::error::perf=true requires client=nethermind (managed frames come from the runtime's perf map)."
+            exit 1
+          fi
           case "${dotnet_trace}" in
             true|false) ;;
             *) echo "dotnet_trace must be true or false (got '${dotnet_trace}')."; exit 1;;
@@ -381,12 +388,18 @@ jobs:
           # a hung cell cannot grow the .nettrace until the job times out. Only a plain <n>[s|m|h]
           # tool_config.duration of a single-cell tool is parsed (flood runs one cell per rate);
           # anything else leaves the session uncapped and stop-node.sh ends it.
+          # The cap runs from the moment the collector attaches. With a warm-up that is immediately
+          # before the cell; without one it is RPC-ready, i.e. ahead of the tool's clone, runner
+          # image build and corpus conversion, so the margin has to cover those too — an elapsed
+          # cap there would end the session before the measured cell ever started.
           dotnet_trace_max_seconds=""
           if [[ "${dotnet_trace}" == "true" && "${benchmark_tool}" != "flood" ]]; then
             cell_duration="$(echo "${tool_config}" | jq -r '.duration // empty')"
             if [[ "${cell_duration}" =~ ^([0-9]+)([smh]?)$ ]]; then
               case "${BASH_REMATCH[2]}" in m) unit=60 ;; h) unit=3600 ;; *) unit=1 ;; esac
-              dotnet_trace_max_seconds="$(( 10#${BASH_REMATCH[1]} * unit + 600 ))"
+              margin=600
+              [[ "${warmup_seconds}" == "0" ]] && margin=$(( margin + 1800 ))
+              dotnet_trace_max_seconds="$(( 10#${BASH_REMATCH[1]} * unit + margin ))"
             fi
           fi
           [[ -z "${node_config}" ]] && node_config="{}"

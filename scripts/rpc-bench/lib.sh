@@ -241,11 +241,13 @@ container_dotnet_root() {
     path="${path%]}"
     root="${path%/*}"
     root="${root%/*}"
-    if docker exec "$container" test -d "$root/host/fxr"; then
+    # </dev/null: the loop's stdin is the listing being read, and a probe that consumed it would
+    # leave the loop with one candidate on an image shipping several runtimes.
+    if docker exec "$container" test -d "$root/host/fxr" </dev/null; then
       printf '%s\n' "$root"
       return 0
     fi
-  done < <(docker exec "$container" dotnet --list-runtimes 2>/dev/null || true)
+  done < <(docker exec "$container" dotnet --list-runtimes </dev/null 2>/dev/null || true)
   return 1
 }
 
@@ -313,9 +315,11 @@ start_dotnet_trace_for_container() {
 stop_dotnet_trace_collector() {
   local container="$1" host_pid="$2" collector_pid="$3" running_pid
   if ! kill -0 "$host_pid" 2>/dev/null; then
-    # --duration elapsed or the collector died mid-run; either way there is nothing to signal.
-    log "dotnet-trace collector already exited"
-    return 0
+    # --duration elapsed or the collector died mid-run. Either way the session ended before the
+    # measured phase did, so the .nettrace does not cover it — a non-empty file would otherwise
+    # pass every downstream check and be read as if it did.
+    log "ERROR: the dotnet-trace collector exited before it was stopped; the trace does not cover the measured phase"
+    return 1
   fi
   running_pid="$(dotnet_trace_collector_pid "$container" || true)"
   if [[ "$running_pid" != "$collector_pid" ]]; then

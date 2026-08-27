@@ -99,7 +99,13 @@ image_tag="jsonbench-runner:${tag_ref:0:24}"
 corpus_fixture="$work/src/rpc-calls/runner-eth-call-corpus.json"
 # What a reusable preparation consists of; written last, so one that died halfway is never reused.
 prepared_marker="$work/prepared"
-prepared_id="$JB_REPO@$JB_REF"
+# Keyed on the commit the ref resolves to, not its name: a branch that moved upstream since a
+# hard-cancelled job left a marker behind would otherwise match both the marker and the image tag
+# (derived from the same name) and be reused silently. ls-remote lists nothing for a raw commit sha,
+# which is already exact.
+resolved_ref="$(git ls-remote "$JB_REPO" "$JB_REF" | awk 'NR == 1 { print $1 }')" \
+  || die "failed to reach $JB_REPO to resolve $JB_REF"
+prepared_id="$JB_REPO@${resolved_ref:-$JB_REF}"
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one
   # costs about as much as converting it.
@@ -380,7 +386,9 @@ else
       --output /io/out \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
       || tool_failed=1
-    # Kept for the next invocation under JB_REUSE_PREPARED; cleanup.sh wipes scratch at job end.
+    # Kept for the next invocation under JB_REUSE_PREPARED, which stretches the retention window
+    # for the converted call bodies from "until the tool exits" to "until job cleanup": cleanup.sh
+    # wipes scratch, and it runs if: always().
     [[ "$JB_REUSE_PREPARED" == "true" ]] || rm -f "$corpus_fixture"
     if [[ "$tool_failed" == "1" ]]; then
       die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"

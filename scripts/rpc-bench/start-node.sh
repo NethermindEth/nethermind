@@ -49,6 +49,9 @@ PERF_FREQUENCY="${PERF_FREQUENCY:-99}"
 # warm-up; see lib.sh. DOTNET_TRACE_MAX_SECONDS optionally caps the session.
 DOTNET_TRACE="${DOTNET_TRACE:-false}"
 DOTNET_TRACE_HOST_PATH="${DOTNET_TRACE_HOST_PATH:-/opt/dotnet-trace}"
+# Pinned like every other tool on this rig: an unpinned install would drift the collector between
+# runs whose numbers are meant to be comparable.
+DOTNET_TRACE_VERSION="${DOTNET_TRACE_VERSION:-9.0.661903}"
 # true = leave perf unstarted and dotTrace launched with data collection off; the workflow runs
 # start-profilers.sh once the warm-up is done, so the profiles cover only the measured phase.
 PROFILE_AFTER_WARMUP="${PROFILE_AFTER_WARMUP:-false}"
@@ -323,10 +326,10 @@ fi
 # attached with docker exec by start_profilers, so nothing about the node's launch changes.
 if [[ "$DOTNET_TRACE" == "true" ]]; then
   if [[ ! -x "$DOTNET_TRACE_HOST_PATH/dotnet-trace" ]]; then
-    log "dotnet-trace not found at $DOTNET_TRACE_HOST_PATH — installing via dotnet tool..."
-    dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
-      || as_root dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
-      || die "failed to install dotnet-trace (is the .NET SDK on the runner?)"
+    log "dotnet-trace not found at $DOTNET_TRACE_HOST_PATH — installing $DOTNET_TRACE_VERSION via dotnet tool..."
+    dotnet tool install --version "$DOTNET_TRACE_VERSION" --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || as_root dotnet tool install --version "$DOTNET_TRACE_VERSION" --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || die "failed to install dotnet-trace $DOTNET_TRACE_VERSION (is the .NET SDK on the runner?)"
   fi
   assert_no_mounts_under "$DIAG_DIR/dotnet-trace"
   as_root rm -rf "$DIAG_DIR/dotnet-trace"

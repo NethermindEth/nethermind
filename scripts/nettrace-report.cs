@@ -18,17 +18,36 @@ using Microsoft.Diagnostics.Tracing.Analysis;
 using Microsoft.Diagnostics.Tracing.Analysis.GC;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 
-if (args.Length < 1)
+string path = "";
+int top = 8;
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--top")
+    {
+        // Rejected rather than defaulted: a silently ignored flag looks like the tool obeyed it.
+        if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out int parsed) || parsed <= 0)
+        {
+            Console.Error.WriteLine($"error: --top needs a positive integer, got '{(i + 1 < args.Length ? args[i + 1] : "")}'");
+            return 2;
+        }
+        top = parsed;
+        i++;
+    }
+    else if (path.Length == 0)
+    {
+        path = args[i];
+    }
+    else
+    {
+        Console.Error.WriteLine($"error: unexpected argument '{args[i]}'");
+        return 2;
+    }
+}
+
+if (path.Length == 0)
 {
     Console.Error.WriteLine("usage: dotnet run scripts/nettrace-report.cs -- <file.nettrace> [--top N]");
     return 2;
-}
-
-string path = args[0];
-int top = 8;
-for (int i = 1; i < args.Length - 1; i++)
-{
-    if (args[i] == "--top" && int.TryParse(args[i + 1], out int parsed) && parsed > 0) top = parsed;
 }
 
 if (!File.Exists(path))
@@ -95,6 +114,15 @@ catch (Exception ex)
     // A trace stopped while the process was still running is routinely truncated at the tail;
     // report whatever was aggregated rather than losing the run.
     Console.Error.WriteLine($"warning: processing stopped early: {ex.GetType().Name}: {ex.Message}");
+}
+
+// Nothing aggregated at all is a different failure: "no GC events" plus "no contention stop events"
+// reads exactly like a healthy node that collected nothing, and exit 0 leaves a caller nothing to
+// branch on. An unreadable trace must not render as a quiet one.
+if (eventCount == 0)
+{
+    Console.Error.WriteLine($"error: no events could be read from {path}");
+    return 1;
 }
 
 double windowMs = double.IsNaN(firstEventMs) ? 0 : lastEventMs - firstEventMs;

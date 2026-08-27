@@ -148,12 +148,17 @@ class PerfReportingTests(unittest.TestCase):
             "\t0000000000000000 instance void [Nethermind.Trie] "
             "Nethermind.Trie.TrieStore`1<class System.Object>::Commit(int64)+0x1 "
             "(/tmp/perf-101.map)\n\n"
+            # Same frame with trailing whitespace: it must fold into the sample above, not into a
+            # second "[unknown] (libmystery.so))" frame carrying half of the library's samples.
+            ".NET 100/100  3.000000: cycles:\n"
+            "\t0000000000000000 [unknown] (/usr/lib/libmystery.so)  \n\n"
         )
 
         result = self.run_fold(perf_script)
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(".NET;[unknown] (libmystery.so) 1", result.stdout)
+        self.assertIn(".NET;[unknown] (libmystery.so) 2", result.stdout)
+        self.assertNotIn("libmystery.so))", result.stdout)
         self.assertIn(
             ".NET;instance void [Nethermind.Trie] Nethermind.Trie.TrieStore`1<class System.Object>::Commit(int64) 1",
             result.stdout,
@@ -206,6 +211,8 @@ class PerfReportingTests(unittest.TestCase):
         odd = self.run_report("compare", str(before), str(after), "3")
 
         self.assertEqual(one.returncode, 0, one.stderr)
+        # `+` is the whole answer here, so the table has to name the direction it points in.
+        self.assertIn("before.folded -> after.folded", one.stdout)
         self.assertEqual(len(self.data_rows(one.stdout)), 2)
         self.assertIn("Negative", one.stdout)
         self.assertIn("Positive", one.stdout)
@@ -240,6 +247,20 @@ class PerfReportingTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing or empty", result.stderr)
+        # Every view divides by the profile's total sample count, so none may reach awk with a zero
+        # total - including compare, whose process substitution would swallow the failure.
+        for arguments in (
+            ("top", str(zero)),
+            ("total", str(zero)),
+            ("native", str(zero)),
+            ("compare", str(zero), str(valid)),
+            ("compare", str(valid), str(zero)),
+        ):
+            with self.subTest(view=arguments[0]):
+                report = self.run_report(*arguments)
+                self.assertNotEqual(report.returncode, 0, report.stdout)
+                self.assertIn("no positive sample counts", report.stderr)
+                self.assertNotIn("division by zero", report.stderr)
         for profile in (empty, whitespace, zero):
             with self.subTest(profile=profile.name):
                 validation = self.run_folded_profile_validator(profile)
@@ -269,6 +290,23 @@ class PerfReportingTests(unittest.TestCase):
                 self.assertIn(split, validation.stdout)
                 if not succeeds:
                     self.assertIn("no managed leaf samples", validation.stderr)
+
+    def test_managed_frame_pattern_is_identical_in_the_reporter_and_the_validator(self) -> None:
+        """The classifier regex is duplicated; a fix landing in only one file is silent.
+
+        In perf-report.sh it decides what `native` lists, in validate-folded-profile.sh whether a
+        profile is rejected outright - and each file has its own test, so both keep passing.
+        """
+        def managed_frame_patterns(path: Path) -> list[str]:
+            # Awk regexes, so no literal whitespace; ':: ' is what makes one a managed frame.
+            return [p for p in re.findall(r"~ /(\S+)/", path.read_text(encoding="utf-8")) if p.endswith("::")]
+
+        reporter = managed_frame_patterns(PERF_REPORT)
+        validator = managed_frame_patterns(FOLDED_PROFILE_VALIDATOR)
+
+        self.assertEqual(len(reporter), 1, reporter)
+        self.assertEqual(len(validator), 1, validator)
+        self.assertEqual(reporter, validator, "the managed-frame regex must stay identical in both files")
 
     def test_perf_preflight_and_recorder_use_the_direct_perf_process(self) -> None:
         fake_bin = self.directory / "bin"
@@ -310,13 +348,14 @@ class PerfReportingTests(unittest.TestCase):
         commands = command_log.read_text(encoding="utf-8").splitlines()
         self.assertEqual(commands[0], "stat --event cycles:u -- true")
         self.assertIn("record --event cycles:u --freq 99 --call-graph fp --pid 4321", commands[1])
-        self.assertIn(
-            '  perf record --event "$PERF_SAMPLING_EVENT" --freq "$frequency" --call-graph fp --pid "$node_pid" \\\n'
-            '    --output "$output" \\\n'
-            '    > "$record_log" 2>&1 &\n'
-            "  PERF_RECORDER_PID=$!",
-            RPC_LIB.read_text(encoding="utf-8"),
-        )
+        # The invariant is that perf is launched directly: any wrapper would make $! the wrapper's
+        # PID and break the identity tracking teardown depends on. Assert that rather than the
+        # source text, so reflowing the command does not red the job.
+        recorder = re.search(r"(?ms)^start_perf_recorder\(\) \{.*?^\}", RPC_LIB.read_text(encoding="utf-8"))
+        self.assertIsNotNone(recorder, "start_perf_recorder must be defined in lib.sh")
+        self.assertRegex(recorder[0], r"(?m)^\s*perf record\b")
+        self.assertNotRegex(recorder[0], r"\b(sudo|as_root)\b")
+        self.assertIn("PERF_RECORDER_PID=$!", recorder[0])
 
     def test_perf_preflight_falls_back_to_cpu_clock_when_cycles_are_unavailable(self) -> None:
         fake_bin = self.directory / "bin"
@@ -692,6 +731,34 @@ class PerfReportingTests(unittest.TestCase):
         self.assertIn("no .NET root with host/fxr found inside rpcbench-primary", result.stderr)
         self.assertEqual([c for c in self.docker_commands() if " collect " in c], [])
 
+    def test_container_dotnet_root_probe_does_not_consume_the_runtime_listing(self) -> None:
+        """The probe runs inside the loop reading the listing, so it must not share its stdin."""
+        environment, _, _ = self.profiler_environment()
+
+        result = self.run_rpc_library(
+            r"""
+            set -euo pipefail
+            docker() {
+              shift                                        # exec
+              while [[ "${1:-}" == "-e" ]]; do shift 2; done
+              shift                                        # container
+              case "$*" in
+                'dotnet --list-runtimes')
+                  printf 'Microsoft.NETCore.App 8.0.0 [/opt/dotnet-a/shared/Microsoft.NETCore.App]\n'
+                  printf 'Microsoft.NETCore.App 10.0.0 [/opt/dotnet-b/shared/Microsoft.NETCore.App]\n' ;;
+                'test -d /opt/dotnet-a/host/fxr') cat > /dev/null; return 1 ;;
+                'test -d /opt/dotnet-b/host/fxr') cat > /dev/null; return 0 ;;
+                *) return 64 ;;
+              esac
+            }
+            container_dotnet_root rpcbench-primary
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(result.stdout.strip(), "/opt/dotnet-b")
+
     def test_stop_dotnet_trace_collector_signals_only_the_collector_it_started(self) -> None:
         environment, diag, _ = self.profiler_environment()
 
@@ -701,7 +768,7 @@ class PerfReportingTests(unittest.TestCase):
             set -euo pipefail
             ( : ) & finished=$!
             wait "$finished"
-            stop_dotnet_trace_collector rpcbench-primary "$finished" 77
+            if stop_dotnet_trace_collector rpcbench-primary "$finished" 77; then echo "unexpected success"; exit 1; fi
             sleep 5 & alive=$!
             if stop_dotnet_trace_collector rpcbench-primary "$alive" 77; then echo "unexpected success"; exit 1; fi
             kill "$alive"
@@ -710,7 +777,7 @@ class PerfReportingTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
-        self.assertIn("dotnet-trace collector already exited", result.stdout)
+        self.assertIn("exited before it was stopped; the trace does not cover the measured phase", result.stdout)
         self.assertIn("is pid '<none>', expected 77; refusing to signal", result.stdout)
         self.assertEqual([c for c in self.docker_commands() if "kill -INT" in c], [])
 
@@ -770,7 +837,11 @@ class PerfReportingTests(unittest.TestCase):
 
     FAKE_GIT = r"""#!/bin/bash
 printf '%s\n' "$*" >> "$FAKE_STATE/git.log"
+if [[ "$1" == "ls-remote" ]]; then
+  [[ -z "${FAKE_GIT_SHA:-}" ]] || printf '%s\trefs/heads/%s\n' "$FAKE_GIT_SHA" "$3"
+fi
 if [[ "$1" == "init" ]]; then mkdir -p "${@: -1}/runner" && : > "${@: -1}/runner/Dockerfile"; fi
+exit 0
 """
 
     # `build` registers the tag `image inspect` answers for; `run` numbers its results.csv so a
@@ -860,6 +931,27 @@ esac
         self.assertEqual(fourth.returncode, 0, f"{fourth.stdout}\n{fourth.stderr}")
         self.assertEqual(preparations(), (3, 3))
         self.assertNotIn("Reusing", fourth.stdout)
+
+        # A ref that resolves is keyed on the commit, so the same name over a moved branch misses.
+        environment["JB_REF"] = "movingref"
+        environment["FAKE_GIT_SHA"] = "a" * 40
+        fifth = self.run_jsonbench(environment, self.directory / "out5")
+        self.assertEqual(fifth.returncode, 0, f"{fifth.stdout}\n{fifth.stderr}")
+        self.assertEqual(preparations(), (4, 4))
+        self.assertEqual(
+            (self.directory / "scratch" / "jsonbench" / "prepared").read_text(encoding="utf-8"),
+            f"https://github.com/NethermindEth/json-bench.git@{'a' * 40}\n",
+        )
+        sixth = self.run_jsonbench(environment, self.directory / "out6")
+        self.assertEqual(sixth.returncode, 0, f"{sixth.stdout}\n{sixth.stderr}")
+        self.assertEqual(preparations(), (4, 4))
+        self.assertIn("Reusing", sixth.stdout)
+
+        environment["FAKE_GIT_SHA"] = "b" * 40
+        seventh = self.run_jsonbench(environment, self.directory / "out7")
+        self.assertEqual(seventh.returncode, 0, f"{seventh.stdout}\n{seventh.stderr}")
+        self.assertEqual(preparations(), (5, 5))
+        self.assertNotIn("Reusing", seventh.stdout)
 
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
@@ -1030,6 +1122,33 @@ esac
             for job_name in ("benchmark", "benchmark-multi"):
                 for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
                     self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
+
+    def test_perf_and_dotnet_trace_preconditions_are_resolved_before_the_runner_is_paid_for(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        resolve = workflow_job_body(rpc_workflow, "resolve")
+
+        for collector in ("dottrace", "perf", "dotnet_trace"):
+            with self.subTest(collector=collector):
+                self.assertIn(f'if [[ "${{{collector}}}" == "true" && "${{client}}" != "nethermind" ]]; then', resolve)
+
+        # The session cap runs from the attach, which without a warm-up is ahead of json-bench's
+        # clone, image build and corpus conversion; an elapsed cap there would end the trace before
+        # the measured cell started, and the collector's exit would then look like a clean stop.
+        self.assertIn('[[ "${warmup_seconds}" == "0" ]] && margin=$(( margin + 1800 ))', resolve)
+        self.assertLess(
+            resolve.index('warmup_seconds="0"'),
+            resolve.index('dotnet_trace_max_seconds=""'),
+            "the cap reads warmup_seconds, so it must be resolved first",
+        )
+        self.assertIn(
+            "the dotnet-trace collector exited before it was stopped; the trace does not cover the measured phase",
+            RPC_LIB.read_text(encoding="utf-8"),
+        )
+
+        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        start_node = START_NODE.read_text(encoding="utf-8")
+        self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
+        self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
 
     def test_expb_profile_archive_precedes_deferred_perf_failure(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
