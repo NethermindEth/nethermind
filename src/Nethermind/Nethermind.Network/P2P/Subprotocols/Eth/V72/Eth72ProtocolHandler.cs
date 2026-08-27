@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -1108,8 +1110,10 @@ public class Eth72ProtocolHandler(
 
         lock (_cellStateLock)
         {
-            if (_pendingCellRequests.TryGetValue(hash, out CellRequestState existing))
+            ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrAddDefault(_pendingCellRequests, hash, out bool exists);
+            if (exists)
             {
+                CellRequestState existing = state;
                 BlobCellMask combinedMask = existing.Mask | requestMask;
                 _pendingCellRequestWork += combinedMask.Count - existing.Mask.Count;
                 DateTimeOffset? combinedRetryAt = existing.RetryAt;
@@ -1119,7 +1123,7 @@ public class Eth72ProtocolHandler(
                     combinedRetryAt = retryAt;
                 }
 
-                _pendingCellRequests[hash] = existing with
+                state = existing with
                 {
                     Mask = combinedMask,
                     ExpiresAt = _timestamper.UtcNowOffset + PendingCellStateTtl,
@@ -1131,7 +1135,7 @@ public class Eth72ProtocolHandler(
             }
 
             long revision = NextCellStateRevision();
-            _pendingCellRequests[hash] = new CellRequestState(
+            state = new CellRequestState(
                 requestMask,
                 revision,
                 RequestId: 0,
@@ -1231,13 +1235,15 @@ public class Eth72ProtocolHandler(
         lock (_cellStateLock)
         {
             DateTimeOffset now = _timestamper.UtcNowOffset;
-            if (_sentCellRequests.TryGetValue(hash, out CellRequestState existing))
+            ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrAddDefault(_sentCellRequests, hash, out bool exists);
+            if (exists)
             {
+                CellRequestState existing = state;
                 BlobCellMask combinedMask = existing.Mask | requestMask;
                 _sentCellRequestWork += combinedMask.Count - existing.Mask.Count;
                 DateTimeOffset updatedExpiresAt = now + CellRequestTtl;
                 int updatedMaxResponseBytes = GetExpectedCellsResponseBound(requestId, combinedMask);
-                _sentCellRequests[hash] = existing with { Mask = combinedMask, RequestId = requestId, ExpiresAt = updatedExpiresAt };
+                state = existing with { Mask = combinedMask, RequestId = requestId, ExpiresAt = updatedExpiresAt };
                 _sentCellRequestIds[requestId] = new SentCellRequest(
                     hash,
                     combinedMask,
@@ -1251,7 +1257,7 @@ public class Eth72ProtocolHandler(
             long revision = NextCellStateRevision();
             DateTimeOffset expiresAt = now + CellRequestTtl;
             int maxResponseBytes = GetExpectedCellsResponseBound(requestId, requestMask);
-            _sentCellRequests[hash] = new CellRequestState(requestMask, revision, requestId, expiresAt, RetryAt: null, RestoreAnnouncement: false);
+            state = new CellRequestState(requestMask, revision, requestId, expiresAt, RetryAt: null, RestoreAnnouncement: false);
             _sentCellRequestIds[requestId] = new SentCellRequest(
                 hash,
                 requestMask,
@@ -1320,8 +1326,8 @@ public class Eth72ProtocolHandler(
     {
         lock (_cellStateLock)
         {
-            if (!_pendingCellRequests.TryGetValue(hash, out CellRequestState state)
-                || (expectedRevision != 0 && state.Revision != expectedRevision))
+            ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrNullRef(_pendingCellRequests, hash);
+            if (Unsafe.IsNullRef(ref state) || (expectedRevision != 0 && state.Revision != expectedRevision))
             {
                 return;
             }
@@ -1339,7 +1345,7 @@ public class Eth72ProtocolHandler(
             }
 
             _pendingCellRequestWork -= state.Mask.Count - remainingMask.Count;
-            _pendingCellRequests[hash] = state with { Mask = remainingMask };
+            state = state with { Mask = remainingMask };
         }
     }
 
