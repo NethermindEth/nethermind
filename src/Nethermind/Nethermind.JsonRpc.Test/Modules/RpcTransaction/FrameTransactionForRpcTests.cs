@@ -401,6 +401,7 @@ public class FrameTransactionForRpcTests
         ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
         receiptForRpc.Logs = [];
         receiptForRpc.Status = TxFrameReceipt.StatusSuccess;
+        receiptForRpc.LogsBloom = new Bloom();
         if (!hasFrameReceipts)
         {
             receiptForRpc.FrameReceipts = null;
@@ -413,6 +414,9 @@ public class FrameTransactionForRpcTests
             Assert.That(receipt.Logs, Has.Length.EqualTo(hasFrameReceipts ? 1 : 0));
             Assert.That(receipt.StatusCode,
                 Is.EqualTo(hasFrameReceipts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
+            // Bloom and Logs are a matched pair: deriving one from the frames and keeping the caller's
+            // other half would only move the contradiction. The wire receipt carries no bloom at all.
+            Assert.That(receipt.Bloom, Is.EqualTo(hasFrameReceipts ? new Bloom([FrameLog]) : new Bloom()));
         }
     }
 }

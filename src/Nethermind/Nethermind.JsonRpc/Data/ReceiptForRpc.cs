@@ -112,6 +112,9 @@ namespace Nethermind.JsonRpc.Data
                 {
                     receipt.Logs = TxFrameReceipt.ConcatLogs(frameReceipts);
                     receipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
+                    // Bloom is absent from the EIP-8141 wire receipt, so DecodeFrameTxReceipt leaves it
+                    // for TxReceipt to derive from Logs. Clearing it keeps the pair from contradicting.
+                    receipt.Bloom = null;
                 }
             }
 
