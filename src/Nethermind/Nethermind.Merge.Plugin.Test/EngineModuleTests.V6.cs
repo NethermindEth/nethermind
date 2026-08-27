@@ -1426,9 +1426,9 @@ public partial class EngineModuleTests
 
         (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
 
-        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         Hash256 parentHash = chain.BlockTree.HeadHash;
         PayloadAttributes payloadAttributes = new()
@@ -1443,7 +1443,8 @@ public partial class EngineModuleTests
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
-        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash);
+        // All three transactions have sequential nonces and must land for the expected hashes below to be meaningful.
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash, minTransactions: 3);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpc.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
         await blockImprovementWait;

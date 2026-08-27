@@ -5,10 +5,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
@@ -32,9 +34,11 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 public class SnapProviderTests
 {
 
-    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null) =>
+    private ContainerBuilder CreateContainerBuilder(
+        TestSyncConfig? testSyncConfig = null,
+        Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
         new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig()));
+            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig(), factoryCreator));
 
     private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null) =>
         CreateContainerBuilder(testSyncConfig).Build();
@@ -158,27 +162,148 @@ public class SnapProviderTests
         PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(account);
 
-        // Drain the account range partition so that the storage request is the only outstanding work.
-        progressTracker.IsFinished(out SnapSyncBatch? accountBatch);
-        ValueHash256 partitionLimit = accountBatch!.AccountRangeRequest!.LimitHash!.Value;
-        progressTracker.UpdateAccountRangePartitionProgress(partitionLimit, Keccak.MaxValue, false);
-        progressTracker.ReportAccountRangePartitionFinished(partitionLimit);
-        accountBatch.Dispose();
+        DrainAccountRangePartition(progressTracker);
 
         progressTracker.IsFinished(out SnapSyncBatch? storageBatch);
-        using (SlotsAndProofs response = CreateEmptySlotsResponse(storageBatch!.StorageRangeRequest!.Accounts.Count + 1))
-        {
-            Assert.That(snapProvider.AddStorageRange(storageBatch.StorageRangeRequest, response), Is.EqualTo(AddRangeResult.OutOfBounds));
-        }
+        storageBatch!.StorageRangeResponse = CreateEmptySlotsResponse(storageBatch.StorageRangeRequest!.Accounts.Count + 1);
+
+        Assert.That(snapProvider.AddStorageRange(storageBatch.StorageRangeRequest, storageBatch.StorageRangeResponse), Is.EqualTo(AddRangeResult.OutOfBounds));
+        snapProvider.ReleaseRequest(storageBatch, responseHandled: true);
         storageBatch.Dispose();
 
         progressTracker.IsFinished(out SnapSyncBatch? retryBatch);
         Assert.That(retryBatch!.StorageRangeRequest!.Accounts.AsSpan()[0].Path, Is.EqualTo(account.Path));
 
-        progressTracker.ReportFullStorageRequestFinished(retryBatch.StorageRangeRequest.Accounts.Count);
+        progressTracker.ReportStorageRequestFinished(retryBatch.StorageRangeRequest.Accounts.Count);
         retryBatch.Dispose();
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    [Test]
+    public void AddStorageRange_ResponseCoversFewerAccountsThanRequested_QueuesTheRestAgain()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        PathWithAccount covered = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
+        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], Account.TotallyEmpty);
+        progressTracker.EnqueueAccountStorage(covered);
+        progressTracker.EnqueueAccountStorage(uncovered);
+        DrainAccountRangePartition(progressTracker);
+
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        Assert.That(batch!.StorageRangeRequest!.Accounts.Count, Is.EqualTo(2));
+        batch.StorageRangeResponse = CreateEmptySlotsResponse(1);
+
+        snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
+        snapProvider.ReleaseRequest(batch, responseHandled: true);
+        batch.Dispose();
+
+        // The covered account failed verification and goes for a refresh; the uncovered one comes back.
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+        progressTracker.ReportAccountRefreshFinished();
+        refresh.Dispose();
+
+        progressTracker.IsFinished(out SnapSyncBatch? retried);
+        Assert.That(retried!.StorageRangeRequest!.Accounts.AsSpan()[0].Path, Is.EqualTo(uncovered.Path));
+        progressTracker.ReportStorageRequestFinished(retried.StorageRangeRequest.Accounts.Count);
+        retried.Dispose();
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True);
+    }
+
+    [TestCase(nameof(SnapSyncBatch.AccountRangeRequest))]
+    [TestCase(nameof(SnapSyncBatch.StorageRangeRequest))]
+    [TestCase(nameof(SnapSyncBatch.CodesRequest))]
+    public void HandleResponse_ProcessingThrows_OffersTheRequestAgain(string requestKind)
+    {
+        using IContainer container = CreateContainerBuilder(
+                new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 },
+                (_, _) => new TestSnapTrieFactory(
+                    static () => throw new IOException("state backend unavailable"),
+                    static () => throw new IOException("state backend unavailable")))
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        ISimpleSyncFeed<SnapSyncBatch> feed = container.Resolve<ISimpleSyncFeed<SnapSyncBatch>>();
+
+        ValueHash256 work = TestItem.ValueKeccaks[0];
+        switch (requestKind)
+        {
+            case nameof(SnapSyncBatch.StorageRangeRequest):
+                progressTracker.EnqueueAccountStorage(new(work, Account.TotallyEmpty));
+                DrainAccountRangePartition(progressTracker);
+                break;
+            case nameof(SnapSyncBatch.CodesRequest):
+                progressTracker.EnqueueCodeHash(work);
+                DrainAccountRangePartition(progressTracker);
+                break;
+        }
+
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+        ValueHash256? issuedLimit = batch!.AccountRangeRequest?.LimitHash;
+        AttachThrowingResponse(batch);
+
+        // The feed disposes the batch itself.
+        Assert.That(() => feed.HandleResponse(batch, null), Throws.InstanceOf<IOException>());
+
+        // Assert the same work came back, then consume it so only the active count can keep the phase open.
+        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? retried), Is.False);
+        switch (requestKind)
+        {
+            case nameof(SnapSyncBatch.AccountRangeRequest):
+                Assert.That(retried!.AccountRangeRequest?.LimitHash, Is.EqualTo(issuedLimit));
+                progressTracker.UpdateAccountRangePartitionProgress(issuedLimit!.Value, Keccak.MaxValue, false);
+                progressTracker.ReportAccountRangePartitionFinished(issuedLimit.Value);
+                break;
+            case nameof(SnapSyncBatch.StorageRangeRequest):
+                Assert.That(retried!.StorageRangeRequest?.Accounts.AsSpan()[0].Path, Is.EqualTo(work));
+                progressTracker.ReportStorageRequestFinished(retried.StorageRangeRequest!.Accounts.Count);
+                break;
+            case nameof(SnapSyncBatch.CodesRequest):
+                Assert.That(retried!.CodesRequest?.AsSpan()[0], Is.EqualTo(work));
+                progressTracker.ReportCodeRequestFinished([]);
+                break;
+        }
+
+        retried!.Dispose();
+
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True,
+            "the work was queued again but its active request count was never released");
+    }
+
+    private static void AttachThrowingResponse(SnapSyncBatch batch)
+    {
+        if (batch.AccountRangeRequest is not null)
+        {
+            batch.AccountRangeResponse = new AccountsAndProofs
+            {
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+                Proofs = EmptyByteArrayList.Instance
+            };
+        }
+        else if (batch.StorageRangeRequest is not null)
+        {
+            batch.StorageRangeResponse = CreateEmptySlotsResponse(batch.StorageRangeRequest.Accounts.Count);
+        }
+        else if (batch.CodesRequest is not null)
+        {
+            batch.CodesResponse = new ThrowingByteArrayList();
+        }
+    }
+
+    private sealed class ThrowingByteArrayList : IByteArrayList
+    {
+        public int Count => 1;
+        public ReadOnlySpan<byte> this[int index] => throw new IOException("code stream unavailable");
+        public void Dispose() { }
     }
 
     [Test]
@@ -266,6 +391,7 @@ public class SnapProviderTests
         accountsAndProofs.Proofs = proofs;
 
         Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+        snapProvider.ReleaseRequest(batch!, responseHandled: true);
         Assert.That(progressTracker.IsFinished(out batch), Is.EqualTo(false));
         ValueHash256 startingHash = batch!.AccountRangeRequest!.StartingHash;
         Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
@@ -362,6 +488,15 @@ public class SnapProviderTests
         List<string> Paths,
         List<string> Accounts
     );
+
+    private static void DrainAccountRangePartition(ProgressTracker progressTracker)
+    {
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        ValueHash256 partitionLimit = batch!.AccountRangeRequest!.LimitHash!.Value;
+        progressTracker.UpdateAccountRangePartitionProgress(partitionLimit, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(partitionLimit);
+        batch.Dispose();
+    }
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
