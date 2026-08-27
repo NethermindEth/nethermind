@@ -3012,6 +3012,39 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    // Placing the parked cells with another provider removes the pending entry; if the announcement
+    // restore was rejected on that same tick, the provider would be lost for good.
+    [Test]
+    public void should_keep_retrying_rejected_restore_after_cells_are_requested_elsewhere()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+            .Returns(false, true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+
+        HandleIncomingStatusMessage();
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
+        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        registry.ClearReceivedCalls();
+
+        // The restore is refused, but the cells are placed with another provider on the same tick.
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+        registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
+
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(7));
+
+        registry.Received(2).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
+    }
+
     // The symptom behind the mask fix, against the real registry: restoring the narrow request mask
     // drops the peer out of the full-provider count that a non-supernode sampler is gated on.
     [Test]
@@ -3033,7 +3066,7 @@ public class Eth72ProtocolHandlerTests
         Assert.That(_sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(tx.Hash!), Is.EqualTo(1));
 
         Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, requestMask), Is.True);
-        // Past the 5s request TTL, so the unanswered request is requeued.
+        // Past the 10s request TTL, so the unanswered request is requeued.
         ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(11));
         Assert.That(_sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(tx.Hash!), Is.Zero);
 

@@ -1372,7 +1372,9 @@ public class Eth72ProtocolHandler(
                 return;
             }
 
-            if (remainingMask.IsEmpty)
+            // An entry that still owes an announcement restore outlives the cells it was parked for,
+            // otherwise placing the request elsewhere would drop the provider permanently.
+            if (remainingMask.IsEmpty && state.RestoreMask.IsEmpty)
             {
                 RemovePendingCellRequestLocked(hash);
                 return;
@@ -1413,13 +1415,28 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    private void ClearPendingCellRestoreMaskLocked(ValueHash256 hash)
+    /// <summary>Retires the part of a pending entry's announcement restore that has been recorded.</summary>
+    /// <remarks>
+    /// Only <paramref name="restoredMask"/> is cleared: the restore is recorded outside
+    /// <c>_cellStateLock</c>, so a concurrent response may have parked newer cells for the same
+    /// transaction in the meantime and those must still be restored.
+    /// </remarks>
+    private void ClearPendingCellRestoreMaskLocked(ValueHash256 hash, BlobCellMask restoredMask)
     {
         ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrNullRef(_pendingCellRequests, hash);
-        if (!Unsafe.IsNullRef(ref state))
+        if (Unsafe.IsNullRef(ref state))
         {
-            state = state with { RestoreMask = BlobCellMask.Empty };
+            return;
         }
+
+        BlobCellMask remainingRestoreMask = state.RestoreMask.Except(restoredMask);
+        if (remainingRestoreMask.IsEmpty && state.Mask.IsEmpty)
+        {
+            RemovePendingCellRequestLocked(hash);
+            return;
+        }
+
+        state = state with { RestoreMask = remainingRestoreMask };
     }
 
     private void RemovePendingCellRequestLocked(ValueHash256 hash)
@@ -1511,11 +1528,11 @@ public class Eth72ProtocolHandler(
                 // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
                 // peer is at its announcement cap or the transaction is quarantined, and dropping the
                 // mask there would lose the provider for good.
-                if (restoreMask.IsEmpty || _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
+                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
                 {
                     lock (_cellStateLock)
                     {
-                        ClearPendingCellRestoreMaskLocked(key);
+                        ClearPendingCellRestoreMaskLocked(key, restoreMask);
                     }
                 }
 
