@@ -2887,7 +2887,7 @@ public class Eth72ProtocolHandlerTests
 
     // Restoring the request mask would overwrite a broader announcement and downgrade a full
     // provider, starving samplers gated on the full-provider count.
-    [TestCase(false, TestName = "should_restore_announced_mask_after_registry_capacity_rejects_cells")]
+    [TestCase(false, TestName = "should_restore_announced_mask_after_empty_cells_response")]
     [TestCase(true, TestName = "should_restore_announced_mask_after_cell_request_times_out")]
     public void should_restore_announced_mask_rather_than_request_mask(bool timeOutRequest)
     {
@@ -2902,19 +2902,18 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
-        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
 
         HandleIncomingStatusMessage();
         Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
         if (timeOutRequest)
         {
+            // Past the 10s request TTL, so the unanswered request is requeued.
             ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(11));
         }
         else
         {
-            using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [tx.Hash!], [cells], cellMask.ToBytes());
-            HandleZeroMessage(response, Eth72MessageCode.Cells);
-            registry.Received(1).RecordCells(_handler, tx.Hash!, cellMask, Arg.Any<byte[][]>());
+            using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
+            HandleZeroMessage(empty, Eth72MessageCode.Cells);
         }
 
         registry.Received(1).RemoveAnnouncement(_handler, tx.Hash!);
@@ -3010,6 +3009,68 @@ public class Eth72ProtocolHandlerTests
             registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
             registry.DidNotReceive().RecordAnnouncement(_handler, tx.Hash!, Arg.Any<BlobCellMask>());
         }
+    }
+
+    // The cells were already validated before RecordCells is reached, so a refusal there is almost
+    // always local capacity and must not cost the peer its provider standing.
+    [Test]
+    public void should_keep_announcement_when_registry_refuses_delivered_cells()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
+
+        HandleIncomingStatusMessage();
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
+        using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [tx.Hash!], [cells], cellMask.ToBytes());
+        HandleZeroMessage(response, Eth72MessageCode.Cells);
+
+        using (Assert.EnterMultipleScope())
+        {
+            registry.Received(1).RecordCells(_handler, tx.Hash!, cellMask, Arg.Any<byte[][]>());
+            registry.DidNotReceive().RemoveAnnouncement(_handler, tx.Hash!);
+        }
+
+        // The retry is still throttled, so it only goes out once the backoff falls due.
+        registry.ClearReceivedCalls();
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+        registry.Received(1).TryRequestCells(tx.Hash!, cellMask, Arg.Any<PublicKey>());
+    }
+
+    // A restore the registry keeps refusing must not be swallowed when the pending entry ages out.
+    [Test]
+    public void should_attempt_announcement_restore_once_more_when_pending_request_expires()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>())
+            .Returns(false);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+
+        HandleIncomingStatusMessage();
+        Assert.That(((ISparseBlobPoolPeer)_handler).TrySendGetCells(tx.Hash!, cellMask), Is.True);
+        using CellsMessage72 empty = new(GetLastGetCellsRequestId(tx.Hash!, cellMask), [], [], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(empty, Eth72MessageCode.Cells);
+        registry.ClearReceivedCalls();
+
+        // Past the 15s pending-request TTL, so the entry is dropped on this tick.
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(16));
+
+        registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full);
     }
 
     // Placing the parked cells with another provider removes the pending entry; if the announcement

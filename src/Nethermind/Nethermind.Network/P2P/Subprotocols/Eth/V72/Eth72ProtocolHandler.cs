@@ -88,6 +88,7 @@ public class Eth72ProtocolHandler(
     private static readonly TimeSpan CellResponseCorrelationTtl = Timeouts.Cleanup;
     private static readonly TimeSpan PartialCellResponseBackoff = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PendingCellStateTtl = TimeSpan.FromSeconds(15);
+    private const long NoRestoreEpoch = 0;
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly int _providerProbabilityPercent = txPoolConfig.SparseBlobProviderProbabilityPercent;
     private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
@@ -753,7 +754,10 @@ public class Eth72ProtocolHandler(
         _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, requestedMask, this);
         if (!_sparseBlobPoolPeerRegistry.RecordCells(this, hash, availableMask, pending.Cells))
         {
-            BackOffAndParkCellRequest(hash, availableMask);
+            // The cells were already validated above, so a refusal here is almost always ours: the
+            // early-cell byte budget, the accounting replace, or a transient submit. Throttle the
+            // retry without taking away what marks the peer as a provider.
+            ParkCellRequest(key, availableMask, restoreMask: BlobCellMask.Empty);
             return;
         }
 
@@ -1105,7 +1109,7 @@ public class Eth72ProtocolHandler(
         DateTimeOffset? retryAt = null,
         BlobCellMask restoreMask = default)
     {
-        if (requestMask.IsEmpty)
+        if (requestMask.IsEmpty && restoreMask.IsEmpty)
         {
             return;
         }
@@ -1130,7 +1134,8 @@ public class Eth72ProtocolHandler(
                     Mask = combinedMask,
                     ExpiresAt = _timestamper.UtcNowOffset + PendingCellStateTtl,
                     RetryAt = combinedRetryAt,
-                    RestoreMask = existing.RestoreMask | restoreMask
+                    RestoreMask = existing.RestoreMask | restoreMask,
+                    RestoreEpoch = restoreMask.IsEmpty ? existing.RestoreEpoch : NextCellStateRevision()
                 };
                 TrimPendingCellRequests();
                 return;
@@ -1143,7 +1148,8 @@ public class Eth72ProtocolHandler(
                 RequestId: 0,
                 ExpiresAt: _timestamper.UtcNowOffset + PendingCellStateTtl,
                 RetryAt: retryAt,
-                RestoreMask: restoreMask);
+                RestoreMask: restoreMask,
+                RestoreEpoch: restoreMask.IsEmpty ? NoRestoreEpoch : NextCellStateRevision());
             _pendingCellRequestCount++;
             _pendingCellRequestWork += requestMask.Count;
             _pendingCellRequestOrder.Enqueue(new CellStateKey(hash, revision));
@@ -1291,7 +1297,14 @@ public class Eth72ProtocolHandler(
             long revision = NextCellStateRevision();
             DateTimeOffset expiresAt = now + CellRequestTtl;
             int maxResponseBytes = GetExpectedCellsResponseBound(requestId, requestMask);
-            state = new CellRequestState(requestMask, revision, requestId, expiresAt, RetryAt: null, RestoreMask: BlobCellMask.Empty);
+            state = new CellRequestState(
+                requestMask,
+                revision,
+                requestId,
+                expiresAt,
+                RetryAt: null,
+                RestoreMask: BlobCellMask.Empty,
+                RestoreEpoch: NoRestoreEpoch);
             _sentCellRequestIds[requestId] = new SentCellRequest(
                 hash,
                 requestMask,
@@ -1415,28 +1428,28 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    /// <summary>Retires the part of a pending entry's announcement restore that has been recorded.</summary>
+    /// <summary>Retires a pending entry's announcement restore once it has been recorded.</summary>
     /// <remarks>
-    /// Only <paramref name="restoredMask"/> is cleared: the restore is recorded outside
-    /// <c>_cellStateLock</c>, so a concurrent response may have parked newer cells for the same
-    /// transaction in the meantime and those must still be restored.
+    /// The restore is recorded outside <c>_cellStateLock</c>, so a concurrent response can strip the
+    /// announcement again and re-park the very same mask meanwhile. Differencing the masks would not
+    /// see that, so the epoch captured before the restore is what decides: a mismatch means a newer
+    /// restore is owed and this one must not clear it.
     /// </remarks>
-    private void ClearPendingCellRestoreMaskLocked(ValueHash256 hash, BlobCellMask restoredMask)
+    private void ClearPendingCellRestoreMaskLocked(ValueHash256 hash, long expectedRestoreEpoch)
     {
         ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrNullRef(_pendingCellRequests, hash);
-        if (Unsafe.IsNullRef(ref state))
+        if (Unsafe.IsNullRef(ref state) || state.RestoreEpoch != expectedRestoreEpoch)
         {
             return;
         }
 
-        BlobCellMask remainingRestoreMask = state.RestoreMask.Except(restoredMask);
-        if (remainingRestoreMask.IsEmpty && state.Mask.IsEmpty)
+        if (state.Mask.IsEmpty)
         {
             RemovePendingCellRequestLocked(hash);
             return;
         }
 
-        state = state with { RestoreMask = remainingRestoreMask };
+        state = state with { RestoreMask = BlobCellMask.Empty, RestoreEpoch = NoRestoreEpoch };
     }
 
     private void RemovePendingCellRequestLocked(ValueHash256 hash)
@@ -1451,7 +1464,7 @@ public class Eth72ProtocolHandler(
     private void MaintainSparseBlobState(DateTimeOffset now)
     {
         List<SentCellRequest>? expiredSentRequests = null;
-        List<(ValueHash256 Hash, BlobCellMask RestoreMask)>? dueRetries = null;
+        List<(ValueHash256 Hash, BlobCellMask RestoreMask, long RestoreEpoch)>? dueRetries = null;
         List<ValueHash256>? expiredPendingKeys = null;
         List<ValueHash256>? expiredSentKeys = null;
         List<long>? expiredCorrelationKeys = null;
@@ -1462,10 +1475,16 @@ public class Eth72ProtocolHandler(
                 if (entry.Value.ExpiresAt <= now)
                 {
                     (expiredPendingKeys ??= []).Add(entry.Key);
+                    // Expiry must not swallow an announcement we took away: a restore the registry
+                    // kept refusing gets one final attempt on the way out.
+                    if (!entry.Value.RestoreMask.IsEmpty)
+                    {
+                        (dueRetries ??= []).Add((entry.Key, entry.Value.RestoreMask, entry.Value.RestoreEpoch));
+                    }
                 }
                 else if (entry.Value.RetryAt is { } retryAt && retryAt <= now)
                 {
-                    (dueRetries ??= []).Add((entry.Key, entry.Value.RestoreMask));
+                    (dueRetries ??= []).Add((entry.Key, entry.Value.RestoreMask, entry.Value.RestoreEpoch));
                 }
             }
 
@@ -1523,7 +1542,7 @@ public class Eth72ProtocolHandler(
         {
             for (int i = 0; i < dueRetries.Count; i++)
             {
-                (ValueHash256 key, BlobCellMask restoreMask) = dueRetries[i];
+                (ValueHash256 key, BlobCellMask restoreMask, long restoreEpoch) = dueRetries[i];
                 Hash256 hash = key.ToHash256();
                 // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
                 // peer is at its announcement cap or the transaction is quarantined, and dropping the
@@ -1532,7 +1551,7 @@ public class Eth72ProtocolHandler(
                 {
                     lock (_cellStateLock)
                     {
-                        ClearPendingCellRestoreMaskLocked(key, restoreMask);
+                        ClearPendingCellRestoreMaskLocked(key, restoreEpoch);
                     }
                 }
 
@@ -1861,7 +1880,8 @@ public class Eth72ProtocolHandler(
         long RequestId,
         DateTimeOffset ExpiresAt,
         DateTimeOffset? RetryAt,
-        BlobCellMask RestoreMask);
+        BlobCellMask RestoreMask,
+        long RestoreEpoch);
 
     /// <summary>Why an in-flight cell request is being returned to the pending queue.</summary>
     private enum CellRequeueReason
