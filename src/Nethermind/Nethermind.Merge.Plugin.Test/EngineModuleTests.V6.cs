@@ -351,16 +351,16 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase("0x", true)]
-    [TestCase("0x80", true)]
-    [TestCase("0xc1", true)]
-    [TestCase("0xf8", true)]
-    [TestCase("0xf800", true)]
-    [TestCase("0xf838", true)]
-    [TestCase("0xff", true)]
-    [TestCase("0xc0c0", true)]
-    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", false)]
-    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, bool expectsInvalidParams)
+    [TestCase("0x", "Block access list must be a complete RLP list")]
+    [TestCase("0x80", "Block access list must be a complete RLP list")]
+    [TestCase("0xc1", "Block access list must be a complete RLP list")]
+    [TestCase("0xf8", "Block access list must be a complete RLP list")]
+    [TestCase("0xf800", "Block access list must be a complete RLP list")]
+    [TestCase("0xf838", "Block access list must be a complete RLP list")]
+    [TestCase("0xff", "Block access list must be a complete RLP list")]
+    [TestCase("0xc0c0", "Block access list must be a complete RLP list")]
+    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
+    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         Block block = Build.A.Block
@@ -379,23 +379,12 @@ public partial class EngineModuleTests
             Keccak.Zero,
             []);
 
-        if (expectsInvalidParams)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
-                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-            }
-
-            return;
-        }
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
             Assert.That(response.Data.LatestValidHash, Is.Null);
-            Assert.That(response.Data.ValidationError, Does.StartWith("Error decoding block access list:"));
+            Assert.That(response.Data.ValidationError, Does.StartWith(expectedValidationError));
         }
     }
 
