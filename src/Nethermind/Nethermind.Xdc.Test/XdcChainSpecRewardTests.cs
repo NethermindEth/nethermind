@@ -25,7 +25,7 @@ public class XdcChainSpecRewardTests
 
     private const string RewardPlaceholder = "$REWARD$";
     private const string CoreParamsPlaceholder = "$CORE_PARAMS$";
-    private const string EnginePeriodPlaceholder = "$PERIOD$";
+    private const string EngineEpochPlaceholder = "$EPOCH$";
 
     private const string ChainSpecTemplate = $$"""
         {
@@ -33,8 +33,7 @@ public class XdcChainSpecRewardTests
           "engine": {
             "XDPoS": {
               "params": {
-                "period": {{EnginePeriodPlaceholder}},
-                "epoch": 900,
+                "epoch": {{EngineEpochPlaceholder}},
                 "masternodeReward": {{RewardPlaceholder}},
                 "v2Configs": [
                   {
@@ -91,7 +90,7 @@ public class XdcChainSpecRewardTests
     /// </summary>
     [Test]
     public void Fractional_value_in_an_unannotated_engine_field_is_rejected() =>
-        Assert.That(() => LoadEngineParameters("1", period: "2.0"), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => LoadEngineParameters("1", epoch: "2.0"), Throws.TypeOf<InvalidDataException>());
 
     /// <summary>
     /// The converter is attached to properties owned by <c>Nethermind.Xdc</c>, so nothing outside the
@@ -159,12 +158,12 @@ public class XdcChainSpecRewardTests
         throw new AssertionException($"No v2 config at switch round {ApothemRewardSwitchRound}");
     }
 
-    private static XdcChainSpecEngineParameters LoadEngineParameters(string reward, string coreParams = "", string period = "2")
+    private static XdcChainSpecEngineParameters LoadEngineParameters(string reward, string coreParams = "", string epoch = "900")
     {
         string json = ChainSpecTemplate
             .Replace(RewardPlaceholder, reward)
             .Replace(CoreParamsPlaceholder, coreParams)
-            .Replace(EnginePeriodPlaceholder, period);
+            .Replace(EngineEpochPlaceholder, epoch);
 
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);

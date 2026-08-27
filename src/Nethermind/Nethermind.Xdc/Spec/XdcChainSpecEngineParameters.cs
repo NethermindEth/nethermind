@@ -19,8 +19,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public virtual string SealEngineType => XdcConstants.XDPoS;
     public ulong Epoch { get; set; }
     public ulong Gap { get; set; }
-    public ulong Period { get; set; }
-    public bool SkipV1Validation { get; set; }
     public Address FoundationWalletAddr { get; set; }
     public ulong Reward { get; set; }
     public ulong SwitchEpoch { get; set; }
@@ -39,8 +37,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public Address RelayerRegistrationSMC { get; set; }
-    public Address TRC21IssuerSMC { get; set; }
 
     private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs
