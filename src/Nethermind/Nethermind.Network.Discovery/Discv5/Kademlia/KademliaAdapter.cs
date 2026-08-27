@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
+using Nethermind.Network;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv5.Messages;
@@ -29,6 +30,7 @@ public sealed class KademliaAdapter(
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
+    IIPResolver ipResolver,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
@@ -52,6 +54,7 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
+    private readonly IPAddress _localIp = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
     private readonly int _bucketSize = kademliaConfig.KSize;
     private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
@@ -125,7 +128,7 @@ public sealed class KademliaAdapter(
     {
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
-        using NodesResponseHandler responseHandler = new(receiver, distances, _distance);
+        using NodesResponseHandler responseHandler = new(receiver, distances, _distance, _localIp);
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
@@ -639,6 +642,7 @@ public sealed class KademliaAdapter(
         => TryGetAcceptableNode(
             record,
             currentNode.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal,
+            _localIp,
             currentNode.DiscoveryAddress,
             out refreshedNode);
 
@@ -905,83 +909,82 @@ public sealed class KademliaAdapter(
     }
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
-        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, preferredEndpoint: null, out _) &&
+        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, IPAddress.IPv6Any, preferredEndpoint: null, out _) &&
             HasExpectedNodeId(record, expectedNodeId);
 
     internal static bool TryGetAcceptableNode(
         NodeRecord record,
         bool allowNonRoutable,
+        IPAddress localIp,
         [NotNullWhen(true)] out Node? node)
-        => TryGetAcceptableNodeCore(record, allowNonRoutable, preferredEndpoint: null, out node);
+        => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint: null, out node);
 
     internal static bool TryGetAcceptableNode(
         NodeRecord record,
         bool allowNonRoutable,
+        IPAddress localIp,
         IPEndPoint preferredEndpoint,
         [NotNullWhen(true)] out Node? node)
-        => TryGetAcceptableNodeCore(record, allowNonRoutable, preferredEndpoint, out node);
+        => TryGetAcceptableNodeCore(record, allowNonRoutable, localIp, preferredEndpoint, out node);
 
     private static bool TryGetAcceptableNodeCore(
         NodeRecord record,
         bool allowNonRoutable,
+        IPAddress localIp,
         IPEndPoint? preferredEndpoint,
         [NotNullWhen(true)] out Node? node)
     {
         node = null;
-        if (!TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, preferredEndpoint, out IPEndPoint? discoveryEndpoint))
+        if (!TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, preferredEndpoint, out IPEndPoint? discoveryEndpoint))
         {
             return false;
         }
 
-        PublicKey? publicKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-        if (publicKey is null)
-        {
-            return false;
-        }
-
-        IPEndPoint tcpEndpoint = record.TryGetTcpEndpoint(
-            discoveryEndpoint.Address.AddressFamily,
-            out IPEndPoint? matchingTcpEndpoint)
-            ? matchingTcpEndpoint
-            : new IPEndPoint(discoveryEndpoint.Address, 0);
-
-        node = new Node(publicKey, tcpEndpoint, discoveryEndpoint.Port)
-        {
-            Enr = record
-        };
-        return true;
+        return Node.TryFromDiscoveryEnr(record, discoveryEndpoint.Address.AddressFamily, out node);
     }
 
     private static bool TryGetAcceptableDiscoveryEndpoint(
         NodeRecord record,
         bool allowNonRoutable,
+        IPAddress localIp,
         IPEndPoint? preferredEndpoint,
         [NotNullWhen(true)] out IPEndPoint? endpoint)
     {
+        AddressFamily? preferredFamily = null;
         if (preferredEndpoint is not null)
         {
-            IPAddress preferredAddress = preferredEndpoint.Address;
-            AddressFamily preferredFamily = preferredAddress.AddressFamily == AddressFamily.InterNetworkV6 && !preferredAddress.IsIPv4MappedToIPv6
-                ? AddressFamily.InterNetworkV6
-                : AddressFamily.InterNetwork;
-            IPAddress normalizedPreferredAddress = preferredAddress.IsIPv4MappedToIPv6 ? preferredAddress.MapToIPv4() : preferredAddress;
-            if (record.TryGetDiscoveryEndpoint(preferredFamily, out IPEndPoint? candidate) &&
-                candidate.Address.Equals(normalizedPreferredAddress) &&
-                candidate.Port == preferredEndpoint.Port &&
-                DiscoveryV5App.IsDiscoveryAddressAcceptable(candidate.Address, allowNonRoutable))
+            preferredFamily = CompositeDiscoveryApp.GetAddressFamily(preferredEndpoint.Address);
+            if (TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, preferredFamily.Value, out endpoint))
             {
-                endpoint = candidate;
                 return true;
             }
         }
 
-        if (record.TryGetDiscoveryEndpoint(AddressFamily.InterNetwork, out endpoint) &&
-            DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
+        if (preferredFamily != AddressFamily.InterNetwork &&
+            TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, AddressFamily.InterNetwork, out endpoint))
         {
             return true;
         }
 
-        if (record.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out endpoint) &&
+        if (preferredFamily != AddressFamily.InterNetworkV6 &&
+            TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, AddressFamily.InterNetworkV6, out endpoint))
+        {
+            return true;
+        }
+
+        endpoint = null;
+        return false;
+    }
+
+    private static bool TryGetAcceptableDiscoveryEndpoint(
+        NodeRecord record,
+        bool allowNonRoutable,
+        IPAddress localIp,
+        AddressFamily addressFamily,
+        [NotNullWhen(true)] out IPEndPoint? endpoint)
+    {
+        if (CompositeDiscoveryApp.SupportsAddressFamily(localIp, addressFamily) &&
+            record.TryGetDiscoveryEndpoint(addressFamily, out endpoint) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
         {
             return true;
@@ -994,9 +997,7 @@ public sealed class KademliaAdapter(
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
     {
         IPAddress endpointAddress = endpoint.Address;
-        AddressFamily family = endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6
-            ? AddressFamily.InterNetworkV6
-            : AddressFamily.InterNetwork;
+        AddressFamily family = CompositeDiscoveryApp.GetAddressFamily(endpointAddress);
         IPAddress normalizedAddress = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
         return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
                discoveryEndpoint.Address.Equals(normalizedAddress) &&

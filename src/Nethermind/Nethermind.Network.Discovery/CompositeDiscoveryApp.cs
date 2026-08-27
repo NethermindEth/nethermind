@@ -99,6 +99,25 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         return socket;
     }
 
+    internal static bool SupportsAddress(IPAddress localIp, IPAddress remoteIp)
+        => SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
+
+    internal static AddressFamily GetAddressFamily(IPAddress address)
+        => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
+
+    internal static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
+        => addressFamily switch
+        {
+            AddressFamily.InterNetwork =>
+                localIp.AddressFamily == AddressFamily.InterNetwork ||
+                localIp.IsIPv4MappedToIPv6 ||
+                localIp.Equals(IPAddress.IPv6Any),
+            AddressFamily.InterNetworkV6 =>
+                localIp.AddressFamily == AddressFamily.InterNetworkV6 &&
+                !localIp.IsIPv4MappedToIPv6,
+            _ => false
+        };
+
     public async Task StopAsync()
     {
         try

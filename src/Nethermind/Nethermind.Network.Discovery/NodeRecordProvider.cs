@@ -113,9 +113,13 @@ public sealed class NodeRecordProvider(
         // RLPx and discovery each bind a single socket to LocalIp, so advertise an address family only
         // when that socket can receive it; otherwise peers would dial an endpoint nothing is listening on.
         IPAddress? resolvedExternalIpV4 = ip.ExternalIpV4;
-        IPAddress? externalIpV4 = ListensOnIPv4(ip.LocalIp) ? resolvedExternalIpV4 : null;
+        IPAddress? externalIpV4 = CompositeDiscoveryApp.SupportsAddressFamily(ip.LocalIp, AddressFamily.InterNetwork)
+            ? resolvedExternalIpV4
+            : null;
         IPAddress? resolvedExternalIpV6 = ip.ExternalIpV6;
-        IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? resolvedExternalIpV6 : null;
+        IPAddress? externalIpV6 = CompositeDiscoveryApp.SupportsAddressFamily(ip.LocalIp, AddressFamily.InterNetworkV6)
+            ? resolvedExternalIpV6
+            : null;
         EndpointIssues endpointIssues = EndpointIssues.None;
 
         if (resolvedExternalIpV4 is not null && externalIpV4 is null)
@@ -135,14 +139,6 @@ public sealed class NodeRecordProvider(
 
         return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId, endpointIssues);
     }
-
-    private static bool ListensOnIPv4(IPAddress localIp)
-        => localIp.AddressFamily == AddressFamily.InterNetwork ||
-           localIp.IsIPv4MappedToIPv6 ||
-           localIp.Equals(IPAddress.IPv6Any);
-
-    private static bool ListensOnIPv6(IPAddress localIp)
-        => localIp.AddressFamily == AddressFamily.InterNetworkV6 && !localIp.IsIPv4MappedToIPv6;
 
     private void LogEndpointIssues(EndpointIssues endpointIssues)
     {
@@ -183,13 +179,9 @@ public sealed class NodeRecordProvider(
         if (state.ExternalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
-            // EIP-778 applies tcp/udp to both families when tcp6/udp6 are absent and recommends not
-            // duplicating equal ports. An IPv6-only record still needs its family-specific port keys.
-            if (state.ExternalIpV4 is null)
-            {
-                selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
-                selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
-            }
+            // Some ENR consumers do not implement EIP-778's fallback from tcp6/udp6 to tcp/udp.
+            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
+            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = sequence;

@@ -356,12 +356,16 @@ public class WireTests
             new InsecureProtectedPrivateKey(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(endpoint.Address, endpoint.Address)));
         Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
             handler,
             packetCodec,
             nodeRecordProvider,
+            ipResolver,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),

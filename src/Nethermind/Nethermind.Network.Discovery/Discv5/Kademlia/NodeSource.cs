@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
@@ -163,7 +164,11 @@ public sealed class NodeSource(
                 return false;
             }
 
-            return Node.TryFromEnr(record, out peerCandidate);
+            AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
+            // EIP-778 endpoints are independent: prefer the proven discovery family without
+            // discarding a record whose only usable RLPx endpoint belongs to the other family.
+            return Node.TryFromEnr(record, addressFamily, out peerCandidate) ||
+                   Node.TryFromEnr(record, out peerCandidate);
         }
         catch (Exception e)
         {

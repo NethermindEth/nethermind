@@ -112,6 +112,46 @@ public class IPResolverTests
     }
 
     [Test]
+    public void NethermindIp_recomputes_derived_family_addresses_after_with_expression()
+    {
+        IIPResolver.NethermindIp original = new(IPAddress.Loopback, IPAddress.Parse("2001:db8::1"));
+
+        IIPResolver.NethermindIp changed = original with { ExternalIp = IPAddress.Parse("192.0.2.1") };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.ExternalIpV4, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+            Assert.That(changed.ExternalIpV6, Is.Null);
+        }
+    }
+
+    [Test]
+    public void NethermindIp_preserves_explicit_ipv6_override_after_with_expression()
+    {
+        IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
+        IIPResolver.NethermindIp original = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"), externalIpV6);
+
+        IIPResolver.NethermindIp changed = original with { ExternalIp = IPAddress.Parse("198.51.100.1") };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.1")));
+            Assert.That(changed.ExternalIpV6, Is.EqualTo(externalIpV6));
+        }
+    }
+
+    [Test]
+    public void NethermindIp_equality_compares_resolved_addresses()
+    {
+        IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
+        IIPResolver.NethermindIp derived = new(IPAddress.IPv6Any, externalIpV6);
+        IIPResolver.NethermindIp overridden = new(IPAddress.IPv6Any, externalIpV6, externalIpV6);
+
+        Assert.That(overridden, Is.EqualTo(derived));
+        Assert.That(overridden.GetHashCode(), Is.EqualTo(derived.GetHashCode()));
+    }
+
+    [Test]
     public async Task Warns_when_primary_and_family_override_disagree()
     {
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();

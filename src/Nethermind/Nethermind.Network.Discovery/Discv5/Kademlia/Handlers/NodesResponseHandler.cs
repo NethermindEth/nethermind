@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
@@ -9,7 +10,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
-internal sealed class NodesResponseHandler(Node receiver, Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator)
+internal sealed class NodesResponseHandler(
+    Node receiver,
+    Distances requestedDistances,
+    IKademliaDistance<Hash256> distanceCalculator,
+    IPAddress localIp)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
     private const int MaxNodesResponseMessages = 16;
@@ -111,7 +116,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!KademliaAdapter.TryGetAcceptableNode(record, _allowNonRoutableRelays, out Node? node) ||
+            if (!KademliaAdapter.TryGetAcceptableNode(record, _allowNonRoutableRelays, localIp, out Node? node) ||
                 !TryMarkSeen(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {

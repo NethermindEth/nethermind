@@ -1,10 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using FastEnumUtility;
@@ -215,20 +216,31 @@ namespace Nethermind.Stats.Model
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
         public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
         {
-            node = null;
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            if (!enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
             {
+                node = null;
                 return false;
             }
 
-            node = new Node(key, tcpEndpoint)
-            {
-                Enr = enr
-            };
+            return TryFromEnr(enr, tcpEndpoint, out node);
+        }
 
-            SetMatchingDiscoveryEndpoint(node, enr);
-            return true;
+        /// <summary>
+        /// Tries to create an RLPx peer candidate from an Ethereum Node Record for an address family.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
+        /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromEnr(NodeRecord enr, AddressFamily addressFamily, [MaybeNullWhen(false)] out Node node)
+        {
+            if (!enr.TryGetTcpEndpoint(addressFamily, out IPEndPoint tcpEndpoint))
+            {
+                node = null;
+                return false;
+            }
+
+            return TryFromEnr(enr, tcpEndpoint, out node);
         }
 
         /// <summary>
@@ -239,23 +251,31 @@ namespace Nethermind.Stats.Model
         /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
         public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
         {
-            node = null;
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            if (!enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
             {
+                node = null;
                 return false;
             }
 
-            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(out IPEndPoint foundTcpEndpoint) &&
-                foundTcpEndpoint.Address.Equals(discoveryEndpoint.Address)
-                ? foundTcpEndpoint
-                : new IPEndPoint(discoveryEndpoint.Address, 0);
+            return TryFromDiscoveryEnr(enr, discoveryEndpoint, out node);
+        }
 
-            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
+        /// <summary>
+        /// Tries to create a discovery-routing node from an Ethereum Node Record for an address family.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="addressFamily">The IPv4 or IPv6 address family to select.</param>
+        /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, AddressFamily addressFamily, [MaybeNullWhen(false)] out Node node)
+        {
+            if (!enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint discoveryEndpoint))
             {
-                Enr = enr
-            };
-            return true;
+                node = null;
+                return false;
+            }
+
+            return TryFromDiscoveryEnr(enr, discoveryEndpoint, out node);
         }
 
         public static Node FromDiscoveryEndpoint(PublicKey id, IPEndPoint discoveryAddress)
@@ -341,10 +361,47 @@ namespace Nethermind.Stats.Model
             throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
         }
 
-        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
+        private static bool TryFromEnr(NodeRecord enr, IPEndPoint tcpEndpoint, [MaybeNullWhen(false)] out Node node)
         {
-            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
-                discoveryEndpoint.Address.Equals(node.Address.Address))
+            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null)
+            {
+                node = null;
+                return false;
+            }
+
+            node = new Node(key, tcpEndpoint)
+            {
+                Enr = enr
+            };
+
+            SetMatchingDiscoveryEndpoint(node, enr, tcpEndpoint.Address.AddressFamily);
+            return true;
+        }
+
+        private static bool TryFromDiscoveryEnr(NodeRecord enr, IPEndPoint discoveryEndpoint, [MaybeNullWhen(false)] out Node node)
+        {
+            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null)
+            {
+                node = null;
+                return false;
+            }
+
+            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(discoveryEndpoint.Address.AddressFamily, out IPEndPoint foundTcpEndpoint)
+                ? foundTcpEndpoint
+                : new IPEndPoint(discoveryEndpoint.Address, 0);
+
+            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
+            {
+                Enr = enr
+            };
+            return true;
+        }
+
+        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr, AddressFamily addressFamily)
+        {
+            if (enr.TryGetDiscoveryEndpoint(addressFamily, out IPEndPoint discoveryEndpoint))
             {
                 node.DiscoveryPort = discoveryEndpoint.Port;
             }

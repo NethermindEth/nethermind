@@ -119,11 +119,7 @@ public class NodeRecordProviderTests
         NetworkForkId forkId = new(0x01020304, 20);
         forkInfo.GetForkId(1, 10).Returns(forkId);
         forkInfo.GetForkId(2, 20).Returns(forkId);
-        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
-        underlyingLogger.IsWarn.Returns(true);
-        ILogger logger = new(underlyingLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);
+        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
         NodeRecordProvider provider = CreateProvider(
             blockTree,
             forkInfo,
@@ -142,11 +138,7 @@ public class NodeRecordProviderTests
     [Test]
     public async Task GetCurrentAsync_WarnsWhenIpv4IsNotAdvertised()
     {
-        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
-        underlyingLogger.IsWarn.Returns(true);
-        ILogger logger = new(underlyingLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);
+        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
         NodeRecordProvider provider = CreateProvider(
             Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject,
             new NetworkForkId(0x01020304, 20),
@@ -323,7 +315,7 @@ public class NodeRecordProviderTests
 
     private static void AssertEndpointEntries(NodeRecord decoded, string? expectedIp, string? expectedIp6)
     {
-        int? expectedIpV6Port = expectedIp6 is not null && expectedIp is null ? 30303 : null;
+        int? expectedIpV6Port = expectedIp6 is null ? null : 30303;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(expectedIp is null ? null : IPAddress.Parse(expectedIp)));
@@ -333,6 +325,16 @@ public class NodeRecordProviderTests
             Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp6), Is.EqualTo(expectedIpV6Port));
             Assert.That(decoded.GetValue<int>(EnrContentKey.Udp6), Is.EqualTo(expectedIpV6Port));
         }
+    }
+
+    private static ILogManager CreateWarningLogManager(out InterfaceLogger underlyingLogger)
+    {
+        underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<NodeRecordProvider>().Returns(logger);
+        return logManager;
     }
 
     private static IEnumerable<TestCaseData> ForkIdPublicationCases()

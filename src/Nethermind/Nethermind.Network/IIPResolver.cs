@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -29,13 +30,15 @@ namespace Nethermind.Network
         /// The resolved local and external IP addresses of this node.
         /// </summary>
         /// <remarks>
-        /// Equality compares the resolved addresses, regardless of whether a family address came from
-        /// an explicit override or was derived from <see cref="ExternalIp"/>.
+        /// Equality compares the resolved addresses, regardless of whether the IPv6 address came
+        /// from an explicit override or was derived from <see cref="ExternalIp"/>.
         /// </remarks>
         /// <param name="LocalIp">The local address used for network listeners.</param>
         /// <param name="ExternalIp">The primary external address used by existing consumers.</param>
         public readonly record struct NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
         {
+            private readonly IPAddress? _externalIpV6Override;
+
             /// <summary>
             /// Creates resolved node addresses with an optional IPv6 advertisement override.
             /// </summary>
@@ -44,7 +47,7 @@ namespace Nethermind.Network
             /// <param name="externalIpV6">The optional IPv6 advertisement override.</param>
             public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV6)
                 : this(localIp, externalIp)
-                => ExternalIpV6 = GetExternalIpV6(externalIpV6) ?? GetExternalIpV6(externalIp);
+                => _externalIpV6Override = GetExternalIpV6(externalIpV6);
 
             /// <summary>
             /// Gets the external IPv4 address to advertise, derived from <see cref="ExternalIp"/>.
@@ -55,7 +58,14 @@ namespace Nethermind.Network
             /// Gets the external IPv6 address to advertise. An explicit IPv6 override takes precedence;
             /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV6 { get; } = GetExternalIpV6(ExternalIp);
+            public IPAddress? ExternalIpV6 => _externalIpV6Override ?? GetExternalIpV6(ExternalIp);
+
+            public bool Equals(NethermindIp other) =>
+                LocalIp.Equals(other.LocalIp) &&
+                ExternalIp.Equals(other.ExternalIp) &&
+                Equals(ExternalIpV6, other.ExternalIpV6);
+
+            public override int GetHashCode() => HashCode.Combine(LocalIp, ExternalIp, ExternalIpV6);
 
             internal static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
             {

@@ -55,12 +55,30 @@ public class NodesResponseHandlerTests
         handler.Handle(nodes);
 
         Node[] result = handler.GetNodes();
+        Assert.That(result, Has.Length.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Has.Length.EqualTo(1));
             Assert.That(result[0].Host, Is.EqualTo(ip6.ToString()));
             Assert.That(result[0].DiscoveryPort, Is.EqualTo(30305));
         }
+    }
+
+    [TestCase("0.0.0.0", "8.8.8.8", 1)]
+    [TestCase("0.0.0.0", "2001:4860:4860::8888", 0)]
+    [TestCase("::1", "8.8.8.8", 0)]
+    [TestCase("::1", "2001:4860:4860::8888", 1)]
+    [TestCase("::", "8.8.8.8", 1)]
+    [TestCase("::", "2001:4860:4860::8888", 1)]
+    public void ShouldFilterRecordsOutsideLocalListenerAddressFamily(string localIp, string recordIp, int expectedCount)
+    {
+        Node receiver = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp), includeEth2: true);
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record, IPAddress.Parse(localIp));
+
+        using NodesMsg nodes = new([1], 1, [record]);
+        handler.Handle(nodes);
+
+        Assert.That(handler.GetNodes(), Has.Length.EqualTo(expectedCount));
     }
 
     [Test]
@@ -82,7 +100,7 @@ public class NodesResponseHandlerTests
         NodeRecord third = CreateEnr(TestItem.PrivateKeyD, IPAddress.Loopback);
         NodeRecord fourth = CreateEnr(TestItem.PrivateKeyE, IPAddress.Loopback);
         using Distances distances = CreateDistances(receiver, first, second, third, fourth);
-        NodesResponseHandler handler = new(receiver, distances, Hash256KademliaDistance.Instance);
+        NodesResponseHandler handler = new(receiver, distances, Hash256KademliaDistance.Instance, IPAddress.IPv6Any);
 
         using NodesMsg firstBatch = new([1], 2, [first, second, first]);
         using NodesMsg secondBatch = new([2], 2, [third, fourth, second]);
@@ -104,8 +122,8 @@ public class NodesResponseHandlerTests
             tcpPort: null,
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
-    private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record) =>
-        new(receiver, CreateDistances(receiver, record), Hash256KademliaDistance.Instance);
+    private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record, IPAddress? localIp = null) =>
+        new(receiver, CreateDistances(receiver, record), Hash256KademliaDistance.Instance, localIp ?? IPAddress.IPv6Any);
 
     private static Distances CreateDistances(Node receiver, params NodeRecord[] records)
     {

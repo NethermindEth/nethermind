@@ -226,12 +226,16 @@ public class KademliaAdapterTests
                 enr.SetEntry(new Udp6Entry(30305));
             });
 
-        bool result = KademliaAdapter.TryGetAcceptableNode(record, allowNonRoutable: false, node: out Node? node);
+        bool result = KademliaAdapter.TryGetAcceptableNode(
+            record,
+            allowNonRoutable: false,
+            localIp: IPAddress.IPv6Any,
+            node: out Node? node);
 
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
             Assert.That(node.Port, Is.EqualTo(expectedTcpPort));
             Assert.That(node.DiscoveryPort, Is.EqualTo(expectedUdpPort));
@@ -240,7 +244,7 @@ public class KademliaAdapterTests
     }
 
     [Test]
-    public void TryGetAcceptableNode_PreservesSourceMatchedIpv6WithSharedPorts()
+    public void TryGetAcceptableNode_PreservesPreferredIpv6FamilyWhenEndpointChanges()
     {
         IPAddress ip6 = IPAddress.Parse("2606:4700:4700::1111");
         NodeRecord record = TestEnrBuilder.BuildSigned(
@@ -253,24 +257,76 @@ public class KademliaAdapterTests
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
             allowNonRoutable: false,
-            preferredEndpoint: new IPEndPoint(ip6, 30304),
+            localIp: IPAddress.IPv6Any,
+            preferredEndpoint: new IPEndPoint(ip6, 40404),
             node: out Node? node);
 
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
             Assert.That(node!.Host, Is.EqualTo(ip6.ToString()));
             Assert.That(node.Port, Is.EqualTo(30303));
             Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
         }
     }
 
-    private KademliaAdapter CreateAdapter(Node? currentNode = null)
+    [TestCase("0.0.0.0", "8.8.8.8")]
+    [TestCase("::1", "2606:4700:4700::1111")]
+    [TestCase("::", "8.8.8.8")]
+    public void TryGetAcceptableNode_SelectsFamilyReachableByLocalListener(string localIp, string expectedIp)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("8.8.8.8"),
+            tcpPort: 30303,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111")));
+                enr.SetEntry(new Tcp6Entry(30306));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+
+        bool result = KademliaAdapter.TryGetAcceptableNode(
+            record,
+            allowNonRoutable: false,
+            localIp: IPAddress.Parse(localIp),
+            node: out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Host, Is.EqualTo(expectedIp));
+    }
+
+    [TestCase("0.0.0.0", "2001:4860:4860::8888")]
+    [TestCase("::1", "8.8.8.8")]
+    public void TryGetAcceptableNode_RejectsEndpointOutsideLocalListenerAddressFamily(string localIp, string remoteIp)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse(remoteIp),
+            tcpPort: null,
+            udpPort: 30304);
+
+        bool result = KademliaAdapter.TryGetAcceptableNode(
+            record,
+            allowNonRoutable: false,
+            localIp: IPAddress.Parse(localIp),
+            node: out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null)
     {
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(localIp ?? IPAddress.IPv6Any, IPAddress.Loopback)));
         _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
@@ -282,6 +338,7 @@ public class KademliaAdapterTests
             new NettyDiscoveryV5Handler(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
+            ipResolver,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),

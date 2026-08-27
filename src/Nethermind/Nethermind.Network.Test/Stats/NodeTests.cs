@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -51,10 +52,10 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(node.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
@@ -82,10 +83,10 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = Node.TryFromDiscoveryEnr(enr, out Node? node);
 
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Port, Is.Zero);
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
                 Assert.That(node.HasDiscoveryEndpoint, Is.True);
@@ -99,10 +100,10 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = Node.TryFromEnr(enr, out Node? node);
 
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30303));
                 Assert.That(node.HasDiscoveryEndpoint, Is.False);
@@ -117,10 +118,10 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("2001:db8::1"));
                 Assert.That(node.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
@@ -136,14 +137,33 @@ namespace Nethermind.Network.Test.Stats
 
             bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
                 Assert.That(node.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
                 Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
+        }
+
+        [TestCase(NodeFromEnrMode.PeerCandidate)]
+        [TestCase(NodeFromEnrMode.Discovery)]
+        public void TryFromEnr_selects_requested_address_family(NodeFromEnrMode mode)
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
+
+            bool result = TryCreateNodeFromEnr(mode, enr, AddressFamily.InterNetworkV6, out Node? node);
+
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node!.Address.AddressFamily, Is.EqualTo(AddressFamily.InterNetworkV6));
+                Assert.That(node.Host, Is.EqualTo("2001:db8::1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
             }
         }
 
@@ -292,6 +312,14 @@ namespace Nethermind.Network.Test.Stats
             {
                 NodeFromEnrMode.PeerCandidate => Node.TryFromEnr(enr, out node),
                 NodeFromEnrMode.Discovery => Node.TryFromDiscoveryEnr(enr, out node),
+                _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null)
+            };
+
+        private static bool TryCreateNodeFromEnr(NodeFromEnrMode mode, NodeRecord enr, AddressFamily addressFamily, out Node? node) =>
+            mode switch
+            {
+                NodeFromEnrMode.PeerCandidate => Node.TryFromEnr(enr, addressFamily, out node),
+                NodeFromEnrMode.Discovery => Node.TryFromDiscoveryEnr(enr, addressFamily, out node),
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null)
             };
 
