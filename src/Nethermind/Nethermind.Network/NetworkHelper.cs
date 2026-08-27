@@ -28,9 +28,6 @@ public static class NetworkHelper
     public static IPAddress GetInboundBindAddress(IPAddress localIp, string? localIpConfig)
         => GetInboundBindAddress(localIp, localIpConfig, CanBindDualStack());
 
-    internal static IPAddress GetInboundBindAddress(IPAddress localIp, bool supportsDualStack)
-        => GetInboundBindAddress(localIp, localIpConfig: null, supportsDualStack);
-
     internal static IPAddress GetInboundBindAddress(IPAddress localIp, string? localIpConfig, bool supportsDualStack)
         => supportsDualStack && IsWildcardForDualStack(localIp, localIpConfig) ? IPAddress.IPv6Any : localIp;
 

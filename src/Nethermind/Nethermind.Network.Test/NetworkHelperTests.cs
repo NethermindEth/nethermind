@@ -17,14 +17,15 @@ public class NetworkHelperTests
     [TestCase("0.0.0.0", false, "0.0.0.0")]
     public void GetInboundBindAddress_upgrades_only_the_wildcard_when_dual_stack_is_supported(string localIp, bool supportsDualStack, string expectedIp)
     {
-        IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), supportsDualStack);
+        IPAddress result = NetworkHelper.GetInboundBindAddress(IPAddress.Parse(localIp), null, supportsDualStack);
 
         Assert.That(result, Is.EqualTo(IPAddress.Parse(expectedIp)));
     }
 
     [TestCase("0.0.0.0", null, true, "::")]
     [TestCase("0.0.0.0", "0.0.0.0", true, "0.0.0.0")]
-    [TestCase("0.0.0.0", " 0.0.0.0 ", true, "0.0.0.0")]
+    [TestCase("0.0.0.0", "0", true, "0.0.0.0")]
+    [TestCase("0.0.0.0", " 0.0.0.0 ", true, "::")]
     [TestCase("::", null, true, "::")]
     [TestCase("::", "::", true, "::")]
     [TestCase("192.168.1.5", "192.168.1.5", true, "192.168.1.5")]
