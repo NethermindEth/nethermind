@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
@@ -189,6 +190,129 @@ namespace Nethermind.AuRa.Test
                 Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x456")));
                 Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x654")));
             }
+        }
+
+        // Regression for BAL preprocessing overwriting pre-existing protocol accounts.
+        // On chains such as Gnosis the withdrawal-contract address hosts a deployed contract
+        // (code, balance, nonce); ApplyAuRaPreprocessingChanges must materialise it without
+        // erasing that state. See AuRaBlockProcessor.ApplyAuRaPreprocessingChanges.
+        [Test]
+        public void ApplyAuRaPreprocessingChanges_preserves_existing_withdrawal_contract_account()
+        {
+            Address withdrawalAddress = TestItem.AddressF;
+            byte[] code = Bytes.FromHexString("0x60006000");
+            UInt256 balance = new(1_000_000_000_000_000_000);
+            const ulong nonce = 7;
+
+            (AuRaBlockProcessor processor, BlockAccessListManager balManager, IWorldState stateProvider) =
+                CreateBalAwareProcessor(withdrawalAddress);
+
+            Hash256 stateRoot;
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
+            {
+                stateProvider.CreateAccount(withdrawalAddress, balance, nonce);
+                stateProvider.InsertCode(withdrawalAddress, code, Amsterdam.Instance, isGenesis: true);
+                stateProvider.Commit(Amsterdam.Instance);
+                stateProvider.CommitTree(0);
+                stateProvider.RecalculateStateRoot();
+                stateRoot = stateProvider.StateRoot;
+            }
+
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
+
+            using (stateProvider.BeginScope(parent))
+            {
+                EnableBal(balManager);
+                InvokeApplyAuRaPreprocessingChanges(processor);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.GetCode(withdrawalAddress), Is.EqualTo(code));
+                    Assert.That(stateProvider.GetBalance(withdrawalAddress), Is.EqualTo(balance));
+                    Assert.That(stateProvider.GetNonce(withdrawalAddress), Is.EqualTo(nonce));
+                }
+            }
+        }
+
+        // Guards the other half of the contract: when the accounts are genuinely absent
+        // (the case the BAL integration tests already cover) they must still be materialised
+        // so the BAL parent-snapshot in parallel mode can see them.
+        [Test]
+        public void ApplyAuRaPreprocessingChanges_materialises_absent_accounts()
+        {
+            Address withdrawalAddress = TestItem.AddressF;
+
+            (AuRaBlockProcessor processor, BlockAccessListManager balManager, IWorldState stateProvider) =
+                CreateBalAwareProcessor(withdrawalAddress);
+
+            Hash256 stateRoot;
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
+            {
+                stateProvider.Commit(Amsterdam.Instance);
+                stateProvider.CommitTree(0);
+                stateProvider.RecalculateStateRoot();
+                stateRoot = stateProvider.StateRoot;
+            }
+
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
+
+            using (stateProvider.BeginScope(parent))
+            {
+                EnableBal(balManager);
+                InvokeApplyAuRaPreprocessingChanges(processor);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(Address.SystemUser), Is.True);
+                    Assert.That(stateProvider.AccountExists(withdrawalAddress), Is.True);
+                }
+            }
+        }
+
+        // Flip BlockAccessListManager.Enabled to true via the production entry point: a non-genesis
+        // block under a spec with EIP-7928 active. A null BlockAccessList keeps the sequential path
+        // (no read-warming), which is all the preprocessing step needs.
+        private static void EnableBal(BlockAccessListManager balManager)
+        {
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+            Assert.That(balManager.Enabled, Is.True);
+        }
+
+        private static void InvokeApplyAuRaPreprocessingChanges(AuRaBlockProcessor processor)
+        {
+            MethodInfo method = typeof(AuRaBlockProcessor).GetMethod(
+                "ApplyAuRaPreprocessingChanges",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            method.Invoke(processor, [Amsterdam.Instance]);
+        }
+
+        private static (AuRaBlockProcessor Processor, BlockAccessListManager BalManager, IWorldState StateProvider) CreateBalAwareProcessor(Address withdrawalContractAddress)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+            BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, GnosisSpecProvider.Instance, LimboLogs.Instance));
+            ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider);
+            AuRaBlockProcessor processor = new(
+                GnosisSpecProvider.Instance,
+                new AuRaChainSpecEngineParameters { WithdrawalContractAddress = withdrawalContractAddress },
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                transactionsExecutor,
+                stateProvider,
+                NullReceiptStorage.Instance,
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                LimboLogs.Instance,
+                blockTree,
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new ExecutionRequestsProcessor(transactionProcessor),
+                balManager,
+                auRaValidator: null);
+
+            return (processor, balManager, stateProvider);
         }
 
         private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
