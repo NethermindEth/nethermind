@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
@@ -172,9 +173,10 @@ namespace Nethermind.Network
 
         public void Start()
         {
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
-                _networkConfig.PeersUpdateInterval,
-                nameof(_networkConfig.PeersUpdateInterval));
+            if (_networkConfig.PeersUpdateInterval is <= 0)
+            {
+                ThrowInvalidPeersUpdateInterval();
+            }
 
             lock (_sessionLock)
             {
@@ -1339,5 +1341,11 @@ namespace Nethermind.Network
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOnDisconnectedState(ISession session)
             => throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidPeersUpdateInterval()
+            => throw new InvalidConfigurationException(
+                $"{nameof(INetworkConfig.PeersUpdateInterval)} must be greater than zero.",
+                ExitCodes.ForbiddenOptionValue);
     }
 }

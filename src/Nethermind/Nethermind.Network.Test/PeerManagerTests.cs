@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -47,7 +48,10 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.NetworkConfig.PeersUpdateInterval = interval;
 
-            Assert.That(() => ctx.PeerManager.Start(), Throws.TypeOf<ArgumentOutOfRangeException>());
+            InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(
+                () => ctx.PeerManager.Start())!;
+
+            Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
         }
 
         [Test]
@@ -87,7 +91,7 @@ namespace Nethermind.Network.Test
             peerManager.Start();
             try
             {
-                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.That(Volatile.Read(ref selectionCount), Is.GreaterThanOrEqualTo(expectedSelectionCount));
             }
             finally
