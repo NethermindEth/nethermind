@@ -430,7 +430,9 @@ public static class FrameTxValidation
     /// A transaction whose frames reserve less than the floor raises its reservation rather than becoming invalid;
     /// the headroom is reserved and refunded, never spendable.
     /// The result is memoized on <see cref="Transaction.IntrinsicGasMemo"/>, which a frame transaction otherwise
-    /// leaves unused, and is keyed on the spec reference as <c>EthereumGasPolicy</c> keys its own memo.
+    /// leaves unused. The key carries the calldata statistics as well as the spec: a transaction built field by
+    /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
+    /// caller from the unmeasured reading.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec supplying the calldata token pricing.</param>
@@ -441,18 +443,29 @@ public static class FrameTxValidation
     /// overflow <see cref="ulong"/>. In every failure case the outputs are 0 and the transaction cannot be priced.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
-        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo && ReferenceEquals(memo.Spec, spec))
+        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo
+            && ReferenceEquals(memo.Spec, spec)
+            && memo.ReferenceCalldata == transaction.ReferenceCalldataStats
+            && memo.FrameCalldata == transaction.FrameCalldataStats)
         {
             (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
             return memo.Priced;
         }
 
         bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
-        Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(spec, priced, intrinsicGas, floorGas, maxGas));
+        Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(
+            spec, transaction.ReferenceCalldataStats, transaction.FrameCalldataStats, priced, intrinsicGas, floorGas, maxGas));
         return priced;
     }
 
-    private sealed record FrameGasBudgetMemo(IReleaseSpec Spec, bool Priced, ulong IntrinsicGas, ulong FloorGas, ulong MaxGas) : IIntrinsicGasMemo;
+    private sealed record FrameGasBudgetMemo(
+        IReleaseSpec Spec,
+        (int ZeroBytes, int NonZeroBytes) ReferenceCalldata,
+        (int ZeroBytes, int NonZeroBytes) FrameCalldata,
+        bool Priced,
+        ulong IntrinsicGas,
+        ulong FloorGas,
+        ulong MaxGas) : IIntrinsicGasMemo;
 
     /// <summary>
     /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
