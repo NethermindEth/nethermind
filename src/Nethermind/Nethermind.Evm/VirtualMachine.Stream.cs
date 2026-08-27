@@ -13,9 +13,15 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
-    // Enabled by default except on ARM64, where the bytecode loop is currently preferred. Volatile so tests
-    // can override it in-process.
-    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+    // Enabled by default except on ARM64, where the bytecode loop measured faster on the reference part.
+    // NETHERMIND_EVM_STREAM=0/1 overrides the default. Volatile so tests can flip it in-process.
+    public static volatile bool Enabled =
+        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") switch
+        {
+            "0" => false,
+            "1" => true,
+            _ => IsEnabledByDefault(RuntimeInformation.ProcessArchitecture),
+        };
 
     internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
 
