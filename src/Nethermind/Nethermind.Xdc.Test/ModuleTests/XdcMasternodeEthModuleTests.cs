@@ -125,6 +125,22 @@ public class XdcMasternodeEthModuleTests
         }
     }
 
+    [Test]
+    public void eth_getBlockSignersByNumber_reports_no_signers_when_the_chainspec_defines_no_signing_schedule()
+    {
+        XdcBlockHeader queried = AddCanonicalHeader(800);
+        SetHead();
+        _spec.MergeSignRange = 0;
+
+        ResultWrapper<Address[]> result = _module.eth_getBlockSignersByNumber(new BlockParameter(queried.Number));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.Empty);
+        }
+    }
+
     [TestCase(true, 50u, TestName = "Canonical block reports the share of masternodes that signed it")]
     [TestCase(false, 0u, TestName = "Block off the canonical chain never gains finality")]
     public void eth_getBlockFinalityByNumber_reports_the_signed_share_of_the_canonical_chain(bool isMainChain, uint expected)
@@ -144,10 +160,10 @@ public class XdcMasternodeEthModuleTests
     [Test]
     public void eth_getCandidates_reports_masternode_proposed_and_slashed_candidates()
     {
-        XdcBlockHeader checkpoint = SetUpCheckpoint(
+        XdcBlockHeader head = SetUpCheckpoint(
             masternodes: [TestItem.AddressA],
             penalties: [TestItem.AddressC]);
-        SetCandidates(checkpoint, (TestItem.AddressA, 300), (TestItem.AddressB, 200), (TestItem.AddressC, 100));
+        SetCandidates(head, (TestItem.AddressA, 300), (TestItem.AddressB, 200), (TestItem.AddressC, 100));
 
         ResultWrapper<XdcCandidatesResult> result = _module.eth_getCandidates();
 
@@ -166,8 +182,8 @@ public class XdcMasternodeEthModuleTests
     [Test]
     public void eth_getCandidates_reports_a_masternode_that_is_no_longer_a_candidate_with_an_unknown_stake()
     {
-        XdcBlockHeader checkpoint = SetUpCheckpoint(masternodes: [TestItem.AddressD], penalties: []);
-        SetCandidates(checkpoint, (TestItem.AddressA, 300));
+        XdcBlockHeader head = SetUpCheckpoint(masternodes: [TestItem.AddressD], penalties: []);
+        SetCandidates(head, (TestItem.AddressA, 300));
 
         ResultWrapper<XdcCandidatesResult> result = _module.eth_getCandidates();
 
@@ -224,10 +240,10 @@ public class XdcMasternodeEthModuleTests
     [TestCaseSource(nameof(CandidateStatusCases))]
     public (string Status, BigInteger Capacity) eth_getCandidateStatus_reports_the_status_of_one_address(Address coinbase)
     {
-        XdcBlockHeader checkpoint = SetUpCheckpoint(
+        XdcBlockHeader head = SetUpCheckpoint(
             masternodes: [TestItem.AddressA],
             penalties: [TestItem.AddressC]);
-        SetCandidates(checkpoint, (TestItem.AddressA, 300), (TestItem.AddressB, 200), (TestItem.AddressC, 100));
+        SetCandidates(head, (TestItem.AddressA, 300), (TestItem.AddressB, 200), (TestItem.AddressC, 100));
 
         ResultWrapper<XdcCandidateStatusResult> result = _module.eth_getCandidateStatus(coinbase);
 

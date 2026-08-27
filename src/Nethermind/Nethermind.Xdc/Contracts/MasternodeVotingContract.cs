@@ -93,18 +93,6 @@ internal class MasternodeVotingContract(
         return new Address(raw.Slice(32 - Address.Size));
     }
 
-    public Address[] GetVoters(BlockHeader blockHeader, Address candidate)
-    {
-        CallInfo callInfo = new(blockHeader, "getVoters", Address.SystemUser, candidate);
-        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        IConstantContract constant = GetConstant(source);
-        object[] result = constant.Call(callInfo);
-        if (result.Length != 1)
-            throw new InvalidOperationException("Expected 'getVoters' to return exactly one result.");
-
-        return (Address[])result[0]!;
-    }
-
     public Address[] GetVoters(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
         byte[] result = base.CallCore(transactionProcessor, blockHeader, "getVoters", GenerateTransaction<Transaction>(ContractAddress, "getVoters", Address.SystemUser, candidate), true);
@@ -123,18 +111,6 @@ internal class MasternodeVotingContract(
             throw new InvalidOperationException("Expected 'getVoterCap' to return exactly one result.");
 
         return (UInt256)decoded[0]!;
-    }
-
-    public UInt256 GetVoterStake(BlockHeader blockHeader, Address candidate, Address voter)
-    {
-        CallInfo callInfo = new(blockHeader, "getVoterCap", Address.SystemUser, candidate, voter);
-        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        IConstantContract constant = GetConstant(source);
-        object[] result = constant.Call(callInfo);
-        if (result.Length != 1)
-            throw new InvalidOperationException("Expected 'getVoterCap' to return exactly one result.");
-
-        return (UInt256)result[0]!;
     }
 
     public Address[] GetCandidates(BlockHeader blockHeader)

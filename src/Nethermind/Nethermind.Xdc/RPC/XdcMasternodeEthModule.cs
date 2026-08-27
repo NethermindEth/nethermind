@@ -402,7 +402,8 @@ internal sealed class XdcMasternodeEthModule(
     /// </remarks>
     private XdcBlockHeader? FindNearestSignedHeader(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        if (header.Number == 0)
+        // A chainspec without a merge-sign range defines no signing schedule to resolve a representative block from.
+        if (header.Number == 0 || spec.MergeSignRange == 0)
         {
             return null;
         }
@@ -602,7 +603,7 @@ internal sealed class XdcMasternodeEthModule(
 
         for (ulong lookback = 1; lookback <= XdcConstants.PenaltyEpochLookback && lookback <= epochNumber; lookback++)
         {
-            if (TryFindCheckpointHeader(epochNumber - lookback, out XdcBlockHeader previous)
+            if (TryFindCheckpointHeader(epochNumber - lookback, out XdcBlockHeader? previous)
                 && previous.PenaltiesAddress is { } previousPenalties)
             {
                 penalties.AddRange(previousPenalties);
@@ -641,8 +642,8 @@ internal sealed class XdcMasternodeEthModule(
     private ulong GetEpochDuration(ulong currentEpoch)
     {
         if (currentEpoch < 1
-            || !TryFindCheckpointHeader(currentEpoch, out XdcBlockHeader current)
-            || !TryFindCheckpointHeader(currentEpoch - 1, out XdcBlockHeader previous)
+            || !TryFindCheckpointHeader(currentEpoch, out XdcBlockHeader? current)
+            || !TryFindCheckpointHeader(currentEpoch - 1, out XdcBlockHeader? previous)
             || current.Timestamp <= previous.Timestamp)
         {
             return 0;
