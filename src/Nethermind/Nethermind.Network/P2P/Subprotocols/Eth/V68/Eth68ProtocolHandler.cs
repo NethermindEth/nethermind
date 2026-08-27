@@ -16,12 +16,14 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,14 +47,14 @@ public class Eth68ProtocolHandler(ISession session,
     private const int MaxPooledTransactionHashesPerRequest = 256;
     private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
-    private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+    protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+    protected readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-    private ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
+    protected ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
 
     public override string Name => "eth68";
 
@@ -263,7 +265,7 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType) =>
+    private protected bool CanRequestPooledTransaction(TxType txType) =>
         CanDecodeTransactionType(txType) && (txType is not TxType.Blob || _blobSupportEnabled);
 
     private static bool CanDecodeTransactionType(TxType txType) => txType switch
@@ -331,6 +333,9 @@ public class Eth68ProtocolHandler(ISession session,
         return discoveredTxHashesAndSizes;
     }
 
+    protected override bool ShouldNotifyTransactionCore(Transaction tx) =>
+        !IsSparseBlobTransaction(tx) && base.ShouldNotifyTransactionCore(tx);
+
     protected override void SendNewTransactionCore(Transaction tx)
     {
         if (tx.CanBeBroadcast())
@@ -396,6 +401,20 @@ public class Eth68ProtocolHandler(ISession session,
         Send(message);
     }
 
+    protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
+
+    /// <inheritdoc/>
+    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    {
+        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
+        {
+            tx = default;
+            return false;
+        }
+
+        return base.TryGetPooledTransactionToServe(hash, out tx);
+    }
+
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
@@ -419,5 +438,37 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private bool ValidateSizeAndType(Transaction? tx)
-        => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
+        => tx is not null
+        && !IsSparseBlobTransaction(tx)
+        && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (MatchesAnnouncedTransactionSize(tx, txShape.Size) && tx.Type == txShape.Type));
+
+    /// <summary>
+    /// Checks a fetched pooled transaction against the size its announcement declared.
+    /// </summary>
+    protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
+    {
+        int actualSize = tx.GetLength();
+        return actualSize == announcedSize
+            || tx.SupportsBlobs
+            && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && GetGethBlobTransactionSizeEstimate(tx, wrapper) == announcedSize;
+    }
+
+    // geth estimates the network wrapper as the canonical transaction plus a separately wrapped sidecar.
+    // https://github.com/ethereum/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/core/txpool/blobpool/blobpool.go#L174-L201
+    private static int GetGethBlobTransactionSizeEstimate(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    {
+        int sidecarContentLength = checked(
+            Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs));
+        return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
+    }
+
+    protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
+        MatchesAnnouncedSize(tx, announcedSize);
+
+    private static bool IsSparseBlobTransaction(Transaction tx) =>
+        tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull
+        || tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper && !wrapper.HasFullBlobs();
 }

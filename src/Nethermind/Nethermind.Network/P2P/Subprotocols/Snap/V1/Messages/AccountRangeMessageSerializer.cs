@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.DecodeGuardNotNull(ref ctx)));
                     ctx.Check(checkPosition);
                 }
 
