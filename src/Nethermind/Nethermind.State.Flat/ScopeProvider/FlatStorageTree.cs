@@ -142,12 +142,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 
-    public void SelfDestruct()
-    {
-        _bundle.Clear(_address, _addressHash);
-        ResetAfterClear();
-    }
-
     internal void ClearStorage()
     {
         _bundle.ClearStorage(_address, _addressHash);

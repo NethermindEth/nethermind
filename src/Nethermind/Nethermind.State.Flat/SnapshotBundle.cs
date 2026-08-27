@@ -496,12 +496,7 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    // Also called SelfDestruct
-    public void Clear(Address address, Hash256 addressHash) => Clear(address, addressHash, removeCurrentChanges: false);
-
-    internal void ClearStorage(Address address, Hash256 addressHash) => Clear(address, addressHash, removeCurrentChanges: true);
-
-    private void Clear(Address address, Hash256 addressHash, bool removeCurrentChanges)
+    internal void ClearStorage(Address address, Hash256 addressHash)
     {
         GuardDispose();
 
@@ -510,23 +505,20 @@ public sealed class SnapshotBundle : IDisposable
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
-        if (!isNewAccount || removeCurrentChanges)
+        _changedStorageNodes.RemoveAddress(addressHash);
+
+        using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
         {
-            _changedStorageNodes.RemoveAddress(addressHash);
-
-            using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
+            if (kvp.Key.Key.Item1 == address)
             {
-                if (kvp.Key.Key.Item1 == address)
-                {
-                    slotKeysToRemove.Add(kvp.Key);
-                }
+                slotKeysToRemove.Add(kvp.Key);
             }
+        }
 
-            foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
-            {
-                _changedSlots.TryRemove(key, out _);
-            }
+        foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
+        {
+            _changedSlots.TryRemove(key, out _);
         }
     }
 
