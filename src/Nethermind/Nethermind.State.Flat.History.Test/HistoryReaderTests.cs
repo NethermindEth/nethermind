@@ -30,7 +30,7 @@ public class HistoryReaderTests
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _reader = new HistoryReader(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -139,7 +139,7 @@ public class HistoryReaderTests
             if (publishCapture) availability.MarkCapturePublished();
         });
 
-        HistoryReader reader = new(hooked, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(hooked, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         bool found = reader.TryGetAccount(10, Address, out AccountStruct account);
 
@@ -163,7 +163,7 @@ public class HistoryReaderTests
             if (publishCapture) availability.MarkCapturePublished();
         });
 
-        HistoryReader reader = new(hooked, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(hooked, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         bool found = reader.TryGetStorage(10, Address, Slot, out SlotValue value);
 

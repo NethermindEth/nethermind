@@ -480,10 +480,14 @@ public class HistoryPruner : IHistoryPruner
     {
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
+        // Sorted once, so each slice takes its own segment by binary search instead of filtering the whole set.
+        ulong[] sortedAnswered = [.. answered];
+        Array.Sort(sortedAnswered);
+
         // A single wide range beats a hundred narrow ones, which unlink fewer whole files between them.
         if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
         {
-            ReclaimSlice(from, to, answered);
+            ReclaimSlice(from, to, sortedAnswered);
             return to;
         }
 
@@ -496,7 +500,7 @@ public class HistoryPruner : IHistoryPruner
             else if (cursor < answeredTo) sliceEnd = ulong.Min(sliceEnd, answeredTo);
 
             bool alreadyAnswered = cursor >= answeredFrom && cursor < answeredTo;
-            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? answered : null);
+            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? sortedAnswered : null);
             cursor = sliceEnd;
 
             // Slices decide where a pass may stop, not how early. ChunkStep already narrowed the chunk to the
@@ -510,21 +514,21 @@ public class HistoryPruner : IHistoryPruner
         return to;
     }
 
-    /// <summary><paramref name="answered"/> is null where the headers have to be read instead.</summary>
-    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, IReadOnlySet<ulong>? answered)
+    /// <summary><paramref name="sortedAnswered"/> is null where the headers have to be read instead.</summary>
+    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ulong[]? sortedAnswered)
     {
         IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
         try
         {
             List<ulong> candidates;
-            if (answered is null)
+            if (sortedAnswered is null)
             {
                 levels = LoadLevels(fromInclusive, toExclusive);
                 candidates = CandidatesFromLevels(fromInclusive, toExclusive, levels);
             }
             else
             {
-                candidates = CandidatesFromAnswer(answered, fromInclusive, toExclusive);
+                candidates = CandidatesFromAnswer(sortedAnswered, fromInclusive, toExclusive);
             }
 
             if (candidates.Count == 0)
@@ -612,15 +616,20 @@ public class HistoryPruner : IHistoryPruner
         return _chainLevelInfoRepository.MultiLoadLevel(numbers);
     }
 
-    private static List<ulong> CandidatesFromAnswer(IReadOnlySet<ulong> answered, ulong fromInclusive, ulong toExclusive)
+    private static List<ulong> CandidatesFromAnswer(ulong[] sortedAnswered, ulong fromInclusive, ulong toExclusive)
     {
-        List<ulong> candidates = [];
-        foreach (ulong height in answered)
-        {
-            if (height >= fromInclusive && height < toExclusive) candidates.Add(height);
-        }
+        int lower = LowerBound(sortedAnswered, fromInclusive);
+        int upper = LowerBound(sortedAnswered, toExclusive);
 
+        List<ulong> candidates = new(upper - lower);
+        for (int i = lower; i < upper; i++) candidates.Add(sortedAnswered[i]);
         return candidates;
+    }
+
+    private static int LowerBound(ulong[] sorted, ulong value)
+    {
+        int index = Array.BinarySearch(sorted, value);
+        return index < 0 ? ~index : index;
     }
 
     /// <summary>Heights whose bloom says their receipts might be worth keeping, over the levels already read in bulk
@@ -639,7 +648,7 @@ public class HistoryPruner : IHistoryPruner
             foreach (BlockInfo info in level.BlockInfos)
             {
                 if (!prefetched.TryGetValue(info.BlockHash.ValueHash256, out BlockHeader? header))
-                    header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.None, number);
+                    header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, number);
 
                 if (header is null) continue;
 
@@ -676,7 +685,7 @@ public class HistoryPruner : IHistoryPruner
         try
         {
             next = _receiptStorage.SweepTransactionIndex(
-                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, cancellationToken, out removed);
+                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, SweepRetentionLookup(), cancellationToken, out removed);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -693,6 +702,27 @@ public class HistoryPruner : IHistoryPruner
         // Empty value, not a removal: it reads back the same way a missing key would.
         _txIndexSweepCursor = next;
         _metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, next ?? []);
+    }
+
+    /// <summary>Memoized per pass: the sweep walks in hash order, so its blocks land in random buckets and each
+    /// bucket's span query is paid once. A height the retention cannot answer for counts as retained - the sweep
+    /// wraps, so it is re-examined once the log index covers it, where deleting it now is forever.</summary>
+    private Func<ulong, bool> SweepRetentionLookup()
+    {
+        Dictionary<ulong, (IReadOnlySet<ulong> Retained, ulong AnsweredFrom, ulong AnsweredTo)> buckets = [];
+        return height =>
+        {
+            ulong bucketStart = height / ReceiptRetentionSlice * ReceiptRetentionSlice;
+            if (!buckets.TryGetValue(bucketStart, out (IReadOnlySet<ulong> Retained, ulong AnsweredFrom, ulong AnsweredTo) bucket))
+            {
+                IReadOnlySet<ulong> retained = _receiptRetention.RetainedHeights(
+                    bucketStart, bucketStart + ReceiptRetentionSlice, out ulong answeredFrom, out ulong answeredTo);
+                buckets[bucketStart] = bucket = (retained, answeredFrom, answeredTo);
+            }
+
+            if (height < bucket.AnsweredFrom || height >= bucket.AnsweredTo) return true;
+            return bucket.Retained.Contains(height);
+        };
     }
 
     private void LoadTxIndexSweepCursor()

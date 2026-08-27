@@ -44,7 +44,7 @@ public sealed class HistoryWindowPruner(
     private bool _deletesOwed;
     private long _owedDrainGeneration;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
-    private bool _disposed;
+    private int _disposed;
     private bool _started;
 
     /// <summary>Called by the startup step, never the constructor, so resolving the singleton has no side
@@ -71,7 +71,7 @@ public sealed class HistoryWindowPruner(
         if (configured.Count > 0 && !rowFormat.IsV3)
         {
             throw new InvalidConfigurationException(
-                "Flat.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
+                "FlatDb.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
                 "(HistoryRetentionBlocks is 0). Per-contract slices require the v3 pre-value format used by " +
                 "windowed retention; unset HistorySliceAddresses or set HistoryRetentionBlocks.", -1);
         }
@@ -81,7 +81,7 @@ public sealed class HistoryWindowPruner(
             if (entry.RetentionBlocks is { } sliceRetention && sliceRetention < config.HistoryRetentionBlocks)
             {
                 throw new InvalidConfigurationException(
-                    $"Flat.HistorySliceAddresses entry for {entry.Address} sets retention {sliceRetention}, " +
+                    $"FlatDb.HistorySliceAddresses entry for {entry.Address} sets retention {sliceRetention}, " +
                     $"shallower than HistoryRetentionBlocks ({config.HistoryRetentionBlocks}). A slice can only " +
                     "deepen retention: a shallower one would delete that address's rows inside the general window " +
                     "while reads still resolve them from live state, silently returning wrong historical values.", -1);
@@ -143,7 +143,7 @@ public sealed class HistoryWindowPruner(
     private void OnWatermarkAdvanced(ulong watermark)
     {
         // Written on the prune loop, read on the capture path, so Volatile is required.
-        if (Volatile.Read(ref _disposed)) return;
+        if (Volatile.Read(ref _disposed) != 0) return;
         if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + config.HistoryPruneIntervalBlocks) return;
         try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
     }
@@ -288,8 +288,8 @@ public sealed class HistoryWindowPruner(
         return minFloor;
     }
 
-    /// <summary>v2 keeps each key's newest row at or below the floor; under v3 every such row is dead, since a
-    /// forward-seek only returns rows strictly above the query.</summary>
+    /// <summary>Under v3 every row at or below the floor is dead, since a forward-seek only returns rows strictly
+    /// above the query - and the pruner only ever runs windowed, which forces v3.</summary>
     private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
         int flatKeyLength = keyLayout.FlatKeyLength;
@@ -301,7 +301,6 @@ public sealed class HistoryWindowPruner(
 
         Span<byte> currentGroupKey = stackalloc byte[flatKeyLength];
         bool hasGroup = false;
-        bool currentGroupHasFloorRow = false;
         ulong currentGroupFloor = floor;
         Span<byte> addressKey = stackalloc byte[HistoryKeyLayout.ScopeKeyLength];
         int sinceFlush = 0;
@@ -329,7 +328,6 @@ public sealed class HistoryWindowPruner(
                 {
                     keyPrefix.CopyTo(currentGroupKey);
                     hasGroup = true;
-                    currentGroupHasFloorRow = false;
 
                     // With no slices configured neither ExtractAddressKey nor ResolveScope is ever called.
                     if (hasScopes)
@@ -342,16 +340,9 @@ public sealed class HistoryWindowPruner(
                 ulong block = rowFormat.DecodeSuffixBlock(key[flatKeyLength..]);
                 if (block <= currentGroupFloor)
                 {
-                    if (rowFormat.RetainsNewestRowAtOrBelowFloor && !currentGroupHasFloorRow)
-                    {
-                        currentGroupHasFloorRow = true;
-                    }
-                    else
-                    {
-                        batch.Remove(key);
-                        Metrics.FlatHistoryPrunedRows++;
-                        sinceFlush = FlushBatchIfNeeded(column, ref batch, sinceFlush);
-                    }
+                    batch.Remove(key);
+                    Metrics.FlatHistoryPrunedRows++;
+                    sinceFlush = FlushBatchIfNeeded(column, ref batch, sinceFlush);
                 }
             }
         }
@@ -486,9 +477,8 @@ public sealed class HistoryWindowPruner(
 
     public void Dispose()
     {
-        if (Volatile.Read(ref _disposed)) return;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        Volatile.Write(ref _disposed, true);
         if (_started)
         {
             writer.WatermarkAdvanced -= OnWatermarkAdvanced;

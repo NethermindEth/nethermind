@@ -326,5 +326,4 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of history window pruner passes that yielded at their wall-clock budget and left work for the next pass")]
     public static long FlatHistoryPrunePassesYielded { get; set; }
-
 }

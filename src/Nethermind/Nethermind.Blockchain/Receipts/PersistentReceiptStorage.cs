@@ -956,7 +956,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
             // Not <= 0: the resume key is counted, so a budget of one returns where it started and stalls there.
@@ -986,7 +986,9 @@ namespace Nethermind.Blockchain.Receipts
 
                 while (view.MoveNext())
                 {
-                    if (PointsBelow(view.CurrentValue, retainedFromBlock))
+                    if (TryGetPointedBlock(view.CurrentValue, out ulong pointedBlock)
+                        && pointedBlock < retainedFromBlock
+                        && (isHeightRetained is null || !isHeightRetained(pointedBlock)))
                     {
                         batch[view.CurrentKey] = null;
                         removed++;
@@ -1032,24 +1034,28 @@ namespace Nethermind.Blockchain.Receipts
             batch = _transactionDb.StartWriteBatch();
         }
 
-        /// <summary>Whether an index value names a block at or below the last reclaimed one. Under
-        /// <see cref="IReceiptConfig.CompactTxIndex"/> the value is the number, otherwise the hash, and the header
-        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.
+        /// <summary>The block an index value names. Under <see cref="IReceiptConfig.CompactTxIndex"/> the value is
+        /// the number, otherwise the hash, and the header supplies the number - headers never being pruned. A hash
+        /// that does not resolve is left alone.
         /// The two branches are not the same cost: the number is read from the iterator's own buffer, while the hash
         /// costs a header lookup per entry, so the same pass budget covers far fewer entries.</summary>
-        private bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        private bool TryGetPointedBlock(ReadOnlySpan<byte> value, out ulong number)
         {
+            number = 0;
             if (value.Length == 0) return false;
 
             if (value.Length == Hash256.Size)
             {
-                return _blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                    is { Number: ulong number } && number < retainedFromBlock;
+                if (_blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    is not { Number: ulong headerNumber }) return false;
+                number = headerNumber;
+                return true;
             }
 
             try
             {
-                return new RlpReader(value).DecodeULong() < retainedFromBlock;
+                number = new RlpReader(value).DecodeULong();
+                return true;
             }
             catch (RlpException)
             {

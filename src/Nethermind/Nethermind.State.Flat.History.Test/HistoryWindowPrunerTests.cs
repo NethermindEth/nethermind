@@ -312,7 +312,7 @@ public class HistoryWindowPrunerTests
         pruner.Dispose();
 
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 8 });
-        HistoryReader reader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 8 }, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -341,7 +341,7 @@ public class HistoryWindowPrunerTests
         configure?.Invoke(config);
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
             _writer, _historyColumns, config,
             scopeGate ?? new HistoryScopeGate(),

@@ -41,8 +41,6 @@ public sealed class HistoryRowFormat
     /// <summary>v3 is pre-value with an ascending suffix; v2 is post-value with a descending one.</summary>
     public bool IsV3 { get; }
 
-    /// <summary>v2 must keep each key's newest row at or below the floor; v3 may delete all of them.</summary>
-    public bool RetainsNewestRowAtOrBelowFloor => !IsV3;
 
     /// <summary>Complement for v2, raw for v3. Clears and markers are always plain ascending.</summary>
     public ulong DecodeSuffixBlock(ReadOnlySpan<byte> suffix)

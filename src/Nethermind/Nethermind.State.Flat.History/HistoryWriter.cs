@@ -356,13 +356,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             ValueHash256 addrHash = destructed.Key.Key.ToAccountPath;
             _storageClears.RecordClear(block, addrHash.Bytes, columns.StorageClears);
 
-            if (_isV3)
-            {
-                // Tracked before the enumeration, so an account that trips the cap still gets splices for its
-                // in-walk slots. Those rows are unreachable behind the poison marker - wasted, never wrong.
-                pending!.TrackDestruct(addrHash, block);
-                HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending, columns.StorageHistory, columns.StorageClears);
-            }
+            // Tracked before the enumeration, so an account that trips the cap still gets splices for its
+            // in-walk slots. Those rows are unreachable behind the poison marker - wasted, never wrong.
+            if (_isV3) pending!.TrackDestruct(addrHash, block);
         }
 
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
@@ -383,6 +379,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 RecordStorageV3(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, pending!, columns.StorageHistory);
             else
                 RecordStorage(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, in columns);
+        }
+
+        if (!_isV3) return;
+
+        foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
+        {
+            if (destructed.Value) continue;
+
+            ValueHash256 addrHash = destructed.Key.Key.ToAccountPath;
+            HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
         }
     }
 
@@ -408,11 +414,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 _storageClears.RecordClear(block, addrHash.Bytes, columns.StorageClears);
 
-                if (_isV3)
-                {
-                    pending!.TrackDestruct(addrHash, block);
-                    HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending, columns.StorageHistory, columns.StorageClears);
-                }
+                if (_isV3) pending!.TrackDestruct(addrHash, block);
             }
 
             if (entry.HasAccount)
@@ -433,6 +435,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 {
                     RecordStorage(block, addrHash, slot.Slot, slot.Value, storageKey, storageValue, in columns);
                 }
+            }
+
+            if (_isV3 && entry.SelfDestructFlag is false)
+            {
+                HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
             }
         }
     }

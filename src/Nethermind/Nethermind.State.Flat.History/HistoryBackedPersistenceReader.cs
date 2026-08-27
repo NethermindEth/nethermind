@@ -32,16 +32,22 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         _block = block;
         _scopeGate = scopeGate;
         _scopeToken = scopeGate.EnterScope();
+        try
+        {
+            if (restrictToSlices) _sliceScopes = historyReader.GetSliceScopesArray();
 
-        if (restrictToSlices) _sliceScopes = historyReader.GetSliceScopesArray();
-
-        bool available = restrictToSlices ? historyReader.IsCoveredAndRootMatches(block) : historyReader.IsAvailable(block);
-        if (!available)
+            bool available = restrictToSlices ? historyReader.IsCoveredAndRootMatches(block) : historyReader.IsAvailable(block);
+            if (!available)
+            {
+                throw StateUnavailable(new StateUnavailableException(
+                    $"Historical state for block {block.BlockNumber} is unavailable" +
+                    (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (pruned below the flat history retention floor)." : ".")));
+            }
+        }
+        catch
         {
             scopeGate.ExitScope(_scopeToken);
-            throw StateUnavailable(new StateUnavailableException(
-                $"Historical state for block {block.BlockNumber} is unavailable" +
-                (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (pruned below the flat history retention floor)." : ".")));
+            throw;
         }
     }
 

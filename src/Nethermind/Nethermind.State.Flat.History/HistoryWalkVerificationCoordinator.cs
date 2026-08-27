@@ -9,7 +9,7 @@ using Nethermind.Logging;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Runs the one-shot every-block history proof when <c>Flat.HistoryVerifyEveryBlock</c> is on: waits for a
+/// Runs the one-shot every-block history proof when <c>FlatDb.HistoryVerifyEveryBlock</c> is on: waits for a
 /// contiguous watermark to exist, then walks <see cref="HistoryWalkVerifier"/> over <c>[0, watermark]</c> in the
 /// background and reports the verdict. Its verdict changes nothing about serving - a mismatch is an operator's
 /// loud signal, not an automatic un-publish.
@@ -63,7 +63,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     }
 
     /// <summary>Whether this instance actually started its background verification - false means
-    /// <c>Flat.HistoryVerifyEveryBlock</c> is off and this coordinator is a permanent no-op.</summary>
+    /// <c>FlatDb.HistoryVerifyEveryBlock</c> is off and this coordinator is a permanent no-op.</summary>
     public bool Started { get; }
 
     /// <summary>The completed run's verdict, or <c>null</c> while none has finished.</summary>

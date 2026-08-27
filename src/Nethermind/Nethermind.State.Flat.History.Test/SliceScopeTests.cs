@@ -348,7 +348,7 @@ public class SliceScopeTests
 
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 1000 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
         {

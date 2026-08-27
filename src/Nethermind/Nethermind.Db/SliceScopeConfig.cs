@@ -41,7 +41,7 @@ public static class SliceScopeConfig
             if (!ulong.TryParse(retentionToken, out ulong parsedRetention))
             {
                 throw new InvalidConfigurationException(
-                    $"Flat.HistorySliceAddresses entry '{token}' has retention '{retentionToken}', which is not a valid non-negative integer.", -1);
+                    $"FlatDb.HistorySliceAddresses entry '{token}' has retention '{retentionToken}', which is not a valid non-negative integer.", -1);
             }
 
             retentionBlocks = parsedRetention;
@@ -62,7 +62,7 @@ public static class SliceScopeConfig
         if (address is null)
         {
             throw new InvalidConfigurationException(
-                $"Flat.HistorySliceAddresses entry '{token}' has address '{addressToken}', which is not a valid address.", -1);
+                $"FlatDb.HistorySliceAddresses entry '{token}' has address '{addressToken}', which is not a valid address.", -1);
         }
 
         return new SliceScopeEntry(address, retentionBlocks);

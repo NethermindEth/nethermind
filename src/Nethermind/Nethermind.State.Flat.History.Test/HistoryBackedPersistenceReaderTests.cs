@@ -152,7 +152,7 @@ public class HistoryBackedPersistenceReaderTests
 
         FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
-        HistoryReader historyReader = new(db, historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader historyReader = new(db, historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         HistoryBackedPersistenceReader baselineReader = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), new HistoryScopeGate());
         long baselineAllocated = MeasureAllocatedBytes(() => baselineReader.GetAccount(Address));
@@ -187,7 +187,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot), scopeGate);
     }
 }
@@ -282,7 +282,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         availability.PublishScope(AccountKeyOf(SlicedAddress), sliceFloor);
-        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot ?? Keccak.EmptyTreeHash), scopeGate ?? new HistoryScopeGate(), restrictToSlices: true);
     }
 }

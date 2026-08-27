@@ -34,7 +34,7 @@ public sealed class HistoryReader
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
 
-    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
+    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(history);
         ILogger logger = logManager.GetClassLogger<HistoryReader>();

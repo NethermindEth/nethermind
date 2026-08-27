@@ -57,7 +57,7 @@ public class HistoryWriterTests
         FlatDbConfig config = new() { HistoryEnabled = true };
         (_availability, _rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, _availability, _rowFormat, LimboLogs.Instance);
         _accountHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }
@@ -520,7 +520,7 @@ public class HistoryWriterTests
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
             Assert.That(_accountHistory.TryGetAt(1, AccountKey(AddrA), buffer), Is.EqualTo(-1));
             Assert.That(_accountHistory.TryGetAt(2, AccountKey(AddrA), buffer), Is.EqualTo(-1));
-            Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance));
+            Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, _availability, _rowFormat, LimboLogs.Instance));
         }
     }
 
@@ -946,6 +946,34 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_DestructAndRewriteInSameBlock_WithHigherTouchInSameWalk()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0c));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out SlotValue at0), Is.True);
+            Assert.That(at0.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue at1), Is.True,
+                "the resurrected value must be readable as of the combined destruct+rewrite block");
+            Assert.That(at1.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }));
+
+            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out SlotValue at2), Is.True);
+            Assert.That(at2.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0c }));
+        }
+    }
+
+    [Test]
     public void V3_SlotFirstWrittenBelowADestructInTheSameWalk_ReadsItsValueBetweenTheTwoBlocks()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
@@ -1231,7 +1259,7 @@ public class HistoryWriterTests
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
-        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
     }
 

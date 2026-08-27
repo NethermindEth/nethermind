@@ -112,7 +112,7 @@ public sealed class HistoryWalkVerifier
 
             throw new InvalidConfigurationException(
                 $"History walk verification would have to hold more than {max} rows in memory for the requested " +
-                "range. Verify a narrower range, or raise Flat.HistoryVerifyMaxRows if this machine has the " +
+                "range. Verify a narrower range, or raise FlatDb.HistoryVerifyMaxRows if this machine has the " +
                 "headroom - the verification is declined, not failed.", -1);
         }
     }
