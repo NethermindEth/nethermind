@@ -65,8 +65,8 @@ namespace Nethermind.Facade.Find
             return FindLogsUnbounded(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
-        private void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+        // cap block range of a logs query against unbounded sequential scans
+        protected virtual void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
         {
             if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
                 return;

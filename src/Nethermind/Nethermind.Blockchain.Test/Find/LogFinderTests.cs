@@ -313,80 +313,31 @@ public class LogFinderTests
         }
     }
 
-    [TestCase("Empty index",
-        1UL, 2UL,
-        null, null,
-        null, null
-    )]
-    [TestCase("No intersection, left",
-        1UL, 2UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("No intersection, adjacent left",
-        1UL, 3UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("1 block intersection, left",
-        1UL, 4UL,
-        4, 6,
-        4, 4
-    )]
-    [TestCase("Partial intersection, left",
-        1UL, 5UL,
-        4, 6,
-        4, 5
-    )]
-    [TestCase("Full containment, border right",
-        1UL, 6UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Full containment",
-        1UL, 9UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Full containment, border left",
-        4UL, 9UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Partial intersection, right",
-        5UL, 9UL,
-        4, 6,
-        5, 6
-    )]
-    [TestCase("1 block intersection, right",
-        6UL, 9UL,
-        4, 6,
-        6, 6
-    )]
-    [TestCase("No intersection, adjacent right",
-        7UL, 9UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("No intersection, right",
-        8UL, 9UL,
-        4, 6,
-        null, null
-    )]
-    public void query_intersected_range_from_log_index(string name,
-        ulong from, ulong to,
-        int? indexFrom, int? indexTo,
-        int? exFrom, int? exTo
-    )
+    private static IEnumerable<TestCaseData> LogIndexRangeCases()
+    {
+        yield return Case("Empty index", 1UL, 2UL, null, null, null, null);
+        yield return Case("No intersection, left", 1UL, 2UL, 4, 6, null, null);
+        yield return Case("No intersection, adjacent left", 1UL, 3UL, 4, 6, null, null);
+        yield return Case("1 block intersection, left", 1UL, 4UL, 4, 6, 4, 4);
+        yield return Case("Partial intersection, left", 1UL, 5UL, 4, 6, 4, 5);
+        yield return Case("Full containment, border right", 1UL, 6UL, 4, 6, 4, 6);
+        yield return Case("Full containment", 1UL, 9UL, 4, 6, 4, 6);
+        yield return Case("Full containment, border left", 4UL, 9UL, 4, 6, 4, 6);
+        yield return Case("Partial intersection, right", 5UL, 9UL, 4, 6, 5, 6);
+        yield return Case("1 block intersection, right", 6UL, 9UL, 4, 6, 6, 6);
+        yield return Case("No intersection, adjacent right", 7UL, 9UL, 4, 6, null, null);
+        yield return Case("No intersection, right", 8UL, 9UL, 4, 6, null, null);
+
+        static TestCaseData Case(string name, ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo) =>
+            new TestCaseData(from, to, indexFrom, indexTo, exFrom, exTo).SetName($"{{m}}({name})");
+    }
+
+    [TestCaseSource(nameof(LogIndexRangeCases))]
+    public void query_intersected_range_from_log_index(ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo)
     {
         SetUp(true, chainLength: 10);
 
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(indexFrom);
-        logIndexStorage.MaxBlockNumber.Returns(indexTo);
-        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
-            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(indexFrom, indexTo);
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
@@ -408,8 +359,8 @@ public class LogFinderTests
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
-    [TestCase(2, true, TestName = "range 5 exceeds limit 2 -> throws")]
-    [TestCase(5, false, TestName = "range 5 within limit 5 -> allowed")]
+    [TestCase(2, true, TestName = "range 5 > limit 2 -> throws")]
+    [TestCase(5, false, TestName = "range 5 <= limit 5 -> allowed")]
     [TestCase(0, false, TestName = "limit disabled -> allowed")]
     public void FindLogs_enforces_max_block_depth(int maxBlockDepth, bool shouldThrow)
     {
@@ -428,25 +379,18 @@ public class LogFinderTests
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void FindLogs_index_served_range_bypasses_max_block_depth()
+    [TestCaseSource(nameof(LogIndexRangeCases))]
+    public void FindLogs_ignores_max_block_depth_when_log_index_enabled(ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo)
     {
         SetUp(true, chainLength: 10);
 
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(3);
-        logIndexStorage.MaxBlockNumber.Returns(6);
-        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
-            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(indexFrom, indexTo);
 
-        // range 0..9 (10 blocks) far exceeds the limit, but the index serves the middle (3..6) and the
-        // out-of-index head/tail scans must bypass the cap since the query is already bounded by the index
-        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(9).WithAddress(TestItem.AddressA).Build();
+        LogFilter filter = FilterBuilder.New().FromBlock(from).ToBlock(to).WithAddress(TestItem.AddressA).Build();
 
         IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
-            new ReceiptConfig { MaxBlockDepth = 2 }, logIndexStorage, minBlocksToUseIndex: 1
+            new ReceiptConfig { MaxBlockDepth = 1 }, logIndexStorage, minBlocksToUseIndex: 1
         );
 
         Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
@@ -492,6 +436,17 @@ public class LogFinderTests
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null, IReceiptConfig? receiptConfig = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, receiptConfig ?? new ReceiptConfig());
+
+    private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
+    {
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(indexFrom);
+        logIndexStorage.MaxBlockNumber.Returns(indexTo);
+        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        return logIndexStorage;
+    }
 
     private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
     {

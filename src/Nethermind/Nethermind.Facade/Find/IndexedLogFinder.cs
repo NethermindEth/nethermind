@@ -38,6 +38,9 @@ public class IndexedLogFinder(
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
             : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
 
+    // disable depth scan limit when index is enabled
+    protected override void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock) { }
+
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
