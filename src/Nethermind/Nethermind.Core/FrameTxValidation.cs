@@ -409,7 +409,11 @@ public static class FrameTxValidation
     /// <remarks>
     /// <see cref="Transaction.GasLimit"/> of a frame transaction carries only the sum of the frame gas limits, so any
     /// consumer gating on a gas budget must price through this method or it under-counts the intrinsic cost.
+    /// Frames reserving less than the floor raise the reservation rather than becoming invalid; the headroom is
+    /// refunded, never spendable. Memoized on the shared <see cref="Transaction.IntrinsicGasMemo"/> — hence the type
+    /// test — keyed on spec reference as <c>EthereumGasPolicy</c> keys its own.
     /// </remarks>
+    /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
     /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>

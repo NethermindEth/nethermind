@@ -85,7 +85,8 @@ namespace Nethermind.TxPool
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
-        // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire.
+        // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
+        // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
 
 #if DEBUG

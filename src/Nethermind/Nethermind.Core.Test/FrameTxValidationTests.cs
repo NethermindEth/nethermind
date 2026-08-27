@@ -11,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test;
 
 /// <summary>One case per assert of EIP-8141 §Constraints plus the expiry-verifier frame rules, so every spec
-/// constraint is pinned by name. Cases that are interpretations rather than literal spec text carry an EIP8141- note.</summary>
+/// constraint is pinned by name. A case resting on a rule stated outside §Constraints cites where it comes from.</summary>
 public class FrameTxValidationTests
 {
     [TestCaseSource(nameof(ConstraintCases))]

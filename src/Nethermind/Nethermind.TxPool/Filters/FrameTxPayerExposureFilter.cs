@@ -28,7 +28,8 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // Gap: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go unreserved.
+        // EIP8141-DEVIATION: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go
+        // unreserved — nothing at all, and so no bound, when every frame gas limit is zero.
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
