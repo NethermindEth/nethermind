@@ -379,9 +379,11 @@ public partial class EngineModuleTests
             Keccak.Zero,
             []);
 
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(response.Data, Is.Not.Null);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
             Assert.That(response.Data.LatestValidHash, Is.Null);
             Assert.That(response.Data.ValidationError, Does.StartWith(expectedValidationError));
