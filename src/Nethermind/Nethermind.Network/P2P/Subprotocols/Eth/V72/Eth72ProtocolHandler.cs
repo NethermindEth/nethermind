@@ -1091,6 +1091,10 @@ public class Eth72ProtocolHandler(
 
     void ISparseBlobPoolPeer.DisconnectSparseBlobPeer(DisconnectReason reason, string details) => Disconnect(reason, details);
 
+    /// <summary>Queues cells to request once a provider and, when delayed, the retry time are available.</summary>
+    /// <param name="hash">The transaction whose cells are needed.</param>
+    /// <param name="requestMask">The cells to request.</param>
+    /// <param name="retryAt">When the request may be re-attempted, or <see langword="null"/> to retry as soon as a provider appears.</param>
     /// <param name="restoreMask">
     /// The announcement to put back once <paramref name="retryAt"/> elapses, or
     /// <see cref="BlobCellMask.Empty"/> when the peer's announcement was left in place.
@@ -1222,15 +1226,15 @@ public class Eth72ProtocolHandler(
                 RequestCellsWhenReady(requestedHash, sentRequest.Mask);
                 break;
             case CellRequeueReason.LocalBackpressure:
-                // We dropped the response, so the peer keeps its announcement and is not backed off.
-                AddPendingCellRequest(
-                    sentRequest.Hash,
-                    sentRequest.Mask,
-                    _timestamper.UtcNowOffset + PartialCellResponseBackoff);
+                // Throttling the retry is still right, but the announcement stays: it is what marks
+                // the peer as a provider node-wide, and we, not the peer, dropped the response.
+                ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
                 break;
-            default:
+            case CellRequeueReason.PeerUnanswered:
                 BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(reason), reason, null);
         }
     }
 
@@ -1246,13 +1250,18 @@ public class Eth72ProtocolHandler(
     /// restoring the narrower request mask would downgrade a full provider to a partial one and can
     /// starve samplers gated on <see cref="MinSamplerFullProviderAnnouncements"/>.
     /// </remarks>
-    private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask)
+    private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask) =>
+        ParkCellRequest(hash.ValueHash256, parkMask, _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash));
+
+    /// <summary>Holds cells back from the announcement re-request path until the retry falls due.</summary>
+    /// <param name="key">The transaction whose cells are parked.</param>
+    /// <param name="parkMask">The cells to request again once the backoff elapses.</param>
+    /// <param name="restoreMask">The announcement to put back, or empty when none was removed.</param>
+    private void ParkCellRequest(ValueHash256 key, BlobCellMask parkMask, BlobCellMask restoreMask)
     {
-        ValueHash256 key = hash.ValueHash256;
         DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
-        BlobCellMask announcedMask = _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
         _partialCellResponseBackoff.Set(key, retryAt);
-        AddPendingCellRequest(key, parkMask, retryAt, announcedMask);
+        AddPendingCellRequest(key, parkMask, retryAt, restoreMask);
     }
 
     private void AddSentCellRequest(ValueHash256 hash, BlobCellMask requestMask, long requestId)
@@ -1489,15 +1498,6 @@ public class Eth72ProtocolHandler(
                 }
             }
 
-            // Restoring is one-shot; retries keep firing until the request is placed or expires.
-            if (dueRetries is not null)
-            {
-                for (int i = 0; i < dueRetries.Count; i++)
-                {
-                    ClearPendingCellRestoreMaskLocked(dueRetries[i].Hash);
-                }
-            }
-
             TrimPendingCellRequests();
             TrimSentCellRequests();
         }
@@ -1508,9 +1508,15 @@ public class Eth72ProtocolHandler(
             {
                 (ValueHash256 key, BlobCellMask restoreMask) = dueRetries[i];
                 Hash256 hash = key.ToHash256();
-                if (!restoreMask.IsEmpty)
+                // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
+                // peer is at its announcement cap or the transaction is quarantined, and dropping the
+                // mask there would lose the provider for good.
+                if (restoreMask.IsEmpty || _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
                 {
-                    _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask);
+                    lock (_cellStateLock)
+                    {
+                        ClearPendingCellRestoreMaskLocked(key);
+                    }
                 }
 
                 TryRequestPendingCells(hash);
