@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
