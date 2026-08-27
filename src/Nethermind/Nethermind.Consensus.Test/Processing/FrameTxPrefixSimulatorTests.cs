@@ -147,7 +147,7 @@ public class FrameTxPrefixSimulatorTests
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), cts.Token));
+        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), token: cts.Token));
     }
 
     [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]

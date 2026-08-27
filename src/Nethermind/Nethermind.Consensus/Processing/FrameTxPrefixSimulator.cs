@@ -32,7 +32,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool signaturesPreValidated = false)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
