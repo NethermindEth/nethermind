@@ -136,7 +136,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             {
                 if (!ExecutionPayloadV4.HasCompleteRlpListEnvelope(encodedBlockAccessList))
                 {
-                    error = "Block access list must be a complete RLP list";
+                    error = "Error decoding block access list: Must be a complete RLP list";
                     return ValidationResult.Invalid;
                 }
 

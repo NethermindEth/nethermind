@@ -351,14 +351,14 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase("0x", "Block access list must be a complete RLP list")]
-    [TestCase("0x80", "Block access list must be a complete RLP list")]
-    [TestCase("0xc1", "Block access list must be a complete RLP list")]
-    [TestCase("0xf8", "Block access list must be a complete RLP list")]
-    [TestCase("0xf800", "Block access list must be a complete RLP list")]
-    [TestCase("0xf838", "Block access list must be a complete RLP list")]
-    [TestCase("0xff", "Block access list must be a complete RLP list")]
-    [TestCase("0xc0c0", "Block access list must be a complete RLP list")]
+    [TestCase("0x", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0x80", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xc1", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf8", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf800", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf838", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xff", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xc0c0", "Error decoding block access list: Must be a complete RLP list")]
     [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
     public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
     {
