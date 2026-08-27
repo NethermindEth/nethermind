@@ -1197,9 +1197,10 @@ namespace Nethermind.TxPool
         /// One pass of pool revalidation against a newly activated release specification.
         /// </summary>
         /// <remarks>
-        /// Validation is collected outside the head lock. Persistent blob bodies are read directly from storage
-        /// in bounded batches, avoiding both the blob-pool lock and pollution of its sidecar cache. Only the
-        /// short removal pass runs under the head write lock.
+        /// Validation is collected outside the head lock. Persistent blob bodies are read from storage in bounded
+        /// batches, avoiding the blob-pool lock and sidecar-cache pollution on the normal path. Storage misses fall
+        /// back to the persistent pool because it can own the only copy after a write failed or while it is deferred.
+        /// Only the short removal pass runs under the head write lock.
         /// </remarks>
         private sealed class ForkRevalidation
         {
@@ -1325,6 +1326,7 @@ namespace Nethermind.TxPool
                     }
 
                     Transaction? fullTransaction = fullTransactions[i];
+                    // A failed or deferred storage write can leave the persistent pool owning the only full body.
                     if (fullTransaction is null
                         && !_pool._blobTransactions.TryGetValue(hashes[i], out fullTransaction))
                     {
