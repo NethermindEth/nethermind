@@ -736,23 +736,45 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary>Memoized per pass: the sweep walks in hash order, so its blocks land in random buckets and each
-    /// bucket's span query is paid once. A height the retention cannot answer for counts as retained - the sweep
-    /// wraps, so it is re-examined once the log index covers it, where deleting it now is forever.</summary>
-    private Func<ulong, bool> SweepRetentionLookup()
+    /// bucket's span query is paid once, kept as a bitmap rather than the answer set - a busy contract's set holds
+    /// thousands of heights per bucket where the bitmap holds 1.25 KB. A height the index cannot answer for falls
+    /// back to its header's bloom, exactly as candidate discovery does, so a node without the log index still
+    /// sweeps; a header that no longer resolves is not retained, since nothing can answer for it anyway.</summary>
+    internal Func<ulong, bool> SweepRetentionLookup()
     {
-        Dictionary<ulong, (IReadOnlySet<ulong> Retained, ulong AnsweredFrom, ulong AnsweredTo)> buckets = [];
+        Dictionary<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> buckets = [];
+        Dictionary<ulong, bool> bloomDecisions = [];
         return height =>
         {
             ulong bucketStart = height / ReceiptRetentionSlice * ReceiptRetentionSlice;
-            if (!buckets.TryGetValue(bucketStart, out (IReadOnlySet<ulong> Retained, ulong AnsweredFrom, ulong AnsweredTo) bucket))
+            if (!buckets.TryGetValue(bucketStart, out (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo) bucket))
             {
                 IReadOnlySet<ulong> retained = _receiptRetention.RetainedHeights(
                     bucketStart, bucketStart + ReceiptRetentionSlice, out ulong answeredFrom, out ulong answeredTo);
-                buckets[bucketStart] = bucket = (retained, answeredFrom, answeredTo);
+
+                ulong[] bitmap = new ulong[(ReceiptRetentionSlice + 63) / 64];
+                foreach (ulong retainedHeight in retained)
+                {
+                    ulong offset = retainedHeight - bucketStart;
+                    bitmap[offset / 64] |= 1UL << (int)(offset % 64);
+                }
+
+                buckets[bucketStart] = bucket = (bitmap, answeredFrom, answeredTo);
             }
 
-            if (height < bucket.AnsweredFrom || height >= bucket.AnsweredTo) return true;
-            return bucket.Retained.Contains(height);
+            if (height >= bucket.AnsweredFrom && height < bucket.AnsweredTo)
+            {
+                ulong offset = height - bucketStart;
+                return (bucket.Bitmap[offset / 64] & (1UL << (int)(offset % 64))) != 0;
+            }
+
+            if (bloomDecisions.TryGetValue(height, out bool decided)) return decided;
+
+            BlockHeader? header = _blockTree.FindHeader(height,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            bool retainedByBloom = header is not null && _receiptRetention.ShouldRetainReceipts(header);
+            bloomDecisions[height] = retainedByBloom;
+            return retainedByBloom;
         };
     }
 

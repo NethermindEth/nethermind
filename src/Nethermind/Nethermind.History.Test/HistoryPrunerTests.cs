@@ -561,6 +561,37 @@ public class HistoryPrunerTests
         }
     }
 
+    [Test]
+    public async Task Sweep_lookup_falls_back_to_the_header_bloom_where_the_retention_cannot_answer()
+    {
+        const int blocks = 20;
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        NeverAnsweringRetention retention = new(retainedHeight: 5);
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        pruner.TryPruneHistory(CancellationToken.None);
+        Func<ulong, bool> lookup = pruner.SweepRetentionLookup();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lookup(5), Is.True, "an unanswered height falls back to the header check instead of being retained wholesale");
+            Assert.That(lookup(6), Is.False, "an unanswered height the header check declines is swept, not kept forever");
+        }
+    }
+
+    private sealed class NeverAnsweringRetention(ulong retainedHeight) : IPrunedReceiptRetention
+    {
+        public bool ShouldRetainReceipts(BlockHeader header) => header.Number == retainedHeight;
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = fromInclusive;
+            return new HashSet<ulong>();
+        }
+    }
+
     private sealed class MutableRetention : IPrunedReceiptRetention
     {
         public readonly HashSet<ulong> Retained = [];

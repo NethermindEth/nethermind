@@ -275,25 +275,22 @@ public sealed class HistoryWindowPruner(
         if (!_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
         if (!_blocksSwept) _blocksSwept = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
 
-        bool completedAccount = _accountSwept;
-        bool completedStorage = _storageSwept;
-        bool completedClears = _clearsSwept;
-        bool completedBlocks = _blocksSwept;
-        bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
-        if (completed)
-        {
-            _accountSwept = _storageSwept = _clearsSwept = _blocksSwept = false;
-        }
+        bool completed = _accountSwept && _storageSwept && _clearsSwept && _blocksSwept;
 
         if (_logger.IsInfo)
         {
             long deleted = Metrics.FlatHistoryPrunedRows - rowsBefore;
             string scopeNote = markersAndClearsFloor == floor ? "" : $" Clears and markers kept down to #{markersAndClearsFloor} for slice scopes.";
             _logger.Info(completed
-                ? $"Flat history sweep finished below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass.{scopeNote}"
+                ? $"Flat history sweep cycle finished, each column swept once at or below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass.{scopeNote}"
                 : $"Flat history pruning below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass, "
-                  + $"accounts {SweepProgress(completedAccount, AccountCursorKey)}, storage {SweepProgress(completedStorage, StorageCursorKey)}, "
-                  + $"clears {(completedClears ? "done" : "running")}, markers {(completedBlocks ? "done" : "running")}.{scopeNote}");
+                  + $"accounts {SweepProgress(_accountSwept, AccountCursorKey)}, storage {SweepProgress(_storageSwept, StorageCursorKey)}, "
+                  + $"clears {(_clearsSwept ? "done" : "running")}, markers {(_blocksSwept ? "done" : "running")}.{scopeNote}");
+        }
+
+        if (completed)
+        {
+            _accountSwept = _storageSwept = _clearsSwept = _blocksSwept = false;
         }
 
         return completed;

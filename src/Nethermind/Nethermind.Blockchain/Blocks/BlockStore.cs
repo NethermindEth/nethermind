@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
