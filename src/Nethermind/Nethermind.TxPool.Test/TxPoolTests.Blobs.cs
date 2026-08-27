@@ -1505,10 +1505,12 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP8141-GAP: a record reloaded from storage carries no paymaster, so it neither takes a slot nor frees
-        // one. Pinned so a fix that encodes the key on write but not on read fails here instead of under-counting.
+        // EIP8141-GAP: this pins a known bypass, not correct behaviour. A reloaded record carries no paymaster,
+        // so it takes no slot; the key cannot be persisted until the light-record trailing-field layout is settled
+        // (two adjacent optional sequences are ambiguous), which is why the fix is not here. Asserted so that a
+        // half-fix encoding the key on write but not on read fails here rather than silently under-counting.
         [Test]
-        public void Restored_blob_carrying_frame_tx_neither_takes_its_sponsor_slot_nor_frees_one()
+        public void Restored_blob_carrying_frame_tx_bypasses_the_sponsor_cap_until_its_key_is_persisted()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
@@ -1537,9 +1539,9 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the reloaded record has no sponsor to count");
-                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "so the hole is one slot per restart, not unbounded");
-                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "and a record that took no slot must not free one");
+                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the bypass: the reloaded record has no sponsor to count");
+                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the bypass costs one slot per restart rather than being unbounded");
+                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "a record that took no slot must at least not free one");
             }
         }
 
