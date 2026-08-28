@@ -196,9 +196,10 @@ public class FrameTxDecoderTests
             _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
         }
 
-        // The generic address-decode message, not a frame-specific one: FrameExceptionFragments.Decode
-        // matches EF fixture rejects on exactly this text.
-        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("decoding Address"));
+        // The generic address-decode message, not a frame-specific one: "Unexpected RLP prefix" is the
+        // FrameExceptionFragments.Decode fragment EF fixture rejects match on.
+        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+            .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
     [Test]
