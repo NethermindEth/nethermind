@@ -14,8 +14,11 @@ namespace Nethermind.TxPool;
 /// unresolved payer and therefore without an exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
+    /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
+    /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
+    /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
     /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
+    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default);
 }
 
 public enum FrameTxSimulationOutcome
