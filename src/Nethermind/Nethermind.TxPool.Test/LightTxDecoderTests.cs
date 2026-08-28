@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -18,6 +19,9 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class LightTxDecoderTests
 {
+    private const int FieldsBeforeTrailingFields = 12;
+    private const int TrailingFieldCount = 4;
+
     [Test]
     public void should_roundtrip_sparse_blob_tx_cell_mask_and_consensus_size()
     {
@@ -41,17 +45,35 @@ public class LightTxDecoderTests
     [Test]
     public void should_roundtrip_v0_proof_version()
     {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
-            .WithMaxFeePerGas(1.GWei)
-            .WithMaxPriorityFeePerGas(1.GWei)
-            .WithNonce(0UL)
-            .SignedAndResolved()
-            .TestObject;
-
-        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BuildBlobTx(Cancun.Instance)));
 
         Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V0));
+    }
+
+    [TestCase(ProofVersion.V0, (byte)0x80)]
+    [TestCase(ProofVersion.V1, (byte)0x01)]
+    public void should_pin_on_disk_trailing_field_layout(ProofVersion version, byte expectedProofVersionByte)
+    {
+        Transaction tx = BuildBlobTx(version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
+        Assert.That(tx.GetProofVersion(), Is.EqualTo(version));
+        byte[] encoded = LightTxDecoder.Encode(tx);
+
+        // A builder blob tx carries full blobs, so the persisted mask is BlobCellMask.Full.
+        byte[] expectedCellMask = new byte[BlobCellMask.FixedByteLength + 1];
+        expectedCellMask[0] = 0x80 + BlobCellMask.FixedByteLength;
+        expectedCellMask.AsSpan(1).Fill(0xff);
+
+        // Pinned from the write side because the decoder dispatches these four positionally off
+        // PeekNumberOfItemsRemaining: every roundtrip test stays green if the encoder switches an
+        // item to a raw byte, while already-persisted records then mis-decode.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountTrailingFields(encoded), Is.EqualTo(TrailingFieldCount));
+            Assert.That(TrailingField(encoded, 0), Is.EqualTo(new[] { expectedProofVersionByte }));
+            Assert.That(TrailingField(encoded, 1), Is.EqualTo(expectedCellMask));
+            Assert.That(TrailingField(encoded, 2), Is.EqualTo(Rlp.Encode(tx.GetLength(shouldCountBlobs: false)).Bytes));
+            Assert.That(TrailingField(encoded, 3), Is.EqualTo(new byte[] { 0x01 }));
+        }
     }
 
     [Test]
@@ -132,13 +154,36 @@ public class LightTxDecoderTests
         }
     }
 
-    private static Transaction BuildBlobTx() => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+    private static Transaction BuildBlobTx(IReleaseSpec spec = null) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(spec: spec ?? Osaka.Instance)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
         .WithNonce(0UL)
         .SignedAndResolved()
         .TestObject;
+
+    /// <returns>The raw RLP bytes of the trailing field at <paramref name="index"/>, prefix included.</returns>
+    private static byte[] TrailingField(byte[] encoded, int index)
+    {
+        RlpReader reader = new(encoded);
+        for (int i = 0; i < FieldsBeforeTrailingFields + index; i++)
+        {
+            reader.SkipItem();
+        }
+
+        return reader.PeekNextItem().ToArray();
+    }
+
+    private static int CountTrailingFields(byte[] encoded)
+    {
+        RlpReader reader = new(encoded);
+        for (int i = 0; i < FieldsBeforeTrailingFields; i++)
+        {
+            reader.SkipItem();
+        }
+
+        return reader.PeekNumberOfItemsRemaining();
+    }
 
     private static byte[] EncodeLegacy(
         Transaction tx,

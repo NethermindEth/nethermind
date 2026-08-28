@@ -10,6 +10,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -212,6 +214,58 @@ public class BlobTxStorageTests
         Assert.That(found, Is.EqualTo(0));
         Assert.That(results[0], Is.Null);
         Assert.That(results[1], Is.Null);
+    }
+
+    private static IEnumerable<TestCaseData> CorruptLightTxRecords()
+    {
+        byte[] valid = LightTxDecoder.Encode(CreateBlobTransaction());
+
+        yield return new TestCaseData(Array.Empty<byte>(), typeof(IndexOutOfRangeException)).SetName("empty_record");
+        yield return new TestCaseData(valid[..2], typeof(ArgumentOutOfRangeException)).SetName("truncated_record");
+        yield return new TestCaseData((byte[])[.. valid, 0x01], typeof(RlpException)).SetName("excess_trailing_field");
+    }
+
+    [TestCaseSource(nameof(CorruptLightTxRecords))]
+    public void GetAll_should_skip_corrupt_light_tx_record(byte[] corruptRecord, Type expectedException)
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction tx = CreateBlobTransaction();
+        blobTxStorage.Add(tx);
+        columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(TestItem.KeccakA.Bytes, corruptRecord);
+
+        List<LightTransaction> restored = [.. blobTxStorage.GetAll()];
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Pinned because the skip has to absorb all three roots: truncation surfaces as
+            // ArgumentOutOfRangeException/IndexOutOfRangeException, not as RlpException.
+            Assert.That(() => LightTxDecoder.Decode(corruptRecord), Throws.InstanceOf(expectedException));
+            Assert.That(restored, Has.Count.EqualTo(1));
+            Assert.That(restored[0].Hash, Is.EqualTo(tx.Hash));
+        }
+    }
+
+    [Test]
+    public void GetAll_should_warn_once_for_all_skipped_records()
+    {
+        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb, new OneLoggerLogManager(new(logger)));
+        blobTxStorage.Add(CreateBlobTransaction());
+        IDb lightBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        lightBlobTxsDb.Set(TestItem.KeccakA.Bytes, []);
+        lightBlobTxsDb.Set(TestItem.KeccakB.Bytes, []);
+        lightBlobTxsDb.Set(TestItem.KeccakC.Bytes, []);
+
+        List<LightTransaction> restored = [.. blobTxStorage.GetAll()];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored, Has.Count.EqualTo(1));
+            Assert.That(logger.LogList, Has.Count.EqualTo(1));
+            Assert.That(logger.LogList[0], Does.Contain("3"));
+        }
     }
 
     private static Transaction CreateBlobTransaction() => Build.A.Transaction
