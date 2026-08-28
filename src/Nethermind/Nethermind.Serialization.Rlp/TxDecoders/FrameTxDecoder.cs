@@ -120,7 +120,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
-        transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
+        transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
         int feesLength = decoderContext.ReadSequenceLength();
@@ -252,9 +252,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
-
-    [DoesNotReturn, StackTraceHidden]
-    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
 }
 
 /// <summary>
