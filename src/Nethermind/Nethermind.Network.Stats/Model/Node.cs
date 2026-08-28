@@ -67,7 +67,7 @@ namespace Nethermind.Stats.Model
         /// next dial can retry the other family.
         /// </summary>
 #nullable enable annotations
-        public IPEndPoint? V6Address { get; internal set; }
+        public IPEndPoint? V6Address { get; private set; }
 #nullable restore
 
         /// <summary>
@@ -369,27 +369,30 @@ namespace Nethermind.Stats.Model
 
         private void TrySetIpv6Endpoint(NodeRecord enr)
         {
-            V6Address = null;
+            IPEndPoint newAlternate = null;
             IPAddress address = Address.Address;
-            if (address.IsIPv4MappedToIPv6)
+            if (!address.IsIPv4MappedToIPv6)
             {
-                return;
+                if (address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
+                        !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+                    {
+                        newAlternate = ipv6Endpoint;
+                    }
+                }
+                else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
+                    {
+                        newAlternate = v4Endpoint;
+                    }
+                }
             }
 
-            if (address.AddressFamily == AddressFamily.InterNetwork)
+            lock (_alternateLock)
             {
-                if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
-                    !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
-                {
-                    V6Address = ipv6Endpoint;
-                }
-            }
-            else if (address.AddressFamily == AddressFamily.InterNetworkV6)
-            {
-                if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
-                {
-                    V6Address = v4Endpoint;
-                }
+                V6Address = newAlternate;
             }
         }
 
@@ -433,23 +436,28 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        internal bool TryMergeAlternate(Node other)
+        internal bool TryMergeAlternate(Node other, bool allowOverwrite = false)
         {
-            if (other.V6Address is null || V6Address is not null)
+            if (other.V6Address is null && !allowOverwrite)
+            {
+                return false;
+            }
+
+            if (!allowOverwrite && V6Address is not null)
             {
                 return false;
             }
 
             lock (_alternateLock)
             {
-                if (V6Address is null)
+                if (!allowOverwrite && V6Address is not null)
                 {
-                    V6Address = other.V6Address;
-                    return true;
+                    return false;
                 }
-            }
 
-            return false;
+                V6Address = other.V6Address;
+                return true;
+            }
         }
 
         private static string FormatHost(IPAddress address)

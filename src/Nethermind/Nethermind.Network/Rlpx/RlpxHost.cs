@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
@@ -201,7 +202,7 @@ namespace Nethermind.Network.Rlpx
             ConnectOutcome outcome = await TryConnect(node, endpoint);
             if (outcome != ConnectOutcome.Connected && node.V6Address is { } alternate && !alternate.Equals(endpoint))
             {
-                if (alternate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 && !System.Net.Sockets.Socket.OSSupportsIPv6)
+                if (alternate.AddressFamily == AddressFamily.InterNetworkV6 && !Socket.OSSupportsIPv6)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - IPv6 not supported");
                 }
