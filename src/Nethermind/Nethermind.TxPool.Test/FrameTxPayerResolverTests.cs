@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -39,7 +38,7 @@ public class FrameTxPayerResolverTests
     private static FrameTxPayerResolution Resolve(Transaction tx, TestReadOnlyStateProvider state)
     {
         state.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount);
-        return FrameTxPayerResolver.Resolve(tx, state, senderAccount);
+        return FrameTxPayerResolver.Resolve(tx, senderAccount);
     }
 
     private static IEnumerable<TestCaseData> OutcomeCases()
@@ -162,33 +161,20 @@ public class FrameTxPayerResolverTests
                 return FrameTx([ExpiryAt(9999), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
+        // The only shape where both prefix skips apply.
+        yield return Case("ExpiryThenDeployThenSelfVerify_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([ExpiryAt(9999), DeployFrame(), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
         yield return Case("ExpiryFrameOnly_NoPayer",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 return FrameTx([ExpiryAt(9999)], []);
             }, FrameTxPayerOutcome.NoPayer, null);
-    }
-
-    [Test]
-    public void Resolve_SelfPaid_CapturesSenderAndPayerDependencies()
-    {
-        TestReadOnlyStateProvider state = new();
-        state.CreateAccount(Sender, wei: Eth(7), nonce: 5);
-        Transaction tx = FrameTx([SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
-
-        FrameTxPayerResolution resolution = Resolve(tx, state);
-        FrameTxDependencySet deps = resolution.Dependencies;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.Resolved));
-            Assert.That(deps.SenderCodeHash, Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
-            Assert.That(deps.SenderNonce, Is.EqualTo(5UL));
-            Assert.That(deps.Payer, Is.EqualTo(Sender));
-            Assert.That(deps.PayerBalance, Is.EqualTo(Eth(7)));
-            Assert.That(deps.DependsOnExpiry, Is.False);
-        }
     }
 
     [Test]
@@ -207,33 +193,6 @@ public class FrameTxPayerResolverTests
         {
             Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.RequiresSimulation));
             Assert.That(resolution.Payer, Is.Null);
-            Assert.That(resolution.Dependencies.Payer, Is.Null);
-        }
-    }
-
-    // The deploy variant is the only shape where both skips apply: the expiry dependency is read from
-    // frames[0] independently of the skipped-prefix index, so a deploy frame must not detach it.
-    [TestCase(false, TestName = "Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode")]
-    [TestCase(true, TestName = "Resolve_ExpiryThenDeployPrefix_CapturesDeadlineAndVerifierCode")]
-    public void Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode(bool withDeploy)
-    {
-        TestReadOnlyStateProvider state = new();
-        DefaultCodeAccount(state, Sender);
-        state.InsertCode(Eip8141Constants.ExpiryVerifierCode, Eip8141Constants.ExpiryVerifierAddress);
-        TxFrame[] frames = withDeploy
-            ? [ExpiryAt(0xDEAD_BEEF), DeployFrame(), SelfVerifyFrame()]
-            : [ExpiryAt(0xDEAD_BEEF), SelfVerifyFrame()];
-        Transaction tx = FrameTx(frames, [Secp256k1Signature(Sender)]);
-
-        FrameTxPayerResolution resolution = Resolve(tx, state);
-        FrameTxDependencySet deps = resolution.Dependencies;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resolution.Payer, Is.EqualTo(Sender));
-            Assert.That(deps.DependsOnExpiry, Is.True);
-            Assert.That(deps.ExpiryDeadline, Is.EqualTo(0xDEAD_BEEFUL));
-            Assert.That(deps.ExpiryVerifierCodeHash, Is.EqualTo(Keccak.Compute(Eip8141Constants.ExpiryVerifierCode).ValueHash256));
         }
     }
 
