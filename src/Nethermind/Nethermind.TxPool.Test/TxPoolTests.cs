@@ -2767,6 +2767,56 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Frame_transaction_rejected_after_the_cap_gate_does_not_hold_the_sponsor_slot()
+        {
+            // The slot is a reservation over pending transactions, so it must not be taken by a submission
+            // that is still going to be rejected: at a cap of one, that would let unpooled traffic naming a
+            // sponsor deny the sponsor's real transaction for as long as the remaining filters run.
+            Address sponsor = TestItem.PrivateKeyD.Address;
+            using ManualResetEventSlim reachedFilter = new(false);
+            using ManualResetEventSlim releaseFilter = new(false);
+
+            Transaction doomed = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            BlockingRejectFilter blocker = new(() => doomed.Hash, reachedFilter, releaseFilter);
+
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), incomingTxFilter: blocker);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(sponsor, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], sponsor);
+
+            Task<AcceptTxResult> doomedResult = Task.Run(() => _txPool.SubmitTx(doomed, TxHandlingOptions.None));
+            Assert.That(reachedFilter.Wait(TimeSpan.FromSeconds(10)), Is.True, "the doomed submission never reached the injected filter");
+
+            // Submitted while the doomed one is parked past the cap gate and has not been rejected yet.
+            AcceptTxResult sponsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            releaseFilter.Set();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sponsored, Is.EqualTo(AcceptTxResult.Accepted), "a submission that never pools must not occupy the sponsor's slot");
+                Assert.That(await doomedResult, Is.EqualTo(AcceptTxResult.Invalid));
+            }
+        }
+
+        /// <summary>Parks one transaction inside the filter chain, then rejects it.</summary>
+        private sealed class BlockingRejectFilter(
+            Func<Hash256> target,
+            ManualResetEventSlim reached,
+            ManualResetEventSlim release) : IIncomingTxFilter
+        {
+            public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+            {
+                if (tx.Hash != target()) return AcceptTxResult.Accepted;
+
+                reached.Set();
+                release.Wait(TimeSpan.FromSeconds(10));
+                return AcceptTxResult.Invalid;
+            }
+        }
+
+        [Test]
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one

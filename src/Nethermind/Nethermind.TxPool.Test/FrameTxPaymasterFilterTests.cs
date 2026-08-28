@@ -81,18 +81,38 @@ public class FrameTxPaymasterFilterTests
             () => Build.A.Transaction.WithSenderAddress(Sender).TestObject, paymasterHasCode: true, rejected: false);
     }
 
-    [Test]
-    public void Accept_CodeCarryingSenderPayingItself_IsCapped()
+    // The processor resolves a pay frame's target as target ?? sender, so naming the sender and omitting it
+    // are the same transaction and the cap must not tell them apart. Sender carries code here because an
+    // EIP-7702 delegated EOA does, which is what made self-payment look like a non-canonical paymaster.
+    [TestCase(true, TestName = "Sender named explicitly in the pay frame")]
+    [TestCase(false, TestName = "Pay frame target omitted")]
+    public void Accept_CodeCarryingSenderPayingItself_IsNotAPaymaster(bool targetSpelledOut)
     {
-        // The carve-out is the empty code hash, not self-payment, so a code-carrying self-sponsor is capped.
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Sender);
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Sender)], nonce: 1));
+        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(targetSpelledOut ? Sender : null)], nonce: 1));
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    // The self-relay prefix approves payment for the sender, so walking to the first approving frame must
+    // not read it as a sponsor whichever way its target is encoded.
+    [TestCase(true, TestName = "Self-relay frame naming the sender")]
+    [TestCase(false, TestName = "Self-relay frame with no target")]
+    public void Accept_SelfRelayPrefix_IsNotAPaymaster(bool targetSpelledOut)
+    {
+        TestReadOnlyStateProvider state = new();
+        state.InsertCode([0x60, 0x00], Sender);
+        PendingPaymasterCache cache = new();
+        cache.Reserve(Sender);
+
+        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: 100_000, UInt256.Zero, default);
+        AcceptTxResult result = Accept(state, cache, FrameTx([selfRelay], nonce: 1));
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
     [Test]

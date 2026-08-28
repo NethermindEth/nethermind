@@ -356,10 +356,11 @@ public static class FrameTxValidation
     /// <remarks>
     /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
     /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
-    /// still keyed. Derived from the frame layout alone, never from state; a frame naming the sender counts like
-    /// any other target, since the carve-out is the empty code hash. A frameless pool record instead answers
-    /// from <see cref="Transaction.PersistedPaymaster"/>, unset after a reload — <c>null</c> then means unknown,
-    /// not unsponsored.
+    /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
+    /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
+    /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
+    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, unset after a
+    /// reload — <c>null</c> then means unknown, not unsponsored.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
@@ -377,7 +378,10 @@ public static class FrameTxValidation
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
             if (frames[i].Mode != TxFrame.ModeVerify) break;
-            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0) return frames[i].Target;
+            if ((frames[i].Flags & TxFrame.ApprovePayment) == 0) continue;
+
+            Address? resolved = frames[i].Target ?? transaction.SenderAddress;
+            return resolved == transaction.SenderAddress ? null : resolved;
         }
 
         return null;
