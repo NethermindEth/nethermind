@@ -30,9 +30,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Register problem matcher
         run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
@@ -48,3 +45,22 @@ jobs:
             -p:GenerateDocumentationFile=true \
             -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | awk '!seen[$0]++' | tee /tmp/build.log
           ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
+
+  rpc-bench-scripts:
+    name: Test RPC benchmark scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # These scripts enforce the private-corpus privacy boundary (what may be staged and
+      # published). Their suites are the only thing that verifies it, so CI must run them.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/rpc-bench -p 'test*.py' -v

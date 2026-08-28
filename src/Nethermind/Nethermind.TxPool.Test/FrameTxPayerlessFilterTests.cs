@@ -3,14 +3,13 @@
 
 #nullable enable
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
@@ -23,15 +22,13 @@ public class FrameTxPayerlessFilterTests
     {
         long before = Metrics.PendingTransactionsFrameTxNoPayer;
         // A lone only_verify frame never approves a payer regardless of the signatures.
-        Transaction tx = new()
+        TxFrameSignature[] signatures = new TxFrameSignature[1024];
+        for (int i = 0; i < signatures.Length; i++)
         {
-            Type = TxType.FrameTx,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-            FrameSignatures = Enumerable.Range(0, 1024)
-                .Select(_ => new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, new byte[TxFrameSignature.Secp256k1SignatureLength]))
-                .ToArray(),
-        };
+            signatures[i] = Secp256k1Signature(TestItem.AddressA);
+        }
+
+        Transaction tx = FrameTx(TestItem.AddressA, signatures, OnlyVerify(PrefixFrameGas));
 
         AcceptTxResult result = Accept(tx);
 
@@ -45,14 +42,7 @@ public class FrameTxPayerlessFilterTests
     [Test]
     public void Accept_ExpiryOnlyPrefix_Rejected()
     {
-        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data)],
-            FrameSignatures = [],
-        };
+        Transaction tx = FrameTx(Expiry());
 
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.FrameTxNoPayer));
     }
@@ -61,13 +51,7 @@ public class FrameTxPayerlessFilterTests
     public void Accept_PayerApprovingPrefix_Accepted()
     {
         // self_verify approves a payer, so the structural filter must let it through to later filters.
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
-        };
+        Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)], SelfVerify(PrefixFrameGas));
 
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
     }

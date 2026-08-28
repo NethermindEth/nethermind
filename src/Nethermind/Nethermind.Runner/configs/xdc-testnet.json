@@ -7,7 +7,8 @@
   },
   "Network": {
     "FilterDiscoveryNodesByRecentIp": false,
-    "EnableEnrDiscovery": false
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
   },
   "Discovery": {
     "DiscoveryVersion": "V4"
@@ -25,9 +26,9 @@
     "FastSync": true,
     "SnapSync": false,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 85250000,
-    "PivotHash": "0x7882a12260cf626ab3147cc59bfb22d3e73a2e6d354d19c399f2dd002f084cd0",
-    "PivotTotalDifficulty": "341587235",
+    "PivotNumber": 85820000,
+    "PivotHash": "0xb444655a6aab8780f0b09fc2500d089b35256d104c60539eb1e1276e19a164cc",
+    "PivotTotalDifficulty": "342157235",
     "AncientReceiptsBarrier": 56828700,
     "AncientBodiesBarrier": 56828700
   },

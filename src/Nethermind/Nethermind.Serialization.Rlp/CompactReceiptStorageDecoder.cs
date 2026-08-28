@@ -61,10 +61,8 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            // EIP-8141: only frame receipts carry data past the logs sequence — the trailing
-            // extension holds the execution results the block cannot reproduce (payer and the
-            // per-frame receipts). Pre-fork receipts end at the logs, so the branch never fires
-            // for them.
+            // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
+            // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
             if (decoderContext.Position < receiptEnd)
             {
                 txReceipt.TxType = TxType.FrameTx;
@@ -119,8 +117,7 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // EIP-8141: skip a frame-tx receipt's trailing extension (payer + per-frame receipts) so
-            // the next receipt in the array stays aligned. Pre-fork receipts already end here (no-op).
+            // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
             if (decoderContext.Position < receiptEnd)
             {
                 item.TxType = TxType.FrameTx;
@@ -185,7 +182,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 byte status = decoderContext.DecodeByte();
-                ulong gasUsed = decoderContext.DecodeULong();
+                FrameReceiptGasRlp.DecodeGasUsed(ref decoderContext, out ulong executionGasUsed, out ulong stateGasUsed);
 
                 int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 using ArrayPoolListRef<LogEntry> frameLogs = new(4);
@@ -194,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
                     frameLogs.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
                 }
 
-                frameReceipts.Add(new TxFrameReceipt(status, gasUsed, frameLogs.ToArray()));
+                frameReceipts.Add(new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray()));
                 decoderContext.Check(frameEnd);
             }
 
@@ -215,9 +212,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 TxFrameReceipt frameReceipt = frameReceipts[i];
                 int logsLength = GetFrameLogsLength(frameReceipt);
-                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOf(frameReceipt.GasUsed) + Rlp.LengthOfSequence(logsLength));
+                int gasUsedLength = Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
+                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
                 writer.Encode((ulong)frameReceipt.Status);
-                writer.Encode(frameReceipt.GasUsed);
+                writer.StartSequence(gasUsedLength);
+                writer.Encode(frameReceipt.ExecutionGasUsed);
+                writer.Encode(frameReceipt.StateGasUsed);
                 writer.StartSequence(logsLength);
                 for (int j = 0; j < frameReceipt.Logs.Length; j++)
                 {
@@ -228,7 +228,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
             Rlp.LengthOf((ulong)frameReceipt.Status)
-            + Rlp.LengthOf(frameReceipt.GasUsed)
+            + Rlp.LengthOfSequence(Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed))
             + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
 
         private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)

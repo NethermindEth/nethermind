@@ -1,8 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -10,6 +12,8 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
+    private const byte ConsensusEncodingSizeFormatVersion = 1;
+
     private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
@@ -23,8 +27,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
+               + Rlp.LengthOf(GetConsensusEncodingSize(tx))
+               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion)
                + Rlp.LengthOf((byte)tx.Type)
-               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0);
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -43,11 +51,17 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
-        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
-        // Appended last so records written before it still decode, defaulting to TxType.Blob.
+        writer.Encode((byte)(tx.GetProofVersion() ?? default));
+        EncodeAvailableCellMask(tx, ref writer);
+        writer.Encode(GetConsensusEncodingSize(tx));
+        writer.Encode(ConsensusEncodingSizeFormatVersion);
+        // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
         writer.Encode((byte)tx.Type);
         // Expiry needs the deadline after a reload, where the frames that carried it are gone.
         if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        // A sequence, so the decoder tells it apart from the expiry deadline that only sometimes precedes it.
+        // Any further optional trailing field must also be a list: a second optional scalar would be ambiguous.
+        if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
 
         return bytes;
     }
@@ -55,22 +69,80 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
-        // Argument evaluation is left-to-right, so this read order must match Encode's write order.
+        UInt256 timestamp = ctx.DecodeUInt256();
+        Address sender = ctx.DecodeAddress();
+        ulong nonce = ctx.DecodeULong();
+        Hash256 hash = ctx.DecodeKeccak();
+        UInt256 value = ctx.DecodeUInt256();
+        ulong gasLimit = ctx.DecodeULong();
+        UInt256 gasPrice = ctx.DecodeUInt256();
+        UInt256 maxFeePerGas = ctx.DecodeUInt256();
+        UInt256 maxFeePerBlobGas = ctx.DecodeUInt256();
+        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        ulong poolIndex = ctx.DecodeULong();
+        int size = ctx.DecodePositiveInt();
+
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 8);
+        if (optionalFieldCount > 7)
+        {
+            throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
+        }
+
+        ProofVersion proofVersion = optionalFieldCount >= 1 ? (ProofVersion)ctx.DecodeByte() : default;
+        // Entries persisted before the mask field was added always hold full blobs.
+        BlobCellMask blobCellMask = optionalFieldCount >= 2
+            ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
+            : BlobCellMask.Full;
+        int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
+        byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
+        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
+            ? persistedEncodingSize
+            : 0;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
+        // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
+        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
+        UInt256[]? nonceKeys = ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
+            ? FrameTxNonceCalldata.DecodeKeys(ref ctx)
+            : null;
+        ctx.Check(data.Length);
+
         return new LightTransaction(
-            timestamp: ctx.DecodeUInt256(),
-            sender: ctx.DecodeAddress(),
-            nonce: ctx.DecodeULong(),
-            hash: ctx.DecodeKeccak(),
-            value: ctx.DecodeUInt256(),
-            gasLimit: ctx.DecodeULong(),
-            gasPrice: ctx.DecodeUInt256(),
-            maxFeePerGas: ctx.DecodeUInt256(),
-            maxFeePerBlobGas: ctx.DecodeUInt256(),
-            blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
-            poolIndex: ctx.DecodeULong(),
-            size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.DecodeByte() : default,
-            type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.DecodeByte() : TxType.Blob,
-            expiryDeadline: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? ctx.DecodeULong() : null);
+            timestamp,
+            sender,
+            nonce,
+            hash,
+            value,
+            gasLimit,
+            gasPrice,
+            maxFeePerGas,
+            maxFeePerBlobGas,
+            blobVersionHashes,
+            poolIndex,
+            size,
+            proofVersion,
+            blobCellMask,
+            consensusEncodingSize,
+            type,
+            expiryDeadline,
+            nonceKeys);
     }
+
+    private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
+    {
+        Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+        GetAvailableCellMask(tx).WriteTo(bytes);
+        writer.Encode(bytes);
+    }
+
+    private static BlobCellMask GetAvailableCellMask(Transaction tx) =>
+        tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            ? wrapper.GetAvailableCellMask()
+            : tx is LightTransaction lightTx
+                ? lightTx.BlobCellMask
+                : BlobCellMask.Empty;
+
+    private static int GetConsensusEncodingSize(Transaction tx) =>
+        tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0
+            ? lightTx.GetConsensusEncodingSize()
+            : tx.GetLength(shouldCountBlobs: false);
 }

@@ -334,6 +334,8 @@ namespace Nethermind.Core.Specs
         /// EIP-8272: recent roots for frame transactions.
         /// </summary>
         bool IsEip8272Enabled { get; }
+
+        /// <summary>
         /// EIP-7906: transaction outcome assertions.
         /// </summary>
         bool IsEip7906Enabled { get; }
@@ -475,6 +477,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
         public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
