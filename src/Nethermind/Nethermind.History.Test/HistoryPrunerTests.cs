@@ -615,12 +615,16 @@ public class HistoryPrunerTests
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 1000 };
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
 
+        IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+
         FrontierCapturingRetention retention = new();
         HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        _ = pruner.OldestBlockHeader;
         pruner.TryPruneHistory(CancellationToken.None);
 
-        Assert.That(retention.OldestStoredReceipts, Is.Not.Zero,
-            "the read side refuses every sliced address until the stamps are validated, so waiting for an interval boundary with work would refuse serving for most of an hour after every restart");
+        Assert.That(retention.OldestStoredReceipts, Is.EqualTo(60UL),
+            "the read side refuses every sliced address until the stamps are validated, so this must run on the first tick even when another caller loaded the pointers first and no interval boundary has work");
     }
 
     private sealed class FrontierCapturingRetention : IPrunedReceiptRetention

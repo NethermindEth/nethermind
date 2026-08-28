@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -623,8 +624,8 @@ public class SlicedReceiptRetentionTests
 
         byte[] legacyKey = [.. "history:sliceLogsFrom:"u8, .. TestItem.AddressA.Bytes];
         byte[] legacyValue = new byte[16];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(legacyValue, 1);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(legacyValue.AsSpan(8), 5000);
+        BinaryPrimitives.WriteUInt64BigEndian(legacyValue, 1);
+        BinaryPrimitives.WriteUInt64BigEndian(legacyValue.AsSpan(8), 5000);
         metadata.Set(legacyKey, legacyValue);
 
         SlicedReceiptRetention retention = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);

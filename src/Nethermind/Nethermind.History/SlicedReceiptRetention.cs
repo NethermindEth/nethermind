@@ -184,8 +184,9 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             {
                 stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
                 ulong storedReclaimed = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
-                // A two-field record predates cleanup tracking; its writer ran the cleanup retention-aware exactly
-                // as it ran the main reclaim, so the current cleanup reach carries the same trust here.
+                // A two-field record predates cleanup tracking, so its cleanup reach cannot be reconstructed;
+                // adopting the current one accepts one unverifiable transition rather than resetting the earned
+                // depth of every record an earlier build wrote.
                 ulong storedCleanup = stored.Length == StampValueLength
                     ? BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(2 * sizeof(ulong)))
                     : sliceCleanupThrough;

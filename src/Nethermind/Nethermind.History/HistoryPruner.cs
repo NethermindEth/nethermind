@@ -75,6 +75,7 @@ public class HistoryPruner : IHistoryPruner
     // Read by JSON-RPC and the sync server while the pruner writes them under a lock it can hold for a whole reclaim.
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
+    private volatile bool _stampsValidated;
     private int _currentlyPruning;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
@@ -252,7 +253,7 @@ public class HistoryPruner : IHistoryPruner
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            (_hasLoadedDeletePointers && !ShouldPruneHistory()))
+            (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory()))
         {
             SkipLocalPruning();
             return;
@@ -271,8 +272,10 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 // Before the interval gate: the read side refuses every sliced address until this has validated
-                // the stamps, and the first interval boundary can be most of an hour away.
+                // the stamps, and the first interval boundary can be most of an hour away. The flag keeps the
+                // uncontended fast path honest - another caller loading the pointers must not skip this tick.
                 _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
+                _stampsValidated = true;
 
                 if (!ShouldPruneHistory())
                 {
