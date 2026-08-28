@@ -32,7 +32,7 @@ public class SnapshotDecoderTests
         snapshot.HeaderHash = null!;
         Rlp rlp = Decoder.Encode(snapshot);
 
-        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.TypeOf<RlpException>());
+        Assert.That(() => Decoder.Decode(rlp.Bytes), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
