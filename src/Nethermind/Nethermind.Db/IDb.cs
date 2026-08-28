@@ -40,7 +40,9 @@ namespace Nethermind.Db
         bool CompactIfDeadWeightExceeds(double deadRatio) => false;
 
         /// <summary>Aborts any manual compaction in flight and refuses new ones, so a shutdown joining the thread
-        /// that called <see cref="CompactIfDeadWeightExceeds"/> is not held for the rewrite's duration.</summary>
+        /// that called <see cref="CompactIfDeadWeightExceeds"/> is not held for the rewrite's duration. Terminal
+        /// and store-wide: there is no re-enable, a column store applies it to every column sharing the database,
+        /// and <see cref="Compact"/> never works again for the process's life - shutdown only, never a pause.</summary>
         void InterruptCompactions() { }
         void SetWriteBuffer(long sizeBytes) { }
 

@@ -372,7 +372,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                     ulong lowestStored = _blockTree.GetLowestBlock();
                     if (!isForward && (ulong)start < lowestStored)
                     {
-                        if (_logger.IsInfo) _logger.Info(
+                        if (_logger.IsDebug) _logger.Debug(
                             $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
                         MarkCompleted(isForward: false);
                         return;

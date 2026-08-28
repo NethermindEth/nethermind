@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.History;
 /// background and reports the verdict. Its verdict changes nothing about serving - a mismatch is an operator's
 /// loud signal, not an automatic un-publish.
 /// </summary>
-public sealed class HistoryWalkVerificationCoordinator : IDisposable
+public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisposable
 {
     private static readonly TimeSpan DefaultPollDelay = TimeSpan.FromSeconds(30);
     private const int MismatchesLogged = 8;
@@ -27,7 +27,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
     private Task _loop = Task.CompletedTask;
-    private object? _verdict;
+    private HistoryWalkVerdict? _verdict;
     private bool _disposed;
 
     public HistoryWalkVerificationCoordinator(
@@ -80,7 +80,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     public bool Started { get; }
 
     /// <summary>The completed run's verdict, or <c>null</c> while none has finished.</summary>
-    public HistoryWalkVerdict? LastVerdict => Volatile.Read(ref _verdict) is HistoryWalkVerdict verdict ? verdict : null;
+    public HistoryWalkVerdict? LastVerdict => Volatile.Read(ref _verdict);
 
     /// <summary>The running verification, completed once a verdict has published; tests await this instead of polling.</summary>
     internal Task VerificationLoop => _loop;
@@ -154,6 +154,23 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
         try
         {
             _loop.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        _cts.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+        await _cts.CancelAsync();
+        try
+        {
+            await _loop;
         }
         catch (OperationCanceledException)
         {

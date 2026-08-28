@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -59,6 +60,9 @@ public class HistoryPruner : IHistoryPruner
     private ulong _blocksReclaimCursor = 1;
     private byte[]? _txIndexSweepCursor;
     private bool _txIndexSweepCursorLoaded;
+    private readonly Dictionary<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> _sweepBuckets = [];
+    private readonly Dictionary<ulong, bool> _sweepBloomDecisions = [];
+    private Func<ulong, bool>? _sweepRetentionLookup;
     private ulong _balsDeletePointer = 1;
     private ulong _lastSavedBlocksDeletePointer = 1;
     private ulong _lastSavedBlocksReclaimCursor = 1;
@@ -485,8 +489,9 @@ public class HistoryPruner : IHistoryPruner
         IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
 
         // Sorted once, so each slice takes its own segment by binary search instead of filtering the whole set.
-        ulong[] sortedAnswered = [.. answered];
-        Array.Sort(sortedAnswered);
+        using ArrayPoolList<ulong> sortedAnswered = new(answered.Count);
+        foreach (ulong answeredHeight in answered) sortedAnswered.Add(answeredHeight);
+        sortedAnswered.AsSpan().Sort();
 
         // A single wide range beats a hundred narrow ones, which unlink fewer whole files between them.
         if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
@@ -519,21 +524,14 @@ public class HistoryPruner : IHistoryPruner
     }
 
     /// <summary><paramref name="sortedAnswered"/> is null where the headers have to be read instead.</summary>
-    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ulong[]? sortedAnswered, bool meterRetained = true)
+    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ArrayPoolList<ulong>? sortedAnswered, bool meterRetained = true)
     {
         IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
         try
         {
-            List<ulong> candidates;
-            if (sortedAnswered is null)
-            {
-                levels = LoadLevels(fromInclusive, toExclusive);
-                candidates = CandidatesFromLevels(fromInclusive, toExclusive, levels);
-            }
-            else
-            {
-                candidates = CandidatesFromAnswer(sortedAnswered, fromInclusive, toExclusive);
-            }
+            using ArrayPoolList<ulong> candidates = sortedAnswered is null
+                ? CandidatesFromLevels(fromInclusive, toExclusive, levels = LoadLevels(fromInclusive, toExclusive))
+                : CandidatesFromAnswer(sortedAnswered.AsSpan(), fromInclusive, toExclusive);
 
             if (candidates.Count == 0)
             {
@@ -546,11 +544,10 @@ public class HistoryPruner : IHistoryPruner
             if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
             {
                 levels ??= LoadLevels(fromInclusive, toExclusive);
-                HashSet<ulong> keep = [.. candidates];
-                List<(ulong FromInclusive, ulong ToExclusive)> unreachable = [];
+                using ArrayPoolList<(ulong FromInclusive, ulong ToExclusive)> unreachable = new(4);
                 for (ulong number = fromInclusive; number < toExclusive; number++)
                 {
-                    if (keep.Contains(number)) continue;
+                    if (candidates.AsSpan().BinarySearch(number) >= 0) continue;
 
                     int index = (int)(number - fromInclusive);
                     ChainLevelInfo? level = index < levels.Count ? levels[index] : null;
@@ -575,12 +572,13 @@ public class HistoryPruner : IHistoryPruner
 
             // Sparse: the gaps between retained heights are wide, so one range each beats walking them, and a
             // range is what lets whole files be unlinked instead of waiting for compaction.
-            candidates.Sort();
+            candidates.AsSpan().Sort();
 
-            List<(ulong FromInclusive, ulong ToExclusive)> gaps = new(candidates.Count + 1);
+            using ArrayPoolList<(ulong FromInclusive, ulong ToExclusive)> gaps = new(candidates.Count + 1);
             ulong gapStart = fromInclusive;
-            foreach (ulong height in candidates)
+            for (int i = 0; i < candidates.Count; i++)
             {
+                ulong height = candidates[i];
                 if (height > gapStart) gaps.Add((gapStart, height));
                 gapStart = height + 1;
             }
@@ -627,27 +625,27 @@ public class HistoryPruner : IHistoryPruner
         return _chainLevelInfoRepository.MultiLoadLevel(numbers);
     }
 
-    private static List<ulong> CandidatesFromAnswer(ulong[] sortedAnswered, ulong fromInclusive, ulong toExclusive)
+    private static ArrayPoolList<ulong> CandidatesFromAnswer(ReadOnlySpan<ulong> sortedAnswered, ulong fromInclusive, ulong toExclusive)
     {
         int lower = LowerBound(sortedAnswered, fromInclusive);
         int upper = LowerBound(sortedAnswered, toExclusive);
 
-        List<ulong> candidates = new(upper - lower);
-        for (int i = lower; i < upper; i++) candidates.Add(sortedAnswered[i]);
+        ArrayPoolList<ulong> candidates = new(upper - lower);
+        candidates.AddRange(sortedAnswered[lower..upper]);
         return candidates;
     }
 
-    private static int LowerBound(ulong[] sorted, ulong value)
+    private static int LowerBound(ReadOnlySpan<ulong> sorted, ulong value)
     {
-        int index = Array.BinarySearch(sorted, value);
+        int index = sorted.BinarySearch(value);
         return index < 0 ? ~index : index;
     }
 
     /// <summary>Heights whose bloom says their receipts might be worth keeping, over the levels already read in bulk
     /// and one sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
-    private List<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
+    private ArrayPoolList<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
     {
-        List<ulong> candidates = [];
+        ArrayPoolList<ulong> candidates = new(64);
         Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
 
         for (int i = 0; i < levels.Count; i++)
@@ -749,17 +747,24 @@ public class HistoryPruner : IHistoryPruner
     /// sweeps; a header that no longer resolves is not retained, since nothing can answer for it anyway.</summary>
     internal Func<ulong, bool> SweepRetentionLookup()
     {
-        Dictionary<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> buckets = [];
-        Dictionary<ulong, bool> bloomDecisions = [];
-        return height =>
+        foreach (KeyValuePair<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> entry in _sweepBuckets)
+        {
+            ArrayPool<ulong>.Shared.Return(entry.Value.Bitmap);
+        }
+
+        _sweepBuckets.Clear();
+        _sweepBloomDecisions.Clear();
+        return _sweepRetentionLookup ??= height =>
         {
             ulong bucketStart = height / ReceiptRetentionSlice * ReceiptRetentionSlice;
-            if (!buckets.TryGetValue(bucketStart, out (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo) bucket))
+            if (!_sweepBuckets.TryGetValue(bucketStart, out (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo) bucket))
             {
                 IReadOnlySet<ulong> retained = _receiptRetention.RetainedHeights(
                     bucketStart, bucketStart + ReceiptRetentionSlice, out ulong answeredFrom, out ulong answeredTo);
 
-                ulong[] bitmap = new ulong[(ReceiptRetentionSlice + 63) / 64];
+                const int bitmapLength = (int)((ReceiptRetentionSlice + 63) / 64);
+                ulong[] bitmap = ArrayPool<ulong>.Shared.Rent(bitmapLength);
+                Array.Clear(bitmap, 0, bitmapLength);
                 foreach (ulong retainedHeight in retained)
                 {
                     if (retainedHeight < bucketStart || retainedHeight >= bucketStart + ReceiptRetentionSlice) continue;
@@ -768,7 +773,7 @@ public class HistoryPruner : IHistoryPruner
                     bitmap[offset / 64] |= 1UL << (int)(offset % 64);
                 }
 
-                buckets[bucketStart] = bucket = (bitmap, answeredFrom, answeredTo);
+                _sweepBuckets[bucketStart] = bucket = (bitmap, answeredFrom, answeredTo);
             }
 
             if (height >= bucket.AnsweredFrom && height < bucket.AnsweredTo)
@@ -777,12 +782,12 @@ public class HistoryPruner : IHistoryPruner
                 return (bucket.Bitmap[offset / 64] & (1UL << (int)(offset % 64))) != 0;
             }
 
-            if (bloomDecisions.TryGetValue(height, out bool decided)) return decided;
+            if (_sweepBloomDecisions.TryGetValue(height, out bool decided)) return decided;
 
             BlockHeader? header = _blockTree.FindHeader(height,
                 BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             bool retainedByBloom = header is not null && _receiptRetention.ShouldRetainReceipts(header);
-            bloomDecisions[height] = retainedByBloom;
+            _sweepBloomDecisions[height] = retainedByBloom;
             return retainedByBloom;
         };
     }

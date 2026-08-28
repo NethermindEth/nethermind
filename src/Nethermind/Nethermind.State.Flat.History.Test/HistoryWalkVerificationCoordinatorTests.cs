@@ -91,8 +91,8 @@ public class HistoryWalkVerificationCoordinatorTests
         Assert.That(verdict, Is.Not.Null, "the coordinator must run the walk once the watermark exists and publish its verdict");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(verdict!.Value.Verified, Is.True);
-            Assert.That(verdict.Value.Mismatches, Is.Empty);
+            Assert.That(verdict!.Verified, Is.True);
+            Assert.That(verdict!.Mismatches, Is.Empty);
         }
     }
 

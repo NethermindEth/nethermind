@@ -27,5 +27,6 @@ public enum HistoryWalkMismatchKind : byte
 public readonly record struct HistoryWalkMismatch(ulong Block, HistoryWalkMismatchKind Kind, ValueHash256 Rebuilt, ValueHash256 Expected);
 
 /// <summary>The outcome of one walk: <c>Verified</c> is true only when every compared block matched,
-/// <c>BlocksCompared</c> counts headers actually checked, and an unfinished walk reports what it saw.</summary>
-public readonly record struct HistoryWalkVerdict(bool Verified, ulong BlocksCompared, IReadOnlyList<HistoryWalkMismatch> Mismatches);
+/// <c>BlocksCompared</c> counts headers actually checked, and an unfinished walk reports what it saw.
+/// A reference type, so a publish-once field holds it without boxing.</summary>
+public sealed record HistoryWalkVerdict(bool Verified, ulong BlocksCompared, IReadOnlyList<HistoryWalkMismatch> Mismatches);

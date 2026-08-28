@@ -29,6 +29,7 @@ public sealed class HistoryWindowPruner(
     private const int FlushEveryNDeletes = 1000;
     private const double DeadWeightCompactionRatio = 0.5;
     private const int OwedDrainWarnEveryNFailures = 10;
+    private static readonly TimeSpan DeadWeightCompactionMinInterval = TimeSpan.FromHours(1);
 
     private static ReadOnlySpan<byte> AccountCursorKey => "history:prune:cursor:account"u8;
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
@@ -52,10 +53,12 @@ public sealed class HistoryWindowPruner(
     private ulong _cycleMarkersAndClearsFloor;
     private long _owedDrainGeneration;
     private long _owedDrainFailedPasses;
+    private long _lastDeadWeightCheckAt;
+    private TimeSpan _lastPassCompactionTime;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
 
     /// <summary>Raised after each completed loop pass; tests synchronize on it instead of polling.</summary>
-    internal Action? PassCompleted;
+    internal event Action? PassCompleted;
     private int _disposed;
     private bool _started;
 
@@ -191,7 +194,8 @@ public sealed class HistoryWindowPruner(
             try
             {
                 yielded = !RunOnePass(token);
-                pauseAfterYield = Stopwatch.GetElapsedTime(passStartedAt);
+                TimeSpan sweepElapsed = Stopwatch.GetElapsedTime(passStartedAt) - _lastPassCompactionTime;
+                pauseAfterYield = sweepElapsed > TimeSpan.Zero ? sweepElapsed : PassBudget();
                 PassCompleted?.Invoke();
             }
             catch (OperationCanceledException)
@@ -212,6 +216,7 @@ public sealed class HistoryWindowPruner(
     /// <summary>Internal so tests can drive a cycle instead of racing the wake-signal loop.</summary>
     internal bool RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
+        _lastPassCompactionTime = TimeSpan.Zero;
         TimeSpan passBudget = PassBudget();
         Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
@@ -318,13 +323,18 @@ public sealed class HistoryWindowPruner(
         {
             _accountSwept = _storageSwept = _clearsSwept = _blocksSwept = false;
 
-            bool accountCompacted = _accountHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
-            bool storageCompacted = _storageHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
-            bool clearsCompacted = _storageClears.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
-            bool markersCompacted = _availableBlocks.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
-            if ((accountCompacted || storageCompacted || clearsCompacted || markersCompacted) && _logger.IsInfo)
+            if (_lastDeadWeightCheckAt == 0 || Stopwatch.GetElapsedTime(_lastDeadWeightCheckAt) >= DeadWeightCompactionMinInterval)
             {
-                _logger.Info("Compacted the flat history columns whose files were mostly tombstones; their space has been returned.");
+                _lastDeadWeightCheckAt = Stopwatch.GetTimestamp();
+                bool accountCompacted = _accountHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+                bool storageCompacted = _storageHistory.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+                bool clearsCompacted = _storageClears.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+                bool markersCompacted = _availableBlocks.CompactIfDeadWeightExceeds(DeadWeightCompactionRatio);
+                _lastPassCompactionTime = Stopwatch.GetElapsedTime(_lastDeadWeightCheckAt);
+                if ((accountCompacted || storageCompacted || clearsCompacted || markersCompacted) && _logger.IsInfo)
+                {
+                    _logger.Info("Compacted the flat history columns whose files were mostly tombstones; their space has been returned.");
+                }
             }
 
             availability.TryGetGlobalFloor(out ulong liveFloor);

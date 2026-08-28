@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -545,73 +546,88 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch storageBatch = columns.StorageHistory;
 
         Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-        KeyValuePair<ValueHash256, ulong>[] accounts = SortedAccounts(pending.Accounts);
-        for (int offset = 0; offset < accounts.Length; offset += PreValueMultiGetChunkSize)
+
+        int accountCount = pending.Accounts.Count;
+        KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
+        try
         {
-            int count = Math.Min(PreValueMultiGetChunkSize, accounts.Length - offset);
-            byte[][] keys = new byte[count][];
-            for (int i = 0; i < count; i++)
-            {
-                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
-            }
+            ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
+            Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
 
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
-            for (int i = 0; i < count; i++)
+            byte[][] chunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
+            for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
             {
-                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
-            }
-        }
-
-        KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = SortedStorages(pending.Storages);
-        for (int offset = 0; offset < storages.Length; offset += PreValueMultiGetChunkSize)
-        {
-            int count = Math.Min(PreValueMultiGetChunkSize, storages.Length - offset);
-            byte[][] keys = new byte[count][];
-            for (int i = 0; i < count; i++)
-            {
-                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
-            }
-
-            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
-            for (int i = 0; i < count; i++)
-            {
-                ulong touch = storages[offset + i].Value;
-                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
-
-                if (pending.Destructs.Count != 0
-                    && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
-                    && destructBlock < touch)
+                int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
+                byte[][] keys = count == chunkKeys.Length ? chunkKeys : new byte[count][];
+                for (int i = 0; i < count; i++)
                 {
-                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
-                    preValue = ReadOnlySpan<byte>.Empty;
+                    keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
                 }
 
-                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
+                KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+                for (int i = 0; i < count; i++)
+                {
+                    _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
+                }
             }
+        }
+        finally
+        {
+            ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
+        }
+
+        int storageCount = pending.Storages.Count;
+        KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
+        try
+        {
+            ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
+            Array.Sort(storages, 0, storageCount, StorageKeyOrder);
+
+            byte[][] chunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
+            for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
+            {
+                int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
+                byte[][] keys = count == chunkKeys.Length ? chunkKeys : new byte[count][];
+                for (int i = 0; i < count; i++)
+                {
+                    keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+                }
+
+                KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+                for (int i = 0; i < count; i++)
+                {
+                    ulong touch = storages[offset + i].Value;
+                    ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+
+                    if (pending.Destructs.Count != 0
+                        && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
+                        && destructBlock < touch)
+                    {
+                        _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                        preValue = ReadOnlySpan<byte>.Empty;
+                    }
+
+                    _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
         }
     }
 
     // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
     // sharing index and data blocks instead of hitting them randomly per chunk.
-    private static KeyValuePair<ValueHash256, ulong>[] SortedAccounts(Dictionary<ValueHash256, ulong> map)
-    {
-        KeyValuePair<ValueHash256, ulong>[] entries = new KeyValuePair<ValueHash256, ulong>[map.Count];
-        ((ICollection<KeyValuePair<ValueHash256, ulong>>)map).CopyTo(entries, 0);
-        Array.Sort(entries, static (a, b) => a.Key.Bytes.SequenceCompareTo(b.Key.Bytes));
-        return entries;
-    }
+    private static readonly IComparer<KeyValuePair<ValueHash256, ulong>> AccountKeyOrder =
+        Comparer<KeyValuePair<ValueHash256, ulong>>.Create(static (a, b) => a.Key.Bytes.SequenceCompareTo(b.Key.Bytes));
 
-    private static KeyValuePair<PendingV3Writes.SlotKey, ulong>[] SortedStorages(Dictionary<PendingV3Writes.SlotKey, ulong> map)
-    {
-        KeyValuePair<PendingV3Writes.SlotKey, ulong>[] entries = new KeyValuePair<PendingV3Writes.SlotKey, ulong>[map.Count];
-        ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)map).CopyTo(entries, 0);
-        Array.Sort(entries, static (a, b) =>
+    private static readonly IComparer<KeyValuePair<PendingV3Writes.SlotKey, ulong>> StorageKeyOrder =
+        Comparer<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Create(static (a, b) =>
         {
             int byAccount = a.Key.AddrPath.Bytes.SequenceCompareTo(b.Key.AddrPath.Bytes);
             return byAccount != 0 ? byAccount : a.Key.SlotHash.Bytes.SequenceCompareTo(b.Key.SlotHash.Bytes);
         });
-        return entries;
-    }
 
     /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.</summary>
     private sealed class PendingV3Writes

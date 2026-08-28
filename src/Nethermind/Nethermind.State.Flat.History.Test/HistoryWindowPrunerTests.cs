@@ -311,7 +311,7 @@ public class HistoryWindowPrunerTests
 
         HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
         using ManualResetEventSlim firstPass = new();
-        pruner.PassCompleted = firstPass.Set;
+        pruner.PassCompleted += firstPass.Set;
         pruner.Start();
 
         Assert.That(firstPass.Wait(TimeSpan.FromSeconds(10)), Is.True,

@@ -950,7 +950,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
             foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
             {
-                _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+                if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
             }
         }
 

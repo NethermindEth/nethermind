@@ -143,6 +143,8 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
     }
 
     /// <inheritdoc/>
+    /// <remarks>The maximum floor across bounded slices - the shallowest window - so the cleanup cursor revisits
+    /// every height anything can have expired from; a height a deeper slice still claims is simply re-answered.</remarks>
     public ulong ExpiredRetentionUpperBound()
     {
         ulong upperBound = 0;
@@ -152,7 +154,7 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             if (retention is not { } bound || head <= bound) continue;
 
             ulong sliceFloor = head - bound;
-            if (upperBound == 0 || sliceFloor < upperBound) upperBound = sliceFloor;
+            if (sliceFloor > upperBound) upperBound = sliceFloor;
         }
 
         return upperBound;

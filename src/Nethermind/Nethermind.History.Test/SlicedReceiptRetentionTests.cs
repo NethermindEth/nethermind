@@ -227,7 +227,7 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
-    public async Task Serves_a_sliced_addresss_logs_over_a_range_whose_from_endpoint_is_pruned()
+    public async Task Serves_a_sliced_address_logs_over_a_range_whose_from_endpoint_is_pruned()
     {
         Address nonSlicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
         Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 1);
@@ -614,8 +614,8 @@ public class SlicedReceiptRetentionTests
     [TestCase("", 0ul, TestName = "ExpiredRetentionUpperBound_with_no_slices_is_zero")]
     [TestCase("unbounded", 0ul, TestName = "ExpiredRetentionUpperBound_with_only_unbounded_slices_is_zero")]
     [TestCase("bounded:100", 900ul, TestName = "ExpiredRetentionUpperBound_for_a_bounded_slice_is_head_minus_its_bound")]
-    [TestCase("bounded:100,deeper:300", 700ul, TestName = "ExpiredRetentionUpperBound_across_bounds_is_the_deepest_window_floor")]
-    public void ExpiredRetentionUpperBound_FollowsTheDeepestBoundedWindow(string shape, ulong expected)
+    [TestCase("bounded:100,deeper:300", 900ul, TestName = "ExpiredRetentionUpperBound_across_bounds_is_the_shallowest_window_floor")]
+    public void ExpiredRetentionUpperBound_FollowsTheShallowestBoundedWindow(string shape, ulong expected)
     {
         string addresses = shape switch
         {
