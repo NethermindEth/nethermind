@@ -48,16 +48,10 @@ public class FrameForRpc
         return result;
     }
 
-    public static TxFrame[]? ToFrames(FrameForRpc[]? frames)
-    {
-        if (frames is null) return null;
-
-        TxFrame[] result = new TxFrame[frames.Length];
-        for (int i = 0; i < frames.Length; i++)
-        {
-            result[i] = frames[i].ToFrame();
-        }
-
-        return result;
-    }
+    /// <summary>Maps the deserialized <c>frames</c> list onto the transaction's frames.</summary>
+    /// <param name="frames">The deserialized list, or <c>null</c> when the request omitted it.</param>
+    /// <param name="converted">The mapped list, or <c>null</c> when <paramref name="frames"/> is absent.</param>
+    /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
+    public static bool TryToFrames(FrameForRpc[]? frames, out TxFrame[]? converted) =>
+        RpcListConverter.TryConvert(frames, static f => f.ToFrame(), out converted);
 }
