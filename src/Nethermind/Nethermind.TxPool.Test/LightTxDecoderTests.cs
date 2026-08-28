@@ -159,6 +159,49 @@ public class LightTxDecoderTests
         logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString()) && text.Contains(expectedType)));
     }
 
+    // The catch must span every shape a foreign or damaged record decodes into, not just the mask check:
+    // a truncated record surfaces from the reader's unchecked slice rather than as an RlpException.
+    [Test]
+    public void Records_failing_in_different_ways_are_all_skipped()
+    {
+        // A long-form list prefix mid-record makes the reader take a bogus length and index past the buffer,
+        // which is the third root and reaches neither the mask check nor the RLP grammar errors.
+        byte[] longFormPrefix = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
+        longFormPrefix[64] = 0xf8;
+
+        byte[][] corrupt =
+        [
+            EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)),
+            LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob))[..^5],
+            longFormPrefix,
+            [0xff, 0xff, 0xff, 0xff],
+        ];
+
+        HashSet<string> shapes = [];
+        foreach (byte[] record in corrupt)
+        {
+            shapes.Add(Assert.Catch(() => LightTxDecoder.Decode(record))!.GetType().Name);
+        }
+
+        Assert.That(shapes, Has.Count.GreaterThanOrEqualTo(3),
+            $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
+
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < corrupt.Length; i++)
+        {
+            lightBlobTxs.Set([(byte)i], corrupt[i]);
+        }
+
+        lightBlobTxs.Set([(byte)corrupt.Length], LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
     private static readonly byte[] UnreadableRecordKey = [0];
     private static readonly byte[] ReadableRecordKey = [1];
 

@@ -123,7 +123,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 {
                     if (!TryDecodeLightTx(txBytes, out transaction)) continue;
                 }
-                catch (Exception e)
+                // A truncated record surfaces from the reader's unchecked Span.Slice, not as an RlpException, so
+                // the filter spans every root a corrupt or foreign-layout record is known to decode into.
+                catch (Exception e) when (e is RlpException or ArgumentException or IndexOutOfRangeException)
                 {
                     skipped++;
                     firstFailure ??= $"{e.GetType().Name}: {e.Message}";
