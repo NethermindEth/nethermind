@@ -955,14 +955,16 @@ public class JsonRpcServiceTests
         }
     }
 
+    // Every caller waits for another task to make progress, so this sleeps rather than yielding: on a saturated agent
+    // a yield loop competes for the pool with the very task it is waiting for.
     private static async Task WaitUntil(Func<bool> condition)
     {
-        for (int attempt = 0; attempt < 10_000 && !condition(); attempt++)
+        long deadline = Environment.TickCount64 + 10_000;
+        while (!condition())
         {
-            await Task.Yield();
+            Assert.That(Environment.TickCount64, Is.LessThan(deadline), "condition not reached in time");
+            await Task.Delay(5);
         }
-
-        Assert.That(condition(), Is.True, "condition not reached in time");
     }
 
     [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]
