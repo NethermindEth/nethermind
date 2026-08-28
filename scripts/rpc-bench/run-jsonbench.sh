@@ -184,9 +184,13 @@ if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]];
 fi
 stop_resource_sampler() {
   [[ -n "$sampler_pid" ]] || return 0
-  kill -TERM "$sampler_pid" 2>/dev/null
-  wait "$sampler_pid" 2>/dev/null
+  # Both guarded: the sampler exits nonzero within a second when the container's cgroup is not under one of
+  # its known roots, and bash has reaped it by now - so under errexit an unguarded kill/wait would abort the
+  # script after a benchmark that already succeeded, and the sweep would book it as a failed cell.
+  kill -TERM "$sampler_pid" 2>/dev/null || true
+  wait "$sampler_pid" 2>/dev/null || true
   sampler_pid=""
+  return 0
 }
 trap stop_resource_sampler EXIT
 

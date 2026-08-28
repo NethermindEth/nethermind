@@ -56,13 +56,21 @@ apply() {
 
 restore() {
   [[ -s "$SAVED" ]] || { log "nothing to restore"; return 0; }
-  local path value n=0
+  local path value n=0 total=0
   while IFS=$'\t' read -r path value; do
     [[ -n "$path" && -n "$value" ]] || continue
+    total=$((total + 1))
     write_sys "$path" "$value" && n=$((n + 1))
   done < "$SAVED"
-  log "restored $n cpu sysfs value(s)"
-  rm -f "$SAVED"
+  log "restored $n of $total cpu sysfs value(s)"
+  # write_sys swallows its errors, so only drop the record once every value is actually back. Removing it
+  # after a restore that wrote nothing leaves the box capped with no original to return to, and the next
+  # apply would record the cap as the original - on a box shared with expb.
+  if [[ "$n" -eq "$total" ]]; then
+    rm -f "$SAVED"
+  else
+    log "::warning::keeping $SAVED - $((total - n)) value(s) could not be restored"
+  fi
 }
 
 case "${1:-}" in

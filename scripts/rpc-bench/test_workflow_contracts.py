@@ -17,6 +17,8 @@ import corpus_results  # noqa: E402
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 LIB = Path(__file__).parent / "lib.sh"
 SWEEP = Path(__file__).parent / "run-rpc-sweep.sh"
+JSONBENCH = Path(__file__).parent / "run-jsonbench.sh"
+CPU_STABILIZE = Path(__file__).parent / "cpu-stabilize.sh"
 
 
 def _usable_bash():
@@ -160,6 +162,56 @@ class SweepShellHelperTests(unittest.TestCase):
     def test_the_sweep_and_the_workflow_use_the_helper(self):
         self.assertIn('img="$(arm_image "$entry")"', SWEEP.read_text(encoding="utf-8"))
         self.assertIn("arm_image", LIB.read_text(encoding="utf-8"))
+
+class BenaadamsFindingsTests(unittest.TestCase):
+    """Four findings from @benaadams' review: each turned a documented input into a silently wrong run."""
+
+    def test_jsonbench_sweep_refuses_the_corpus_only_cache_sentinel(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        block = workflow[workflow.index("            jsonbench-sweep)"):workflow.index("            jsonbench) preset_cfg=")]
+        # baseline_image defaults to 'cache', a sentinel resolved only for the corpus presets. Interpolated
+        # here it became an image name and the arm died ~90s into a 30-minute booking.
+        self.assertIn('[[ "${baseline_image}" != "cache" ]] || fail', block)
+
+    def test_the_snapshot_block_input_reaches_both_sweep_presets(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        # It is in cell_keys, so a fingerprint that could never see it made the cache look safer than it was.
+        self.assertIn('"snapshot_block"', workflow)
+        for preset in ("            corpus-ab|corpus-baseline)", "            jsonbench-sweep)"):
+            block = workflow[workflow.index(preset):]
+            block = block[:block.index(';;')]
+            self.assertIn('--arg snapshot "${snapshot_block}"', block, preset)
+            self.assertIn('{snapshot_block: $snapshot}', block, preset)
+
+    def test_a_sweep_arm_that_never_starts_fails_the_run(self):
+        sweep = SWEEP.read_text(encoding="utf-8")
+        # A sweep exists to compare arms, so reporting success on half a matrix is worse than failing.
+        self.assertIn("arm_fail=$((arm_fail + 1))", sweep)
+        gate = next(line for line in sweep.splitlines() if line.startswith('[[ "$arm_fail" -eq 0 ]]'))
+        self.assertIn("::error::", gate)
+        self.assertIn("fail=1", gate)
+
+    def test_the_resource_sampler_teardown_cannot_fail_a_finished_benchmark(self):
+        jsonbench = JSONBENCH.read_text(encoding="utf-8")
+        teardown = jsonbench[jsonbench.index("stop_resource_sampler() {"):]
+        teardown = teardown[:teardown.index(chr(10) + "}")]
+        # The sampler exits early on an unknown cgroup root and bash reaps it, so under errexit an unguarded
+        # kill or wait aborted the script after the benchmark had already succeeded.
+        self.assertIn('kill -TERM "$sampler_pid" 2>/dev/null || true', teardown)
+        self.assertIn('wait "$sampler_pid" 2>/dev/null || true', teardown)
+
+    def test_cpu_stabilize_keeps_the_originals_unless_every_one_is_restored(self):
+        script = CPU_STABILIZE.read_text(encoding="utf-8")
+        restore = script[script.index("restore() {"):script.index('case "${1:-}" in')]
+        # write_sys swallows its errors, so an unconditional rm left the box capped with no original to
+        # return to - and the next apply would record the cap as the original.
+        self.assertIn('if [[ "$n" -eq "$total" ]]; then', restore)
+        self.assertIn('rm -f "$SAVED"', restore)
+        self.assertIn("could not be restored", restore)
+        self.assertLess(restore.index('total=$((total + 1))'), restore.index('write_sys "$path" "$value"'))
+        # counted after the skip guard, or a blank line would block cleanup forever
+        self.assertLess(restore.index('|| continue'), restore.index('total=$((total + 1))'))
+
 
 class SweepContractTests(unittest.TestCase):
     """Contracts read out of the sweep's text; no shell needed, so these must never skip."""

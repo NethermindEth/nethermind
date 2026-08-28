@@ -337,14 +337,20 @@ jobs:
               else clients="nethermind@${baseline_image} nethermind@${image_ref}"; fi
               preset_cfg="$(jq -n --arg clients "${clients}" --arg rps "${rps}" --arg baseline "${corpus_baseline}" \
                 --argjson rounds "${rounds}" --argjson requests "${requests}" --argjson passes "${timings_passes}" \
-                --arg warmup "${warmup}s" --arg duration "${duration}s" --arg corpus "${corpus}" \
+                --arg warmup "${warmup}s" --arg duration "${duration}s" --arg corpus "${corpus}" --arg snapshot "${snapshot_block}" \
                 '{eth_call_corpus: true, clients: $clients, rps_list: $rps, rounds: $rounds, corpus_warmup_duration: $warmup, corpus_baseline: $baseline}
+                 + (if $snapshot != "" then {snapshot_block: $snapshot} else {} end)
                  + (if $requests > 0 then {corpus_requests: $requests} else {duration: $duration} end)
                  + (if $passes > 0 then {timings_passes: $passes} else {} end)
                  + (if $corpus != "" then {corpus_glob: $corpus} else {} end)')" ;;
             jsonbench-sweep)
+              # 'cache' is a corpus-preset sentinel resolved only above; interpolated here it becomes an image
+              # name and the arm dies ~90s in. Ask for a real baseline rather than burning the runner.
+              [[ "${baseline_image}" != "cache" ]] || fail "jsonbench-sweep needs an explicit baseline_image; 'cache' is only resolved for corpus-ab/corpus-baseline."
               preset_cfg="$(jq -n --arg clients "nethermind@${baseline_image} nethermind@${image_ref}" --arg rps "${rps}" \
-                --argjson rounds "${rounds}" --arg duration "${duration}s" '{clients: $clients, rps_list: $rps, rounds: $rounds, duration: $duration}')" ;;
+                --argjson rounds "${rounds}" --arg duration "${duration}s" --arg snapshot "${snapshot_block}" \
+                '{clients: $clients, rps_list: $rps, rounds: $rounds, duration: $duration}
+                 + (if $snapshot != "" then {snapshot_block: $snapshot} else {} end)')" ;;
             jsonbench) preset_cfg="$(jq -n --arg rps "${first_rps}" --arg duration "${duration}s" '{rps: $rps, duration: $duration}')" ;;
             flood) preset_cfg="$(jq -n --arg rates "${rps}" --argjson duration "${duration}" '{rates: $rates, duration: $duration}')" ;;
             ethcallchaos) preset_cfg="$(jq -n --argjson rate "${first_rps}" --argjson duration "${duration}" '{rate: $rate, duration: $duration}')" ;;

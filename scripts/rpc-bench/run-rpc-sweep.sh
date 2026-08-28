@@ -283,7 +283,7 @@ scan_node_log() {
 mkdir -p "$OUT_DIR" "$STATE_ROOT"
 declare -a SUMMARIES=() LABELS=() CORPORA=() PARITY_ROWS=()
 declare -A CORPUS_RECORDS=() LABEL_SEEN=() PARITY_BASE_STATE=() PARITY_BASE_LABEL=() PARITY_BASE_SAVED=()
-node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; parity_skipped=0; baseline_fail=0
+node_issue=0; cell_fail=0; stop_fail=0; parity_fail=0; parity_skipped=0; baseline_fail=0; arm_fail=0
 BASELINE_LABEL=""
 USING_SAVED_BASELINE=false   # true once every corpus has a saved baseline to compare against, so no arm here is one
 
@@ -346,7 +346,9 @@ for entry in "${schedule[@]}"; do
     if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$USING_SAVED_BASELINE" != "true" && -z "$BASELINE_LABEL" ]]; then
       echo "::error::${label} failed to start — it was to capture the parity baseline, so later arms are compared against a substitute"; baseline_fail=1
     else
-      echo "::warning::${label} failed to start — skipping its cells"
+      # A sweep exists to compare arms, so losing one leaves half a matrix. Reporting success on that is how a
+      # two-arm dispatch quietly becomes a single-arm run with no comparison.
+      echo "::error::${label} failed to start — its cells are missing from the matrix"; arm_fail=$((arm_fail + 1))
     fi
     echo "::endgroup::"; continue
   fi
@@ -434,4 +436,5 @@ fail=0
 # Only reachable with a saved baseline (CORPUS_BASELINE=use), where parity is the run's only correctness gate.
 [[ "$parity_skipped" -eq 0 ]] || { echo "::error::${parity_skipped} arm/corpus pair(s) went unchecked against the saved master baseline — the correctness gate did not run"; fail=1; }
 [[ "$baseline_fail" -eq 0 ]] || { echo "::error::the configured parity baseline failed to start — parity was measured against a substitute arm"; fail=1; }
+[[ "$arm_fail" -eq 0 ]] || { echo "::error::${arm_fail} sweep arm(s) never started — the comparison is missing an arm"; fail=1; }
 exit "$fail"
