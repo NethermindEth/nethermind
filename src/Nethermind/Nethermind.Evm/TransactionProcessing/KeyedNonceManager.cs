@@ -14,12 +14,8 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.TransactionProcessing;
 
 /// <summary>State helper for <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed nonces: NONCE_MANAGER slot derivation and per-key nonce reads/consumption.</summary>
-/// <remarks>
-/// Every read and write goes through the supplied state rather than around it, so the NONCE_MANAGER
-/// accesses enter the EIP-7928 block access list. A keyed nonce is consensus state a validator must be able
-/// to prefetch, unlike a precompile result, and a slot missing from the list makes a parallel validator
-/// reject a block every sequential node accepts.
-/// </remarks>
+/// <remarks>All access goes through the supplied state, so NONCE_MANAGER slots enter the EIP-7928 block
+/// access list — a missing slot makes a parallel validator reject a block sequential nodes accept.</remarks>
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
@@ -57,10 +53,8 @@ public static class KeyedNonceManager
         !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
 
     /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
-    /// <remarks>
-    /// Charged against the approving frame's remaining gas, so it can exhaust that frame. Every path that
-    /// grants payment approval must charge it, or the cost depends on whether the approver carries code.
-    /// </remarks>
+    /// <remarks>Charged against the approving frame's gas by every path that grants payment approval, or the
+    /// cost would depend on whether the approver carries code.</remarks>
     public static ulong FirstUseSurcharge(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
         ulong firstUseCount = 0;
@@ -110,10 +104,7 @@ public static class KeyedNonceManager
         nonceKeys.Length != 1 || !nonceKeys[0].IsZero;
 
     /// <summary>Whether <paramref name="tx"/>'s replay protection lives in <c>NONCE_MANAGER</c> rather than the sender's account nonce.</summary>
-    /// <remarks>
-    /// The account-nonce filters and the sender bucket's nonce ordering are meaningless for such a transaction:
-    /// its sender may be a contract whose account nonce is unrelated to the sequence it consumes.
-    /// </remarks>
+    /// <remarks>Account-nonce filters and sender-bucket ordering are meaningless for such a transaction.</remarks>
     public static bool UsesKeyedNonce(Transaction tx) =>
         tx.NonceKeys is { } nonceKeys && UsesKeyedDomain(nonceKeys);
 

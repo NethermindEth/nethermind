@@ -37,10 +37,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: as for type-3, the mempool form of a blob-carrying frame tx is the sidecar wrapper — without it
-        // the pool can neither serve nor re-encode the transaction, and its persisted record fails to decode back.
-        // The RLP decoder enforces this for everything off the wire; a transaction built field-by-field over
-        // eth_sendTransaction never passes through it.
+        // EIP-8141: as for type-3, the mempool form is the sidecar wrapper. The RLP decoder enforces this off the
+        // wire, but a transaction built field-by-field over eth_sendTransaction never passes through it.
         if (tx.SupportsFrames && tx.CarriesBlobs && !tx.IsInMempoolForm())
         {
             Metrics.PendingTransactionsFrameTxMissingSidecar++;

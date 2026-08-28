@@ -137,11 +137,7 @@ namespace Nethermind.Specs.Test
 
         private FrozenSet<AddressAsKey>? _precompiles;
 
-        /// <remarks>
-        /// Memoized like the production spec: <c>IsPrecompile</c> reads it per code fetch, per
-        /// <c>CALL</c> and per cold account access, and the two flags that decide the set drop the
-        /// cache when they are overridden.
-        /// </remarks>
+        /// <remarks>Memoized like the production spec; the two flags that decide the set invalidate the cache when overridden.</remarks>
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompiles();
 
         private FrozenSet<AddressAsKey> BuildPrecompiles()

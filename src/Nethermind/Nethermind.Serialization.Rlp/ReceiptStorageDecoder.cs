@@ -12,8 +12,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    // EIP-8141: frame receipts append [payer, [frame_receipt, ...]] after the standard storage
-    // fields (after Error here, after the logs sequence in CompactReceiptStorageDecoder). Only
+    // EIP-8141: frame receipts append [payer, [frame_receipt, ...]] after the standard storage fields. Only
     // TxType.FrameTx receipts carry the extension, so pre-fork data round-trips unchanged.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
@@ -417,8 +416,8 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            // EIP-8141: always realign to the receipt's end so the next receipt in an array stays
-            // aligned; for a frame tx this skips the trailing [payer, per-frame receipts].
+            // EIP-8141: realign to the receipt's end so the next receipt in an array stays aligned; for a frame tx
+            // this skips the trailing [payer, per-frame receipts].
             if (decoderContext.Position < receiptEnd)
             {
                 decoderContext.Position = receiptEnd;

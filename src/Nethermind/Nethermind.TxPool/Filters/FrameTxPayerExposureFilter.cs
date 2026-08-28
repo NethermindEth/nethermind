@@ -44,8 +44,7 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // A snapshot: AddCore settles the replacement later, under the pool lock. TryReserve ignores the
-        // discount when the payer holds no reservation, so skip the bucket walk and its pool lock there.
+        // A snapshot; AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
         UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {

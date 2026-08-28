@@ -19,9 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// EIP-7778 block-gas accounting for EIP-8141 frame transactions.
-/// </summary>
+/// <summary>EIP-7778 block-gas accounting for EIP-8141 frame transactions.</summary>
 [TestFixture]
 public class FrameTxBlockGasTests
 {
@@ -240,10 +238,8 @@ public class FrameTxBlockGasTests
     }
 
     /// <summary>An atomic batch whose later frame fails gives back the state gas its earlier frame owed.</summary>
-    /// <remarks>
-    /// The unroll restores the pre-batch state, so the fresh slot the first frame wrote never reaches the
-    /// block; charging the block's state dimension for it would price state that does not exist.
-    /// </remarks>
+    /// <remarks>The unroll restores the pre-batch state, so the slot the first frame wrote never reaches
+    /// the block and must not be priced into the block's state dimension.</remarks>
     [Test]
     public void Execute_AtomicBatchUnrolls_GivesBackTheStateGasOfTheRolledBackFrames()
     {

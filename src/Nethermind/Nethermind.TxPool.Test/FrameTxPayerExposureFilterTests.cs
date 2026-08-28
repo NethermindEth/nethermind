@@ -23,10 +23,8 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// EIP-8141 per-payer exposure gate: a frame transaction is rejected once its resolved payer's
-/// summed pending maximum cost would exceed the payer's balance, and accepted while it stays within.
-/// </summary>
+/// <summary>EIP-8141 per-payer exposure gate: a frame tx is rejected once its payer's summed pending max cost
+/// would exceed the payer's balance.</summary>
 public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
@@ -50,15 +48,14 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
-    // Round-1 defect: pricing the bound on the gas leg alone let a frame tx name blob hashes at an
-    // arbitrary max_fee_per_blob_gas and hold exposure the bound never counted. Pinned by magnitude, so
-    // dropping either factor of GasPerBlob * blob count * MaxFeePerBlobGas moves the boundary and fails.
+    // Pricing the bound on the gas leg alone would let a frame tx name blob hashes at an arbitrary
+    // max_fee_per_blob_gas and hold exposure the bound never counted.
     [TestCase(1, 3, TestName = "one blob")]
     [TestCase(2, 5, TestName = "two blobs")]
     [TestCase(6, 1_000_000, TestName = "six blobs at a realistic blob fee")]
     public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
     {
-        // Widened: the product exceeds int at six blobs and a realistic blob fee.
+        // long: the product exceeds int at six blobs and a realistic blob fee.
         long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
         PayerExposureCache cache = new();
 
@@ -73,9 +70,8 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
-    // bound is on the pending set the pool would hold, and only a tx this one displaces may be discounted
-    // from it — same sender, same nonce, and the same payer, or some other payer is the one being freed.
+    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved; only a tx
+    // this one displaces — same sender, same nonce, same payer — may be discounted from the bound.
     [TestCase(0ul, false, false, TestName = "a fee bump discounts the tx it displaces")]
     [TestCase(1ul, false, true, TestName = "a later nonce joins the pending set instead")]
     [TestCase(0ul, true, true, TestName = "an incumbent paid by another payer frees that one")]
