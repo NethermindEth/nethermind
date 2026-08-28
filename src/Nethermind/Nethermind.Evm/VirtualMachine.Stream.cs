@@ -14,10 +14,10 @@ namespace Nethermind.Evm;
 internal static class StreamInterpreter
 {
     // Enabled by default except on ARM64, where the bytecode loop measured faster on the reference part.
-    // NETHERMIND_EVM_STREAM is an escape hatch for an unbenchmarked part, not a supported setting: promoting
-    // it to an IConfig item would need a reference this assembly does not have, and would publish a config
-    // key for a heuristic we expect to remove once one interpreter wins. The runner does not know the name,
-    // so it lists "Name:EVMSTREAM" among invalid settings - a warning, not a failure.
+    // NETHERMIND_EVM_STREAM is an escape hatch for an unbenchmarked part, not a supported setting: an IConfig
+    // item is a key we would have to keep, and this heuristic should disappear once one interpreter wins.
+    // The runner does not know the name, so it lists "Name:EVMSTREAM" among invalid settings - a warning,
+    // not a failure.
     // Volatile so tests can flip it in-process.
     public static volatile bool Enabled = ParseEnabled(Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM"));
 
