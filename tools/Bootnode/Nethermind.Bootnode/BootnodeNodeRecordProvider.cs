@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
@@ -15,12 +14,10 @@ internal sealed class BootnodeNodeRecordProvider(
     IProtectedPrivateKey nodeKey,
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig,
-    ILogManager logManager,
     IIPResolver.NethermindIp resolvedIp,
     string dataDir) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
-    private readonly Nethermind.Logging.ILogger _logger = logManager.GetClassLogger<BootnodeNodeRecordProvider>();
     private readonly string _sequenceStatePath = Path.Combine(dataDir, "enr-state.json");
     private Task<NodeRecord>? _nodeRecordTask;
 
@@ -110,18 +107,33 @@ internal sealed class BootnodeNodeRecordProvider(
             await using FileStream stream = File.OpenRead(_sequenceStatePath);
             state = await JsonSerializer.DeserializeAsync<EnrSequenceState>(stream, cancellationToken: cancellationToken);
         }
-        catch (Exception exception) when (exception is JsonException or IOException)
+        catch (JsonException exception)
         {
-            if (_logger.IsWarn) _logger.Warn($"Unable to load ENR sequence state '{_sequenceStatePath}': {exception.Message}");
-            throw new InvalidDataException($"Unable to load ENR sequence state '{_sequenceStatePath}'.", exception);
+            throw CreateInvalidSequenceStateException(exception);
+        }
+        catch (IOException exception)
+        {
+            throw new IOException(
+                $"Unable to read ENR sequence state '{_sequenceStatePath}'. Resolve the filesystem error and retry.",
+                exception);
         }
 
         if (state is null || string.IsNullOrEmpty(state.ContentHash) || state.EnrSequence == 0)
         {
-            throw new InvalidDataException($"ENR sequence state '{_sequenceStatePath}' is invalid.");
+            throw CreateInvalidSequenceStateException();
         }
 
         return state;
+    }
+
+    private InvalidDataException CreateInvalidSequenceStateException(Exception? innerException = null)
+    {
+        string message = $"ENR sequence state '{_sequenceStatePath}' is invalid. " +
+            "Restore a valid state file. Deleting it resets the ENR sequence to 1, which cached peers may ignore as stale; " +
+            "rotate the node key if immediate recovery is required.";
+        return innerException is null
+            ? new InvalidDataException(message)
+            : new InvalidDataException(message, innerException);
     }
 
     private async Task WriteSequenceStateAsync(EnrSequenceState state, CancellationToken cancellationToken)

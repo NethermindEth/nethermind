@@ -64,7 +64,7 @@ internal sealed class DiscoveredNodeStore
                 UpdateActiveIndex(node.IdHash, after.Active);
             }
 
-            TouchRetentionOrder(node.IdHash, after.Active);
+            UpdateRetentionOrder(node.IdHash, after);
             PruneRetainedNodes();
             return CreateSnapshotCore();
         }
@@ -95,7 +95,7 @@ internal sealed class DiscoveredNodeStore
                 TrackedNodeSnapshot after = trackedNode.CreateSnapshot();
                 ApplyTransition(before, after);
                 UpdateActiveIndex(node.IdHash, after.Active);
-                TouchRetentionOrder(node.IdHash, after.Active);
+                UpdateRetentionOrder(node.IdHash, after);
                 PruneRetainedNodes();
             }
 
@@ -245,6 +245,17 @@ internal sealed class DiscoveredNodeStore
         _retentionEntries[idHash] = new RetentionEntry(node, active);
     }
 
+    private void UpdateRetentionOrder(Hash256 idHash, TrackedNodeSnapshot snapshot)
+    {
+        if (snapshot.IsBootnode)
+        {
+            RemoveRetentionEntry(idHash);
+            return;
+        }
+
+        TouchRetentionOrder(idHash, snapshot.Active);
+    }
+
     private LinkedList<Hash256> GetRetentionOrder(bool active) =>
         active ? _activeRetentionOrder : _inactiveRetentionOrder;
 
@@ -383,7 +394,7 @@ internal sealed class DiscoveredNodeStore
         {
             lock (_lock)
             {
-                return new TrackedNodeSnapshot(_protocol, IsActiveCore);
+                return new TrackedNodeSnapshot(_protocol, IsActiveCore, _isBootnode);
             }
         }
 
@@ -462,7 +473,7 @@ internal sealed class DiscoveredNodeStore
             NodeDto.FromNode(Node, Protocol, Active, FirstSeenUtc, LastSeenUtc, SeenCount, IsBootnode, ConfiguredEnode);
     }
 
-    private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active);
+    private readonly record struct TrackedNodeSnapshot(string Protocol, bool Active, bool IsBootnode);
 
     private readonly record struct RetentionEntry(LinkedListNode<Hash256> Node, bool Active);
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network;
 using NUnit.Framework;
 using System.Text;
@@ -17,20 +16,20 @@ public class BootnodeMetricsTests
     {
         BootnodeMetrics metrics = new();
 
-        long firstDelta = metrics.UpdateDiscoveryMessageCounters("discv4",
+        long firstDelta = metrics.UpdateDiscoveryMessageCounters(
         [
-            new(MsgType.Ping, 5),
-            new(MsgType.FindNode, 2)
+            new(new DiscoveryMessageKey("discv4", "Ping"), 5),
+            new(new DiscoveryMessageKey("discv4", "FindNode"), 2)
         ]);
-        long secondDelta = metrics.UpdateDiscoveryMessageCounters("discv4",
+        long secondDelta = metrics.UpdateDiscoveryMessageCounters(
         [
-            new(MsgType.Ping, 8),
-            new(MsgType.FindNode, 2),
-            new(MsgType.Neighbors, 4)
+            new(new DiscoveryMessageKey("discv4", "Ping"), 8),
+            new(new DiscoveryMessageKey("discv4", "FindNode"), 2),
+            new(new DiscoveryMessageKey("discv4", "Neighbors"), 4)
         ]);
-        long resetDelta = metrics.UpdateDiscoveryMessageCounters("discv4",
+        long resetDelta = metrics.UpdateDiscoveryMessageCounters(
         [
-            new(MsgType.Ping, 1)
+            new(new DiscoveryMessageKey("discv4", "Ping"), 1)
         ]);
 
         using (Assert.EnterMultipleScope())

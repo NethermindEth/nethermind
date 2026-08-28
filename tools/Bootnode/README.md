@@ -125,6 +125,8 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 
 Container images bind the REST/JSON-RPC and metrics listeners to all interfaces, and neither listener authenticates clients. The examples publish those ports on host loopback only; keep that restriction or protect remote access with a firewall or authenticated reverse proxy.
 
+Each running Bootnode instance requires its own `--data-dir`; sharing it between processes can corrupt identity and ENR sequence state.
+
 For a passive bootnode that only maintains the table through bootstrap and bucket refresh:
 
 ```powershell

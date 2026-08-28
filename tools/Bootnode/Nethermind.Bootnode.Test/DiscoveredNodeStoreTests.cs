@@ -100,6 +100,40 @@ public class DiscoveredNodeStoreTests
     }
 
     [Test]
+    public void Retention_limit_keeps_configured_bootnodes()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey configuredKey = generator.Generate();
+        using PrivateKey firstKey = generator.Generate();
+        using PrivateKey secondKey = generator.Generate();
+        NetworkNode configuredNetworkNode = new(configuredKey.PublicKey, "127.0.0.1", 30303);
+        Node configuredNode = new(configuredNetworkNode);
+        Node firstNode = CreateNode(firstKey, 30304);
+        Node secondNode = CreateNode(secondKey, 30305);
+        DiscoveredNodeStore store = new(maxRetainedNodes: 2);
+
+        store.AddConfiguredBootnodes([configuredNetworkNode]);
+        store.AddOrUpdate(firstNode, "discv4", isActive: false);
+        DiscoverySnapshot snapshot = store.AddOrUpdate(secondNode, "discv5", isActive: false);
+        NodeDto[] retainedNodes = store.GetAllNodes(limit: 2);
+        string[] retainedNodeIds = new string[retainedNodes.Length];
+        for (int i = 0; i < retainedNodes.Length; i++)
+        {
+            retainedNodeIds[i] = retainedNodes[i].NodeId;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedNodeIds, Does.Contain(configuredNode.Id.ToString(false)));
+            Assert.That(retainedNodeIds, Does.Not.Contain(firstNode.Id.ToString(false)));
+            Assert.That(retainedNodeIds, Does.Contain(secondNode.Id.ToString(false)));
+            Assert.That(snapshot.AllCount, Is.EqualTo(2));
+            Assert.That(snapshot.AllConfiguredCount, Is.EqualTo(1));
+            Assert.That(store.RetentionOrderCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Repeated_observations_keep_retention_order_bounded()
     {
         using PrivateKeyGenerator generator = new();

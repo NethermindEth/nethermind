@@ -3,7 +3,6 @@
 
 using System.Net;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
@@ -29,7 +28,6 @@ public class BootnodeNodeRecordProviderTests
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
-            LimboLogs.Instance,
             new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback),
             TestContext.CurrentContext.WorkDirectory);
 
@@ -135,7 +133,39 @@ public class BootnodeNodeRecordProviderTests
             Assert.That(changedRecord.EnrSequence, Is.EqualTo(firstRecord.EnrSequence + 1));
             Assert.That(changedRecord.EnrSequence, Is.GreaterThan(1));
             Assert.That(exception!.Message, Does.Contain(statePath));
+            Assert.That(exception.Message, Does.Contain("Restore a valid state file"));
+            Assert.That(exception.Message, Does.Contain("Deleting it resets the ENR sequence to 1"));
+            Assert.That(exception.Message, Does.Contain("rotate the node key"));
             Assert.That(await File.ReadAllTextAsync(statePath), Is.EqualTo("{"));
+        }
+    }
+
+    [Test]
+    public async Task Unreadable_enr_sequence_state_reports_filesystem_error_without_corruption_recovery()
+    {
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+        string statePath = Path.Combine(dataDir, "enr-state.json");
+        await File.WriteAllTextAsync(statePath, "{}");
+
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new()
+        {
+            DiscoveryPort = 30303,
+            P2PPort = 0
+        };
+        await using FileStream lockedState = File.Open(statePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        IOException? exception = Assert.ThrowsAsync<IOException>(async () =>
+            await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Loopback).GetCurrentAsync());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.Contain(statePath));
+            Assert.That(exception.Message, Does.Contain("Resolve the filesystem error and retry"));
+            Assert.That(exception.Message, Does.Not.Contain("Deleting it resets"));
         }
     }
 
@@ -186,7 +216,6 @@ public class BootnodeNodeRecordProviderTests
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
-            LimboLogs.Instance,
             resolvedIp,
             dataDir);
 }

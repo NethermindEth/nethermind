@@ -105,7 +105,6 @@ public class BootnodeDiscoveryV5NodeSourceTests
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
-            LimboLogs.Instance,
             new IIPResolver.NethermindIp(System.Net.IPAddress.Loopback, System.Net.IPAddress.Loopback),
             dataDir);
         NodeRecord nodeRecord = await provider.GetCurrentAsync();

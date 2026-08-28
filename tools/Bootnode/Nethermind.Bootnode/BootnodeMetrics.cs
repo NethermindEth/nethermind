@@ -3,7 +3,6 @@
 
 using Prometheus;
 using Nethermind.Network;
-using Nethermind.Network.Discovery.Discv4.Messages;
 using System.Globalization;
 using PrometheusMetrics = Prometheus.Metrics;
 using NetworkMetrics = Nethermind.Network.Metrics;
@@ -107,19 +106,6 @@ internal sealed class BootnodeMetrics
             return UpdateDiscoveryTrafficCounter("sent", bytesSent, ref _lastDiscoveryBytesSent)
                 + UpdateDiscoveryTrafficCounter("received", bytesReceived, ref _lastDiscoveryBytesReceived);
         }
-    }
-
-    internal long UpdateDiscoveryMessageCounters(string protocol, IEnumerable<KeyValuePair<MsgType, long>> messagesSent)
-    {
-        List<KeyValuePair<DiscoveryMessageKey, long>> protocolMessages = [];
-        foreach (KeyValuePair<MsgType, long> messageCounter in messagesSent)
-        {
-            protocolMessages.Add(new KeyValuePair<DiscoveryMessageKey, long>(
-                new DiscoveryMessageKey(protocol, messageCounter.Key.ToString()),
-                messageCounter.Value));
-        }
-
-        return UpdateDiscoveryMessageCounters(protocolMessages);
     }
 
     internal long UpdateDiscoveryMessageCounters(IEnumerable<KeyValuePair<DiscoveryMessageKey, long>> messagesSent)
