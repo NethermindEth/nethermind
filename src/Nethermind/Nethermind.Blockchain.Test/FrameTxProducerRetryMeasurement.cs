@@ -22,22 +22,16 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-/// <summary>
-/// Measures how often a block producer re-executes an EIP-8141 frame transaction whose validation
-/// prefix can never approve, and how much unpaid gas each attempt burns.
-/// </summary>
-/// <remarks>
-/// A measurement harness for sizing <c>MAX_VERIFY_GAS</c>, not an assertion of behaviour. The
-/// question it answers is whether the unpaid verification work a transaction can extract is bounded
-/// by one block's gas limit or multiplied by the number of blocks the transaction survives in the
-/// pool. Every case drives the production executor and the real transaction processor; the positive
-/// control proves the same wiring does include and charge for a transaction whose prefix approves.
-/// </remarks>
+/// <summary>Measures how often a producer re-executes a frame transaction whose validation prefix can never
+/// approve, and how much unpaid gas each attempt burns.</summary>
+/// <remarks>A harness for sizing <c>MAX_VERIFY_GAS</c>, not an assertion of behaviour: it answers whether the
+/// unpaid work is bounded by one block or multiplied by the blocks the transaction survives in the pool.</remarks>
 [TestFixture]
 [Explicit("measurement harness")]
 public class FrameTxProducerRetryMeasurement
@@ -60,7 +54,6 @@ public class FrameTxProducerRetryMeasurement
     {
         public int Attempts { get; private set; }
         public List<ulong> BurnedPerAttempt { get; } = [];
-        public List<bool> ExecutedPerAttempt { get; } = [];
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
@@ -68,7 +61,6 @@ public class FrameTxProducerRetryMeasurement
             BudgetProbe probe = new();
             TransactionResult result = inner.Execute(transaction, new CompositeTxTracer(txTracer, probe));
             BurnedPerAttempt.Add(probe.Consumed);
-            ExecutedPerAttempt.Add(result.TransactionExecuted);
             return result;
         }
 
@@ -127,7 +119,7 @@ public class FrameTxProducerRetryMeasurement
             .Done;
 
     [TestCase(true, 236_285ul, TestName = "control: a prefix that approves is included and paid for")]
-    [TestCase(false, 100_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
+    [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
     [TestCase(false, 236_285ul, TestName = "never approves, at a measured private-pool prefix")]
     public void ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
@@ -141,7 +133,7 @@ public class FrameTxProducerRetryMeasurement
         IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
         balManager.Enabled.Returns(false);
         BlockProcessor.BlockProductionTransactionsExecutor executor =
-            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager);
+            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, NullTxPool.Instance);
 
         Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
@@ -187,8 +179,7 @@ public class FrameTxProducerRetryMeasurement
         {
             using (Assert.EnterMultipleScope())
             {
-                // Once included, the sender's nonce has advanced, so the picker declines the same
-                // transaction on every later block. One inclusion is the whole control.
+                // Once included the sender's nonce has advanced, so the picker declines it on every later block.
                 Assert.That(included, Is.EqualTo(1), "the control must be includable, or the harness proves nothing about the failing case");
                 Assert.That(beneficiaryDelta, Is.GreaterThan(UInt256.Zero), "an included transaction must pay the fee recipient");
                 Assert.That(senderDelta, Is.EqualTo(beneficiaryDelta), "the payer must fund exactly what the fee recipient received");

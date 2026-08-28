@@ -67,6 +67,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
+            .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
@@ -87,6 +88,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
+
+            .AddSingleton<IFrameTxPrefixSimulator, FrameTxPrefixSimulator>()
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()

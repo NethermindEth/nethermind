@@ -118,7 +118,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         return _cumulativeReceiptGas;
     }
 
-    protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    /// <summary>Creates the empty receipt that <see cref="BuildReceipt"/> then fills in.</summary>
+    /// <remarks>
+    /// The single extension point for chain-specific tracers: supply the receipt type and only the fields
+    /// <see cref="BuildReceipt"/> does not assign, since anything it assigns is overwritten here.
+    /// </remarks>
+    protected virtual TxReceipt CreateReceipt() => new();
+
+    private TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
@@ -128,24 +135,22 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // ReceiptForRpc pipeline) doesn't see effectiveGasPrice as null.
         UInt256 baseFee = Block.Header.BaseFeePerGas;
         UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(eip1559Enabled: baseFee > 0, baseFee);
-        TxReceipt txReceipt = new()
-        {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = cumulativeReceiptGas,  // Post-refund cumulative
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
-            EffectiveGasPrice = effectiveGasPrice,
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
-            TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
-        };
+        TxReceipt txReceipt = CreateReceipt();
+        txReceipt.Logs = logEntries;
+        txReceipt.TxType = transaction.Type;
+        // Bloom calculated in parallel with other receipts
+        txReceipt.GasUsedTotal = cumulativeReceiptGas;  // Post-refund cumulative
+        txReceipt.StatusCode = statusCode;
+        txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
+        txReceipt.BlockHash = Block.Hash;
+        txReceipt.BlockNumber = Block.Number;
+        txReceipt.Index = _currentIndex;
+        txReceipt.GasUsed = gasConsumed.SpentGas;  // Post-refund for this tx
+        txReceipt.EffectiveGasPrice = effectiveGasPrice;
+        txReceipt.Sender = transaction.SenderAddress;
+        txReceipt.ContractAddress = transaction.CreatesTopLevelContract ? recipient : null;
+        txReceipt.TxHash = transaction.Hash;
+        txReceipt.PostTransactionState = stateRoot;
 
         // EIP-7778: execution-dimension block accounting introduces the
         // pre-refund/post-refund split. BlockGasUsed is pre-refund; ExecutionGasUsed
@@ -169,10 +174,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             txReceipt.FrameReceipts = _frameTxReceipts;
             if (_frameTxReceipts is not null)
             {
-                // The tx is charged and included whatever its frames did, so the processor always goes
-                // through MarkAsSuccess; the status a caller sees has to come from the frames instead.
-                // Without reported frame receipts there is nothing to derive from, and overwriting
-                // would promote a failed receipt to success.
+                // The tx is charged and included whatever its frames did, so the processor always marks it
+                // successful; the status a caller sees has to be derived from the frames instead.
                 txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
             }
 

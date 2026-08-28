@@ -102,6 +102,50 @@ public class BlockProcessorTests
             });
     }
 
+    // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
+    // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
+    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    [Test]
+    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False));
+    }
+
+    [Test]
+    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    {
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, code))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
+                }
+            });
+    }
+
     [Test]
     public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
     {
@@ -281,16 +325,15 @@ public class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
     }
 
-    /// <summary>
-    /// Installs the execution-request predeploys (EIP-7002/7251/8282) that Amsterdam-based specs read
-    /// while processing a post-genesis block; without them ProcessExecutionRequests rejects the block.
-    /// </summary>
+    /// <summary>Installs the EIP-7002/7251/8282 predeploys that Amsterdam-based specs read while processing
+    /// a post-genesis block; without them execution-request processing rejects the block.</summary>
     private static void InstallExecutionRequestPredeploys(IWorldState stateProvider, IReleaseSpec spec)
     {
         stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
@@ -305,14 +348,19 @@ public class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode)
+        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
+        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
             .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
+        // code-only idempotency probe would never fire it.
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
+            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
     }
 
     [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
-    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code)
+    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code, ulong expectedNonce)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
         (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
@@ -323,35 +371,42 @@ public class BlockProcessorTests
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 
-        // First post-activation block installs the predeploy: code + nonce == 1.
+        // First post-activation block installs the predeploy.
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         if (!spec.IsEip8250Enabled)
         {
-            // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
+            // An unrelated predeploy must stay absent: only what the spec activates is installed.
             Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
         }
 
-        // The install must appear in the generated block-level access list (code + nonce change).
         GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
         Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
-            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
+            if (code.Length != 0)
+            {
+                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            }
+
+            // An unmandated nonce entry moves the BAL hash, and the block is then rejected before execution.
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
+            if (expectedNonce != 0)
+            {
+                Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
+            }
         }
 
-        // Second block is a no-op: state unchanged and no BAL entry for the predeploy.
+        // Second block must be a no-op.
         Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
     }
@@ -628,6 +683,56 @@ public class BlockProcessorTests
         Action handler = () => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
+    }
+
+    // Regression: a top-frame EIP-8037 state-gas OOG tx halts before EVM dispatch but is a valid,
+    // executed transaction — a block must include it between successful txs with a failed receipt.
+    [Test]
+    public async Task Block_with_top_frame_state_gas_oog_tx_processes_with_failed_receipt()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider));
+
+        IReleaseSpec spec = Amsterdam.Instance;
+        Address freshRecipient = Address.FromNumber(0x8037);
+
+        // Senders B and C only: A has code at genesis and Amsterdam enforces EIP-3607.
+        Transaction okTx1 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+        Transaction oogTx = Build.A.Transaction
+            .WithTo(freshRecipient)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyB, spec.IsEip155Enabled)
+            .TestObject;
+        oogTx.GasLimit = IntrinsicGasCalculator.Calculate(oogTx, spec).Standard + (ulong)GasCostOf.NewAccountState - 1;
+        Transaction okTx2 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+
+        Block block = await chain.AddBlock(okTx1, oogTx, okTx2);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        int failedIndex = Array.FindIndex(receipts, r => r.TxHash == oogTx.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(3), "all txs, including the halted one, must be included");
+            Assert.That(receipts, Has.Length.EqualTo(3));
+            Assert.That(failedIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(receipts[failedIndex].StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipts[failedIndex].GasUsed, Is.EqualTo(oogTx.GasLimit), "the halted tx burns its full gas limit");
+            Assert.That(Array.FindAll(receipts, r => r.TxHash != oogTx.Hash && r.StatusCode == StatusCode.Success), Has.Length.EqualTo(2));
+        }
     }
 
     [Test]

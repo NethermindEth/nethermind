@@ -56,10 +56,8 @@ namespace Nethermind.Core
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public bool SupportsFrames => Type.SupportsFrames();
 
-        /// <summary>
-        /// EIP-8141: whether this transaction carries blobs (a type-3 blob tx or a blob-carrying type-6 frame tx)
-        /// for pool routing and blob-gas accounting; the instance-level counterpart to <see cref="SupportsBlobs"/>.
-        /// </summary>
+        /// <summary>Whether this instance actually carries blobs, unlike <see cref="SupportsBlobs"/>, which is a
+        /// capability of the transaction type: an EIP-8141 frame transaction may carry blobs too.</summary>
         public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
@@ -83,6 +81,11 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>An EIP-8141 frame transaction has no <c>to</c> field, making <see cref="IsContractCreation"/> true
+        /// for it, yet it creates nothing at the top level — any creation happens inside a deploy frame.</remarks>
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
@@ -200,7 +203,18 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
@@ -227,6 +241,24 @@ namespace Nethermind.Core
         public Address? PayerAddress { get; set; }
 
         /// <summary>
+        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
+        /// transaction leaves the pool. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>
+        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
+        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
+        /// </remarks>
+        public UInt256? PayerExposure { get; set; }
+
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
+
+        /// <summary>The EIP-8141 prefix paymaster frozen onto a pool record held without its frames. Null for an
+        /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
+        public virtual Address? PersistedPaymaster => null;
+
+        /// <summary>
         /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
         /// https://eips.ethereum.org/EIPS/eip-8250
         /// </summary>
@@ -242,20 +274,12 @@ namespace Nethermind.Core
         /// signing payload from one carrying an empty reference list.</remarks>
         public RecentRootReference[]? RecentRootReferences { get; set; }
 
-        /// <summary>
-        /// The zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, which EIP-8141
-        /// prices in addition to frame and signature data. In-memory only (not encoded).
-        /// </summary>
-        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
-        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        /// <summary>Zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, priced in addition to
+        /// frame and signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
         public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
-        /// <summary>
-        /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
-        /// frame and signature data — EIP-8250's <c>nonce_calldata</c>. In-memory only (not encoded).
-        /// </summary>
-        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
-        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
+        /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
         public (int ZeroBytes, int NonZeroBytes) FrameCalldataStats { get; set; }
 
         /// <summary>
@@ -278,6 +302,11 @@ namespace Nethermind.Core
         public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
+
+        /// <summary>
+        /// Clears the cached encoded length after mutating fields that affect network serialization.
+        /// </summary>
+        public void ClearLengthCache() => _size = null;
 
         public string ToShortString()
         {
@@ -331,7 +360,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -378,6 +407,7 @@ namespace Nethermind.Core
                 obj.Frames = default;
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
+                obj.PayerExposure = default;
                 obj.NonceKeys = default;
                 obj.RecentRootReferences = default;
                 obj.ReferenceCalldataStats = default;
@@ -387,8 +417,24 @@ namespace Nethermind.Core
             }
         }
 
-        public void CopyTo(Transaction tx)
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> without its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: false);
+
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> and optionally copies its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
+        public void CopyTo(Transaction tx, bool copyHash)
         {
+            if (copyHash)
+            {
+                tx.Hash = Hash;
+            }
+
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
@@ -417,6 +463,7 @@ namespace Nethermind.Core
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
+            tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
             tx.RecentRootReferences = RecentRootReferences;
             tx.ReferenceCalldataStats = ReferenceCalldataStats;
@@ -424,7 +471,7 @@ namespace Nethermind.Core
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }
@@ -457,9 +504,70 @@ namespace Nethermind.Core
     }
 
     /// <summary>
-    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
-    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
+    /// <param name="Blobs">Complete blob payloads, or empty entries when only cells are available.</param>
+    /// <param name="Commitments">One KZG commitment per blob.</param>
+    /// <param name="Proofs">Blob proofs for V0 or all cell proofs in blob-major order for V1.</param>
+    /// <param name="Version">The proof representation used by this wrapper.</param>
+    /// <param name="CellMask">The cell indices available for every blob when full blobs are absent.</param>
+    /// <param name="Cells">Sparse cells in blob-major order and ascending cell-index order.</param>
+    public record ShardBlobNetworkWrapper(
+        byte[][] Blobs,
+        byte[][] Commitments,
+        byte[][] Proofs,
+        ProofVersion Version,
+        BlobCellMask CellMask = default,
+        byte[][]? Cells = null)
+    {
+        /// <summary>
+        /// Creates a blob network wrapper without sparse-cell data.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">One KZG commitment per blob.</param>
+        /// <param name="proofs">Proofs corresponding to <paramref name="version"/>.</param>
+        /// <param name="version">The proof representation used by this wrapper.</param>
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+            : this(blobs, commitments, proofs, version, default, null)
+        {
+        }
+
+        /// <summary>
+        /// Deconstructs the wrapper into the fields exposed before sparse-cell support.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">KZG commitments.</param>
+        /// <param name="proofs">Blob or cell proofs.</param>
+        /// <param name="version">The proof representation.</param>
+        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[][] proofs, out ProofVersion version)
+        {
+            blobs = Blobs;
+            commitments = Commitments;
+            proofs = Proofs;
+            version = Version;
+        }
+
+        /// <summary>
+        /// Returns whether every blob payload is available locally.
+        /// </summary>
+        public bool HasFullBlobs()
+        {
+            for (int i = 0; i < Blobs.Length; i++)
+            {
+                if (Blobs[i].Length == 0)
+                {
+                    return false;
+                }
+            }
+
+            return Blobs.Length != 0;
+        }
+
+        /// <summary>
+        /// Returns the complete mask for full blobs, or the stored sparse-cell mask otherwise.
+        /// </summary>
+        public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
+    }
 
     public enum ProofVersion : byte
     {

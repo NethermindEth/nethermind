@@ -43,7 +43,7 @@ public class Eth70ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
     private Eth70ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
@@ -61,7 +61,7 @@ public class Eth70ProtocolHandlerTests
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);

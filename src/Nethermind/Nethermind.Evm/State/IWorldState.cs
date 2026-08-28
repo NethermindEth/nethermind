@@ -42,13 +42,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
-    /// Get the persistent storage value at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
-
-    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
@@ -160,11 +153,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
-    // See https://eips.ethereum.org/EIPS/eip-7610
+    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !(GetNonce(address) == 0) || !IsStorageEmpty(address));
+            && (IsContract(address) || GetNonce(address) != 0);
     }
 }
