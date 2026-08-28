@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
@@ -429,7 +430,9 @@ public static class FrameTxValidation
     /// A transaction whose frames reserve less than the floor raises its reservation rather than becoming invalid;
     /// the headroom is reserved and refunded, never spendable.
     /// The result is memoized on <see cref="Transaction.IntrinsicGasMemo"/>, which a frame transaction otherwise
-    /// leaves unused, and is keyed on the spec reference as <c>EthereumGasPolicy</c> keys its own memo.
+    /// leaves unused. The key carries the calldata statistics as well as the spec: a transaction built field by
+    /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
+    /// caller from the unmeasured reading.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec supplying the calldata token pricing.</param>
@@ -440,18 +443,63 @@ public static class FrameTxValidation
     /// overflow <see cref="ulong"/>. In every failure case the outputs are 0 and the transaction cannot be priced.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
-        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo && ReferenceEquals(memo.Spec, spec))
+        // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
+        (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
+        (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
+
+        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo
+            && ReferenceEquals(memo.Spec, spec)
+            && memo.ReferenceCalldata == referenceCalldata
+            && memo.FrameCalldata == frameCalldata)
         {
             (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
             return memo.Priced;
         }
 
         bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
-        Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(spec, priced, intrinsicGas, floorGas, maxGas));
+        Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(
+            spec, referenceCalldata, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
         return priced;
     }
 
-    private sealed record FrameGasBudgetMemo(IReleaseSpec Spec, bool Priced, ulong IntrinsicGas, ulong FloorGas, ulong MaxGas) : IIntrinsicGasMemo;
+    private sealed record FrameGasBudgetMemo(
+        IReleaseSpec Spec,
+        (int ZeroBytes, int NonZeroBytes) ReferenceCalldata,
+        (int ZeroBytes, int NonZeroBytes) FrameCalldata,
+        bool Priced,
+        ulong IntrinsicGas,
+        ulong FloorGas,
+        ulong MaxGas) : IIntrinsicGasMemo;
+
+    /// <summary>
+    /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
+    /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
+    /// </summary>
+    /// <remarks>
+    /// The upper-bound form: the gas leg is exactly what execution escrows, while the blob leg is priced at
+    /// <c>max_fee_per_blob_gas</c> where execution escrows at the actual blob base fee. Callers that must not
+    /// under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.
+    /// </remarks>
+    /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
+    public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
+    {
+        maxCost = UInt256.Zero;
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
+            || UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
+        {
+            return false;
+        }
+
+        ulong blobGas = transaction.GetBlobGas();
+        if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
+            || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
+        {
+            maxCost = UInt256.Zero;
+            return false;
+        }
+
+        return true;
+    }
 
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {

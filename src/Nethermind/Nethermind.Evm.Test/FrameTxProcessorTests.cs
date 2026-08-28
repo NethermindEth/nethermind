@@ -2193,9 +2193,10 @@ public class FrameTxProcessorTests
         UInt256[] keys = [1, 7];
 
         Transaction firstUse = SelfSignedSelfVerifyTx(nonce: 0, keys);
-        FrameTxValidation.TryCalculateGasBudget(firstUse, Spec, out ulong firstUseIntrinsic, out _, out _);
         CallOutputTracer firstUseTracer = new();
         Assert.That(Process(firstUse, tracer: firstUseTracer).TransactionExecuted, Is.True);
+        // Priced after processing, which is what measures the keyed-nonce calldata this intrinsic must include.
+        FrameTxValidation.TryCalculateGasBudget(firstUse, Spec, out ulong firstUseIntrinsic, out _, out _);
         foreach (UInt256 key in keys)
         {
             Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
@@ -2206,9 +2207,9 @@ public class FrameTxProcessorTests
             "the default-code approval owes the surcharge the APPROVE opcode charges, over the frame's entry access");
 
         Transaction reuse = SelfSignedSelfVerifyTx(nonce: 1, keys);
-        FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
         CallOutputTracer reuseTracer = new();
         Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
+        FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
         Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor),
             "a reused key adds no frame gas, so the transaction owes only its floor");
     }
