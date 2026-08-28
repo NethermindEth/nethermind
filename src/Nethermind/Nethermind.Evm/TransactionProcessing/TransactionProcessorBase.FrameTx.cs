@@ -96,7 +96,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
-            return SimulateFrameValidationPrefix(tx, tracer, header, spec);
+            return SimulateFrameValidationPrefix(tx, tracer, opts, header, spec);
         }
 
         Address sender = tx.SenderAddress!;
@@ -639,7 +639,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>Simulates a frame transaction's validation prefix against read-only head state for mempool
     /// admission, resolving the payer under the <c>MAX_VERIFY_GAS</c> bound.</summary>
     /// <remarks>Nonce equality is deliberately not required: the prefix never reads the account nonce.</remarks>
-    private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
+    private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
@@ -647,7 +647,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             TransactionResult prepared = PrepareValidationPrefixSimulation(
-                tx, header, spec, in accessTracker,
+                tx, opts, header, spec, in accessTracker,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
             if (!prepared)
             {
@@ -744,6 +744,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// its frames execute against.</summary>
     private TransactionResult PrepareValidationPrefixSimulation(
         Transaction tx,
+        ExecutionOptions opts,
         BlockHeader header,
         IReleaseSpec spec,
         in StackAccessTracker accessTracker,
@@ -757,11 +758,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         Address sender = tx.SenderAddress!;
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        // As the main path does, so an unused P256 branch records no account access (EIP-7928).
-        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+        if (!opts.HasFlag(ExecutionOptions.FrameSignaturesPreValidated))
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+            // As the main path does, so an unused P256 branch records no account access (EIP-7928).
+            IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
+            if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+            }
         }
 
         // Signature-verification work counts against MAX_VERIFY_GAS.
