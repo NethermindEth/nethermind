@@ -10,13 +10,16 @@ public interface IRoutingTable<TNode, TKadKey>
     where TKadKey : notnull
 {
     BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh);
+
+    /// <summary>
+    /// Finds a node in either the active routing table or its replacement cache.
+    /// </summary>
     bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node);
     bool Remove(in TKadKey hash);
     TNode[] GetKNearestNeighbour(TKadKey hash, bool excludeSelf = false);
     TNode[] GetKNearestNeighbourExcluding(TKadKey hash, TKadKey exclude, bool excludeSelf = false);
     TNode[] GetAllAtDistance(int i);
     IEnumerable<RoutingTableBucket<TNode, TKadKey>> IterateBuckets();
-    TNode? GetByHash(TKadKey nodeId);
     void LogDebugInfo();
     event EventHandler<TNode>? OnNodeAdded;
     event EventHandler<TNode>? OnNodeRemoved;

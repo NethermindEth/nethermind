@@ -510,7 +510,7 @@ public class WireTests
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
-            Hash256KademliaDistance.Instance,
+            ValueHash256KademliaDistance.Instance,
             LimboLogs.Instance);
 
         return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
@@ -606,7 +606,7 @@ public class WireTests
                 continue;
             }
 
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, candidate.PublicKey.Hash.ValueHash256);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, candidate.PublicKey.Hash.ValueHash256);
             if (!keysByDistance.TryGetValue(distance, out List<PrivateKey>? keys))
             {
                 keys = [];
@@ -660,7 +660,7 @@ public class WireTests
 
         public void AddOrRefresh(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             bool added = false;
             lock (_lock)
             {
@@ -691,7 +691,7 @@ public class WireTests
 
         public bool TryGetNode(ValueHash256 nodeHash, out Node storedNode)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, nodeHash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, nodeHash);
             lock (_lock)
             {
                 if ((_nodesByDistance.TryGetValue(distance, out List<Node>? nodes) &&
@@ -709,7 +709,7 @@ public class WireTests
 
         public void AddReplacement(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             lock (_lock)
             {
                 GetReplacements(distance).Add(node);
@@ -718,7 +718,7 @@ public class WireTests
 
         public void Remove(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             Node? removed = null;
             lock (_lock)
             {
@@ -749,7 +749,7 @@ public class WireTests
 
         public bool Contains(PublicKey publicKey)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, publicKey.Hash.ValueHash256);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, publicKey.Hash.ValueHash256);
             lock (_lock)
             {
                 if (!_nodesByDistance.TryGetValue(distance, out List<Node>? nodes))

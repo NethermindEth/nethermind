@@ -238,8 +238,6 @@ public class RandomWalkKademliaDiscoveryTests
 
         public IEnumerable<RoutingTableBucket<int, int>> IterateBuckets() => throw new NotSupportedException();
 
-        public int GetByHash(int nodeId) => throw new NotSupportedException();
-
         public bool TryGet(in int hash, out int node) => throw new NotSupportedException();
 
         public void LogDebugInfo() => throw new NotSupportedException();

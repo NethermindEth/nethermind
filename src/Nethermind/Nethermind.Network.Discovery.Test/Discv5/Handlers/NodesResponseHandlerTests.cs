@@ -100,7 +100,7 @@ public class NodesResponseHandlerTests
         NodeRecord third = CreateEnr(TestItem.PrivateKeyD, IPAddress.Loopback);
         NodeRecord fourth = CreateEnr(TestItem.PrivateKeyE, IPAddress.Loopback);
         using Distances distances = CreateDistances(receiver, first, second, third, fourth);
-        NodesResponseHandler handler = new(receiver, distances, Hash256KademliaDistance.Instance, IPAddress.IPv6Any);
+        NodesResponseHandler handler = new(receiver, distances, ValueHash256KademliaDistance.Instance, IPAddress.IPv6Any);
 
         using NodesMsg firstBatch = new([1], 2, [first, second, first]);
         using NodesMsg secondBatch = new([2], 2, [third, fourth, second]);
@@ -123,7 +123,7 @@ public class NodesResponseHandlerTests
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
     private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record, IPAddress? localIp = null) =>
-        new(receiver, CreateDistances(receiver, record), Hash256KademliaDistance.Instance, localIp ?? IPAddress.IPv6Any);
+        new(receiver, CreateDistances(receiver, record), ValueHash256KademliaDistance.Instance, localIp ?? IPAddress.IPv6Any);
 
     private static Distances CreateDistances(Node receiver, params NodeRecord[] records)
     {
@@ -139,7 +139,7 @@ public class NodesResponseHandlerTests
     private static int GetDistance(Node receiver, NodeRecord record)
     {
         PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
-        return Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash.ValueHash256, nodeId.Hash.ValueHash256);
+        return ValueHash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash.ValueHash256, nodeId.Hash.ValueHash256);
     }
 
     private static void AssertUniqueNodeIds(Node[] nodes)

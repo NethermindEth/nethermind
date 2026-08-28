@@ -132,14 +132,6 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         }
     }
 
-    public TNode? GetByHash(TKadKey hash)
-    {
-        lock (_lock)
-        {
-            return GetBucketForHash(hash).GetByHash(hash);
-        }
-    }
-
     public bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
     {
         lock (_lock)

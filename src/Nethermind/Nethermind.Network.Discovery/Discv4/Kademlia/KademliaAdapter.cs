@@ -48,7 +48,7 @@ public class KademliaAdapter(
     private readonly RateLimiter _responseRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
     private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa);
     private readonly RecentNodeFilter<Hash256> _recentPeerCandidates = new(
-        RecentNodeFilter.GetLimit(kademliaConfig.KSize, Hash256KademliaDistance.Instance.MaxDistance, PeerCandidateChannelCapacity));
+        RecentNodeFilter.GetLimit(kademliaConfig.KSize, ValueHash256KademliaDistance.Instance.MaxDistance, PeerCandidateChannelCapacity));
     private readonly Channel<Node> _peerCandidates = Channel.CreateBounded<Node>(new BoundedChannelOptions(PeerCandidateChannelCapacity)
     {
         SingleReader = true,

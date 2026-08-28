@@ -25,7 +25,7 @@ public class KademliaTests
         new ContainerBuilder()
             .AddModule(new KademliaModule<ValueHash256, ValueHash256, ValueHash256>())
             .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
-            .AddSingleton<IKademliaDistance<ValueHash256>>(Hash256KademliaDistance.Instance)
+            .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, ValueHash256>>(new ValueHashKeyOperator<ValueHash256>(static node => node))
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
@@ -267,7 +267,7 @@ public class KademliaTests
     }
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
-        Hash256KademliaDistance.Instance.GetRandomHashAtDistance(currentHash, distance);
+        ValueHash256KademliaDistance.Instance.GetRandomHashAtDistance(currentHash, distance, Random.Shared);
 
     private static Dictionary<ValueHash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad)
         => (Dictionary<ValueHash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>)

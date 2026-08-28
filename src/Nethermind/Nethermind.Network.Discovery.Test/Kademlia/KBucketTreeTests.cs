@@ -109,7 +109,11 @@ public class KBucketTreeTests
         start.SignalAndWait();
         await Task.WhenAll(higherValueAdmission, lowerValueAdmission);
 
-        Assert.That(tree.GetByHash(1), Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(1, out int stored), Is.True);
+            Assert.That(stored, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -129,7 +133,7 @@ public class KBucketTreeTests
 
         tree.Remove(activeHash);
 
-        Assert.That(tree.GetByHash(replacementHash), Is.EqualTo(2));
+        Assert.That(tree.GetKNearestNeighbour(replacementHash), Is.EqualTo(new[] { 2 }));
     }
 
     [Test]

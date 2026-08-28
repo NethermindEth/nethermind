@@ -11,15 +11,15 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <summary>
 /// Kademlia XOR-distance operations for Nethermind's 256-bit value hash type.
 /// </summary>
-public sealed class Hash256KademliaDistance : IKademliaDistance<ValueHash256>
+public sealed class ValueHash256KademliaDistance : IKademliaDistance<ValueHash256>
 {
     /// <summary>
     /// Shared stateless instance.
     /// </summary>
-    public static Hash256KademliaDistance Instance { get; } = new();
+    public static ValueHash256KademliaDistance Instance { get; } = new();
 
     /// <inheritdoc/>
-    public int MaxDistance => Hash256.Size * 8;
+    public int MaxDistance => ValueHash256.MemorySize * 8;
 
     /// <inheritdoc/>
     public ValueHash256 Zero => default;
@@ -28,11 +28,11 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<ValueHash256>
     [SkipLocalsInit]
     public int CalculateLogDistance(ValueHash256 left, ValueHash256 right)
     {
-        Span<byte> xorDistance = stackalloc byte[Hash256.Size];
+        Span<byte> xorDistance = stackalloc byte[ValueHash256.MemorySize];
         XorDistance(left.Bytes, right.Bytes, xorDistance);
         int zeros = 0;
 
-        for (int i = 0; i < Hash256.Size; i++)
+        for (int i = 0; i < ValueHash256.MemorySize; i++)
         {
             byte xor = xorDistance[i];
             if (xor == 0)
@@ -58,8 +58,8 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<ValueHash256>
     [SkipLocalsInit]
     public int Compare(ValueHash256 left, ValueHash256 right, ValueHash256 target)
     {
-        Span<byte> leftDistance = stackalloc byte[Hash256.Size];
-        Span<byte> rightDistance = stackalloc byte[Hash256.Size];
+        Span<byte> leftDistance = stackalloc byte[ValueHash256.MemorySize];
+        Span<byte> rightDistance = stackalloc byte[ValueHash256.MemorySize];
         XorDistance(left.Bytes, target.Bytes, leftDistance);
         XorDistance(right.Bytes, target.Bytes, rightDistance);
 
@@ -78,7 +78,7 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<ValueHash256>
     [SkipLocalsInit]
     public ValueHash256 SetBit(ValueHash256 key, int index)
     {
-        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
         key.Bytes.CopyTo(bytes);
         bytes[index / 8] |= (byte)(1 << (7 - (index % 8)));
         return new ValueHash256(bytes);
@@ -87,21 +87,15 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<ValueHash256>
     /// <summary>
     /// Creates a random 256-bit key at the requested XOR log distance from <paramref name="currentHash"/>.
     /// </summary>
-    public ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance) =>
-        GetRandomHashAtDistance(currentHash, distance, Random.Shared);
-
-    /// <summary>
-    /// Creates a random 256-bit key at the requested XOR log distance from <paramref name="currentHash"/>.
-    /// </summary>
     [SkipLocalsInit]
-    public ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
+    internal ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
     {
         if ((uint)distance > MaxDistance)
         {
             throw new ArgumentOutOfRangeException(nameof(distance), distance, $"Distance must be between 0 and {MaxDistance}.");
         }
 
-        Span<byte> randomized = stackalloc byte[Hash256.Size];
+        Span<byte> randomized = stackalloc byte[ValueHash256.MemorySize];
         random.NextBytes(randomized);
         return CopyForRandom(currentHash, randomized, MaxDistance - distance);
     }

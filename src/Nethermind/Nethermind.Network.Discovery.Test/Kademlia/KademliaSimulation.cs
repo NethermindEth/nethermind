@@ -147,7 +147,7 @@ public class KademliaSimulation
         {
             TestNode[] nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             HashSet<ValueHash256> expectedNodeClosestK = nodeIds
-                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256KademliaDistance.Instance.Compare(n1, n2, targetNode)))
+                .Order(Comparer<ValueHash256>.Create((n1, n2) => ValueHash256KademliaDistance.Instance.Compare(n1, n2, targetNode)))
                 .Take(_config.KSize)
                 .ToHashSet();
 
@@ -218,7 +218,7 @@ public class KademliaSimulation
             builder
                 .AddModule(new KademliaModule<ValueHash256, TestNode, ValueHash256>())
                 .AddSingleton<ITimestamper>(new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)))
-                .AddSingleton<IKademliaDistance<ValueHash256>>(Hash256KademliaDistance.Instance)
+                .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
                 .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>
                 {

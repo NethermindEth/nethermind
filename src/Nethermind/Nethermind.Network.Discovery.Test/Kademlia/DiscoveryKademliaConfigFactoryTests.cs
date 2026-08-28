@@ -81,12 +81,13 @@ public class DiscoveryKademliaConfigFactoryTests
         KBucketTree<Node, ValueHash256> tree = new(
             config,
             new FromKeyNodeHashProvider<PublicKey, Node, ValueHash256>(new PublicKeyKeyOperator()),
-            Hash256KademliaDistance.Instance);
+            ValueHash256KademliaDistance.Instance);
         tree.TryAddOrRefresh(existing.Id.Hash, existing, out _);
 
         tree.TryAddOrRefresh(incoming.Id.Hash, incoming, out _);
 
-        Node stored = tree.GetByHash(incoming.Id.Hash)!;
+        Assert.That(tree.TryGet(incoming.Id.Hash.ValueHash256, out Node? storedNode), Is.True);
+        Node stored = storedNode!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored, Is.SameAs(incoming));

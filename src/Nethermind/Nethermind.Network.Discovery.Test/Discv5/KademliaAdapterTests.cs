@@ -472,7 +472,7 @@ public class KademliaAdapterTests
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
-            Hash256KademliaDistance.Instance,
+            ValueHash256KademliaDistance.Instance,
             LimboLogs.Instance);
     }
 

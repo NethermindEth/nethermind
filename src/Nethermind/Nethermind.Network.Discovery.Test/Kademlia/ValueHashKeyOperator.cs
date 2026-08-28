@@ -15,5 +15,5 @@ internal sealed class ValueHashKeyOperator<TNode>(Func<TNode, ValueHash256> getK
     public ValueHash256 GetKeyHash(ValueHash256 key) => key;
 
     public ValueHash256 CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
-        => Hash256KademliaDistance.Instance.GetRandomHashAtDistance(nodePrefix, depth);
+        => ValueHash256KademliaDistance.Instance.GetRandomHashAtDistance(nodePrefix, depth, Random.Shared);
 }
