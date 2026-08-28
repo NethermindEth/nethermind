@@ -24,6 +24,7 @@ namespace Nethermind.Stats.Model
         private string _enodeHost;
         private string _paddedHost;
         private string _paddedPort;
+        private ulong _highestObservedEnrSequence;
         private ulong _requestingEnrSequence;
         private NodeRecord _enr;
         private int? _discoveryPort;
@@ -121,12 +122,21 @@ namespace Nethermind.Stats.Model
             set
             {
                 _enr = value;
-                if (value is not null)
+                if (value is { Signature: not null })
+                {
+                    ObserveEnrSequence(value.EnrSequence);
+                }
+                else if (value is not null)
                 {
                     TryClearEnrRequest(value.EnrSequence);
                 }
             }
         }
+
+        /// <summary>
+        /// Highest sequence of a valid Ethereum Node Record observed for this node, including records without a locally reachable endpoint.
+        /// </summary>
+        public ulong HighestObservedEnrSequence => Volatile.Read(ref _highestObservedEnrSequence);
 
         /// <summary>
         /// Highest advertised ENR sequence currently being requested for this node; <c>0</c> means no request is active.
@@ -158,6 +168,25 @@ namespace Nethermind.Stats.Model
                     return current == 0;
                 }
             }
+        }
+
+        /// <summary>
+        /// Records a valid ENR sequence as observed without requiring the record to replace the node's reachable endpoint.
+        /// </summary>
+        /// <param name="sequence">Sequence of the valid record that was observed.</param>
+        /// <returns><see langword="true"/> when this observation completed the active request.</returns>
+        public bool ObserveEnrSequence(ulong sequence)
+        {
+            while (true)
+            {
+                ulong current = Volatile.Read(ref _highestObservedEnrSequence);
+                if (current >= sequence || Interlocked.CompareExchange(ref _highestObservedEnrSequence, sequence, current) == current)
+                {
+                    break;
+                }
+            }
+
+            return TryClearEnrRequest(sequence);
         }
 
         /// <summary>

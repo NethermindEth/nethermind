@@ -207,6 +207,31 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedSequence));
         }
 
+        [TestCase(5UL, 5UL, true, 0UL)]
+        [TestCase(5UL, 7UL, false, 7UL)]
+        public void ObserveEnrSequence_tracks_sequence_and_request_ownership(
+            ulong observedSequence,
+            ulong latestAdvertisedSequence,
+            bool expectedCleared,
+            ulong expectedRequestingSequence)
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            Assert.That(node.TryRequestEnrSequence(observedSequence), Is.True);
+            if (latestAdvertisedSequence != observedSequence)
+            {
+                Assert.That(node.TryRequestEnrSequence(latestAdvertisedSequence), Is.False);
+            }
+
+            bool cleared = node.ObserveEnrSequence(observedSequence);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cleared, Is.EqualTo(expectedCleared));
+                Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(observedSequence));
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedRequestingSequence));
+            }
+        }
+
         [TestCaseSource(nameof(EnrRequestClearOnRecordUpdateCases))]
         public void Enr_request_sequence_clears_when_enr_sequence_satisfies_request(
             ulong requestedSequence,

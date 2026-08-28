@@ -31,19 +31,12 @@ public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskComplet
 
             if (_count >= k) return false;
 
-            int initialCount = _count;
-            for (int i = 0; i < neighborsMsg.Nodes.Count; i++)
+            for (int i = 0; i < neighborsMsg.Nodes.Count && _count < k; i++)
             {
                 Node node = neighborsMsg.Nodes[i];
                 if (node.HasDiscoveryEndpoint &&
                     CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
                 {
-                    if (_count == k)
-                    {
-                        _count = initialCount;
-                        return false;
-                    }
-
                     _nodes[_count++] = node;
                 }
             }

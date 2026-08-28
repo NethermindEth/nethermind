@@ -36,7 +36,7 @@ public abstract class KademliaAdapterBase(
             return;
         }
 
-        if (node.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= advertisedSequence)
+        if (node.HighestObservedEnrSequence >= advertisedSequence)
         {
             return;
         }
@@ -98,9 +98,8 @@ public abstract class KademliaAdapterBase(
 
                 if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Caching {protocolName} ENR from {node} without routing it; record has no usable discovery endpoint reachable from this listener.");
-                    node.Enr = record;
-                    if (node.RequestingEnrSequence == 0)
+                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                    if (node.ObserveEnrSequence(record.EnrSequence))
                     {
                         return;
                     }

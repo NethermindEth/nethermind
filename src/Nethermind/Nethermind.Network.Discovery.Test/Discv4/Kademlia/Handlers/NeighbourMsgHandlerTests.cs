@@ -60,6 +60,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
         }
 
         [Test]
+        public async Task When_ResponseWouldOverflowK_ThenCompletesWithFirstKNodes()
+        {
+            NeighborsMsg first = new(_farAddress, _expirationTime, CreateNodes(10));
+            NeighborsMsg second = new(_farAddress, _expirationTime, CreateNodes(10, startIndex: 10));
+
+            Assert.That(_handler.Handle(first), Is.True);
+            Assert.That(_handler.Handle(second), Is.True);
+            Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.True);
+
+            Node[] response = (await _handler.TaskCompletionSource.Task).Value;
+            Assert.That(response, Has.Length.EqualTo(K));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response[9].Host, Is.EqualTo("192.168.1.19"));
+                Assert.That(response[10].Host, Is.EqualTo("192.168.1.20"));
+                Assert.That(response[15].Host, Is.EqualTo("192.168.1.25"));
+            }
+        }
+
+        [Test]
         public async Task When_ResponseContainsUnsupportedFamilies_ThenTheyDoNotConsumeLimit()
         {
             NeighbourMsgHandler handler = new(K, IPAddress.Parse("2001:db8::1"));
@@ -84,7 +104,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
         private static IEnumerable<TestCaseData> TimeoutCases()
         {
             yield return new TestCaseData(5, new[] { true }).SetName("FewerThanK");
-            yield return new TestCaseData(10, new[] { true, false }).SetName("SecondMessageWouldOverflowK");
         }
 
         private ArraySegment<Node> CreateNodes(int count, int startIndex = 0)

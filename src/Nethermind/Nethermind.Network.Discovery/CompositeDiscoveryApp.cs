@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -93,6 +94,9 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     /// <summary>
     /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
     /// </summary>
+    /// <remarks>
+    /// IPv4-mapped listener addresses require an IPv6 dual-mode socket even though endpoint selection treats them as IPv4-only.
+    /// </remarks>
     internal static Socket CreateDatagramSocket(IPAddress localIp)
     {
         Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
@@ -105,8 +109,11 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="remoteIp"/>.
+    /// Returns whether a socket bound to <paramref name="localIp"/> can send to and receive from <paramref name="remoteIp"/>.
     /// </summary>
+    /// <remarks>
+    /// A native IPv4 socket cannot use an endpoint that remains in IPv4-mapped IPv6 form; callers must unmap it first.
+    /// </remarks>
     internal static bool SupportsAddress(IPAddress localIp, IPAddress remoteIp)
         => !(localIp.AddressFamily == AddressFamily.InterNetwork && remoteIp.IsIPv4MappedToIPv6) &&
            SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
@@ -134,6 +141,40 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         };
 
     /// <summary>
+    /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
+    /// </summary>
+    internal static int GetSupportedAddressFamilies(
+        IPAddress localIp,
+        IPEndPoint? preferredEndpoint,
+        Span<AddressFamily> addressFamilies)
+    {
+        Debug.Assert(addressFamilies.Length >= 2);
+
+        int count = 0;
+        AddressFamily? preferredFamily = preferredEndpoint is null
+            ? null
+            : GetAddressFamily(preferredEndpoint.Address);
+        if (preferredFamily is { } family && SupportsAddressFamily(localIp, family))
+        {
+            addressFamilies[count++] = family;
+        }
+
+        if (preferredFamily != AddressFamily.InterNetwork &&
+            SupportsAddressFamily(localIp, AddressFamily.InterNetwork))
+        {
+            addressFamilies[count++] = AddressFamily.InterNetwork;
+        }
+
+        if (preferredFamily != AddressFamily.InterNetworkV6 &&
+            SupportsAddressFamily(localIp, AddressFamily.InterNetworkV6))
+        {
+            addressFamilies[count++] = AddressFamily.InterNetworkV6;
+        }
+
+        return count;
+    }
+
+    /// <summary>
     /// Creates a discovery node from an ENR using an address family reachable through the local listener.
     /// </summary>
     internal static bool TryCreateReachableDiscoveryNode(
@@ -142,39 +183,14 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         IPEndPoint? preferredEndpoint,
         [NotNullWhen(true)] out Node? node)
     {
-        AddressFamily? preferredFamily = preferredEndpoint is null
-            ? null
-            : GetAddressFamily(preferredEndpoint.Address);
-        if (preferredFamily is { } family && TryCreateDiscoveryNode(record, localIp, family, out node))
+        Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
+        int count = GetSupportedAddressFamilies(localIp, preferredEndpoint, addressFamilies);
+        for (int i = 0; i < count; i++)
         {
-            return true;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetwork &&
-            TryCreateDiscoveryNode(record, localIp, AddressFamily.InterNetwork, out node))
-        {
-            return true;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetworkV6 &&
-            TryCreateDiscoveryNode(record, localIp, AddressFamily.InterNetworkV6, out node))
-        {
-            return true;
-        }
-
-        node = null;
-        return false;
-    }
-
-    private static bool TryCreateDiscoveryNode(
-        NodeRecord record,
-        IPAddress localIp,
-        AddressFamily addressFamily,
-        [NotNullWhen(true)] out Node? node)
-    {
-        if (SupportsAddressFamily(localIp, addressFamily))
-        {
-            return Node.TryFromDiscoveryEnr(record, addressFamily, out node);
+            if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node))
+            {
+                return true;
+            }
         }
 
         node = null;

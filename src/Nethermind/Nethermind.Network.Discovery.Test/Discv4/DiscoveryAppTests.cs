@@ -20,7 +20,10 @@ public class DiscoveryAppTests
     {
         Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, discoveryPort: 9001);
 
-        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enode)], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enode)],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Any);
 
         using (Assert.EnterMultipleScope())
         {
@@ -74,11 +77,49 @@ public class DiscoveryAppTests
     }
 
     [Test]
+    public void Should_keep_reachable_caller_node_when_signed_enr_matches_identity()
+    {
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+        NodeRecord record = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, address, tcpPort: 30303, udpPort: 30304);
+        Node callerNode = new(TestItem.PublicKeyA, address.ToString(), 30303, 30304)
+        {
+            ClientId = "Nethermind/v1.0.0",
+            EthDetails = "eth/68",
+            Enr = record,
+            IsBootnode = true,
+            IsStatic = true,
+        };
+
+        bool result = DiscoveryApp.TryCreateReachableNode(callerNode, IPAddress.Any, out Node? reachableNode);
+
+        Assert.That(result, Is.True);
+        Assert.That(reachableNode, Is.SameAs(callerNode));
+    }
+
+    [Test]
+    public void Should_reject_reachable_caller_node_when_signed_enr_has_different_identity()
+    {
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+        Node callerNode = new(TestItem.PublicKeyA, address.ToString(), 30303, 30304)
+        {
+            Enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB, address, tcpPort: 30303, udpPort: 30304),
+        };
+
+        bool result = DiscoveryApp.TryCreateReachableNode(callerNode, IPAddress.Any, out Node? reachableNode);
+
+        Assert.That(result, Is.False);
+        Assert.That(reachableNode, Is.Null);
+    }
+
+    [Test]
     public void Should_use_configured_enr_bootnode()
     {
         NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: null, udpPort: 9001);
 
-        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enr.ToString())], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enr.ToString())],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Any);
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,7 +186,10 @@ public class DiscoveryAppTests
     {
         NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: null);
 
-        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enr.ToString())], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enr.ToString())],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Any);
 
         Assert.That(bootNodes, Is.Empty);
     }

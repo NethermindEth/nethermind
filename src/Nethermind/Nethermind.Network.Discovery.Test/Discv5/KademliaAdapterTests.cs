@@ -321,11 +321,13 @@ public class KademliaAdapterTests
     }
 
     [Test]
-    public async Task RefreshRemoteRecord_DoesNotRefetchValidRecordWithoutUsableEndpoint()
+    public async Task RefreshRemoteRecord_DoesNotReplaceReachableRecordOrRefetchValidRecordWithoutUsableEndpoint()
     {
         NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("2001:db8::1"), enrSequence: 2);
         RejectingRefreshAdapter adapter = new(record);
         Node node = CreateNode(TestItem.PublicKeyB, 2);
+        NodeRecord reachableRecord = CreateEnr(TestItem.PrivateKeyB, node.Address.Address, enrSequence: 1);
+        node.Enr = reachableRecord;
 
         await adapter.Refresh(node, record.EnrSequence);
         await adapter.Refresh(node, record.EnrSequence);
@@ -333,7 +335,8 @@ public class KademliaAdapterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(adapter.RequestCount, Is.EqualTo(1));
-            Assert.That(node.Enr, Is.SameAs(record));
+            Assert.That(node.Enr, Is.SameAs(reachableRecord));
+            Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
             Assert.That(node.RequestingEnrSequence, Is.Zero);
         }
     }

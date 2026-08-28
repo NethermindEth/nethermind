@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
@@ -79,13 +80,24 @@ public class DiscoveryApp : KademliaDiscoveryApp
     {
         if (node.Enr is { Signature: not null } record)
         {
-            IPEndPoint? preferredEndpoint = node.HasDiscoveryEndpoint ? node.DiscoveryAddress : null;
+            if (record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(node.Id) != true)
+            {
+                reachableNode = null;
+                return false;
+            }
+
+            if (node.HasDiscoveryEndpoint &&
+                CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+            {
+                reachableNode = node;
+                return true;
+            }
+
             return CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
-                       record,
-                       localIp,
-                       preferredEndpoint,
-                       out reachableNode) &&
-                   reachableNode.IdHash.Equals(node.IdHash);
+                record,
+                localIp,
+                preferredEndpoint: null,
+                out reachableNode);
         }
 
         if (node.HasDiscoveryEndpoint &&
@@ -119,7 +131,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             : null;
     }
 
-    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger, IPAddress? localIp = null)
+    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger, IPAddress localIp)
     {
         List<Node> bootNodes = [];
         if (configuredBootnodes.Length == 0)
@@ -133,14 +145,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
             Node? node;
             if (bootnode.IsEnr)
             {
-                bool created = localIp is null
-                    ? Node.TryFromDiscoveryEnr(bootnode.Enr, out node)
-                    : CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
-                        bootnode.Enr,
-                        localIp,
-                        preferredEndpoint: null,
-                        out node);
-                if (!created || node is null)
+                if (!CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                    bootnode.Enr,
+                    localIp,
+                    preferredEndpoint: null,
+                    out node))
                 {
                     if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode}");
                     continue;
@@ -149,7 +158,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             else
             {
                 node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
-                if (localIp is not null && !CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+                if (!CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
                 {
                     if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
                     continue;

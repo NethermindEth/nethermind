@@ -950,44 +950,15 @@ public sealed class KademliaAdapter(
         IPEndPoint? preferredEndpoint,
         [NotNullWhen(true)] out IPEndPoint? endpoint)
     {
-        AddressFamily? preferredFamily = null;
-        if (preferredEndpoint is not null)
+        Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
+        int count = CompositeDiscoveryApp.GetSupportedAddressFamilies(localIp, preferredEndpoint, addressFamilies);
+        for (int i = 0; i < count; i++)
         {
-            preferredFamily = CompositeDiscoveryApp.GetAddressFamily(preferredEndpoint.Address);
-            if (TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, preferredFamily.Value, out endpoint))
+            if (record.TryGetDiscoveryEndpoint(addressFamilies[i], out endpoint) &&
+                DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
             {
                 return true;
             }
-        }
-
-        if (preferredFamily != AddressFamily.InterNetwork &&
-            TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, AddressFamily.InterNetwork, out endpoint))
-        {
-            return true;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetworkV6 &&
-            TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, localIp, AddressFamily.InterNetworkV6, out endpoint))
-        {
-            return true;
-        }
-
-        endpoint = null;
-        return false;
-    }
-
-    private static bool TryGetAcceptableDiscoveryEndpoint(
-        NodeRecord record,
-        bool allowNonRoutable,
-        IPAddress localIp,
-        AddressFamily addressFamily,
-        [NotNullWhen(true)] out IPEndPoint? endpoint)
-    {
-        if (CompositeDiscoveryApp.SupportsAddressFamily(localIp, addressFamily) &&
-            record.TryGetDiscoveryEndpoint(addressFamily, out endpoint) &&
-            DiscoveryV5App.IsDiscoveryAddressAcceptable(endpoint.Address, allowNonRoutable))
-        {
-            return true;
         }
 
         endpoint = null;
