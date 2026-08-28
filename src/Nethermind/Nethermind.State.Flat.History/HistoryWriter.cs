@@ -535,8 +535,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>Resolves the oldest touches from the persisted flat column, which still holds pre-walk values.
     /// A walk-local destruct below a pending touch is spliced in - the counterpart of
-    /// <see cref="PendingV3Writes.TrackStorage"/>'s in-walk splice, needing no upper bound because any higher touch
-    /// of the key was already spliced or resolved there.</summary>
+    /// <see cref="PendingV3Writes.TrackStorage"/>'s in-walk splice, needing no lower bound because the pending
+    /// touch is the walk's lowest for the key.</summary>
     private void ResolvePendingV3(PendingV3Writes pending, in HistoryColumnBatches columns)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
