@@ -501,7 +501,7 @@ public sealed class KademliaAdapter(
 
         if (!TryAcceptChallenge(endpoint))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rate limiting discv5 WHOAREYOU challenge to {endpoint}.");
+            if (Logger.IsTrace) Logger.Trace($"Rate limiting discv5 WHOAREYOU challenge to {endpoint}.");
             return;
         }
 

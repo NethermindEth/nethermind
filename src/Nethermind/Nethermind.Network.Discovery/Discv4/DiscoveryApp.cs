@@ -68,19 +68,23 @@ public class DiscoveryApp : KademliaDiscoveryApp
         for (int i = 0; i < configuredBootnodes.Length; i++)
         {
             NetworkNode bootnode = configuredBootnodes[i];
-            if (!bootnode.IsEnode)
+            Node node;
+            if (bootnode.IsEnr)
             {
-                if (logger.IsTrace) logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
-                continue;
+                if (!Node.TryFromDiscoveryEnr(bootnode.Enr, out Node? enrNode))
+                {
+                    if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint: {bootnode}");
+                    continue;
+                }
+
+                node = enrNode;
+            }
+            else
+            {
+                node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
             }
 
-            if (bootnode.NodeId is null)
-            {
-                logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
-                continue;
-            }
-
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort));
+            bootNodes.Add(node);
         }
 
         return bootNodes;

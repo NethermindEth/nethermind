@@ -77,6 +77,7 @@ namespace Nethermind.Synchronization.SnapSync
             AddRangeResult result = AddRangeResult.OK;
             // A code response carries no AddRangeResult of its own, so it would otherwise read as range success.
             bool isRangeResult = true;
+            bool responseHandled = false;
 
             try
             {
@@ -99,21 +100,22 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _snapProvider.RetryRequest(batch);
-
                     if (peer is null)
                     {
                         return SyncResponseHandlingResult.NotAssigned;
                     }
-                    else
-                    {
-                        _logger.Trace($"SNAP - timeout {peer}");
-                        return SyncResponseHandlingResult.LesserQuality;
-                    }
+
+                    _logger.Trace($"SNAP - timeout {peer}");
+                    return SyncResponseHandlingResult.LesserQuality;
                 }
+
+                responseHandled = true;
             }
             finally
             {
+                // The one release of the request the scheduler handed out. It must run after the handler,
+                // or IsSnapGetRangesFinished could see empty queues and a zero count mid-scheduling.
+                _snapProvider.ReleaseRequest(batch, responseHandled);
                 batch.Dispose();
             }
 
