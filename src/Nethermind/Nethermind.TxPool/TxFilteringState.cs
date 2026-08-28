@@ -11,8 +11,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
 
     /// <summary>Set once every <c>frame_signatures</c> entry has verified against the head spec.</summary>
     /// <remarks>Lets a downstream filter assert pre-validation from what actually ran rather than from
-    /// its position in the chain, so a reorder degrades to re-verifying instead of trusting a stranger.</remarks>
-    public bool FrameSignaturesVerified { get; set; }
+    /// its position in the chain, so a reorder degrades to re-verifying instead of trusting a stranger.
+    /// Written only inside the pool: <see cref="Filters.IIncomingTxFilter"/> is public, and an
+    /// implementation outside it cannot have done the verification this claims.</remarks>
+    public bool FrameSignaturesVerified { get; internal set; }
 
     /// <remarks>
     /// A failed lookup leaves the out-value undefined and the readers diverge on it, so a missing

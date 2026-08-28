@@ -2688,7 +2688,7 @@ namespace Nethermind.TxPool.Test
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             // The verify-gas bound is out of scope here; disable it so the tx reaches the simulation filter.
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
 
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
