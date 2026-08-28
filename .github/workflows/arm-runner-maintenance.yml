@@ -111,6 +111,13 @@ jobs:
           fi
 
           for mp in "${targets[@]}"; do
+            # An octal-escaped target is unusable twice over: `awk -v` decodes the escape back, so
+            # still_mounted cannot find the line and would report a phantom success, and `umount`
+            # cannot address the literal path either. Refuse it like an escaped scratch path.
+            if [[ "${mp}" == *"\\"* ]]; then
+              echo "::warning::refusing escaped overlay mount target: ${mp}"
+              continue
+            fi
             # Plain unmount first: `umount -l` can report success while a container-held reference still
             # blocks the next mount. Lazy is the fallback for that case. The loop is bounded so that
             # stacked layers unwind and a `umount` that returns 0 without detaching cannot spin the step.

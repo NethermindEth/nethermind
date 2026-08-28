@@ -351,6 +351,42 @@ class Unmounting(ReapStepTestCase):
         for scratch in (upper_a, work_a, upper_b, work_b):
             self.assertGone(scratch)
 
+    def test_a_non_overlay_layer_stacked_on_a_swept_overlay_is_unwound_too(self):
+        """`still_mounted` matches any fstype on purpose: an unmount that leaves a bind or tmpfs
+        behind has not freed the mountpoint. Only the overlay layer's own scratch is deleted.
+
+        The overlay must be the LAST line on the target: `umount` pops the top layer, so this is the
+        ordering that leaves a non-overlay residue behind. Scoping `still_mounted` to the overlay fstype
+        then reports the mountpoint free and deletes the scratch under a live mount - with the lines the
+        other way round the surviving overlay line masks that, and the mutation goes unnoticed."""
+        merged, upper, work = self.overlay("work")
+        _, tmpfs_upper, tmpfs_work = self.overlay("work-tmpfs")
+        _, remaining, unmounted = self.run_step(
+            [
+                mount_line(merged, tmpfs_upper, tmpfs_work, fstype="tmpfs"),
+                mount_line(merged, upper, work),
+            ]
+        )
+        self.assertEqual([merged, merged], [t for _, t in unmounted])
+        self.assertEqual([], remaining)
+        self.assertGone(upper)
+        self.assertGone(work)
+        self.assertKept(tmpfs_upper)
+        self.assertKept(tmpfs_work)
+
+    def test_an_escaped_mount_target_is_refused_rather_than_reported_unmounted(self):
+        """`awk -v` decodes the octal escape, so still_mounted cannot see the line: without the
+        guard the step announced an unmount it never attempted and reclaimed a live overlay."""
+        _, upper, work = self.overlay("work")
+        escaped = self.data_dir + "/my" + chr(92) + "040dir/merged"
+        out, remaining, unmounted = self.run_step([mount_line(escaped, upper, work)])
+        self.assertIn("refusing escaped overlay mount target", out)
+        self.assertNotIn("unmounted ", out)
+        self.assertEqual([], unmounted)
+        self.assertEqual(1, len(remaining))
+        self.assertKept(upper)
+        self.assertKept(work)
+
     def test_stacked_mounts_keep_every_layer_when_one_will_not_unmount(self):
         """The top layer detaches but a lower one does not: nothing on that target may be deleted."""
         merged, upper_a, work_a = self.overlay("work")
