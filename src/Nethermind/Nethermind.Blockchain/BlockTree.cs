@@ -799,6 +799,13 @@ namespace Nethermind.Blockchain
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
             => _blockStore.DeleteRange(fromInclusive, toExclusive);
 
+        /// <inheritdoc/>
+        public void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+            => _blockStore.DeleteRanges(ranges);
+
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
+            => _blockStore.Delete(blockNumber, blockHash);
+
         private void DeleteBlocks(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

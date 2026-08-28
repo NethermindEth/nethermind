@@ -253,6 +253,40 @@ public class LogIndexBuilderTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_StopBackwardSync_AtTheOldestStoredBlock_InsteadOfWaitingForPrunedReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => ci.ArgAt<ulong>(0) < oldestStored
+                ? null
+                : realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1)));
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, prunedTree);
+
+        Task completion = WaitMinBlockAsync(storage, oldestStored, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
+                "receipts below the oldest stored block are pruned, not late - the backward sync must complete there rather than poll forever");
+        }
+    }
+
     // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
     // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
     private IBlockTree CreateFailingBlockTree(Exception exception)
