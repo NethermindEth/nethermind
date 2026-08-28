@@ -65,7 +65,7 @@ public sealed class FrameTxPrefixSimulator(
         // Bounded wait: an admission thread must not queue indefinitely behind other peers' simulations.
         if (!Monitor.TryEnter(_lock, _timeout > TimeSpan.Zero ? _timeout : Timeout.InfiniteTimeSpan))
         {
-            Metrics.FrameTxSimulationsBusy++;
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
         }
 
@@ -80,7 +80,7 @@ public sealed class FrameTxPrefixSimulator(
             // for that share, so it is only bounded by the timeout and MAX_VERIFY_GAS.
             if (!local && !HasHeadBudget(head))
             {
-                Metrics.FrameTxSimulationsBudgetExhausted++;
+                Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
                 return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
             }
 
@@ -117,7 +117,7 @@ public sealed class FrameTxPrefixSimulator(
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);
-            Metrics.FrameTxSimulations++;
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
 
             // The EVM ran, so any fault episode has ended and the next one warns again.
             _nodeFaultReported = false;
@@ -137,13 +137,13 @@ public sealed class FrameTxPrefixSimulator(
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Violated: true })
         {
             // The tracer aborted the interpreter on a rule violation.
-            Metrics.FrameTxSimulations++;
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
             return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
         {
-            Metrics.FrameTxSimulations++;
-            Metrics.FrameTxSimulationsTimedOut++;
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsTimedOut);
             return FrameTxSimulationResult.RejectTimedOut("validation-prefix simulation timed out");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)

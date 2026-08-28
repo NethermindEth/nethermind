@@ -39,11 +39,13 @@ internal sealed class FrameTxSimulationFilter(
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
-                // Atomic: this filter runs under the pool's head read lock, so submissions land concurrently.
-                Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
-                if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 // Deferred only for a bound this node spent on itself: a timeout is chargeable here, because
-                // the prefix's own wall clock is what tripped it.
+                // the prefix's own wall clock is what tripped it. The counters follow that same split, so
+                // shedding never reads as a peer sending transactions this node rejects.
+                Interlocked.Increment(ref (result.NodeBound
+                    ? ref Metrics.PendingTransactionsFrameTxSimulationDeferred
+                    : ref Metrics.PendingTransactionsFrameTxSimulationFailed));
+                if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return (result.NodeBound ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
                     .WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
 
