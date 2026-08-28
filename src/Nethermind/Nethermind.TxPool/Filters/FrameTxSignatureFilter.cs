@@ -23,6 +23,8 @@ namespace Nethermind.TxPool.Filters;
 /// Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame and signature lists are
 /// structurally well-formed, and last among the incoming filters: the signature list is uncapped, so the
 /// cheap state filters must reject what they can before any elliptic-curve work is spent on a payload.
+/// Records <see cref="TxFilteringState.FrameSignaturesVerified"/> so a downstream filter can assert
+/// pre-validation from what ran rather than from this filter's position in the chain.
 /// </remarks>
 internal sealed class FrameTxSignatureFilter(
     IChainHeadSpecProvider specProvider,
@@ -34,6 +36,7 @@ internal sealed class FrameTxSignatureFilter(
     {
         if (!tx.SupportsFrames || tx.FrameSignatures is not { Length: > 0 })
         {
+            state.FrameSignaturesVerified = true; // vacuously: validate_signature passes an empty list
             return AcceptTxResult.Accepted;
         }
 
@@ -51,6 +54,7 @@ internal sealed class FrameTxSignatureFilter(
             return AcceptTxResult.Invalid.WithMessage(error!);
         }
 
+        state.FrameSignaturesVerified = true;
         return AcceptTxResult.Accepted;
     }
 }
