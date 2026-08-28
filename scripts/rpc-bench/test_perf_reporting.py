@@ -1111,6 +1111,19 @@ esac
             "|| needs.resolve.outputs.dotnet_trace == 'true')",
         )
 
+    def test_a_failed_perf_capture_still_ships_its_recorder_log(self) -> None:
+        """Exiting before the zip discarded perf-record*.log - the only file that says why the capture
+        produced nothing. Archive first, tail the log into the job, then fail."""
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        step = rpc_workflow[rpc_workflow.index("- name: Collect perf profile"):rpc_workflow.index("- name: Collect dotnet-trace")]
+        self.assertIn("perf_validation_failed=false", step)
+        self.assertIn("perf-record*.log", step)
+        # the zip must precede the deferred exit
+        self.assertLess(step.index('zip -9r "${ARCHIVE}" perf'),
+                        step.index('if [[ "${perf_validation_failed}" == "true" ]]; then'))
+        self.assertLess(step.index('if [[ "${perf_validation_failed}" == "true" ]]; then'), step.index("exit 1"))
+
     def test_a_failed_warmup_fails_the_run_when_a_profiler_will_attach(self) -> None:
         """The deferred profiler start is what makes "the measured phase only" true. A warm-up that dies
         before writing the reuse marker puts the clone, image build and corpus conversion back inside the

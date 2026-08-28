@@ -1139,10 +1139,25 @@ jobs:
           ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
         run: |
           set -euo pipefail
-          if bash scripts/validate-folded-profile.sh "${DIAG_DIR}/perf/perf.folded"; then
+          # Archive first and defer the failure, so a capture that produced no usable profile still ships the
+          # recorder log that says why - the same ordering the expb workflow uses. Exiting before the zip
+          # discarded the only evidence.
+          perf_validation_failed=false
+          bash scripts/validate-folded-profile.sh "${DIAG_DIR}/perf/perf.folded" || perf_validation_failed=true
+
+          if [[ -d "${DIAG_DIR}/perf" ]] && [[ -n "$(find "${DIAG_DIR}/perf" -type f -not -name 'perf.data' 2>/dev/null)" ]]; then
             ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" perf -x '*/perf.data' )
             echo "Archived perf profile to ${ARCHIVE}"
           else
+            echo "::warning::nothing to archive under ${DIAG_DIR}/perf."
+          fi
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            for recorder_log in "${DIAG_DIR}"/perf/perf-record*.log; do
+              [[ -s "${recorder_log}" ]] || continue
+              echo "--- $(basename "${recorder_log}") (last 40 lines) ---"
+              tail -n 40 "${recorder_log}" | sed 's/^/    /'
+            done
             echo "::error::perf was requested but no positive-sample ${DIAG_DIR}/perf/perf.folded was produced."
             exit 1
           fi
