@@ -184,15 +184,15 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        // Build a BAL referencing these accounts and storage slots.
+        // Build a BAL referencing these accounts and storage slots
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
                 Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(5).TestObject,
-                Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject) // not in state; should be null
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject) // not in state — should be null
             .TestObject;
 
-        // Collect results via HintBal(bal, sink): the merged trie warmup + BAL read pass.
+        // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new();
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
@@ -303,7 +303,7 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
-            // Dispose exits the using; must not throw either (covers the Cancel path).
+            // Dispose exits the using — must not throw either (covers the Cancel path).
         }
     }
 
