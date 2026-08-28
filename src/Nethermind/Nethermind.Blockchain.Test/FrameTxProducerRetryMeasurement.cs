@@ -54,7 +54,6 @@ public class FrameTxProducerRetryMeasurement
     {
         public int Attempts { get; private set; }
         public List<ulong> BurnedPerAttempt { get; } = [];
-        public List<bool> ExecutedPerAttempt { get; } = [];
 
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
@@ -62,7 +61,6 @@ public class FrameTxProducerRetryMeasurement
             BudgetProbe probe = new();
             TransactionResult result = inner.Execute(transaction, new CompositeTxTracer(txTracer, probe));
             BurnedPerAttempt.Add(probe.Consumed);
-            ExecutedPerAttempt.Add(result.TransactionExecuted);
             return result;
         }
 

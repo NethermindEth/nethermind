@@ -2643,7 +2643,7 @@ namespace Nethermind.TxPool.Test
             // pending cost to its balance, and removing a tx releases the reservation.
             Address sponsor = TestItem.AddressD;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(sponsor));
             // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
 
@@ -2668,6 +2668,30 @@ namespace Nethermind.TxPool.Test
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
                 Assert.That(secondResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
                 Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_prefix_simulation_is_told_the_signatures_are_already_verified()
+        {
+            // Pins the guarantee, not the registration order: whatever the chain looks like, the prefix
+            // may only be told "pre-validated" when the signature filter has actually accepted this tx.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            // The verify-gas bound is out of scope here; disable it so the tx reaches the simulation filter.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                simulator.Received(1).Simulate(tx, signaturesPreValidated: true);
             }
         }
 

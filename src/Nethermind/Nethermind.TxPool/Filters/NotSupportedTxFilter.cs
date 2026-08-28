@@ -25,8 +25,11 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP8141-GAP: pool-side frame support is devnet-grade — the failed-APPROVE replay bound is still
-        // missing, as is a payer reservation for blob-pool records restored from disk, whose payer is not persisted.
+        // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
+        // Still missing: the paymaster rules (no canonical runtime is pinned, so no instance can be recognized
+        // and every code-carrying pay target stays uncapped), a bound on simulation work, head-change
+        // revalidation and the eviction order, max_cost pricing of the payer exposure bound, and the payer on
+        // blob-pool records restored from disk.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

@@ -108,6 +108,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, TxPoolErrorMessages.DelegationAuthorityHasPendingTx);
 
         /// <summary>
+        /// Blob or cell proofs failed cryptographic validation after cheaper admission checks passed.
+        /// </summary>
+        public static readonly AcceptTxResult InvalidBlobProofs = new(20, TxErrorMessages.InvalidBlobProofs);
+
+        /// <summary>
+        /// The blob transaction sidecar does not contain full blobs or any sparse cells.
+        /// </summary>
+        public static readonly AcceptTxResult IncompleteBlobData = new(21, TxErrorMessages.IncompleteBlobData);
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, TxPoolErrorMessages.NodeIsSyncing);
@@ -119,11 +129,20 @@ namespace Nethermind.TxPool
         // Message field with ErrorCodes.AccountLocked (-32020), so the Code string never reaches RPC callers.
         public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
 
-        /// <summary>An EIP-8141 frame transaction whose expiry-verifier deadline is already behind the current head, so it can never be included.</summary>
-        public static readonly AcceptTxResult FrameTxExpired = new(20, TxPoolErrorMessages.FrameTxExpired);
+        // Ids 22-31 belong to the results below; 0-21 and 503 are the pre-existing ones. Equality is by id
+        // alone, so a new result must take a free id; AcceptTxResultTests guards that they stay unique.
 
-        /// <summary>An EIP-8141 frame transaction whose validation prefix costs more than <c>MAX_VERIFY_GAS</c> to check. A propagation bound, not a validity rule.</summary>
-        public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
+        /// <summary>
+        /// An EIP-8141 frame transaction whose expiry-verifier deadline is already behind the current head; it can
+        /// never be included, so it must not enter the pool or be broadcast.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxExpired = new(30, TxPoolErrorMessages.FrameTxExpired);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix plus signature verification would cost a node more
+        /// than <c>MAX_VERIFY_GAS</c> to check. It stays consensus-valid; only public mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(31, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
         /// <summary>An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>. A propagation bound separate from <see cref="FrameTxVerifyGasTooHigh"/>, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(29, TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);

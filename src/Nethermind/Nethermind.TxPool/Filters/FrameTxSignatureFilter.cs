@@ -10,8 +10,22 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>Rejects an EIP-8141 frame transaction whose protocol-validated signatures do not verify.</summary>
-/// <remarks>The frame sender is explicit, so nothing else in the pool checks <c>frame_signatures</c>; a failure here can never verify at any head.</remarks>
+/// <summary>
+/// Rejects an EIP-8141 frame transaction whose protocol-validated signatures do not verify.
+/// </summary>
+/// <remarks>
+/// The frame sender is explicit in the payload, so a frame transaction never goes through the sender
+/// recovery that rejects a bad signature on every other transaction type, and nothing else in the pool
+/// looks at <c>frame_signatures</c>. A signature that fails <c>validate_signature</c> can never verify
+/// at any future head, so pooling and gossiping one only spends peer work on a payload every conforming
+/// client must reject. Runs the same check the processor runs before any frame executes, so a pooled
+/// transaction cannot fail pre-flight on its signatures.
+/// Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame and signature lists are
+/// structurally well-formed, and last among the incoming filters: the signature list is uncapped, so the
+/// cheap state filters must reject what they can before any elliptic-curve work is spent on a payload.
+/// Records <see cref="TxFilteringState.FrameSignaturesVerified"/> so a downstream filter can assert
+/// pre-validation from what ran rather than from this filter's position in the chain.
+/// </remarks>
 internal sealed class FrameTxSignatureFilter(
     IChainHeadSpecProvider specProvider,
     IEthereumEcdsa ecdsa,
@@ -22,6 +36,7 @@ internal sealed class FrameTxSignatureFilter(
     {
         if (!tx.SupportsFrames || tx.FrameSignatures is not { Length: > 0 })
         {
+            state.FrameSignaturesVerified = true; // vacuously: validate_signature passes an empty list
             return AcceptTxResult.Accepted;
         }
 
@@ -38,6 +53,7 @@ internal sealed class FrameTxSignatureFilter(
             return AcceptTxResult.Invalid.WithMessage(error!);
         }
 
+        state.FrameSignaturesVerified = true;
         return AcceptTxResult.Accepted;
     }
 }

@@ -1691,6 +1691,73 @@ public class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_DefaultCodeFrame_PaysItsTargetAccess()
+    {
+        // EIP-8141: the entry charge is taken before dispatch, so it applies to the default code too -
+        // a codeless target must not verify for free where a deployed one pays its access.
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        FrameReceiptTracer tracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0), tracer: tracer).TransactionExecuted, Is.True);
+
+        Assert.That(tracer.FrameReceipts![0].GasUsed, Is.EqualTo(Eip8038Constants.WarmAccess),
+            "the default code draws no execution gas of its own, leaving the warm sender's entry access");
+    }
+
+    [Test]
+    public void Execute_DefaultCodeFrameGasBelowItsTargetAccess_InvalidatesTheTransaction()
+    {
+        // The entry charge precedes the default code, so a VERIFY frame that cannot cover it halts
+        // exceptionally before evaluating it, which invalidates the transaction.
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        TxFrame frame = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            executionGasLimit: Eip8038Constants.WarmAccess - 1, DefaultFrameStateGasLimit, UInt256.Zero, default);
+
+        TransactionResult result = Process(SelfSignedSelfVerifyTx(nonce: 0, verifyFrame: frame));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        }
+    }
+
+    [Test]
+    public void Execute_FrameValueExceedingTheCallerBalance_RevertsConsumingTheEntryCharge()
+    {
+        // EIP-8141: the entry charge is taken before the balance check, and the revert consumes the gas
+        // charged so far. EIP-7928 does not unwind the read the charge prices, so the target is recorded.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Recipient, value: 2.Ether));
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        FrameReceiptTracer tracer = new();
+        Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(Eip8038Constants.ColdAccountAccess),
+                "an unfundable value transfer reverts owing the entry charge, not the whole frame limit");
+            Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Recipient), Is.Not.Null,
+                "the entry charge prices reading the target, so the read stands after the revert");
+        }
+    }
+
     [TestCase(false, TestName = "Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess(contract designation)")]
     [TestCase(true, TestName = "Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess(precompile designation)")]
     public void Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess(bool designatePrecompile)
@@ -2076,8 +2143,8 @@ public class FrameTxProcessorTests
                 Is.EqualTo(UInt256.One));
         }
         Assert.That((long)firstUseTracer.GasSpent - (long)firstUseIntrinsic,
-            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
-            "the default-code approval owes the surcharge the APPROVE opcode charges");
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas + (long)Eip8038Constants.WarmAccess),
+            "the default-code approval owes the surcharge the APPROVE opcode charges, over the frame's entry access");
 
         Transaction reuse = SelfSignedSelfVerifyTx(nonce: 1, keys);
         FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
@@ -2088,20 +2155,31 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A codeless-sender self-verify transaction carrying the canonical-hash signature default code requires at index 0.</summary>
-    private static Transaction SelfSignedSelfVerifyTx(ulong nonce, UInt256[]? nonceKeys = null)
+    private static Transaction SelfSignedSelfVerifyTx(ulong nonce, UInt256[]? nonceKeys = null, TxFrame? verifyFrame = null)
     {
-        Transaction tx = FrameTx(nonce, SelfVerifyFrame());
+        Transaction tx = FrameTx(nonce, verifyFrame ?? SelfVerifyFrame());
         tx.NonceKeys = nonceKeys;
-        // compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided),
-        // so the entry must be present when the hash is computed and signed.
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+        return tx;
+    }
+
+    /// <summary>
+    /// Replaces <paramref name="index"/>'s entry with a canonical-hash SECP256K1 signature over the
+    /// transaction's sig hash, as the default code requires.
+    /// </summary>
+    /// <remarks>
+    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided), so the entry
+    /// being replaced must already be present, of the same scheme and signer, when the hash is computed.
+    /// </remarks>
+    private static void SignCanonicalHash(Transaction tx, int index, PrivateKey key, Address? signer)
+    {
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        Signature signature = new Ecdsa().Sign(key, in sigHash);
         byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
         vrs[0] = signature.RecoveryId;
         signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
-        return tx;
+        tx.FrameSignatures![index] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, vrs);
     }
 
     // An unchecked increment wraps the account nonce to zero, replaying every prior transaction. Only
