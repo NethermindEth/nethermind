@@ -12,9 +12,14 @@ using NUnit.Framework;
 namespace Ethereum.Transaction.Test;
 
 /// <summary>
-/// Guards the client wordings behind each frame-transaction fixture label: that the decoder's real
-/// rejection messages are covered, and that the sets stay pairwise disjoint.
+/// Guards the client wordings behind each frame-transaction fixture label.
 /// </summary>
+/// <remarks>
+/// The two <c>DecodeFailureMessage</c> tests drive the real decoder, so they fail if its wording moves
+/// away from the table. The rest assert the table against literals and cannot: a processor reword
+/// leaves both the case and the fragment green while the mapping goes dead. Reaching the processor
+/// wordings the same way needs constants behind them, which this fixture cannot add on its own.
+/// </remarks>
 public class FrameExceptionFragmentsTests
 {
     private static bool Covers(IEnumerable<string> fragments, string message)
@@ -57,8 +62,6 @@ public class FrameExceptionFragmentsTests
     [Test]
     public void Decode_CoversAFrameListThatIsNotASequence()
     {
-        // "Unexpected RLP prefix" is the address-decode wording; a field that should be a sequence
-        // and is not reports the accepted range instead.
         string message = DecodeFailureMessage(
             frames: Rlp.Encode(new byte[19]),               // a string where a list belongs
             maxPriorityFeePerGas: Rlp.Encode(0L));
@@ -77,15 +80,14 @@ public class FrameExceptionFragmentsTests
         Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True, message);
     }
 
-    // The detailed wording is composed only when Rlp's static logger has trace enabled, so a set
-    // holding it alone leaves the mapping dead in the default configuration.
+    // Both wordings of one guard; see FrameExceptionFragments.FeeOverflow for which is which.
     [TestCase("An RLP limit exceeded")]
     [TestCase("Collection count of 33 is over limit 32 or 40 bytes left")]
     public void FeeOverflow_CoversBothWordingsOfTheLengthGuard(string message) =>
         Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True);
 
-    // Both entry points, because the processor words a halt differently under the mempool admission
-    // simulator, whose wordings no fixture reaches, than on the block-processing path.
+    // The validation-prefix wordings reach only the mempool admission simulator, so no fixture
+    // produces them; they are pinned so a reword of that path does not slip past the set.
     [TestCase("VERIFY frame reverted")]
     [TestCase("validation prefix frame reverted")]
     [TestCase("SENDER frame before execution approval")]
@@ -93,6 +95,17 @@ public class FrameExceptionFragmentsTests
     [TestCase("frame transaction validation prefix never set a payer")]
     public void Execution_CoversTheHaltWordingsOfBothEntryPoints(string message) =>
         Assert.That(Covers(FrameExceptionFragments.Execution, message), Is.True);
+
+    [Test]
+    public void DecodeCarriesEveryFeeOverflowWording()
+    {
+        // Decode inlines these rather than spreading FeeOverflow, which would make it read null if
+        // ever declared below it. This is the check that keeps the two in step instead.
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            Assert.That(FrameExceptionFragments.Decode, Does.Contain(fragment));
+        }
+    }
 
     private static IEnumerable<TestCaseData> DisjointnessCases()
     {

@@ -120,10 +120,13 @@ public static class FrameExceptionFragments
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
-        // Two distinct rejections: "Unexpected RLP prefix" is the address-decode wording, and a
-        // field that should be a sequence and is not reports its own, trimmed of the range here.
+        // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
+        // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
-        .. FeeOverflow,
+        // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
+        // from it: a static initialiser reading a field declared below it silently reads null.
+        "Collection count",
+        "An RLP limit exceeded",
     ];
 }
