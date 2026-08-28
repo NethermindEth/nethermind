@@ -324,15 +324,15 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixCarriesAnUnverifiableSignature_RejectedByTheSignatureCheck()
+    public void Simulate_PrefixCarriesAMismatchedSigner_RejectedByTheSignatureCheck()
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [UnverifiableSignature()];
+        tx.FrameSignatures = [MismatchedSignerSignature()];
 
         (TransactionResult result, _) = Simulate(tx);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -340,7 +340,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [UnverifiableSignature()];
+        tx.FrameSignatures = [MismatchedSignerSignature()];
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, extraOptions: ExecutionOptions.FrameSignaturesPreValidated);
 
@@ -358,17 +358,18 @@ public class FrameTxValidationPrefixSimulationTests
         // path — block execution, eth_call, eth_estimateGas, eth_simulate, debug_traceCall — gains nothing.
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [UnverifiableSignature()];
+        tx.FrameSignatures = [MismatchedSignerSignature()];
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
 
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameSignaturesPreValidated);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
-    /// <summary>A canonical SECP256K1 entry that recovers to nobody, so only <c>validate_signature</c> rejects it.</summary>
-    private static TxFrameSignature UnverifiableSignature()
+    /// <summary>A canonical SECP256K1 entry that recovers to an address other than the declared signer.</summary>
+    /// <remarks><c>1^3 + 7</c> is a quadratic residue, so <c>r = 1</c> recovers rather than failing verification.</remarks>
+    private static TxFrameSignature MismatchedSignerSignature()
     {
         byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
         raw[32] = 1; // r = 1

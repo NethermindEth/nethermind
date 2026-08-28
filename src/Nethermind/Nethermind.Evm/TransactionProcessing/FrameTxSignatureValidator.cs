@@ -24,6 +24,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 public static class FrameTxSignatureValidator
 {
     public const string InvalidSignature = "frame transaction has an invalid signature";
+    // Distinct from InvalidSignature so a signer that does not match is told apart from a signature
+    // that does not verify, as P256 already does through InvalidP256Signer.
+    public const string InvalidSecp256k1Signer = "frame transaction SECP256K1 signer does not match the recovered address";
     public const string InvalidSignatureLength = "frame transaction signature has the wrong length";
     public const string InvalidMsgLength = "frame transaction signature msg must be empty or a 32-byte digest";
     public const string NonCanonicalSignature = "frame transaction signature must use a 0/1 recovery id and a canonical low s value";
@@ -110,9 +113,13 @@ public static class FrameTxSignatureValidator
             return Fail(NonCanonicalSignature, out error);
         }
 
+        // Split as the P256 arm is: recovery failing outright is the signature not verifying, and only a
+        // recovered address that differs from the signer is a signer mismatch. The canonicality gate above
+        // bounds r but cannot make it a curve x-coordinate, so a null recovery is reachable.
         Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v + Signature.VOffset);
         Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
-        return recovered is not null && recovered == resolvedSigner || Fail(InvalidSignature, out error);
+        if (recovered is null) return Fail(InvalidSignature, out error);
+        return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
     }
 
     private static bool ValidateP256(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
