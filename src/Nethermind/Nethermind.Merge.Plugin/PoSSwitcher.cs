@@ -45,7 +45,6 @@ namespace Nethermind.Merge.Plugin
         private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
         private readonly Lock _transitionLock = new();
-        private Hash256? _terminalBlockHash;
 
         private ulong? _terminalBlockNumber;
         private ulong? _firstPoSBlockNumber;
@@ -185,7 +184,6 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 _terminalBlockNumber = header.Number;
-                _terminalBlockHash = header.Hash;
                 _firstPoSBlockNumber = header.Number + 1;
                 _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
 
@@ -281,7 +279,7 @@ namespace Nethermind.Merge.Plugin
 
                 if (terminalSelectionOpen && isTerminalBlock)
                 {
-                    // Until the first finalized PoS block, EIP-3675 permits a later qualifying terminal PoW block.
+                    // Until FIRST_FINALIZED_BLOCK, EIP-3675 permits a later qualifying terminal PoW block.
                     isTerminal = true;
                     isPostMerge = false;
                 }
@@ -351,10 +349,6 @@ namespace Nethermind.Merge.Plugin
 
             _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
-
-            _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
-                ? _mergeConfig.TerminalBlockHashParsed
-                : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
             if (_terminalBlockNumber is not null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
