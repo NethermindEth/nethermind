@@ -83,25 +83,22 @@ else
     # Surface it on the run summary too: the matrix boundary reduces this to a plain failed
     # entry, so without this the distinction is only visible deep in a job log.
     echo "⚠️ \`${RUNNER_LABEL}\` was preempted — infrastructure reclaim, not a sync failure" >> "$GITHUB_STEP_SUMMARY"
+  elif [ "${EXPECT_INSTANCE:-true}" != "true" ]; then
+    # Creation having failed already explains the absence, whether or not any operations
+    # were recorded. create.sh also cleans up after a VM that briefly existed, so this
+    # only claims the creation did not complete, not that nothing was ever created.
+    TERMINATED_BY=creation-failed
+    echo "${INSTANCE_NAME}: creation did not complete (${ops:-no operations recorded})"
   elif grep -qx 'delete' <<<"$ops"; then
     # The expected path when another teardown attempt got there first.
     TERMINATED_BY=already-deleted
     echo "${INSTANCE_NAME} had already been deleted"
   elif [ -z "$ops" ]; then
     TERMINATED_BY=unknown
-    # Creation having failed already explains the absence; create.sh cleans up after itself.
-    if [ "${EXPECT_INSTANCE:-true}" = "true" ]; then
-      echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"
-    else
-      echo "${INSTANCE_NAME} was never created"
-    fi
+    echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"
   else
     TERMINATED_BY=terminated
-    if [ "${EXPECT_INSTANCE:-true}" = "true" ]; then
-      echo "::warning title=GCP runner::${INSTANCE_NAME} was terminated externally (${ops//$'\n'/, })"
-    else
-      echo "${INSTANCE_NAME} was never created (${ops//$'\n'/, })"
-    fi
+    echo "::warning title=GCP runner::${INSTANCE_NAME} was terminated externally (${ops//$'\n'/, })"
   fi
 fi
 
