@@ -481,33 +481,52 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_BlobTxWithUnknownProofVersion_ReturnFalseWithoutThrowing()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Version = (ProofVersion)byte.MaxValue };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        bool? result = null;
+
+        Assert.That(() => result = txValidator.IsWellFormed(tx, Osaka.Instance).AsBool(), Throws.Nothing);
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
     public void IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue()
     {
-        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.True);
     }
 
     [Test]
     public void IsWellFormed_FrameBlobTxWithCorruptSidecarProofs_ReturnsFalse()
     {
-        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
     [Test]
     public void IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse()
     {
-        // Bogota (Osaka-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
+        // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
         Transaction tx = BuildBlobCarryingFrameTx(ProofVersion.V0);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
     [TestCase(0ul, ExpectedResult = true, TestName = "IsWellFormed_BloblessFrameTxWithZeroMaxFeePerBlobGas_ReturnsTrue")]
@@ -524,7 +543,7 @@ public class TxValidatorTests
             MaxFeePerBlobGas = maxFeePerBlobGas,
         };
 
-        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Bogota.Instance).AsBool();
+        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Eip8141Prototype.Instance).AsBool();
     }
 
     private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
@@ -832,6 +851,23 @@ public class TxValidatorTests
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
             };
+            yield return new TestCaseData(Osaka.Instance, Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerBlobGas(1)
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with
+                {
+                    Blobs = [],
+                    CellMask = BlobCellMask.Empty,
+                    Cells = []
+                })
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Blob tx with commitments but no blobs or cells",
+                ExpectedResult = false
+            };
 
             yield return new TestCaseData(Cancun.Instance, MakeTestObject(0)
                 .SignedAndResolved().TestObject)
@@ -959,7 +995,7 @@ public class TxValidatorTests
     private static IEnumerable<int> FrameTxWithinBlobCountLimitCases()
     {
         yield return 1;
-        yield return (int)Bogota.Instance.MaxBlobsPerTx;
+        yield return (int)Eip8141Prototype.Instance.MaxBlobsPerTx;
     }
 
     [TestCaseSource(nameof(FrameTxWithinBlobCountLimitCases))]
@@ -968,21 +1004,21 @@ public class TxValidatorTests
         Transaction tx = BuildBlobFrameTx(blobCount);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.True);
     }
 
     [Test]
     public void IsWellFormed_FrameTxExceedsBlobCountLimit_ReturnBlobGasLimitExceeded()
     {
-        int blobCount = (int)Bogota.Instance.MaxBlobsPerTx + 1;
+        int blobCount = (int)Eip8141Prototype.Instance.MaxBlobsPerTx + 1;
         Transaction tx = BuildBlobFrameTx(blobCount);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+        ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
         Assert.That(result.AsBool(), Is.False);
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
-            (ulong)blobCount * Eip4844Constants.GasPerBlob, Bogota.Instance.GasCosts.MaxBlobGasPerTx)));
+            (ulong)blobCount * Eip4844Constants.GasPerBlob, Eip8141Prototype.Instance.GasCosts.MaxBlobGasPerTx)));
     }
 
     [Test]
@@ -991,7 +1027,7 @@ public class TxValidatorTests
         Transaction tx = BuildBlobFrameTx(blobCount: 1, versionByte: 0x02);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+        ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
         Assert.That(result.AsBool(), Is.False);
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
@@ -1004,7 +1040,7 @@ public class TxValidatorTests
         tx.MaxFeePerBlobGas = null;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+        ValidationResult result = txValidator.IsWellFormed(tx, Eip8141Prototype.Instance);
 
         Assert.That(result.AsBool(), Is.False);
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
@@ -1013,7 +1049,7 @@ public class TxValidatorTests
     // A fork lowering the per-tx blob limit must evict an over-limit type-6 at head revalidation.
     private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
     {
-        int max = (int)Bogota.Instance.MaxBlobsPerTx;
+        int max = (int)Eip8141Prototype.Instance.MaxBlobsPerTx;
 
         yield return new TestCaseData(BuildBlobFrameTx(blobCount: max))
         { TestName = "Type-6 within head blob-count limit is retained", ExpectedResult = true };
@@ -1035,7 +1071,7 @@ public class TxValidatorTests
 
     [TestCaseSource(nameof(HeadRevalidationBlobCountCases))]
     public bool IsWellFormed_HeadRevalidationBlobCount(Transaction tx) =>
-        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool();
+        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool();
 
     private static Transaction BuildShardBlobTx(int blobCount) => Build.A.Transaction
         .WithChainId(TestBlockchainIds.ChainId)
@@ -1080,7 +1116,7 @@ public class TxValidatorTests
             DecodedMaxFeePerGas = 1,
         };
 
-        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.True);
 
         tx.Frames =
         [
@@ -1088,7 +1124,7 @@ public class TxValidatorTests
                 Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
         ];
 
-        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
     private static IEnumerable<TestCaseData> NonceKeysEnvelopeCases()

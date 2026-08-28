@@ -200,10 +200,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 byte status = decoderContext.DecodeByte();
-                int gasUsedEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                ulong executionGasUsed = decoderContext.DecodeULong();
-                ulong stateGasUsed = decoderContext.DecodeULong();
-                decoderContext.Check(gasUsedEnd);
+                FrameReceiptGasRlp.DecodeGasUsed(ref decoderContext, out ulong executionGasUsed, out ulong stateGasUsed);
 
                 int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 List<LogEntry> frameLogs = [];

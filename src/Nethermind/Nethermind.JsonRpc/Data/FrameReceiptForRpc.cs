@@ -23,5 +23,10 @@ public class FrameReceiptForRpc
     public byte Status { get; set; }
     public ulong ExecutionGasUsed { get; set; }
     public ulong StateGasUsed { get; set; }
-    public LogEntry[] Logs { get; set; } = [];
+
+    /// <summary>The frame's log entries.</summary>
+    /// <remarks>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</remarks>
+    public LogEntry[]? Logs { get; set; } = [];
+
+    public TxFrameReceipt ToFrameReceipt() => new(Status, ExecutionGasUsed, StateGasUsed, Logs ?? []);
 }
