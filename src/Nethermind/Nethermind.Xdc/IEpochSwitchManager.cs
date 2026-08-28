@@ -42,5 +42,18 @@ public interface IEpochSwitchManager
     /// Returns the epoch switch block info for the given epoch number, or null if not found.
     /// </summary>
     BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
+
+    /// <summary>
+    /// Returns the epoch switch infos between two blocks, in ascending block order.
+    /// </summary>
+    /// <remarks>
+    /// The switch block itself is never reported: it carries no quorum certificate, so it has no parent block info.
+    /// </remarks>
+    /// <param name="start">Lower bound of the range; an epoch switch on this block is included.</param>
+    /// <param name="end">Upper bound of the range; the most recent epoch switch at or before it is included.</param>
+    /// <returns>
+    /// The epoch switch infos in range; empty when <paramref name="end"/> is not after <paramref name="start"/>;
+    /// <see langword="null"/> when a header or snapshot needed to resolve the range is unavailable.
+    /// </returns>
     EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 }

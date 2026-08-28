@@ -192,6 +192,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
+    // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
         CancelHintBal();
@@ -514,7 +515,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
-                scope.CreateStorageTreeImpl(key).SelfDestruct();
+                scope.CreateStorageTreeImpl(key).ClearStorage();
             }
         }
 

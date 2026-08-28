@@ -6,28 +6,28 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Runs the validation prefix of an EIP-8141 frame transaction whose payer the native resolver could not
-/// decide (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) in a bounded, read-only EVM at chain head.
-/// </summary>
-/// <remarks>Optional in the pool: with no simulator wired, such transactions are admitted with an
-/// unresolved payer and therefore without an exposure reservation.</remarks>
+/// <summary>Runs the validation prefix of an EIP-8141 frame transaction the native resolver could not decide, in a bounded read-only EVM at chain head.</summary>
+/// <remarks>Optional: with no simulator wired, such transactions are admitted unresolved and hold no exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
+    /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
+    /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
+    /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
     /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
+    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default);
 }
 
 public enum FrameTxSimulationOutcome
 {
+    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
+    /// <remarks>The zero value, so a default-constructed result defers rather than recording a null payer.</remarks>
+    Undecided,
+
     /// <summary>The validation prefix ran to a resolved payer.</summary>
     Accepted,
 
     /// <summary>The prefix is invalid, and the failure is attributable to the transaction.</summary>
     Rejected,
-
-    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
-    Undecided,
 }
 
 public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome, Address? payer, string? reason)

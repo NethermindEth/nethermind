@@ -11,19 +11,23 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
 /// Round-trips of the EIP-8141 frame transaction payload
-/// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c> and the <c>compute_sig_hash</c> elision rule.
-/// The generic transaction comparer predates frames, so fields are asserted explicitly.
+/// <c>[chain_id, nonce, sender, frames, signatures, fees, blob_versioned_hashes]</c>, where
+/// <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>, and the
+/// <c>compute_sig_hash</c> elision rule.
+/// The generic transaction comparer does not cover frame fields, so they are asserted explicitly.
 /// </summary>
 [TestFixture]
 public class FrameTxDecoderTests
 {
+    private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
+
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [TestCaseSource(nameof(RoundtripCases))]
@@ -123,9 +127,7 @@ public class FrameTxDecoderTests
             Rlp.Encode(TestItem.AddressA.Bytes),     // sender
             Rlp.Encode(Array.Empty<Rlp>()),          // frames
             Rlp.Encode(Array.Empty<Rlp>()),          // signatures
-            Rlp.Encode(0L),                          // max_priority_fee_per_gas
-            Rlp.Encode(0L),                          // max_fee_per_gas
-            Rlp.Encode(0L),                          // max_fee_per_blob_gas
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
             Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
         Rlp wrapper = Rlp.Encode(new[] { body });
 
@@ -145,19 +147,15 @@ public class FrameTxDecoderTests
     [Test]
     public void Decode_PayloadWithTrailingSignature_Throws()
     {
-        // The payload is exactly 9 fields with no envelope signature. A padding attack that appends a
-        // [v, r, s] triple must be rejected — otherwise it decodes with a spurious signature while
-        // strict clients read exactly 9 elements and drop it, a decode divergence that also changes
-        // the transaction hash.
+        // The payload is exactly 7 fields with no envelope signature, so an appended [v, r, s] triple must be
+        // rejected: decoding it with a spurious signature is a divergence that also changes the transaction hash.
         Rlp sequence = Rlp.Encode(
             Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
             Rlp.Encode(0L),                          // nonce
             Rlp.Encode(TestItem.AddressA.Bytes),     // sender
             Rlp.Encode(Array.Empty<Rlp>()),          // frames
             Rlp.Encode(Array.Empty<Rlp>()),          // signatures
-            Rlp.Encode(0L),                          // max_priority_fee_per_gas
-            Rlp.Encode(0L),                          // max_fee_per_gas
-            Rlp.Encode(0L),                          // max_fee_per_blob_gas
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
             Rlp.Encode(Array.Empty<Rlp>()),          // blob_versioned_hashes
             Rlp.Encode(27L),                         // trailing v
             Rlp.Encode(new byte[32]),                // trailing r
@@ -174,6 +172,37 @@ public class FrameTxDecoderTests
         }
 
         Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing signature"));
+    }
+
+    [Test]
+    public void Decode_PayloadWithEmptySenderField_Throws()
+    {
+        // The sender is mandatory: a frame transaction names its payer outright rather than recovering
+        // it from an envelope signature, so — unlike `to` or a frame target — an empty field has no
+        // "absent" meaning and must not decode to a null sender.
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
+            Rlp.Encode(0L),                          // nonce
+            Rlp.Encode(Array.Empty<byte>()),         // sender, encoded as the empty string 0x80
+            Rlp.Encode(Array.Empty<Rlp>()),          // frames
+            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
+            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
+
+        byte[] payload = new byte[1 + sequence.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        sequence.Bytes.CopyTo(payload, 1);
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        // The generic address-decode message, not a frame-specific one: "Unexpected RLP prefix" is the
+        // FrameExceptionFragments.Decode fragment EF fixture rejects match on.
+        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+            .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
     [Test]
@@ -231,13 +260,11 @@ public class FrameTxDecoderTests
         }
     }
 
-    // Anything another client would read differently must throw rather than decode.
     [TestCaseSource(nameof(MalformedReferenceListCases))]
     public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
         Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
 
-    // Control: the same envelope with a well-formed list must decode, or the malformed cases above
-    // would be satisfied by any exception the surrounding payload throws.
+    // Control for the malformed cases above: without it any exception from the surrounding payload would satisfy them.
     [Test]
     public void Decode_WellFormedRecentRootReferenceList_Decodes()
     {
@@ -283,9 +310,7 @@ public class FrameTxDecoderTests
             Rlp.Encode(TestItem.AddressA.Bytes),
             Rlp.Encode(Array.Empty<Rlp>()),
             Rlp.Encode(Array.Empty<Rlp>()),
-            Rlp.Encode(0L),
-            Rlp.Encode(0L),
-            Rlp.Encode(0L),
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)),
             Rlp.Encode(Array.Empty<Rlp>()),
             references);
 
@@ -374,6 +399,13 @@ public class FrameTxDecoderTests
             Frame(),
         ])).SetName("Roundtrip_AllModesFlagsTargetsAndData");
 
+        yield return new TestCaseData(CreateFrameTx(frames:
+        [
+            Frame(gasLimit: 500_000, stateGasLimit: 183_600),
+            Frame(mode: TxFrame.ModeVerify, gasLimit: 90_000, stateGasLimit: 0),
+            Frame(mode: TxFrame.ModeSender, gasLimit: ulong.MaxValue - 1, stateGasLimit: 1),
+        ])).SetName("Roundtrip_TwoDimensionalGasLimits");
+
         yield return new TestCaseData(CreateFrameTx(signatures:
         [
             new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(11, 0x77)),
@@ -429,6 +461,41 @@ public class FrameTxDecoderTests
         Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
     }
 
+    [TestCase(Eip8141Constants.MaxFrames, false)]
+    [TestCase(Eip8141Constants.MaxFrames + 1, true)]
+    public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx(frames: [.. Enumerable.Range(0, frameCount).Select(static _ => Frame())]);
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).Frames!.Length, Is.EqualTo(frameCount));
+        }
+    }
+
+    // Mirrors the blob tx cap, so the two decoders reject an oversized hash list at the same count.
+    [TestCase(BlobVersionedHashesDecodeCap, false)]
+    [TestCase(BlobVersionedHashesDecodeCap + 1, true)]
+    public void Decode_BoundsTheBlobVersionedHashCount(int hashCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 1;
+        tx.BlobVersionedHashes = [.. Enumerable.Range(0, hashCount).Select(static _ => FilledBytes(Hash256.Size, 0x01))];
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).BlobVersionedHashes!.Length, Is.EqualTo(hashCount));
+        }
+    }
+
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
@@ -479,7 +546,8 @@ public class FrameTxDecoderTests
             Assert.That(actual[i].Mode, Is.EqualTo(expected[i].Mode), $"frame {i} mode");
             Assert.That(actual[i].Flags, Is.EqualTo(expected[i].Flags), $"frame {i} flags");
             Assert.That(actual[i].Target, Is.EqualTo(expected[i].Target), $"frame {i} target");
-            Assert.That(actual[i].GasLimit, Is.EqualTo(expected[i].GasLimit), $"frame {i} gas limit");
+            Assert.That(actual[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit), $"frame {i} execution gas limit");
+            Assert.That(actual[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit), $"frame {i} state gas limit");
             Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"frame {i} value");
             Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"frame {i} data");
         }
@@ -510,8 +578,8 @@ public class FrameTxDecoderTests
             DecodedMaxFeePerGas = 30.GWei,
         };
 
-    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, UInt256 value = default, byte[]? data = null) =>
-        new(mode, flags, target, gasLimit, value, data ?? Array.Empty<byte>());
+    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
+        new(mode, flags, target, gasLimit, stateGasLimit, value, data ?? Array.Empty<byte>());
 
     private static byte[] FilledBytes(int length, byte fill)
     {

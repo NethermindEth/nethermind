@@ -9,6 +9,18 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
 {
     private AccountStruct _senderAccount;
 
+    /// <summary>Set once every <c>frame_signatures</c> entry has verified against the head spec.</summary>
+    /// <remarks>Lets a downstream filter assert pre-validation from what actually ran rather than from
+    /// its position in the chain, so a reorder degrades to re-verifying instead of trusting a stranger.
+    /// Written only inside the pool: <see cref="Filters.IIncomingTxFilter"/> is public, and an
+    /// implementation outside it cannot have done the verification this claims.</remarks>
+    public bool FrameSignaturesVerified { get; internal set; }
+
+    /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
+    /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
+    /// outcome is known rather than leaving the sponsor permanently short.</remarks>
+    public bool PaymasterReserved;
+
     /// <remarks>
     /// A failed lookup leaves the out-value undefined and the readers diverge on it, so a missing
     /// account is normalised to <see cref="AccountStruct.TotallyEmpty"/>. A zeroed code hash would

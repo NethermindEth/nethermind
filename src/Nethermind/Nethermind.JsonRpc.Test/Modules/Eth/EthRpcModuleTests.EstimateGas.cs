@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -216,6 +217,24 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Estimate_gas_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        const string revertOnNonZeroBaseFee = "0x4860095760006000f35b60006000fd";
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"{SecondaryTestAddress}\",\"data\":\"{revertOnNonZeroBaseFee}\"}}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"code\":\"{revertOnNonZeroBaseFee}\"}}}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "unpriced estimate must zero the base fee override instead of reverting");
+        Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null);
     }
 
     [Test]
@@ -635,8 +654,7 @@ public partial class EthRpcModuleTests
 
         ulong eip2780ValueTransferBase = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TxValueCostEip2780
-            + GasCostOf.TransferLogEip2780;
+            + GasCostOf.TxValueCostEip2780;
 
         // EIP-7981: access list with 1 address, no calldata - standard wins.
         ulong eip7981Standard = eip2780ValueTransferBase + Eip8038Constants.AccessListAddressCost
@@ -676,6 +694,29 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
         Assert.That(serialized, Is.EqualTo(expectedJson));
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_value_transfer_creating_account_is_exact()
+    {
+        // Production error margin (the shared Context defaults to 0), where the buggy estimator over-estimated.
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance),
+            estimateErrorMargin: GasEstimator.DefaultErrorMargin);
+
+        Assert.That(ctx.Test.ReadOnlyState.AccountExists(TestAccount), Is.False, "recipient must be a fresh account");
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestAccount)
+            .WithValue(1)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.GasPrice = null;
+        transaction.Gas = null; // no gas cap, or Build.A.Transaction's default 21000 caps the search
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{Eip8037NewAccountTransferGas.ToHexString(true)}\",\"id\":67}}"));
     }
 
     private static async Task TestEstimateGasOutOfGas(Context ctx, ulong? specifiedGasLimit, ulong expectedGasLimit, string message)
@@ -836,4 +877,27 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    /// <remarks>
+    /// A type-6 transaction reaches the frame estimator and the processor on its type alone, and
+    /// eth_estimateGas probes the transaction before estimating it, so an absent frame list must be
+    /// reported to the caller rather than faulting on the probe.
+    /// </remarks>
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6"}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6","frames":[]}""")]
+    public async Task Eth_estimateGas_frame_transaction_without_frames_returns_error(string txJson)
+    {
+        TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(txJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        JToken parsed = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(FrameTxValidation.MissingFrames));
+        }
+    }
 }

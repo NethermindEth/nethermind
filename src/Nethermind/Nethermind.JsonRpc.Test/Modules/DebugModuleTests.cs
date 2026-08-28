@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -452,20 +453,78 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsResponse()
+    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsBridgeResult()
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        string response = await SerializedRequest("debug_migrateReceipts", 100);
-        Assert.That(response, Is.Not.Null);
+        // Both arguments are required. Hex-string quantities stay valid when a parallel fixture enables StrictHexFormat.
+        string response = await SerializedRequest("debug_migrateReceipts", "0x64", "0xc8");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        await _debugBridge.Received().MigrateReceipts(100, 200);
     }
+
+    // EIP-8141: a frame transaction always executes at least one frame. A frames-less frame receipt
+    // still encodes (as an empty frames list) but the decoder rejects it, so it must never be stored.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithoutFrames_IsRejectedAndNotStored(
+        [Values(true, false)] bool nullFrames)
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload(nullFrames ? null : []);
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    // A null array entry is a caller error too: it otherwise dereferences into an internal error.
+    [Test]
+    public async Task DebugInsertReceipts_NullReceiptEntry_IsRejectedAndNotStored()
+    {
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [null!]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    // The counterpart: the check must not stand between a well-formed frame receipt and the bridge.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithFrames_ReachesTheBridge()
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload([
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, ExecutionGasUsed = 21_000 },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, ExecutionGasUsed = 30_000 }
+        ]);
+        TxReceipt[]? inserted = null;
+        _debugBridge.WhenForAnyArgs(static b => b.InsertReceipts(default!, default!))
+            .Do(call => inserted = call.Arg<TxReceipt[]>());
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(inserted, Is.Not.Null);
+        Assert.That(inserted![0].FrameReceipts!.Select(static f => (f.Status, f.ExecutionGasUsed)),
+            Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }));
+    }
+
+    private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts) => new()
+    {
+        Type = TxType.FrameTx,
+        CumulativeGasUsed = 21_000,
+        Payer = TestItem.AddressA,
+        FrameReceipts = frameReceipts,
+        Logs = []
+    };
 
     [Test]
     public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
     {
-        _debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        await SerializedRequest("debug_resetHead", TestItem.KeccakA);
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 

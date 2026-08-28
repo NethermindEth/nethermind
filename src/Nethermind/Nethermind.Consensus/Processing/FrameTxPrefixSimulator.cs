@@ -32,7 +32,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -63,7 +63,12 @@ public sealed class FrameTxPrefixSimulator(
 
                 IReleaseSpec spec = specProvider.GetSpec(head);
                 FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec);
-                TransactionResult result = processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+                ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
+                if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
+                TransactionResult result = processor.Process(tx, tracer, opts);
+
+                // The EVM ran, so any fault episode has ended and the next one warns again.
+                _nodeFaultReported = false;
 
                 if (tracer.Violated)
                 {
@@ -84,9 +89,8 @@ public sealed class FrameTxPrefixSimulator(
             }
             catch (Exception e) when (IsNodeFault(e))
             {
-                // Blaming the transaction for our own fault would feed the peer flood counter and
-                // eventually disconnect honest peers, so leave the transaction unjudged instead.
-                // A systemic fault (state still healing after sync, say) hits every submission, so report it once.
+                // Blaming the transaction for our own fault feeds the peer flood counter and eventually
+                // disconnects honest peers; such faults hit every submission, so warn once per episode.
                 if (!_nodeFaultReported)
                 {
                     _nodeFaultReported = true;

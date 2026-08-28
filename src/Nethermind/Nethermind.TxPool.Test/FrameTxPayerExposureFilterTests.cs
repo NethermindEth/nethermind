@@ -23,10 +23,8 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// EIP-8141 per-payer exposure gate: a frame transaction is rejected once its resolved payer's
-/// summed pending maximum cost would exceed the payer's balance, and accepted while it stays within.
-/// </summary>
+/// <summary>EIP-8141 per-payer exposure gate: a frame tx is rejected once its payer's summed pending max cost
+/// would exceed the payer's balance.</summary>
 public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
@@ -50,15 +48,14 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
-    // Round-1 defect: pricing the bound on the gas leg alone let a frame tx name blob hashes at an
-    // arbitrary max_fee_per_blob_gas and hold exposure the bound never counted. Pinned by magnitude, so
-    // dropping either factor of GasPerBlob * blob count * MaxFeePerBlobGas moves the boundary and fails.
+    // Pricing the bound on the gas leg alone would let a frame tx name blob hashes at an arbitrary
+    // max_fee_per_blob_gas and hold exposure the bound never counted.
     [TestCase(1, 3, TestName = "one blob")]
     [TestCase(2, 5, TestName = "two blobs")]
     [TestCase(6, 1_000_000, TestName = "six blobs at a realistic blob fee")]
     public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
     {
-        // Widened: the product exceeds int at six blobs and a realistic blob fee.
+        // long: the product exceeds int at six blobs and a realistic blob fee.
         long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
         PayerExposureCache cache = new();
 
@@ -73,9 +70,8 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
-    // bound is on the pending set the pool would hold, and only a tx this one displaces may be discounted
-    // from it — same sender, same nonce, and the same payer, or some other payer is the one being freed.
+    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved; only a tx
+    // this one displaces — same sender, same nonce, same payer — may be discounted from the bound.
     [TestCase(0ul, false, false, TestName = "a fee bump discounts the tx it displaces")]
     [TestCase(1ul, false, true, TestName = "a later nonce joins the pending set instead")]
     [TestCase(0ul, true, true, TestName = "an incumbent paid by another payer frees that one")]
@@ -101,6 +97,38 @@ public class FrameTxPayerExposureFilterTests
         AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: false, incumbent));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
+    [Test]
+    public void Accept_DiscountsALightRecordIncumbent()
+    {
+        // At the shipped blob mode the incumbent is a frameless light record, which cannot be priced, so
+        // the discount has to read the reservation the record carries or a fee bump is refused exposure
+        // it no longer owes.
+        const int incumbentCost = TestCost;
+        const int bumpCost = TestCost + TestCost / 2;
+        const int balance = 2 * TestCost;
+
+        // The two summed exceed the balance, so only discounting the displaced record admits the bump.
+        Transaction incumbent = BlobFrameTxCosting(incumbentCost);
+        incumbent.Hash = TestItem.KeccakA;
+        incumbent.PayerAddress = Payer;
+        incumbent.PayerExposure = incumbentCost;
+        Transaction record = new LightTransaction(incumbent);
+
+        Transaction bump = BlobFrameTxCosting(bumpCost);
+        bump.Hash = TestItem.KeccakB;
+
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: true, record));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.Frames, Is.Null, "the incumbent must be frameless, or this pins nothing");
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        }
     }
 
     [Test]
@@ -281,6 +309,16 @@ public class FrameTxPayerExposureFilterTests
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Payer, (UInt256)wei);
         return state;
+    }
+
+    /// <summary>A blob-carrying frame tx whose max cost is exactly <paramref name="cost"/>: the blob leg is
+    /// priced at zero, so the gas leg alone decides it.</summary>
+    private static Transaction BlobFrameTxCosting(int cost)
+    {
+        Transaction tx = FrameTxCostingExactly(cost);
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = UInt256.Zero;
+        return tx;
     }
 
     /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>

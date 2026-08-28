@@ -120,9 +120,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        {
+            NoBaseFee = !call.ShouldSetBaseFee()
+        };
+
         if (CanStreamStructLogs(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
@@ -134,7 +138,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace;
         try
         {
-            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
         }
         catch (InsufficientBalanceException ex)
         {
@@ -316,6 +320,25 @@ public class DebugRpcModule(
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {
+        // EIP-8141: a frame transaction always executes at least one frame, so a frames-less receipt
+        // is malformed. Its payload still encodes (as an empty frames list) but no longer decodes, so
+        // it is rejected here rather than persisted as a receipt no peer could read back.
+        for (int i = 0; i < receiptForRpc.Length; i++)
+        {
+            ReceiptForRpc receipt = receiptForRpc[i];
+            if (receipt is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail($"Receipt at index {i} is null", ErrorCodes.InvalidParams));
+            }
+
+            if (receipt.Type == TxType.FrameTx && receipt.FrameReceipts is not { Length: > 0 })
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail(
+                    $"Receipt at index {i} is a frame transaction receipt carrying no frame receipts",
+                    ErrorCodes.InvalidParams));
+            }
+        }
+
         debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(static r => r.ToReceipt()).ToArray());
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }

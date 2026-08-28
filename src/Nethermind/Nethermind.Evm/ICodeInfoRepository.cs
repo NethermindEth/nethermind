@@ -17,11 +17,7 @@ public interface ICodeInfoRepository
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
 
     /// <summary>Resolves the precompile at <paramref name="codeSource"/>, or null when <paramref name="vmSpec"/> enables none there.</summary>
-    /// <remarks>
-    /// Unlike <see cref="GetCachedCodeInfo"/> this records no account access, so it creates no EIP-7928 block
-    /// access list entry. For protocol-level uses (EIP-8141 frame-signature validation) that evaluate a
-    /// precompile as a primitive without the transaction accessing its address.
-    /// </remarks>
+    /// <remarks>Records no account access, so unlike <see cref="GetCachedCodeInfo"/> it creates no EIP-7928 entry.</remarks>
     IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
