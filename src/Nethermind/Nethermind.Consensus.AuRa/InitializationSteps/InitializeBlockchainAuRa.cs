@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -11,6 +12,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -19,8 +21,12 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
-    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainAuRa(
+    AuRaNethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     protected AuRaNethermindApi Api => api;
     private INethermindApi NethermindApi => api;
@@ -97,11 +103,11 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             api.TxValidator!,
+            new SpecChangeTxValidator(api.SpecProvider.ChainId),
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _txGossipPolicy,
             [new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider)],
-            api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);
     }
 

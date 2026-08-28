@@ -5,8 +5,15 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -32,5 +39,40 @@ public class OptimismModuleTests
             .Any(step => step.StepType == typeof(StartOptimismCl));
 
         Assert.That(clStepRegistered, Is.EqualTo(clEnabled));
+    }
+
+    [Test]
+    public void Spec_change_validator_preserves_pre_bedrock_legacy_validation()
+    {
+        const ulong chainId = 10;
+        IOptimismReleaseSpec preBedrock = OptimismReleaseSpecSubstitute.Create();
+        preBedrock.IsEip1559Enabled.Returns(false);
+        IOptimismReleaseSpec postBedrock = OptimismReleaseSpecSubstitute.Create();
+        postBedrock.IsEip1559Enabled.Returns(true);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(0)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.ChainId.Returns(chainId);
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(new SpecChangeTxValidator(chainId))
+            .Keyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey);
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        builder.RegisterInstance(specProvider).As<ISpecProvider>();
+        using IContainer container = builder.Build();
+        ITxValidator validator = container.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator, Is.TypeOf<OptimismSpecChangeTxValidator>());
+            Assert.That(container.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey), Is.SameAs(validator));
+            Assert.That(validator.IsWellFormed(transaction, preBedrock).AsBool(), Is.True);
+            Assert.That(validator.IsWellFormed(transaction, postBedrock).AsBool(), Is.False);
+        }
     }
 }

@@ -196,6 +196,39 @@ public class BlobTxStorageTests
     }
 
     [Test]
+    public void DeleteMany_should_use_one_write_batch()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction first = CreateBlobTransaction();
+        Transaction second = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithNonce(1)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyB).TestObject;
+        blobTxStorage.Add(first);
+        blobTxStorage.Add(second);
+        TxLookupKey[] keys =
+        [
+            new(first.Hash, first.SenderAddress!, first.Timestamp),
+            new(second.Hash, second.SenderAddress!, second.Timestamp)
+        ];
+
+        ((IBatchDeleteTxStorage)blobTxStorage).DeleteMany(keys);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(columnsDb.StartedWriteBatchCount, Is.EqualTo(1));
+            Assert.That(blobTxStorage.TryGet(first.Hash, first.SenderAddress!, first.Timestamp, out _), Is.False);
+            Assert.That(blobTxStorage.TryGet(second.Hash, second.SenderAddress!, second.Timestamp, out _), Is.False);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(first.Hash, first.SenderAddress!, out _), Is.False);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(second.Hash, second.SenderAddress!, out _), Is.False);
+            Assert.That(blobTxStorage.GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
     public void TryGetMany_should_handle_all_missing_keys()
     {
         BlobTxStorage blobTxStorage = new();
