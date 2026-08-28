@@ -26,10 +26,11 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         }
 
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
-        // Still missing: the paymaster rules (no canonical runtime is pinned, so no instance can be recognized
-        // and every code-carrying pay target stays uncapped), a bound on simulation work, head-change
-        // revalidation and the eviction order, and the payer on blob-pool records restored from disk, which
-        // LightTxDecoder cannot tell from the expiry deadline as a second optional trailing scalar.
+        // Still missing: canonical-paymaster recognition (the EIP pins no runtime code) and re-counting the
+        // cap when a pay target gains code, a bound on simulation work, head-change revalidation and the
+        // eviction order, the payer and paymaster on blob-pool records restored from disk, which LightTxDecoder
+        // cannot tell from the expiry deadline as a second optional trailing scalar, and an approve-flagged
+        // prefix frame whose target declines, which moves the real payer past the frame the cap keys on.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
