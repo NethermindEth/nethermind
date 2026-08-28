@@ -427,6 +427,13 @@ serializes every other job behind it. What makes the number trustworthy:
   reverse (A B B A) — each node restarted and re-warmed, position bias cancelled, and the two master
   runs give an A/A control printed next to every delta — at twice the runtime; use it when a delta
   sits within a few percent.
+- **The noise floor follows the evidence in the run.** A measured A/A spread (two master runs) sets
+  it: twice the spread, minimum 1%. With no repeat it falls back to a constant — `NOISE_FLOOR_PCT`
+  2.5% when both arms ran here, `CACHED_NOISE_FLOOR_PCT` 5% when master came from the cache, because
+  then the arms are not co-run and the drift between the two jobs is measured nowhere. That ~1–1.5%
+  figure and the 2.5% constant are *in-run* evidence, so the wider floor is a placeholder until the
+  cross-job spread is measured from consecutive `corpus-baseline` runs; the comment says which floor
+  it applied.
 - **Paired per-record replay** (`timings_passes`, unpaced by default): each record is hit exactly
   N times per arm; the comment reports the median per-record delta with a bootstrap CI, how many
   records moved by more than 5%, and the closed-loop throughput at `timings_concurrency`
@@ -445,9 +452,9 @@ repeats pooled into one arm per side), appends it to the step summary and, on a
 label-triggered PR run, posts it as a PR comment. Rendering is best-effort — the artifact is the
 record — and a `tool_config.clients` override that names other arms is rendered by hand from
 the downloaded artifact. Read it correctly: a parity divergence is a correctness regression
-regardless of latency; a delta inside the A/A spread (or under ~2.5% when no repeat ran) is
-noise; an "Unequal load" line means the arms did not receive the same request count (k6 dropped
-iterations), so the deltas are not like for like.
+regardless of latency; a delta inside the A/A spread (or under the no-repeat floor the footer
+names) is noise; an "Unequal load" line means the arms did not receive the same request count (k6
+dropped iterations), so the deltas are not like for like.
 
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 

@@ -57,6 +57,11 @@ MANIFEST_LINE_PATTERN = re.compile(
     rf"(?P<prefix>iso\|{_LABEL}\|{_LABEL}\|{_LABEL}|mix\|{_LABEL}\|{_LABEL})=(?P<path>.+jsonbench-summary\.md)$")
 COMMENT_METRICS = (("avg", "avg"), ("med", "median"), ("p(90)", "p90"), ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max"))
 NOISE_FLOOR_PCT = 2.5
+# With a cached master baseline the arms are not co-run: master was measured in another job on another day, so
+# day-to-day drift (page cache, snapshot copy, kernel, ambient thermals) is inside the delta and no A/A control in
+# the run measures it. NOISE_FLOOR_PCT was calibrated from in-run repeats, so it does not apply; widen it until
+# consecutive master baselines have been used to measure the cross-job spread, and say so under the table.
+CACHED_NOISE_FLOOR_PCT = 5.0
 REQUEST_MISMATCH_PCT = 1.0
 RECORD_SHIFT_PCT = 5.0
 BOOTSTRAP_ROUNDS = 2000
@@ -462,7 +467,7 @@ def _slot_order(slot: str):
     return (int(head) if head.isdigit() else 0, slot)
 
 
-def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
+def _render_cells(lines: list[str], slot: str, cell: dict, no_repeat_floor: float = NOISE_FLOOR_PCT) -> None:
     base, cand = cell.get("master"), cell.get("PR")
     if not base or not cand:
         lines.append(f"@ `{slot}` rps: missing a client, cannot compare.")
@@ -475,7 +480,7 @@ def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
 
     def row(name: str, base_values: list[float], cand_values: list[float], unit: str) -> None:
         spread = _spread_pct(base_values)
-        floor = NOISE_FLOOR_PCT if spread is None else max(2 * spread, 1.0)  # an n=2 range is a ~1 sigma estimate
+        floor = no_repeat_floor if spread is None else max(2 * spread, 1.0)  # an n=2 range is a ~1 sigma estimate
         delta = _delta_pct(_mean(base_values), _mean(cand_values))
         spread_text = f"{spread:.1f}%" if spread is not None else "n/a"
         lines.append(f"| {name} | {_mean(base_values):.2f}{unit} | {_mean(cand_values):.2f}{unit} | {_arrow(delta, floor)} {delta:+.1f}% | {spread_text} |")
@@ -506,8 +511,8 @@ def _render_cells(lines: list[str], slot: str, cell: dict) -> None:
             p50 = _delta_pct(value(base_classes, "med"), value(cand_classes, "med"))
             p99 = _delta_pct(value(base_classes, "p(99)"), value(cand_classes, "p(99)"))
             lines.append(f"| {name} | {int(value(cand_classes, 'count'))} | {value(base_classes, 'med'):.2f} | {value(cand_classes, 'med'):.2f} "
-                         f"| {_arrow(p50, NOISE_FLOOR_PCT)} {p50:+.1f}% | {value(base_classes, 'p(99)'):.2f} | {value(cand_classes, 'p(99)'):.2f} "
-                         f"| {_arrow(p99, NOISE_FLOOR_PCT)} {p99:+.1f}% |")
+                         f"| {_arrow(p50, no_repeat_floor)} {p50:+.1f}% | {value(base_classes, 'p(99)'):.2f} | {value(cand_classes, 'p(99)'):.2f} "
+                         f"| {_arrow(p99, no_repeat_floor)} {p99:+.1f}% |")
         lines.append("")
 
 
@@ -549,23 +554,34 @@ def _render_parity(lines: list[str], reports: list[dict]) -> None:
             lines.append(f"Response parity ({who}): {agree}/{data['total']} **DIVERGES from master** — {defects}")
 
 
-def comment(stage_root: str, baseline_label: str, candidate_label: str) -> str:
-    """Render the PR comment from the STAGED tree, which is what enforces the aggregate-only boundary."""
+def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_baseline: bool = False) -> str:
+    """Render the PR comment from the STAGED tree, which is what enforces the aggregate-only boundary.
+
+    `cached_baseline` says master's numbers came from the cached master baseline instead of an arm run in this
+    job, which widens the noise floor the arrows use wherever no A/A repeat measured one.
+    """
     data = _collect(Path(stage_root), baseline_label, candidate_label)
     if not any(c["cells"] or c["timings"] for c in data.values()):
         return "No corpus cells were produced, so there is nothing to compare."
+    floor = CACHED_NOISE_FLOOR_PCT if cached_baseline else NOISE_FLOOR_PCT
     lines: list[str] = ["### `eth_call` corpus — PR vs master", ""]
     for name in sorted(data):
         corpus = data[name]
         lines += [f"**`{name}`**", ""]
         for slot in sorted(corpus["cells"], key=_slot_order):
-            _render_cells(lines, slot, corpus["cells"][slot])
+            _render_cells(lines, slot, corpus["cells"][slot], floor)
         _render_timings(lines, corpus)
         _render_parity(lines, corpus["parity"])
         lines.append("")
     lines.append("<sub>Fixed corpus, seeded request sequence, arms interleaved. A/A spread is master against its own repeat: "
-                 f"a delta within twice it (min 1%; ~{NOISE_FLOOR_PCT:g}% when no repeat ran) is noise. A PR that changes "
+                 f"a delta within twice it (min 1%; ~{floor:g}% when no repeat ran) is noise. A PR that changes "
                  "results is a correctness regression regardless of latency.</sub>")
+    if cached_baseline:
+        lines.append("")
+        lines.append(f"<sub>⚠️ master was **not co-run** here: its numbers come from the cached master baseline, so this run "
+                     f"carries no A/A control and the drift between the two jobs is measured nowhere. The no-repeat floor above "
+                     f"is therefore {CACHED_NOISE_FLOOR_PCT:g}%, not the in-run {NOISE_FLOOR_PCT:g}%; for a delta near it, re-run with "
+                     f"`baseline_image=<master image>` (both arms in one job) and `rounds=2`.</sub>")
     return "\n".join(lines)
 
 
@@ -582,6 +598,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     comment_parser.add_argument("stage_root")
     comment_parser.add_argument("--baseline", required=True)
     comment_parser.add_argument("--candidate", required=True)
+    comment_parser.add_argument("--cached-baseline", action="store_true",
+                                help="master's numbers came from the cached baseline, not from an arm run here")
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "sanitize":
@@ -589,7 +607,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif arguments.command == "stage":
             stage(arguments.output_root, arguments.stage_root)
         else:
-            print(comment(arguments.stage_root, arguments.baseline, arguments.candidate))
+            print(comment(arguments.stage_root, arguments.baseline, arguments.candidate, arguments.cached_baseline))
     except CorpusResultsError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

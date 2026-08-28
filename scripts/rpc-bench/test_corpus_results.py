@@ -309,6 +309,40 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("20000/19900 requests/run", body)
         self.assertNotIn("Unequal load", body)
 
+    def test_a_cached_baseline_widens_the_no_repeat_noise_floor(self):
+        """Master from the cache is not co-run, so the in-run floor does not apply to the arrows."""
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.6, 103.0)   # +3%: past the in-run floor, inside the cross-job one
+
+        in_run = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertRegex(in_run, r"\| avg \| 20\.00 ms \| 20\.60 ms \| 🔴")
+
+        cached = corpus_results.comment(str(self.root), "nethermind_master", "nethermind", cached_baseline=True)
+        self.assertRegex(cached, r"\| avg \| 20\.00 ms \| 20\.60 ms \| ⚪")
+        self.assertIn("not co-run", cached)
+        self.assertIn(f"is therefore {corpus_results.CACHED_NOISE_FLOOR_PCT:g}%, not the in-run "
+                      f"{corpus_results.NOISE_FLOOR_PCT:g}%", cached)
+        self.assertIn(f"~{corpus_results.CACHED_NOISE_FLOOR_PCT:g}% when no repeat ran", cached)
+        self.assertNotIn("not co-run", in_run)
+
+    def test_a_cached_baseline_does_not_widen_a_measured_aa_spread(self):
+        """An A/A spread measured in the run still sets the floor; only the no-repeat fallback widens."""
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind_master_r2", 20.1, 100.0)
+        self._cell("nethermind", 20.6, 103.0)
+
+        cached = corpus_results.comment(str(self.root), "nethermind_master", "nethermind", cached_baseline=True)
+        self.assertRegex(cached, r"\| avg \| 20\.05 ms \| 20\.60 ms \| 🔴")
+
+    def test_comment_cli_passes_the_cached_baseline_flag(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.6, 103.0)
+        argv = ["comment", str(self.root), "--baseline", "nethermind_master", "--candidate", "nethermind",
+                "--cached-baseline"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(corpus_results.main(argv), 0)
+        self.assertIn("not co-run", out.getvalue())
+
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")

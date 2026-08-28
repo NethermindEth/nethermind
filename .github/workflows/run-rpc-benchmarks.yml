@@ -1070,15 +1070,16 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/rpc-bench/lib.sh
-          baseline_label="$(arm_label nethermind "${BASELINE_IMAGE}")"; baseline_note="master \`${BASELINE_IMAGE}\`"
+          baseline_label="$(arm_label nethermind "${BASELINE_IMAGE}")"; baseline_note="master \`${BASELINE_IMAGE}\`"; cached=()
           if [[ -f "${STAGE_ROOT}/baseline.json" ]]; then
             baseline_label="$(jq -r .label "${STAGE_ROOT}/baseline.json")"
             baseline_note="master \`$(jq -r .image "${STAGE_ROOT}/baseline.json")\` (cached baseline from $(jq -r .date "${STAGE_ROOT}/baseline.json"), [run]($(jq -r .run_url "${STAGE_ROOT}/baseline.json")))"
+            cached=(--cached-baseline)   # master ran in another job on another day: no A/A control, wider noise floor
           elif [[ "${BASELINE_IMAGE}" == "cache" ]]; then
             baseline_label="$(arm_label nethermind "${FALLBACK_IMAGE}")"; baseline_note="master \`${FALLBACK_IMAGE}\` (no cached baseline yet — run in this job)"
           fi
           python3 scripts/rpc-bench/corpus_results.py comment "${STAGE_ROOT}" \
-            --baseline "${baseline_label}" --candidate "$(arm_label nethermind "${CANDIDATE_IMAGE}")" > "${COMMENT_FILE}"
+            --baseline "${baseline_label}" --candidate "$(arm_label nethermind "${CANDIDATE_IMAGE}")" "${cached[@]+"${cached[@]}"}" > "${COMMENT_FILE}"
           printf '\n<sub>%s vs PR `%s` — [run](%s)</sub>\n' "${baseline_note}" "${CANDIDATE_IMAGE}" "${RUN_URL}" >> "${COMMENT_FILE}"
           { echo; cat "${COMMENT_FILE}"; echo; } >> "${GITHUB_STEP_SUMMARY}"
 
