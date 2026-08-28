@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -48,10 +49,10 @@ public class BlockRangeUpdateMessageSerializerTests
     }
 
     [Test]
-    public void Deserialize_Throws_On_Null_Latest_Block_Hash()
+    public void Rejects_empty_latest_block_hash()
     {
         BlockRangeUpdateMessageSerializer serializer = new();
 
-        Assert.That(() => serializer.Deserialize([0xc3, 0x80, 0x80, 0x80]), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c3808080")), Throws.InstanceOf<RlpException>());
     }
 }

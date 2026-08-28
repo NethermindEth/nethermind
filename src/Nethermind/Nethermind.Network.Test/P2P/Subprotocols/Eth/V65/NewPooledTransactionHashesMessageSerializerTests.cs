@@ -14,37 +14,34 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class NewPooledTransactionHashesMessageSerializerTests
     {
-        private static void Test(Hash256[] keys)
+        private static void Test(Hash256[] keys, string? expected = null)
         {
             using NewPooledTransactionHashesMessage message = new(keys.ToPooledList());
             NewPooledTransactionHashesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message);
+            SerializerTester.TestZero(serializer, message, expected);
         }
 
         [Test]
         public void Roundtrip()
         {
             Hash256[] keys = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
-            Test(keys);
+            Test(keys, EthSerializerGoldens.KeccakAbcListRlp);
         }
 
         [Test]
-        public void Deserialize_throws_on_null_hash()
+        public void Rejects_null_hash()
         {
-            Hash256[] keys = [null!, TestItem.KeccakA, null!, TestItem.KeccakB, null!, null!];
-            using NewPooledTransactionHashesMessage message = new(keys.ToPooledList());
             NewPooledTransactionHashesMessageSerializer serializer = new();
-            byte[] bytes = serializer.Serialize(message);
 
-            Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpException>());
         }
 
         [Test]
         public void Empty_to_string()
         {
             using NewPooledTransactionHashesMessage message = new(ArrayPoolList<Hash256>.Empty());
-            _ = message.ToString();
+            Assert.That(message.ToString(), Does.StartWith(nameof(NewPooledTransactionHashesMessage)));
         }
     }
 }

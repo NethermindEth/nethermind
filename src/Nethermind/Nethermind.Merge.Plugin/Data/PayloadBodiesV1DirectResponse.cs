@@ -242,16 +242,10 @@ internal static class PayloadBodiesDirectResponseWriter
         int length = TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-        try
-        {
-            RlpWriter rlpWriter = new(buffer);
-            TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
-            HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        RlpWriter rlpWriter = new(buffer);
+        TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
+        HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)

@@ -32,14 +32,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Deserialize_throws_on_null_hash()
+        public void Rejects_null_hash()
         {
-            Hash256[] hashes = { null!, TestItem.KeccakA, null!, TestItem.KeccakB, null!, null! };
-            using GetReceiptsMessage message = new(hashes.ToPooledList());
             GetReceiptsMessageSerializer serializer = new();
-            byte[] bytes = serializer.Serialize(message);
 
-            Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpException>());
         }
 
         [Test]

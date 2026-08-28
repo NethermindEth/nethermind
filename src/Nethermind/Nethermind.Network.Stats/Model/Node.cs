@@ -20,6 +20,7 @@ namespace Nethermind.Stats.Model
     public sealed class Node : IFormattable, IEquatable<Node>
     {
         private string? _clientId;
+        private string? _enodeHost;
         private string? _paddedHost;
         private string? _paddedPort;
         private ulong _requestingEnrSequence;
@@ -196,6 +197,10 @@ namespace Nethermind.Stats.Model
                     ClearDiscoveryEndpoint();
                 }
             }
+            else if (networkNode.DiscoveryPort == 0)
+            {
+                ClearDiscoveryEndpoint();
+            }
             else if (networkNode.DiscoveryPort != networkNode.Port)
             {
                 DiscoveryPort = networkNode.DiscoveryPort;
@@ -297,6 +302,7 @@ namespace Nethermind.Stats.Model
         {
             Address = address;
             _host = null;
+            _enodeHost = null;
             _paddedHost = null;
             _paddedPort = null;
             _discoveryAddress = null;
@@ -354,6 +360,8 @@ namespace Nethermind.Stats.Model
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');
+        private string EnodeHost => _enodeHost ??= Enode.FormatEnodeHost(Address.Address);
+
         private string PaddedPort
         {
             get
@@ -393,10 +401,10 @@ namespace Nethermind.Stats.Model
             Format.Short => $"{Host}:{Port}",
             Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
             Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
-            Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
-            Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
-            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
-            _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+            Format.WithId => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}|{ClientId}",
+            Format.ENode => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}",
+            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}|{Id.Address}",
+            _ => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}"
         };
 
         public bool Equals(Node? other)

@@ -59,13 +59,13 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
-        Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
-        Address beneficiary = decoderContext.DecodeAddressNonNull();
-        Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
-        Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
-        Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
-        Bloom bloom = decoderContext.DecodeBloomNonNull();
+        Hash256 parentHash = decoderContext.DecodeKeccak();
+        Hash256 unclesHash = decoderContext.DecodeKeccak();
+        Address beneficiary = decoderContext.DecodeAddress();
+        Hash256 stateRoot = decoderContext.DecodeKeccak();
+        Hash256 transactionsRoot = decoderContext.DecodeKeccak();
+        Hash256 receiptsRoot = decoderContext.DecodeKeccak();
+        Bloom bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
@@ -115,20 +115,20 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
-        writer.Encode(h.ParentHash);
-        writer.Encode(h.UnclesHash);
-        writer.Encode(h.Beneficiary);
-        writer.Encode(h.StateRoot);
-        writer.Encode(h.TxRoot);
-        writer.Encode(h.ReceiptsRoot);
-        writer.Encode(h.Bloom);
+        writer.Encode(h.ParentHash ?? Keccak.Zero);
+        writer.Encode(h.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
+        writer.Encode(h.Beneficiary ?? Address.Zero);
+        writer.Encode(h.StateRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.TxRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.ReceiptsRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.Bloom ?? Bloom.Empty);
         writer.Encode(h.Difficulty);
         writer.Encode(h.Number);
         writer.Encode(h.GasLimit);
         writer.Encode(h.GasUsed);
         writer.Encode(h.Timestamp);
         writer.Encode(h.ExtraData);
-        writer.Encode(h.MixHash);
+        writer.Encode(h.MixHash ?? Keccak.Zero);
         writer.Encode(h.Nonce, NonceLength);
 
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
@@ -178,20 +178,20 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)
     {
         int contentLength =
-            +Rlp.LengthOf(header.ParentHash)
-            + Rlp.LengthOf(header.UnclesHash)
-            + Rlp.LengthOf(header.Beneficiary)
-            + Rlp.LengthOf(header.StateRoot)
-            + Rlp.LengthOf(header.TxRoot)
-            + Rlp.LengthOf(header.ReceiptsRoot)
-            + Rlp.LengthOf(header.Bloom)
+            +Rlp.LengthOf(header.ParentHash ?? Keccak.Zero)
+            + Rlp.LengthOf(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
+            + Rlp.LengthOf(header.Beneficiary ?? Address.Zero)
+            + Rlp.LengthOf(header.StateRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.TxRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.ReceiptsRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.Bloom ?? Bloom.Empty)
             + Rlp.LengthOf(header.Difficulty)
             + Rlp.LengthOf(header.Number)
             + Rlp.LengthOf(header.GasLimit)
             + Rlp.LengthOf(header.GasUsed)
             + Rlp.LengthOf(header.Timestamp)
             + Rlp.LengthOf(header.ExtraData)
-            + Rlp.LengthOf(header.MixHash)
+            + Rlp.LengthOf(header.MixHash ?? Keccak.Zero)
             + Rlp.LengthOfNonce(header.Nonce);
 
         contentLength += GetHeaderSpecificContentLength(header, rlpBehaviors);

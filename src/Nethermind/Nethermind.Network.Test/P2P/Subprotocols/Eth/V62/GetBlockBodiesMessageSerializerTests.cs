@@ -67,7 +67,7 @@ public class GetBlockBodiesMessageSerializerTests
     public void To_string()
     {
         using GetBlockBodiesMessage newBlockMessage = new();
-        _ = newBlockMessage.ToString();
+        Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(GetBlockBodiesMessage)));
     }
 
     private static Hash256[] CreateHashes(int count)

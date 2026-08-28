@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -275,6 +276,62 @@ public class EthSimulateTestsBlocksAndTransactions
     private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
     {
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Genesis persisted, the block below still queued: a body is readable only through the store that queued
+    /// its deferred write, so eth_simulateV1 must read through that store or silently build on an older parent.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_requested_parent_while_its_body_write_is_pending()
+    {
+        PausedDeferredBlockDataWriter deferredWriter = new();
+        TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new GenesisOnlyRpcBlockchain())
+            .Build((builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddSingleton<IDeferredBlockDataWriter>(deferredWriter));
+
+        deferredWriter.Drain();
+        Block parent = await chain.AddBlock();
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new()] };
+
+        SimulateBlockResult<SimulateCallResult> simulated =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(parent.Number)).Data[0];
+
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
+        Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+    }
+
+    private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
+    {
+        private readonly List<Action> _queued = [];
+
+        public bool Enabled => true;
+
+        public void Enqueue(Action work)
+        {
+            lock (_queued) _queued.Add(work);
+        }
+
+        public void Drain()
+        {
+            Action[] pending;
+            lock (_queued)
+            {
+                pending = [.. _queued];
+                _queued.Clear();
+            }
+
+            foreach (Action work in pending) work();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Drain();
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>
@@ -867,6 +924,310 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+    }
+
+    /// <summary>
+    /// Regression test for the glamsterdam-devnet-8 Hive divergence: under EIP-7928 the block-access-list
+    /// execution path must also skip EIP-3607, so a state-overridden contract sender is not rejected with
+    /// "sender has deployed code" (-38024) — a funded one succeeds, an unfunded one reaches the normal
+    /// balance check (-38014).
+    /// </summary>
+    [TestCase(true, null, TestName = "Amsterdam contract sender: funded succeeds")]
+    [TestCase(false, ErrorCodes.InsufficientFunds, TestName = "Amsterdam contract sender: unfunded fails on funds, not EIP-3607")]
+    public async Task eth_simulateV1_contract_sender_skips_eip3607_on_bal_path(bool funded, int? expectedErrorCode)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip3607Enabled = true };
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        // Pin the EIP-7928 premise so the test can't silently degrade into a duplicate of the London case.
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // Explicit Gas avoids the EIP-8037 block-gas-limit default masking the result with -38015 (#12692);
+        // zero gas price makes the unfunded failure unambiguously the value transfer (-38014), not the fee.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressC, new AccountOverride { Balance = funded ? 1.Ether : UInt256.Zero, Code = Bytes.FromHexString("0x60006000") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressC, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        if (expectedErrorCode is null)
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode.Value));
+        }
+    }
+
+    /// <summary>Builds a chain on the Amsterdam fork with the EIP-7928 block-access-list path active.</summary>
+    private static async Task<TestRpcBlockchain> BuildAmsterdamBalChain()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        // Pin the EIP-7928 premise so a spec change can't silently turn these into non-BAL tests.
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+    }
+
+    /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must route its tx
+    /// processors through the simulate adapter, so the simulate gas accounting still runs. Without
+    /// the adapter the reported block <c>gasUsed</c> is left at 0 even though the call executed
+    /// successfully.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        // Explicit Gas avoids the EIP-8037 block-gas default (#12692 item 1); zero gas price keeps
+        // the funded transfer unambiguously successful.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        Assert.That(result.Data![0].GasUsed, Is.GreaterThan(0));
+    }
+
+    /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must honour
+    /// <c>validation:false</c>. Routing its tx processors through the simulate adapter makes the BAL
+    /// path pick <c>Trace</c> (skipping sender validation) instead of always calling <c>Execute</c>,
+    /// so a call carrying a stale nonce still simulates successfully when validation is off.
+    /// </summary>
+    [TestCase(true, ErrorCodes.NonceTooHigh, TestName = "validation=true rejects wrong nonce on BAL path")]
+    [TestCase(false, null, TestName = "validation=false skips nonce validation on BAL path")]
+    public async Task eth_simulateV1_honours_validation_flag_on_bal_path(bool validation, int? expectedErrorCode)
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        // Funded sender, zero gas price (no fee pre-validation), but a nonce far ahead of the account's:
+        // only skipped validation (Trace) lets it through.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 99 }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        if (expectedErrorCode is null)
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode.Value));
+        }
+    }
+
+    /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must enforce the
+    /// <c>JsonRpc.GasCap</c> budget across the calls of a request. The clamp to the running
+    /// <c>TotalGasLeft</c> lives in the simulate adapter, so with a tight cap the second call is
+    /// clamped below intrinsic gas and rejected. Without the adapter the cap is ignored and both
+    /// calls run with their full requested gas.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_enforces_gas_cap_across_calls_on_bal_path()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        // Under Amsterdam (EIP-2780) the intrinsic for this value-free transfer is TX_BASE_COST 12000 +
+        // cold-account 2600 = 14600. With GasCap 20000 the first call leaves 5400 < 14600, so the second
+        // call — clamped to the remaining budget — is rejected below intrinsic. (Pinned so a reprice that
+        // pushes two calls under the cap can't silently make this pass without exercising the clamp.)
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 20_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 20_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        // With the budget enforced, the first call spends most of it and the second call's clamped
+        // gas falls below intrinsic. Without the adapter both calls run unclamped and the request succeeds.
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+    }
+
+    /// <summary>
+    /// #12692 (item 1): a no-gas call must default to the block budget, not GasCap (100M) — which the EIP-8037
+    /// inclusion check rejects (ExecutionDimensionExceeded on a small block, StateDimensionExceeded below the cap).
+    /// </summary>
+    [TestCase(5_000_000ul, TestName = "no-gas call fits a small block's gas budget (execution dimension)")]
+    [TestCase(30_000_000ul, TestName = "no-gas call fits a realistic block's gas budget (state dimension)")]
+    public async Task eth_simulateV1_defaults_missing_gas_to_block_limit_on_bal_path(ulong blockGasLimit)
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+    }
+
+    /// <summary>
+    /// #12692 (item 1): the no-gas default tracks the running budget, so multiple gas-less calls in one block all fit.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_defaults_missing_gas_for_multiple_calls_on_bal_path()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
+    }
+
+    /// <summary>
+    /// #12692 (item 1, state dimension): a storage write costs far more state gas than execution gas, so a
+    /// following no-gas call must clamp to the state budget too, else StateDimensionExceeded.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_no_gas_call_after_state_write_fits_state_dimension()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        // runtime code PUSH1 1, PUSH1 0, SSTORE: writes a new slot → large EIP-8037 state gas
+                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x6001600055") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
     /// <summary>

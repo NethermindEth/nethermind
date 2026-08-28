@@ -720,6 +720,25 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    // GetFinalSpec skips everything above SpecProviderExtensions.LastScheduledForkTimestamp so undated forks
+    // stay out of it. Widening that band must not swallow a fork a chain has actually scheduled — it would
+    // do so silently, by landing the probe in an earlier bucket.
+    [TestCase("foundation")]
+    [TestCase("sepolia")]
+    [TestCase("hoodi")]
+    [TestCase("gnosis")]
+    [TestCase("chiado")]
+    public void Final_spec_skips_only_the_unscheduled_fork_band(string chain)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        foreach (ForkActivation activation in provider.TransitionActivations)
+        {
+            Assert.That(activation.Timestamp, Is.Null.Or.LessThanOrEqualTo(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp),
+                $"{chain} schedules a fork above the unscheduled-fork band, which GetFinalSpec would skip");
+        }
+    }
+
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);

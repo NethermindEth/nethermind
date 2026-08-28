@@ -443,19 +443,13 @@ public static class HexWriter
         // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
         byte[]? rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;
         Span<byte> token = rented is not null ? rented : stackalloc byte[StackThreshold];
-        try
-        {
-            token[0] = (byte)'"';
-            token[1] = (byte)'0';
-            token[2] = (byte)'x';
-            EncodeToHex(data, ref token[3]);
-            token[tokenLength - 1] = (byte)'"';
-            writer.WriteRawValue(token[..tokenLength], skipInputValidation: true);
-        }
-        finally
-        {
-            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
-        }
+        token[0] = (byte)'"';
+        token[1] = (byte)'0';
+        token[2] = (byte)'x';
+        EncodeToHex(data, ref token[3]);
+        token[tokenLength - 1] = (byte)'"';
+        writer.WriteRawValue(token[..tokenLength], skipInputValidation: true);
+        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
     }
 
     private static void EncodeToHex(ReadOnlySpan<byte> src, ref byte dest)

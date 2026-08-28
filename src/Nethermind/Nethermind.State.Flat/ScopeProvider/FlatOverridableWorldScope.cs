@@ -75,7 +75,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             snapshot.Dispose();
         }
 
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv, transientResource);
+        transientResource.ReleaseLease();
     }
 
     private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)

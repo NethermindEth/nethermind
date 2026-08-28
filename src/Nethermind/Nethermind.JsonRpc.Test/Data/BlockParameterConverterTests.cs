@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_read_block_number(string input, ulong output)
         {
             IJsonSerializer serializer = new EthereumJsonSerializer();
-
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
 
             Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));

@@ -72,12 +72,12 @@ internal class EraReaderTests
     }
 
     [Test]
-    public async Task ReadAccumulator_DoesNotThrow()
+    public async Task ReadAccumulator_ReturnsRootOfAddedContents()
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
         using EraReader sut = new(tmpFile.FilePath);
-        Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
+        Assert.That(sut.ReadAccumulator(), Is.EqualTo(ComputeAccumulatorRoot(tmpFile.AddedContents)));
     }
 
     [TestCase(0UL)]
@@ -111,14 +111,9 @@ internal class EraReaderTests
     [Test]
     public async Task VerifyAccumulator_CreateBlocks_AccumulatorMatches()
     {
-        using AccumulatorCalculator calculator = new();
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
-        foreach ((Block, TxReceipt[]) tmpFileAddedContent in tmpFile.AddedContents)
-        {
-            calculator.Add(tmpFileAddedContent.Item1.Hash!, tmpFileAddedContent.Item1.TotalDifficulty!.Value);
-        }
 
-        ValueHash256 root = calculator.ComputeRoot();
+        ValueHash256 root = ComputeAccumulatorRoot(tmpFile.AddedContents);
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         Assert.That(root, Is.EqualTo(fileRoot));
@@ -138,6 +133,14 @@ internal class EraReaderTests
     {
         RlpReader ctx = new(bytes);
         return ctx.DecodeNonNullArray<TxReceipt>(new ReceiptMessageDecoder());
+    }
+
+    private static ValueHash256 ComputeAccumulatorRoot(IEnumerable<(Block Block, TxReceipt[] Receipts)> contents)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach ((Block block, _) in contents)
+            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        return calculator.ComputeRoot();
     }
 
     private static void AssertBlockEquivalent(Block actual, Block expected) =>

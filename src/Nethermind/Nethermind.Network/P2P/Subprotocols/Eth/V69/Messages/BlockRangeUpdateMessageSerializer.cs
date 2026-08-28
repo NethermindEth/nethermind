@@ -32,7 +32,7 @@ public class BlockRangeUpdateMessageSerializer :
         {
             EarliestBlock = ctx.DecodeULong(),
             LatestBlock = ctx.DecodeULong(),
-            LatestBlockHash = ctx.DecodeKeccakNonNull()
+            LatestBlockHash = ctx.DecodeKeccak()
         };
     }
 

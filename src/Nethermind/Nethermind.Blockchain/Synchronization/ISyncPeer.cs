@@ -37,6 +37,13 @@ namespace Nethermind.Blockchain.Synchronization
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
+        /// <summary>
+        /// Asks the peer for the header of <paramref name="hash"/>, or of its announced head when null.
+        /// </summary>
+        /// <returns>
+        /// The header of the requested block, or <c>null</c> if the peer does not have it. A peer answering with
+        /// any other block is disconnected, so callers never need to re-check the hash of the result.
+        /// </returns>
         Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
         void NotifyOfNewRange(BlockHeader earliest, BlockHeader latest) { }

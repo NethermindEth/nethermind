@@ -26,5 +26,15 @@ namespace Nethermind.Core.Test.Json
 
             Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<TxType>(json, options));
         }
+
+        [TestCase(TxType.Legacy, "\"0x0\"")]
+        [TestCase(TxType.AccessList, "\"0x1\"")]
+        [TestCase(TxType.EIP1559, "\"0x2\"")]
+        [TestCase(TxType.Blob, "\"0x3\"")]
+        [TestCase(TxType.SetCode, "\"0x4\"")]
+        [TestCase((TxType)16, "\"0x10\"")]
+        [TestCase(TxType.DepositTx, "\"0x7e\"")]
+        public void Serializes_as_hex_quantity(TxType type, string expectedJson) =>
+            TestConverter(type, expectedJson, new TxTypeConverter(), static (before, after) => before.Equals(after));
     }
 }

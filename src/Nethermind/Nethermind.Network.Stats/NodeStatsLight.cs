@@ -17,7 +17,7 @@ namespace Nethermind.Stats;
 /// <summary>
 /// Initial version of Reputation calculation mostly based on EthereumJ impl
 /// </summary>
-public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeStats
+public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProvider? timeProvider = null) : INodeStats
 {
     private readonly StatsParameters _statsParameters = StatsParameters.Instance;
 
@@ -65,7 +65,8 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
         // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
         // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
         maxResponseSize: 3_000_000,
-        initialRequestSize: 4
+        initialRequestSize: 4,
+        timeProvider: timeProvider
     );
 
     private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
@@ -82,14 +83,16 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeS
         // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
         // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
         maxResponseSize: 3_000_000,
-        initialRequestSize: 8
+        initialRequestSize: 8,
+        timeProvider: timeProvider
     );
 
     private readonly LatencyBasedRequestSizer _snapRequestSizer = new(
         minRequestLimit: 50000,
         maxRequestLimit: 3_000_000,
         lowerWatermark: TimeSpan.FromMilliseconds(2000),
-        upperWatermark: TimeSpan.FromMilliseconds(3500)
+        upperWatermark: TimeSpan.FromMilliseconds(3500),
+        timeProvider: timeProvider
     );
 
     public long CurrentNodeReputation(DateTime nowUTC) => CalculateCurrentReputation(nowUTC);

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -69,32 +70,12 @@ public class StatusMessageSerializerTests
         );
     }
 
-    [TestCaseSource(nameof(MalformedRequiredHashPayloads))]
-    public void Deserialize_Throws_On_Null_Required_Hash(byte[] payload)
+    [TestCase("ed450180c68400000000808080a00000000000000000000000000000000000000000000000000000000000000000")]
+    [TestCase("ed4501a00000000000000000000000000000000000000000000000000000000000000000c6840000000080808080")]
+    public void Rejects_empty_hash(string message)
     {
         StatusMessageSerializer69 serializer = new();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.TypeOf<RlpException>());
-    }
-
-    private static IEnumerable<byte[]> MalformedRequiredHashPayloads()
-    {
-        yield return [
-            0xed, 0x45, 0x01, 0x80, 0xc6, 0x84, 0x00, 0x00, 0x00, 0x00, 0x80,
-            0x80, 0x80, 0xa0,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ];
-
-        yield return [
-            0xed, 0x45, 0x01, 0xa0,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0xc6, 0x84, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80, 0x80, 0x80
-        ];
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString(message)), Throws.InstanceOf<RlpException>());
     }
 }
