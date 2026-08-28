@@ -457,7 +457,10 @@ public class LogIndexBuilderTests
             .Get(Arg.Is<Block>(b => b.Number == lateHeight))
             .Returns([new TxReceipt()]);
 
+        bool downloaded = false;
         ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(_ => Volatile.Read(ref downloaded) ? 1UL : (ulong?)null);
+        pointers.LowestInsertedReceiptBlockNumber.Returns(_ => Volatile.Read(ref downloaded) ? 1UL : (ulong?)null);
         RecordingLogIndexStorage storage = new();
         LogIndexBuilder builder = GetService(
             storage,
@@ -474,8 +477,7 @@ public class LogIndexBuilderTests
             "while the ancient download is still descending, an absent height below the boundary is late rather than reclaimed - the descent must hold at the boundary instead of fabricating");
 
         Volatile.Write(ref arrived, true);
-        pointers.LowestInsertedBodyNumber.Returns(1UL);
-        pointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
+        Volatile.Write(ref downloaded, true);
 
         await WaitMinBlockAsync(storage, 0, cancellation);
         await builder.BackwardSyncCompletion.WaitAsync(cancellation);

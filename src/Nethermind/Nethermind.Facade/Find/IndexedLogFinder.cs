@@ -71,6 +71,14 @@ public class IndexedLogFinder(
 
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
+        // Rejected eagerly and before any filter state is touched: the endpoint probe only sees the two
+        // endpoint headers, so it cannot notice reclaimed receipts in the interior. Genesis is the one
+        // below-boundary prefix with nothing to lose.
+        ulong lowestStored = _blockFinder.GetLowestBlock();
+        bool uncoveredBelowBoundary = fromBlock.Number < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
+        if (uncoveredBelowBoundary && (fromBlock.Number != 0 || lowestStored != 1))
+            throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
+
         bool tryUseIndex = filter.UseIndex;
         filter.UseIndex = false;
 
@@ -85,17 +93,8 @@ public class IndexedLogFinder(
             Math.Min((int)toBlock.Number, indexTo)
         );
 
-        // Rejected eagerly: the endpoint probe only sees the two endpoint headers, so it cannot notice
-        // reclaimed receipts in the interior. Genesis is the one below-boundary prefix with nothing to lose.
-        ulong lowestStored = _blockFinder.GetLowestBlock();
-        if (fromBlock.Number < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
-        {
-            if (fromBlock.Number != 0 || lowestStored != 1)
-                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
-
-            if ((ulong)range.from < lowestStored)
-                range.from = (int)lowestStored;
-        }
+        if (uncoveredBelowBoundary && (ulong)range.from < lowestStored)
+            range.from = (int)lowestStored;
 
         if (range.from > range.to)
             return null;

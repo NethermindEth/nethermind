@@ -76,6 +76,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly ISyncPointers? _syncPointers;
     private int _stalledBelowBoundary = -1;
     private bool _stallWarned;
+    private bool _holdLogged;
 
     public string Description => "log index builder";
 
@@ -401,6 +402,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                                 if (_logger.IsWarn) _logger.Warn(
                                     $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} still has a body but no readable receipts - the descent is stalled until it is reclaimed.");
                             }
+                        }
+                        else if (!_holdLogged)
+                        {
+                            _holdLogged = true;
+                            if (_logger.IsDebug) _logger.Debug(
+                                $"{GetLogPrefix(isForward)}: holding at the oldest stored block {lowestStored} until the ancient bodies and receipts backfill reaches its barriers.");
                         }
                     }
 

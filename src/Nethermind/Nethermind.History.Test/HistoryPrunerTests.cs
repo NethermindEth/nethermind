@@ -302,6 +302,46 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
+    [TestCase(null, false)]
+    [TestCase(5000UL, false)]
+    [TestCase(1UL, true)]
+    public void SetDeletePointerToOldestBlock_holds_until_the_ancient_bodies_feed_reaches_its_barrier(ulong? bodyPointer, bool searches)
+    {
+        TestMemDb metadataDb = new();
+        if (bodyPointer is not null)
+            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(bodyPointer.Value).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = new(
+            blockTree,
+            Substitute.For<IReceiptStorage>(),
+            Substitute.For<IBlockAccessListStore>(),
+            new TestSpecProvider(new ReleaseSpec()),
+            chainLevels,
+            Substitute.For<IHeaderStore>(),
+            dbProvider,
+            new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 },
+            BlocksConfig,
+            new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true },
+            new ProcessExitSource(new()),
+            Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            NullPrunedReceiptRetention.Instance,
+            LimboLogs.Instance);
+
+        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
+
+        if (searches)
+            chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+        else
+            chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+    }
+
     [TestCase(5u)]
     [TestCase(0u)]
     public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler(uint pruningTimeoutSeconds)
@@ -769,6 +809,7 @@ public class HistoryPrunerTests
         IBackgroundTaskScheduler scheduler = null)
     {
         BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+        bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL).Bytes);
         blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         for (int i = 0; i < blocks; i++)
         {

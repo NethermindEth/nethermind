@@ -56,6 +56,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
+    private readonly ISyncConfig _syncConfig;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
@@ -116,6 +117,7 @@ public class HistoryPruner : IHistoryPruner
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
         _fastSync = syncConfig.FastSync;
+        _syncConfig = syncConfig;
         _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
@@ -331,6 +333,13 @@ public class HistoryPruner : IHistoryPruner
 
     internal bool SetDeletePointerToOldestBlock()
     {
+        // While the ancient bodies feed is still descending, the oldest existing body is the download
+        // frontier, not the truth - a pointer latched from it would over-report forever.
+        if (AncientBodiesStillDownloading())
+        {
+            return false;
+        }
+
         ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
             _minDeletableBlockNumber,
             _blockTree.SyncPivot.BlockNumber,
@@ -345,6 +354,17 @@ public class HistoryPruner : IHistoryPruner
         }
 
         return false;
+    }
+
+    private bool AncientBodiesStillDownloading()
+    {
+        if (!_fastSync || _syncConfig.PivotNumber == 0 || !_syncConfig.DownloadBodiesInFastSync)
+        {
+            return false;
+        }
+
+        byte[]? pointer = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
+        return pointer is null || new RlpReader(pointer).DecodeULong() > _syncConfig.AncientBodiesBarrierCalc;
     }
 
     /// <summary>

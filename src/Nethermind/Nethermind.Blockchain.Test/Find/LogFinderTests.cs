@@ -502,6 +502,30 @@ public class LogFinderTests
     }
 
     [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_OnEveryPollOfAStoredFilter()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+        LogFilter stored = BoundaryFilter();
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+        Assert.That(stored.UseIndex, Is.True,
+            "eth_getFilterLogs reuses the stored LogFilter instance, so a throw must not leave UseIndex cleared and route the retry around the guard");
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_ForAnAddressLessFilter()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+        LogFilter addressLess = FilterBuilder.New().FromBlock((ulong)BoundaryFrom).ToBlock(BoundaryTo).Build();
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(addressLess, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
     public void Should_UseTheFullIndexRange_WhenTheQueryDoesNotReachBelowTheOldestStoredBlock()
     {
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, lowestStored: 1UL);
