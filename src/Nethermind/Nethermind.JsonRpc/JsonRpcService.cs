@@ -38,7 +38,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
-    /// <summary>Creates a JSON-RPC service using a controller configured from <paramref name="jsonRpcConfig"/>.</summary>
+    /// <summary>Creates a JSON-RPC service with its own <see cref="RpcAdmissionController"/> configured from <paramref name="jsonRpcConfig"/>.</summary>
+    /// <remarks>
+    /// For source compatibility only. The controller counts a cost class's in-flight work, so a process that also
+    /// resolves the registered singleton ends up with independent gates and twice the configured concurrency;
+    /// prefer injecting the shared controller.
+    /// </remarks>
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         : this(rpcModuleProvider, logManager, jsonRpcConfig, new RpcAdmissionController(jsonRpcConfig, logManager))
     {

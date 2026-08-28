@@ -80,7 +80,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly SemaphoreSlim _semaphore = new(exclusiveCapacity);
         private readonly Lock _sharedLock = new();
         // Factories supplied by plugins historically observed serial Create calls. Keep that compatibility while
-        // retaining lazy creation: the lock is held only while a new module is constructed.
+        // retaining lazy creation: creations are serialized, so a first burst of N rentals builds N instances one
+        // at a time while each caller holds its slot. Set PreloadRpcModules to pay that cost at startup instead.
         private readonly Lock _factoryLock = new();
         // Published under _sharedLock, read lock-free on the rental and return paths.
         private volatile Task<T>? _sharedAsTask;

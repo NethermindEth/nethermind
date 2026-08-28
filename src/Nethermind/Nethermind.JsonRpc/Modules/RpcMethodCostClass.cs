@@ -31,6 +31,9 @@ public enum RpcMethodCostClass
 /// implements it. The EVM-execution list is explicit because the <c>eth_</c> namespace mixes sub-millisecond
 /// reads with multi-second simulations and only the latter must be bounded; the <c>debug_</c> namespace likewise
 /// hides block re-executions behind names without the <c>trace</c> prefix, so those are listed too.
+/// <c>flashbots_validateBuilderSubmission*</c> executes a full block yet stays <see cref="RpcMethodCostClass.Default"/>
+/// on purpose: the endpoint is opt-in and serves one relay submission per block, and its own module pool
+/// (<c>Flashbots.FlashbotsModuleConcurrentInstances</c>) already bounds it.
 /// </remarks>
 internal static class RpcMethodCostClassifier
 {
