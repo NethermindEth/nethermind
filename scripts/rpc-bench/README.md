@@ -364,11 +364,16 @@ are kept:
   (response bytes never leave the box); a PR run compares against them (`corpus_baseline: use`).
 
 The comment then names the master image, date and run the baseline came from. When no cache exists
-yet (new arch, new corpus, cache evicted after 7 idle days) the run falls back to executing
-`nethermindeth/nethermind:master` itself; when the saved responses do not match the snapshot head
-(snapshot rebuilt) parity is reported as "not checked" with a warning and the master baseline needs
-re-recording. Caches made from a feature branch are visible to that branch only — production
+yet (new arch, new corpus, changed cell shape, cache evicted after 7 idle days) the run falls back to
+executing `nethermindeth/nethermind:master` itself; when the saved responses do not match the snapshot
+head (snapshot rebuilt) parity is reported as "not checked" with a warning and the master baseline
+needs re-recording. Caches made from a feature branch are visible to that branch only — production
 baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is what the presets set.
+
+`Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
+use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-file schema change since
+that master push) or measured on another cell — with a `::warning::`; the sweep then measures master
+in this job, so a schema bump costs a slower run rather than an empty comment.
 
 `tool_config` templates (all keys optional; the inputs above already set the common ones):
 

@@ -4,8 +4,12 @@
 
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import corpus_results  # noqa: E402
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "run-rpc-benchmarks.yml"
@@ -90,6 +94,26 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         # `/` still has to hold RUNNER_TEMP: k6 fixtures, corpus results and logs.
         self.assertIn("MIN_ROOT_FREE_GB", reclaim_step)
         self.assertIn("avail_gb /", reclaim_step)
+
+    def test_a_cached_baseline_from_another_schema_or_cell_is_dropped_before_the_sweep(self):
+        check = self.step("Validate the cached master baseline")
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        # `Render corpus comparison` is best-effort, so an unrenderable cached tree would surface as silence.
+        # It has to be rejected before the sweep chooses whether to measure master in this job.
+        self.assertIn(f'CORPUS_BASELINE_SCHEMA: "{corpus_results.BASELINE_SCHEMA}"', workflow)
+        self.assertIn(".schema // empty", check)
+        self.assertIn(".cell_key // empty", check)
+        self.assertIn('[[ "${usable}" == "true" ]] || rm -rf "${BASELINE_DIR}"', check)
+        self.assertIn("usable=${usable}", check)
+        self.assertLess(workflow.index("- name: Restore the cached master baseline"),
+                        workflow.index("- name: Validate the cached master baseline"))
+        self.assertLess(workflow.index("- name: Validate the cached master baseline"),
+                        workflow.index("- name: Run RPC sweep"))
+        # Both consumers of the cache take the verdict, not the bare cache hit.
+        self.assertIn("BASELINE_CACHE_HIT: ${{ steps.baseline-check.outputs.usable == 'true' }}", workflow)
+        self.assertIn("steps.baseline-check.outputs.usable == 'true' && steps.stage-corpus-results.outcome == 'success'", workflow)
+        self.assertNotIn("steps.baseline-cache.outputs.cache-matched-key != ''", workflow)
 
     def test_the_master_baseline_group_lets_the_running_refresh_finish(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")

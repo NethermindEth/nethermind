@@ -25,6 +25,11 @@ from typing import Any, Sequence
 
 from corpus_parity import PARITY_COUNTER_FIELDS, PARITY_LABEL_FIELDS
 
+# Identity of the staged tree this module writes and reads. Bump it whenever a staged file's schema changes
+# (METRIC_FIELDS, STAGED_FILENAMES, the validators below): the workflow mirrors it, and a cached master baseline
+# staged at another schema is then dropped with a warning instead of raising here, mid-render.
+BASELINE_SCHEMA = 1
+
 METRIC_FIELDS: dict[str, tuple[str, ...]] = {
     "http_req_duration": ("avg", "med", "p(90)", "p(95)", "p(99)", "max"),
     "http_reqs": ("count", "rate"),

@@ -504,6 +504,8 @@ jobs:
       JB_CONTAINER_NAME: jsonbench-bench-${{ github.run_id }}
       RPC_PORT: "8545"
       REF_RPC_PORT: "8546"
+      # Mirrors corpus_results.BASELINE_SCHEMA (bump both together; test_workflow_contracts pins them equal).
+      CORPUS_BASELINE_SCHEMA: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -780,6 +782,41 @@ jobs:
           key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ needs.resolve.outputs.cell_key }}-lookup-${{ github.run_id }}
           restore-keys: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ needs.resolve.outputs.cell_key }}-
 
+      # The cached tree was staged by whatever corpus_results.py was on master that day and is rendered by this
+      # branch's copy, so a schema change in between (METRIC_FIELDS, STAGED_FILENAMES, the validators) would make
+      # `comment` raise — and rendering is best-effort, so it would surface as silence. Checked here instead, before
+      # the sweep decides whether master has to run in this job, and a tree this run cannot use is dropped.
+      - name: Validate the cached master baseline
+        id: baseline-check
+        if: needs.resolve.outputs.baseline_mode == 'cache'
+        shell: bash
+        env:
+          MATCHED_KEY: ${{ steps.baseline-cache.outputs.cache-matched-key }}
+          BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
+          CELL_KEY: ${{ needs.resolve.outputs.cell_key }}
+        run: |
+          set -euo pipefail
+          usable=false
+          if [[ -z "${MATCHED_KEY}" ]]; then
+            echo "No cached master baseline for this arch/corpus/cell shape."
+          elif [[ ! -d "${BASELINE_DIR}/corpus" ]] || ! jq -e . "${BASELINE_DIR}/baseline.json" >/dev/null 2>&1; then
+            echo "::warning::cached master baseline ${MATCHED_KEY} is incomplete or unreadable — ignoring it"
+          else
+            schema="$(jq -r '.schema // empty' "${BASELINE_DIR}/baseline.json")"
+            cell="$(jq -r '.cell_key // empty' "${BASELINE_DIR}/baseline.json")"
+            if [[ "${schema}" != "${CORPUS_BASELINE_SCHEMA}" ]]; then
+              echo "::warning::cached master baseline ${MATCHED_KEY} was staged at result schema '${schema:-none}' but this run renders ${CORPUS_BASELINE_SCHEMA} — ignoring it"
+            elif [[ "${cell}" != "${CELL_KEY}" ]]; then
+              echo "::warning::cached master baseline ${MATCHED_KEY} was measured on cell '${cell:-none}' but this run's cell is ${CELL_KEY} — ignoring it"
+            else
+              usable=true
+              cat "${BASELINE_DIR}/baseline.json"
+            fi
+          fi
+          # A tree this run cannot render must not reach the merge step or the artifact.
+          [[ "${usable}" == "true" ]] || rm -rf "${BASELINE_DIR}"
+          echo "usable=${usable}" >> "${GITHUB_OUTPUT}"
+
       - name: Run RPC sweep
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
@@ -794,7 +831,7 @@ jobs:
           CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
           BASELINE_MODE: ${{ needs.resolve.outputs.baseline_mode }}
-          BASELINE_CACHE_HIT: ${{ steps.baseline-cache.outputs.cache-matched-key != '' }}
+          BASELINE_CACHE_HIT: ${{ steps.baseline-check.outputs.usable == 'true' }}
           BASELINE_FALLBACK_IMAGE: nethermindeth/nethermind:master
         shell: bash
         run: |
@@ -957,9 +994,10 @@ jobs:
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
 
-      # The cached tree holds the same validated aggregates a master-baseline run uploaded; merged in, one tree renders both arms.
+      # The cached tree holds the same validated aggregates a master-baseline run uploaded (schema and cell checked
+      # above, before the sweep ran); merged in, one tree renders both arms.
       - name: Merge the cached master baseline into the results
-        if: always() && needs.resolve.outputs.baseline_mode == 'cache' && steps.baseline-cache.outputs.cache-matched-key != '' && steps.stage-corpus-results.outcome == 'success'
+        if: always() && needs.resolve.outputs.baseline_mode == 'cache' && steps.baseline-check.outputs.usable == 'true' && steps.stage-corpus-results.outcome == 'success'
         shell: bash
         env:
           BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
@@ -993,9 +1031,9 @@ jobs:
           cp -r "${STAGE_ROOT}/." "${BASELINE_DIR}/"
           # cell_key is what the cache key carries; cell spells the same fingerprint out, so a later miss can be explained.
           jq -n --arg label "$(arm_label nethermind "${IMAGE}")" --arg image "${IMAGE}" --arg arch "${ARCH}" --arg corpus "${CORPUS_KEY}" \
-            --arg cell_key "${CELL_KEY}" --argjson cell "${CELL_SHAPE}" \
+            --arg cell_key "${CELL_KEY}" --argjson cell "${CELL_SHAPE}" --argjson schema "${CORPUS_BASELINE_SCHEMA}" \
             --arg date "$(date -u +%Y-%m-%dT%H:%MZ)" --arg run "${RUN_URL}" \
-            '{label: $label, image: $image, arch: $arch, corpus_key: $corpus, cell_key: $cell_key, cell: $cell, date: $date, run_url: $run}' > "${BASELINE_DIR}/baseline.json"
+            '{schema: $schema, label: $label, image: $image, arch: $arch, corpus_key: $corpus, cell_key: $cell_key, cell: $cell, date: $date, run_url: $run}' > "${BASELINE_DIR}/baseline.json"
           cp "${BASELINE_DIR}/baseline.json" "${STAGE_ROOT}/baseline.json"
           cat "${BASELINE_DIR}/baseline.json"
 
