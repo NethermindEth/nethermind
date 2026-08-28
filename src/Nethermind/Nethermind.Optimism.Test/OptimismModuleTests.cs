@@ -77,4 +77,34 @@ public class OptimismModuleTests
             Assert.That(validator.IsWellFormed(transaction, postBedrock).AsBool(), Is.False);
         }
     }
+
+    [Test]
+    public void Full_and_delta_validation_cover_optimism_legacy_gas_limit_cap()
+    {
+        const ulong chainId = 10;
+        OptimismReleaseSpec spec = new()
+        {
+            IsEip1559Enabled = true,
+            IsEip7825Enabled = true
+        };
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+        OptimismLegacyTxValidator fullValidator = new(chainId);
+        OptimismSpecChangeTxValidator specChangeValidator = new(chainId);
+        ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
+        ValidationResult admissionResult = fullValidator.IsWellFormed(transaction, spec);
+
+        if (admissionResult)
+        {
+            admissionResult = specChangeValidator.IsWellFormedAfterFullValidation(transaction, spec);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
+            Assert.That(admissionResult.AsBool, Is.False);
+        }
+    }
 }

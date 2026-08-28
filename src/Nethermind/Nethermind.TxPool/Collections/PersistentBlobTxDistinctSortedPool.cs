@@ -765,8 +765,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         finally
         {
             _batchStorageDeletes = false;
-            FlushPendingRevalidationDeletesNonLocked();
         }
+
+        FlushPendingRevalidationDeletesNonLocked();
     }
 
     internal override void FlushPendingRevalidationDeletes()
@@ -780,6 +781,25 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         if (_batchedDeletes.Count == 0)
         {
             return;
+        }
+
+        int deleteCount = 0;
+        for (int i = 0; i < _batchedDeletes.Count; i++)
+        {
+            TxLookupKey key = _batchedDeletes[i];
+            if (!base.TryGetValueNonLocked(key.Hash, out _))
+            {
+                _batchedDeletes[deleteCount++] = key;
+            }
+        }
+
+        if (deleteCount != _batchedDeletes.Count)
+        {
+            _batchedDeletes.RemoveRange(deleteCount, _batchedDeletes.Count - deleteCount);
+            if (deleteCount == 0)
+            {
+                return;
+            }
         }
 
         if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)

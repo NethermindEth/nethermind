@@ -1065,7 +1065,7 @@ namespace Nethermind.TxPool
                     if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
                 }
 
-                if (!CanApplyRevalidation(spec, generation))
+                if (!CanApplyRevalidationResults(spec))
                 {
                     InvalidateValidatedSpec();
                     RecordAbandonedRevalidation(spec, generation);
@@ -1084,9 +1084,6 @@ namespace Nethermind.TxPool
 
         private bool IsRevalidationGenerationCurrent(long generation) =>
             !_cts.IsCancellationRequested && generation == Volatile.Read(ref _headGeneration);
-
-        private bool CanApplyRevalidation(IReleaseSpec spec, long generation) =>
-            IsRevalidationGenerationCurrent(generation) && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
 
         private bool CanApplyRevalidationResults(IReleaseSpec spec) =>
             !_cts.IsCancellationRequested && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());

@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Producers
         : ITxSource
     {
         private const ulong BlobConsiderationMultiplier = 5;
-        private const ulong RejectedBlobConsiderationMultiplier = 5;
+        private const ulong RejectedBlobReadMultiplier = 25;
 
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
@@ -175,9 +175,9 @@ namespace Nethermind.Consensus.Producers
             ulong maxBlobs,
             bool validateForkSensitiveState)
         {
-            // A larger, separate rejection budget prevents invalid prefixes from consuming the valid-candidate budget while bounding sidecar reads.
+            // Allow more rejected sidecar loads than valid candidates, but keep storage work bounded.
             ulong maxBlobsToConsider = maxBlobs * BlobConsiderationMultiplier;
-            ulong maxRejectedBlobsToConsider = maxBlobsToConsider * RejectedBlobConsiderationMultiplier;
+            ulong maxRejectedBlobsToConsider = maxBlobs * RejectedBlobReadMultiplier;
             ulong countOfRemainingBlobs = 0UL;
             ulong consideredBlobCount = 0UL;
             ulong rejectedBlobCount = 0UL;
@@ -207,10 +207,14 @@ namespace Nethermind.Consensus.Producers
 
                 if (validateForkSensitiveState)
                 {
-                    if ((blobTx is LightTransaction lightTransaction
-                            && _specChangeTxValidator is ILightTxValidator lightTxValidator
-                            && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
-                        || !TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
+                    if (blobTx is LightTransaction lightTransaction
+                        && _specChangeTxValidator is ILightTxValidator lightTxValidator
+                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    {
+                        continue;
+                    }
+
+                    if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
                         || !IsForkSensitiveStateValid(fullBlobTx, spec))
                     {
                         rejectedBlobCount += txBlobCount;

@@ -32,7 +32,8 @@ public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
         new LegacySignatureTxValidator(chainId),
         ContractSizeTxValidator.Instance,
         NonBlobFieldsTxValidator.Instance,
-        NonSetCodeFieldsTxValidator.Instance
+        NonSetCodeFieldsTxValidator.Instance,
+        GasLimitCapTxValidator.Instance
     ]);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)

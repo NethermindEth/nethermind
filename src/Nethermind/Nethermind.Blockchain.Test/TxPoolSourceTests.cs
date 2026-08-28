@@ -265,9 +265,10 @@ public class TxPoolSourceTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(6)]
-    public void GetTransactions_should_not_let_invalid_blobs_displace_a_valid_blob(int invalidBlobCount)
+    [TestCase(1, true)]
+    [TestCase(25, true)]
+    [TestCase(26, false)]
+    public void GetTransactions_should_bound_resolved_rejections(int invalidBlobCount, bool expectValidBlob)
     {
         TestSpecProvider specProvider = new(Osaka.Instance)
         {
@@ -337,10 +338,11 @@ public class TxPoolSourceTests
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
+        Transaction[] expected = expectValidBlob ? [validBlob] : [];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
-            txPool.Received(1).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
+            Assert.That(result, Is.EqualTo(expected).UsingTransactionComparer());
+            txPool.Received(expectValidBlob ? 1 : 0).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
             txFilterPipeline.DidNotReceive().Execute(validBlob, parent, Amsterdam.Instance);
         }
 
@@ -351,9 +353,8 @@ public class TxPoolSourceTests
         }
     }
 
-    [TestCase(25, true)]
-    [TestCase(26, false)]
-    public void GetTransactions_should_bound_light_rejections_without_resolving_them(int invalidBlobCount, bool expectValidBlob)
+    [TestCase(26)]
+    public void GetTransactions_should_skip_light_rejections_without_resolving_them(int invalidBlobCount)
     {
         TestSpecProvider specProvider = new(Osaka.Instance)
         {
@@ -403,9 +404,8 @@ public class TxPoolSourceTests
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
-        Transaction[] expected = expectValidBlob ? [validBlob] : [];
-        Assert.That(result, Is.EqualTo(expected).UsingTransactionComparer());
-        txPool.Received(expectValidBlob ? 1 : 0).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
+        Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+        txPool.Received(1).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
         for (int i = 0; i < invalidBlobs.Length; i++)
         {
             txPool.DidNotReceive().TryGetPendingBlobTransaction(invalidBlobs[i].Hash!, out Arg.Any<Transaction?>());

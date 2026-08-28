@@ -625,9 +625,9 @@ namespace Nethermind.TxPool.Test
             IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
 
             Assert.That(
-                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAll),
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
                 Throws.TypeOf<InvalidOperationException>());
-            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAll), Throws.Nothing);
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
 
             using (Assert.EnterMultipleScope())
             {
@@ -635,17 +635,38 @@ namespace Nethermind.TxPool.Test
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
             }
 
-            static void RemoveAll(
-                in AccountStruct account,
-                EnhancedSortedSet<Transaction> transactions,
-                ref Transaction lastElement,
-                TxDistinctSortedPool.UpdateTransactionDelegate updateTransaction)
+        }
+
+        [Test]
+        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            FailingBatchDeleteBlobTxStorage storage = new();
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
             {
-                foreach (Transaction tx in transactions)
-                {
-                    updateTransaction(transactions, tx, changedGasBottleneck: null, lastElement);
-                }
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, KeepAllTransactions), Throws.Nothing);
+            bool persisted = storage.TryGet(transaction.Hash, transaction.SenderAddress!, transaction.Timestamp, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.Count, Is.EqualTo(1));
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1 }));
+                Assert.That(persisted, Is.True);
             }
+
         }
 
         [Test]
@@ -1789,6 +1810,26 @@ namespace Nethermind.TxPool.Test
 
                 ((IBatchDeleteTxStorage)_storage).DeleteMany(keys);
             }
+        }
+
+        private static void RemoveAllTransactions(
+            in AccountStruct account,
+            EnhancedSortedSet<Transaction> transactions,
+            ref Transaction lastElement,
+            TxDistinctSortedPool.UpdateTransactionDelegate updateTransaction)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                updateTransaction(transactions, tx, changedGasBottleneck: null, lastElement);
+            }
+        }
+
+        private static void KeepAllTransactions(
+            in AccountStruct account,
+            EnhancedSortedSet<Transaction> transactions,
+            ref Transaction lastElement,
+            TxDistinctSortedPool.UpdateTransactionDelegate updateTransaction)
+        {
         }
 
         private sealed class NamedReleaseSpec(IReleaseSpec spec, string name) : ReleaseSpecDecorator(spec)

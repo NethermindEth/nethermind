@@ -746,6 +746,12 @@ namespace Nethermind.TxPool.Test
             TaskCompletionSource revalidationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim releaseRevalidation = new(false);
             int validationAttempts = 0;
+            Transaction invalidTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction validTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
             ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
             specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
             {
@@ -760,15 +766,16 @@ namespace Nethermind.TxPool.Test
                     releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
                     Is.True,
                     "Timed out waiting to release fork revalidation.");
-                return new ValidationResult("fork rejection");
+                return ReferenceEquals(callInfo.Arg<Transaction>(), invalidTransaction)
+                    ? new ValidationResult("fork rejection")
+                    : ValidationResult.Success;
             });
 
             _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Transaction transaction = Build.A.Transaction
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-                .TestObject;
-            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(invalidTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(validTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
             _blockTree.BestSuggestedHeader = forkBlock.Header;
@@ -789,8 +796,10 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(validationAttempts, Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(validationAttempts, Is.EqualTo(2));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.ContainsTx(invalidTransaction.Hash!, invalidTransaction.Type), Is.False);
+                Assert.That(_txPool.ContainsTx(validTransaction.Hash!, validTransaction.Type), Is.True);
                 Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
             }
         }
