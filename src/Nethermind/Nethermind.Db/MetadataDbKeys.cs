@@ -26,7 +26,7 @@ namespace Nethermind.Db
         public const int HistoryPruningReclaimCursor = 19;
         public const int HistoryPruningTxIndexSweepCursor = 20;
         public const int HistoryPruningSliceCleanupCursor = 21;
-    public const int HistorySliceLogsRetainedFrom = 22;
-    public const int HistorySliceLogsSliceSet = 23;
+        public const int HistorySliceLogsRetainedFrom = 22;
+        public const int HistorySliceLogsSliceSet = 23;
     }
 }
