@@ -2804,34 +2804,37 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Revalidation_moving_the_payer_moves_the_whole_reservation()
+        public async Task Revalidation_resolving_a_payer_records_the_reservation_it_takes()
         {
-            // The pool releases tx.PayerExposure verbatim, so a payer move that reserves against the new
-            // payer without recording the figure leaks the reservation for the life of the pool.
+            // The pool releases tx.PayerExposure verbatim, so a revalidation that reserves against a newly
+            // resolved payer without recording the figure leaks it for the life of the pool. Reachable with
+            // no attacker: a record admitted with an unresolved payer holds no exposure to inherit.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulator unavailable"));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
 
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction next = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyF);
+            // Exactly one transaction's worth, so a reservation that was taken but never recorded refuses
+            // the next one. Funding the sponsor to MaxValue makes the closing assertion unfalsifiable.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(next, Eip8141Prototype.Instance, out UInt256 oneTx), Is.True);
+            EnsureSenderBalance(TestItem.AddressF, oneTx);
+
+            // Admitted with no payer, so it holds no reservation to carry into the revalidation.
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // The prefix now approves a different sponsor; the reservation has to follow it.
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the transaction still resolves a solvent payer");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the transaction now resolves a solvent payer");
 
             _txPool.RemoveTransaction(tx.Hash);
 
-            // Removal releases exactly what the move reserved, so the new sponsor is free again. An
-            // unrecorded reservation would still be held here and refuse this submission.
-            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
-            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyF), TxHandlingOptions.None),
-                Is.EqualTo(AcceptTxResult.Accepted), "the moved reservation must have been released on removal");
+            Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the reservation the revalidation took must have been released on removal");
         }
 
         [Test]

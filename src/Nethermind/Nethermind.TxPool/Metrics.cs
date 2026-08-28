@@ -97,6 +97,10 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationEvictions { get; set; }
 
         [CounterMetric]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because this node's own simulation bounds were spent; each is retried on the next head. A sustained count means revalidation is not keeping up.")]
+        public static long FrameTxRevalidationsDeferred { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions shed because they were close to expiry while the pool was full.")]
         public static long FrameTxExpiryShedEvictions { get; set; }
 

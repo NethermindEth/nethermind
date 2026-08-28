@@ -387,7 +387,9 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void IndexFrameTxDependencies(Transaction tx)
         {
-            if (!tx.SupportsFrames) return;
+            // Under persistent blob storage the pool holds a frameless light record. There is no prefix left
+            // to re-resolve, so indexing it would only queue a revalidation that must reject it.
+            if (!tx.SupportsFrames || tx.Frames is null) return;
 
             bool hasDistinctPayer = tx.PayerAddress is not null && tx.PayerAddress != tx.SenderAddress;
             bool hasExpiry = HasExpiryDeadline(tx);
@@ -913,7 +915,8 @@ namespace Nethermind.TxPool
             {
                 // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
                 if ((!_transactions.TryGetValue(hash, out Transaction? tx) && !_blobTransactions.TryGetValue(hash, out tx))
-                    || !tx.SupportsFrames)
+                    || !tx.SupportsFrames
+                    || tx.Frames is null)
                 {
                     continue;
                 }
@@ -985,7 +988,11 @@ namespace Nethermind.TxPool
                         // A node fault or an admission bound decides nothing, so the transaction stays
                         // pending — and stays queued, or a one-off change is never rechecked against a
                         // later head whose change list does not mention its dependencies.
-                        if (simulated.Indeterminate) _frameTxsDeferredToNextHead.Add(tx.Hash!.ValueHash256);
+                        if (simulated.Indeterminate)
+                        {
+                            _frameTxsDeferredToNextHead.Add(tx.Hash!.ValueHash256);
+                            Metrics.FrameTxRevalidationsDeferred++;
+                        }
                         return simulated.Indeterminate;
                     }
                     payer = simulated.Payer;
@@ -1000,7 +1007,13 @@ namespace Nethermind.TxPool
 
             // Release what admission recorded, not a re-priced figure: the ledger is keyed on
             // PayerExposure, and a restored light record has no frames left to price.
-            if (TryGetPayerReservation(tx, out Address? heldPayer, out UInt256 maxCost)) _payerExposure.Subtract(heldPayer, maxCost);
+            bool releasedHeld = false;
+            if (TryGetPayerReservation(tx, out Address? heldPayer, out UInt256 maxCost))
+            {
+                _payerExposure.Subtract(heldPayer, maxCost);
+                releasedHeld = true;
+            }
+
             holdsNoReservation = true;
             tx.PayerAddress = payer;
 
@@ -1010,7 +1023,9 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            if (heldPayer is null && !FrameTxValidation.TryCalculateMaxCost(tx, spec, out maxCost)) return false;
+            // Re-price only when nothing was released: what a record already holds is what removal subtracts,
+            // and a restored light record has no frames left to price.
+            if (!releasedHeld && !FrameTxValidation.TryCalculateMaxCost(tx, spec, out maxCost)) return false;
             if (!_payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _)) return false;
 
             // The pool releases this figure verbatim, so a moved reservation has to record it as admission does.
