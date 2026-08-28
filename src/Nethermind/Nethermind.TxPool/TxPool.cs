@@ -1148,6 +1148,8 @@ namespace Nethermind.TxPool
 
         private void PublishValidatedSpec(IReleaseSpec spec)
         {
+            _blobTransactions.FlushPendingRevalidationDeletes();
+
             lock (_forkStateLock)
             {
                 Interlocked.Increment(ref _forkStateVersion);

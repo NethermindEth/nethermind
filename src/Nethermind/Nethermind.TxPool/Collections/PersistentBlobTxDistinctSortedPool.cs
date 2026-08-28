@@ -765,21 +765,37 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         finally
         {
             _batchStorageDeletes = false;
-            if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
-            {
-                batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
-            }
-            else
-            {
-                for (int i = 0; i < _batchedDeletes.Count; i++)
-                {
-                    TxLookupKey key = _batchedDeletes[i];
-                    _blobTxStorage.Delete(key.Hash, key.Timestamp);
-                }
-            }
-
-            _batchedDeletes.Clear();
+            FlushPendingRevalidationDeletesNonLocked();
         }
+    }
+
+    internal override void FlushPendingRevalidationDeletes()
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        FlushPendingRevalidationDeletesNonLocked();
+    }
+
+    private void FlushPendingRevalidationDeletesNonLocked()
+    {
+        if (_batchedDeletes.Count == 0)
+        {
+            return;
+        }
+
+        if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
+        {
+            batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
+        }
+        else
+        {
+            for (int i = 0; i < _batchedDeletes.Count; i++)
+            {
+                TxLookupKey key = _batchedDeletes[i];
+                _blobTxStorage.Delete(key.Hash, key.Timestamp);
+            }
+        }
+
+        _batchedDeletes.Clear();
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)

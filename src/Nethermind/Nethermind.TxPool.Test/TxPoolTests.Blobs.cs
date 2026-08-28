@@ -570,6 +570,45 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_flush_failed_revalidation_deletes_before_publishing_marker()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp + 1,
+                }
+            });
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            FailingBatchDeleteBlobTxStorage storage = new();
+            _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await AddEmptyBlock();
+            await AddEmptyBlock();
+
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
+                Assert.That(storage.GetAll(), Is.Empty);
+                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Not.Null);
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
         public void should_retry_batched_revalidation_deletes_after_storage_failure()
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
@@ -1707,7 +1746,7 @@ namespace Nethermind.TxPool.Test
             public void ResetFullReadCount() => FullReadCount = 0;
         }
 
-        private sealed class FailingBatchDeleteBlobTxStorage : ITxStorage, IBatchDeleteTxStorage
+        private sealed class FailingBatchDeleteBlobTxStorage : IBlobTxStorage, IBatchDeleteTxStorage, ISpecChangeValidationStorage
         {
             private readonly BlobTxStorage _storage = new();
 
@@ -1724,6 +1763,21 @@ namespace Nethermind.TxPool.Test
             public void Add(Transaction transaction) => _storage.Add(transaction);
 
             public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _storage.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                _storage.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                _storage.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) =>
+                _storage.DeleteBlobTransactionsFromBlock(blockNumber);
+
+            string ISpecChangeValidationStorage.GetSpecChangeValidationMarker() =>
+                ((ISpecChangeValidationStorage)_storage).GetSpecChangeValidationMarker();
+
+            void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string marker) =>
+                ((ISpecChangeValidationStorage)_storage).SetSpecChangeValidationMarker(marker);
 
             void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
             {
