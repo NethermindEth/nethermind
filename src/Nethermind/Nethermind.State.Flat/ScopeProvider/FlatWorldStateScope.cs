@@ -203,9 +203,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
             using ArrayPoolList<Account?> loadedAccounts = new(accountCount, accountCount);
-            Account?[]? accounts = sink is null ? null : loadedAccounts.UnsafeGetInternalArray();
+
+            // Doubles as the "phase 1 finished this entry" marker phase 2 keys off. It cannot be the account array:
+            // the batched read fills that before the per-item loop runs, and the loop can bail out mid-range on
+            // _pausePrewarmer. Nor can it be the -1 fill, which is the legitimate "not self-destructed" index — a
+            // half-processed entry would then be read in phase 2 with self-destruct masking silently disabled.
             using ArrayPoolList<int>? selfDestructIdxs = sink is null ? null : new(accountCount, accountCount);
             selfDestructIdxs?.AsSpan().Fill(UnprocessedSelfDestructIdx);
+            int[]? selfDestructIdxArray = selfDestructIdxs?.UnsafeGetInternalArray();
 
             try
             {
@@ -241,9 +246,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         if (sink is not null && sink.StillNeeded(address, out _))
                             sink.OnAccountRead(address, account);
 
-                        if (accounts is not null)
-                            accounts[i] = account;
-
+                        // A missing account, or one with no storage trie, is left unmarked so phase 2 skips it: its
+                        // slots read as zero and the sink resolves them itself. Mirrors TrieStoreScopeProvider.
                         if (account is null) continue;
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
@@ -269,9 +273,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             }
                         }
 
-                        if (accounts is not null)
-                            selfDestructIdxs!.UnsafeGetInternalArray()[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-
+                        // Last statement of the body on purpose — see the marker note above.
+                        if (selfDestructIdxArray is not null)
+                            selfDestructIdxArray[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
                     }
                 }
 
@@ -296,7 +300,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 if (sink is not null && !token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
-                    RunSinkSlotReads(accountChanges, selfDestructIdxs!.UnsafeGetInternalArray(), sink, parallelOptions);
+                    RunSinkSlotReads(accountChanges, selfDestructIdxArray!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -306,6 +310,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
+    /// <summary>Phase 2 of <see cref="HintBal"/>: batched slot reads for the accounts phase 1 finished.</summary>
+    /// <param name="selfDestructIdxs">
+    /// Per-account self-destruct snapshot index, or <see cref="UnprocessedSelfDestructIdx"/> for an account phase 1
+    /// did not finish. Only entries carrying a real index are read, so a slot can never be published with masking off.
+    /// </param>
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         int[] selfDestructIdxs,

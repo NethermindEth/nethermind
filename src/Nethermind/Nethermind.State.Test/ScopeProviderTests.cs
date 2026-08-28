@@ -226,6 +226,51 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    // Pins the invariant the batch read must preserve: the sink's slot reads cover only accounts the per-account
+    // pass marked, never the wider set the batch output happens to hold, so a paused pass cannot publish a slot
+    // with self-destruct masking disabled.
+    [Test]
+    public void Test_HintBalWithSink_SkipsSlotReadsForAccountsWithoutStorage()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200)); // no storage, so an empty storage root
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(7).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(9).TestObject) // not in state
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sink.Storage.ContainsKey(new StorageCell(TestItem.AddressA, 1)), Is.True);
+                Assert.That(sink.Storage.ContainsKey(new StorageCell(TestItem.AddressB, 7)), Is.False);
+                Assert.That(sink.Storage.ContainsKey(new StorageCell(TestItem.AddressC, 9)), Is.False);
+            }
+        }
+    }
+
     [TestCase(10)]
     [TestCase(1500)]
     public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
