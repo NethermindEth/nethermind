@@ -30,6 +30,8 @@ namespace Nethermind.Stats.Model
         private IPEndPoint _discoveryAddress;
         private readonly Lock _alternateLock = new();
         private ulong _alternateEnrSequence;
+        private bool _hasAlternateEnr;
+        private IPEndPoint _alternateDiscovery;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -370,11 +372,18 @@ namespace Nethermind.Stats.Model
 
         private void TrySetIpv6Endpoint(NodeRecord enr)
         {
-            IPEndPoint newAlternate = ComputeAlternate(enr);
+            (IPEndPoint newAlternate, IPEndPoint newAlternateDiscovery) = ComputeAlternateWithDiscovery(enr);
             lock (_alternateLock)
             {
+                if (_hasAlternateEnr && enr.EnrSequence <= _alternateEnrSequence)
+                {
+                    return;
+                }
+
                 V6Address = newAlternate;
+                _alternateDiscovery = newAlternateDiscovery;
                 _alternateEnrSequence = enr.EnrSequence;
+                _hasAlternateEnr = true;
             }
         }
 
@@ -390,30 +399,45 @@ namespace Nethermind.Stats.Model
             }
 
             IPEndPoint oldPrimary = Address;
+            int oldDiscoveryPort = DiscoveryPort;
+            bool hadDiscovery = HasDiscoveryEndpoint;
             SetIPEndPoint(successfulEndpoint);
             lock (_alternateLock)
             {
                 V6Address = oldPrimary;
-            }
-
-            if (Enr is not null)
-            {
-                IPEndPoint expectedDiscovery = null;
-                if (Address.AddressFamily == AddressFamily.InterNetwork)
+                IPEndPoint oldAlternateDiscovery = _alternateDiscovery;
+                _alternateDiscovery = hadDiscovery ? new IPEndPoint(oldPrimary.Address, oldDiscoveryPort) : null;
+                if (oldAlternateDiscovery is not null)
                 {
-                    if (Enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(Address.Address))
+                    DiscoveryPort = oldAlternateDiscovery.Port;
+                }
+                else if (Enr is not null)
+                {
+                    IPEndPoint expectedDiscovery = null;
+                    if (Address.AddressFamily == AddressFamily.InterNetwork)
                     {
-                        expectedDiscovery = disc;
+                        if (Enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(Address.Address))
+                        {
+                            expectedDiscovery = disc;
+                        }
+                    }
+                    else if (Enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(Address.Address))
+                    {
+                        expectedDiscovery = disc6;
+                    }
+
+                    if (expectedDiscovery is not null)
+                    {
+                        DiscoveryPort = expectedDiscovery.Port;
+                    }
+                    else
+                    {
+                        ClearDiscoveryEndpoint();
                     }
                 }
-                else if (Enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(Address.Address))
+                else
                 {
-                    expectedDiscovery = disc6;
-                }
-
-                if (expectedDiscovery is not null)
-                {
-                    DiscoveryPort = expectedDiscovery.Port;
+                    ClearDiscoveryEndpoint();
                 }
             }
         }
@@ -431,32 +455,28 @@ namespace Nethermind.Stats.Model
                 return false;
             }
 
+            (IPEndPoint newAlternate, IPEndPoint newAlternateDiscovery) = ComputeAlternateWithDiscovery(other.Enr);
             lock (_alternateLock)
             {
-                if (other.Enr.EnrSequence <= _alternateEnrSequence)
+                if (_hasAlternateEnr && other.Enr.EnrSequence <= _alternateEnrSequence)
                 {
                     return false;
                 }
 
-#pragma warning disable IDE0074 // compound assignment not applicable here
-                V6Address = ComputeAlternate(other.Enr);
+                V6Address = newAlternate;
+                _alternateDiscovery = newAlternateDiscovery;
                 _alternateEnrSequence = other.Enr.EnrSequence;
-                if (_enr is null)
-                {
-                    _enr = other.Enr;
-                }
-#pragma warning restore IDE0074
-
+                _hasAlternateEnr = true;
                 return true;
             }
         }
 
-        private IPEndPoint ComputeAlternate(NodeRecord enr)
+        private (IPEndPoint Alternate, IPEndPoint Discovery) ComputeAlternateWithDiscovery(NodeRecord enr)
         {
             IPAddress address = Address.Address;
             if (address.IsIPv4MappedToIPv6)
             {
-                return null;
+                return (null, null);
             }
 
             if (address.AddressFamily == AddressFamily.InterNetwork)
@@ -464,19 +484,37 @@ namespace Nethermind.Stats.Model
                 if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
                     !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
                 {
-                    return ipv6Endpoint;
+                    IPEndPoint discovery = null;
+                    if (enr.TryGetUdp6Endpoint(out IPEndPoint udp6) && udp6.Address.Equals(ipv6Endpoint.Address))
+                    {
+                        discovery = udp6;
+                    }
+
+                    return (ipv6Endpoint, discovery);
                 }
             }
             else if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
                 {
-                    return v4Endpoint;
+                    IPEndPoint discovery = null;
+                    if (enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(v4Endpoint.Address))
+                    {
+                        discovery = disc;
+                    }
+                    else if (enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(v4Endpoint.Address))
+                    {
+                        discovery = disc6;
+                    }
+
+                    return (v4Endpoint, discovery);
                 }
             }
 
-            return null;
+            return (null, null);
         }
+
+        private IPEndPoint ComputeAlternate(NodeRecord enr) => ComputeAlternateWithDiscovery(enr).Alternate;
 
         private static string FormatHost(IPAddress address)
             => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
