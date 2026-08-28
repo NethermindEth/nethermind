@@ -120,10 +120,10 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         {
             foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
-                LightTransaction? transaction;
+                LightTransaction transaction;
                 try
                 {
-                    if (!TryDecodeLightTx(txBytes, out transaction)) continue;
+                    transaction = LightTxDecoder.Decode(txBytes);
                 }
                 // A truncated record surfaces from RlpReader's unchecked Span.Slice, not as an RlpException, so the
                 // filter spans every root a corrupt record is known to decode into.
@@ -335,18 +335,6 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
 
         transaction = default;
-        return false;
-    }
-
-    private static bool TryDecodeLightTx(byte[]? txBytes, [NotNullWhen(true)] out LightTransaction? lightTx)
-    {
-        if (txBytes is not null)
-        {
-            lightTx = LightTxDecoder.Decode(txBytes);
-            return true;
-        }
-
-        lightTx = default;
         return false;
     }
 
