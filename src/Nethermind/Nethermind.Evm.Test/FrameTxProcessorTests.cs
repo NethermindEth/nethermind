@@ -898,12 +898,14 @@ public class FrameTxProcessorTests
     }
 
     /// <remarks>
-    /// The processor dereferences the frame list, and eth_call reaches it without a validator, so the same
-    /// counts must be refused there rather than faulting on the absent list.
+    /// The processor dereferences the frame list, and eth_call reaches it without a validator, so it must
+    /// refuse the same counts the estimator refuses rather than faulting on the absent list or running an
+    /// oversized one frame by frame.
     /// </remarks>
     [TestCase(null)]
     [TestCase(0)]
-    public void Execute_FrameTxWithNoFrames_IsRejectedAsMalformed(int? frameCount)
+    [TestCase(Eip8141Constants.MaxFrames + 1)]
+    public void Execute_FrameTxWithAFrameCountOutsideTheAdmittedRange_IsRejectedAsMalformed(int? frameCount)
     {
         Transaction tx = FrameTx(nonce: 0);
         tx.Frames = frameCount is { } count ? RepeatedFrames(count) : null;

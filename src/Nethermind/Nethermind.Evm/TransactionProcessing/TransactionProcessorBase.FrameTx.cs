@@ -96,7 +96,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         // Structural, so it holds even where validation is skipped: the frame list is dereferenced
         // throughout, and eth_call arrives here without a validator.
-        if (tx.Frames is not { Length: > 0 })
+        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.MissingFrames);
         }
