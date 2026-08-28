@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stateless.Execution.IO;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Stateless.Execution.IO;
 [InlineArray(PublicKeyLength)]
 public struct SszPublicKey
 {
-    public const int PublicKeyLength = 65;
+    public const int PublicKeyLength = PublicKey.PrefixedLengthInBytes;
 
     private byte _element0;
 

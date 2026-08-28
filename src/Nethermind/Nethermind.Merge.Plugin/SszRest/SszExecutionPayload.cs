@@ -143,7 +143,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
             }
             byte[][] raw = new byte[value.Length][];
             for (int i = 0; i < value.Length; i++)
-                raw[i] = value[i].Bytes ?? [];
+                raw[i] = value[i].Bytes.ToByteArray();
             Inner.Transactions = raw;
         }
     }
