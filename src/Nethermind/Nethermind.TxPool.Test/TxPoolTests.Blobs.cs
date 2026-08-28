@@ -4164,6 +4164,28 @@ namespace Nethermind.TxPool.Test
                 "a new head must not evict a reloaded keyed transaction whose sequence is current");
         }
 
+        // Block production takes the ready-filtered blob snapshot, and an EIP-8250 keyed sequence is unrelated to the
+        // account nonce, so comparing the two would keep the transaction out of every block it is otherwise ready for.
+        [Test]
+        public void Keyed_blob_carrying_frame_tx_is_ready_for_block_production()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // The account nonce advances independently of key 0xbeef, whose sequence stays at 0 and stays includable.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingLightBlobTransactionsBySender(filterToReadyTx: true);
+
+            Assert.That(ready.TryGetValue(TestItem.AddressA, out Transaction[] readyForSender), Is.True,
+                "a bucket whose lowest entry is keyed must not be filtered out wholesale");
+            Assert.That(readyForSender, Has.Length.EqualTo(1));
+        }
+
         private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
         {
             ShardBlobNetworkWrapper wrapper = null;

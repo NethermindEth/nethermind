@@ -13,11 +13,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -34,6 +35,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
     private readonly IDb _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     private readonly IDb _processedBlobTxsDb = database.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<BlobTxStorage>();
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
@@ -100,14 +102,43 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
+    /// <summary>Enumerates every persisted light blob transaction record this build can read.</summary>
+    /// <remarks>
+    /// The blob pool is a cache, so a record this build cannot read — one left by another build's record layout —
+    /// is skipped rather than allowed to abort the load and with it node startup. A record layout change makes
+    /// every record unreadable at once, so the skipped records are reported as a single summary rather than one
+    /// line each; the first failure's type and message are quoted, since the type is what tells a layout change
+    /// apart from a lone corrupt record.
+    /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
-        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        int skipped = 0;
+        string? firstFailure = null;
+        try
         {
-            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
+            foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
+                LightTransaction? transaction;
+                try
+                {
+                    if (!TryDecodeLightTx(txBytes, out transaction)) continue;
+                }
+                // A truncated record surfaces from the reader's unchecked Span.Slice, not as an RlpException, so
+                // the filter spans every root a corrupt or foreign-layout record is known to decode into.
+                catch (Exception e) when (e is RlpException or ArgumentException or IndexOutOfRangeException)
+                {
+                    skipped++;
+                    firstFailure ??= $"{e.GetType().Name}: {e.Message}";
+                    continue;
+                }
+
                 yield return transaction!;
             }
+        }
+        finally
+        {
+            if (skipped > 0 && _logger.IsWarn)
+                _logger.Warn($"Ignoring {skipped} unreadable persisted blob transaction(s). First failure: {firstFailure}");
         }
     }
 
