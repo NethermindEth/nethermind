@@ -4,6 +4,7 @@
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -14,7 +15,7 @@ namespace Nethermind.History;
 /// stay queryable where the general history pruner reclaims. A bounded slice retains only heights inside its own
 /// window, measured from the head at sweep time. The bloom is only a first filter; where the
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
-public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree) : IPrunedReceiptRetention
+public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree) : IPrunedReceiptRetention, IPrunedLogsRetention
 {
     private readonly FrozenDictionary<Address, ulong?> _slices = ParseSlices(flatDbConfig.HistorySliceAddresses);
 
@@ -119,6 +120,26 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         answeredFrom = coveredFrom;
         answeredTo = coveredTo;
         return retained;
+    }
+
+    /// <inheritdoc/>
+    public bool RetainsLogsFor(IReadOnlyCollection<AddressAsKey> addresses, ulong fromBlock, ulong toBlock)
+    {
+        if (addresses.Count == 0 || _slices.Count == 0)
+        {
+            return false;
+        }
+
+        ulong head = HeadNumber;
+        foreach (AddressAsKey address in addresses)
+        {
+            if (!_slices.TryGetValue(address.Value, out ulong? retention) || !InsideSliceWindow(fromBlock, retention, head))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <inheritdoc/>

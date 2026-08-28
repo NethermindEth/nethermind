@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.History;
@@ -51,7 +52,9 @@ public class FlatHistoryModule : Module
             .AddStep(typeof(StartHistoryWindowPruner))
             // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps
             // the default that never retains, and never pays for the bloom probe or the log-index lookup.
-            .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>()
+            .AddSingleton<SlicedReceiptRetention>()
+            .Bind<IPrunedReceiptRetention, SlicedReceiptRetention>()
+            .Bind<IPrunedLogsRetention, SlicedReceiptRetention>()
             .AddSingleton<HistoryWalkVerificationCoordinator>()
             .AddStep(typeof(StartHistoryWalkVerification));
 }

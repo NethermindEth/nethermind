@@ -226,6 +226,72 @@ public class SlicedReceiptRetentionTests
         Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.TypeOf<ResourceNotFoundException>());
     }
 
+    [Test]
+    public async Task Serves_a_sliced_addresss_logs_over_a_range_whose_from_endpoint_is_pruned()
+    {
+        Address nonSlicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+        Address slicedAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 1);
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 1,
+            PruningInterval = 0
+        };
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = slicedAddress.ToString() };
+
+        using BasicTestBlockchain testBlockchain = await BuildBlockchain(historyConfig, flatDbConfig);
+
+        byte[] logCode = Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.LOG0).Done;
+
+        Block prunedBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(0).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        Block slicedBlock = await testBlockchain.AddBlock(Build.A.Transaction
+            .WithCode(logCode).WithNonce(1).WithGasLimit(210200)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+
+        ulong prunedBlockNumber = prunedBlock.Number;
+        Hash256 prunedBlockHash = prunedBlock.Hash!;
+        ulong slicedBlockNumber = slicedBlock.Number;
+
+        for (int i = 0; i < 100; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+        testBlockchain.BlockTree.SyncPivot = (testBlockchain.BlockTree.Head!.Number, Hash256.Zero);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(testBlockchain.ReceiptStorage.HasBlock(prunedBlockNumber, prunedBlockHash), Is.False,
+            "the from endpoint's receipts must be gone for this test to exercise the availability probe");
+
+        IPrunedLogsRetention logsRetention = (IPrunedLogsRetention)testBlockchain.Container.Resolve<IPrunedReceiptRetention>();
+        LogFinder logFinder = new(
+            testBlockchain.BlockTree,
+            testBlockchain.ReceiptStorage,
+            testBlockchain.ReceiptStorage,
+            LimboLogs.Instance,
+            Substitute.For<IReceiptsRecovery>(),
+            prunedLogsRetention: logsRetention);
+
+        LogFilter slicedFilter = new(0, new BlockParameter(prunedBlockNumber), BlockParameter.Latest, new AddressFilter(slicedAddress), new SequenceTopicsFilter());
+        FilterLog[] logs = logFinder.FindLogs(slicedFilter).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Has.Length.EqualTo(1),
+                "every block the scan reads receipts for is a bloom match on the sliced address, and retention keeps exactly those - the pruned endpoint cannot stand in for them");
+            Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
+            Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+        }
+
+        LogFilter nonSlicedFilter = new(0, new BlockParameter(prunedBlockNumber), BlockParameter.Latest, new AddressFilter(nonSlicedAddress), new SequenceTopicsFilter());
+        Assert.That(() => logFinder.FindLogs(nonSlicedFilter).ToArray(), Throws.TypeOf<ResourceNotFoundException>(),
+            "an address nothing retains must keep failing closed over the same range");
+    }
+
     // Slicing a busy contract retains most heights, where a range removal per gap is all cost and no reclaim. Both
     // densities have to end with the same receipts present, since only the mechanism differs.
     [TestCase(1, TestName = "Retains_the_right_receipts_when_almost_every_height_is_sliced")]
@@ -352,6 +418,41 @@ public class SlicedReceiptRetentionTests
             Assert.That(logIndexStorage.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogIndexStorage.GetEnumerator)), Is.False,
                 "the index must not be asked per height about a span it already reported it cannot cover");
         }
+    }
+
+    [Test]
+    public void RetainsLogsFor_Cases()
+    {
+        Address unbounded = TestItem.AddressA;
+        Address bounded = TestItem.AddressB;
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = $"{unbounded},{bounded}:1000" };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(5000).TestObject);
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retention.RetainsLogsFor([unbounded], 0, 5000), Is.True,
+                "an unbounded slice answers any range");
+            Assert.That(retention.RetainsLogsFor([bounded], 4200, 5000), Is.True,
+                "a bounded slice answers a range inside its window");
+            Assert.That(retention.RetainsLogsFor([bounded], 3000, 5000), Is.False,
+                "a bounded slice refuses a range reaching below its window");
+            Assert.That(retention.RetainsLogsFor([unbounded, bounded], 3000, 5000), Is.False,
+                "one uncovered address refuses the whole filter");
+            Assert.That(retention.RetainsLogsFor([TestItem.AddressC], 4900, 5000), Is.False,
+                "an address no slice names is refused");
+            Assert.That(retention.RetainsLogsFor([], 4900, 5000), Is.False,
+                "a filter with no addresses can match any log, which no slice set covers");
+        }
+    }
+
+    [Test]
+    public void RetainsLogsFor_returns_false_when_no_addresses_are_configured()
+    {
+        SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
+
+        Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 100), Is.False);
     }
 
     [Test]
