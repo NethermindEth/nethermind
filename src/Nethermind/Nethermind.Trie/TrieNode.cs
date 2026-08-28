@@ -158,6 +158,8 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerOwned => (Volatile.Read(ref _blockAndFlags) & _warmerOwnedMask) != 0;
 
+        // The flag is set on a freshly constructed node before it is published to any shared structure, so a
+        // reader that can reach the node already sees it; this per-child gate needs no acquire.
         private bool IsWarmerOwnedNonVolatile => (_blockAndFlags & _warmerOwnedMask) != 0;
 
         internal void MarkWarmerOwned()
@@ -494,11 +496,26 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(new RlpReader(rlp), bufferPool, out _);
+                return TryDecodeRlp(in rlp, bufferPool);
             }
             catch (RlpException)
             {
                 return false;
+            }
+        }
+
+        /// <remarks>
+        /// Unverified persistence bytes reach the decoder, and a malformed body surfaces as an out-of-range read
+        /// rather than an <see cref="RlpException"/>: <c>RlpReader</c> slices past the end on a truncated length
+        /// prefix, <c>HexPrefix</c> indexes an empty key. Both mean "not a node", which is what the <c>Try</c>
+        /// variant reports as <c>false</c>. Scoped to the decode so an out-of-range fault raised by the resolver
+        /// still propagates instead of being reported as an absent node.
+        /// </remarks>
+        private bool TryDecodeRlp(in CappedArray<byte> rlp, ICappedArrayPool? bufferPool)
+        {
+            try
+            {
+                return DecodeRlp(new RlpReader(rlp), bufferPool, out _);
             }
             catch (IndexOutOfRangeException)
             {
