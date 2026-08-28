@@ -29,6 +29,7 @@ namespace Nethermind.Stats.Model
         private int? _discoveryPort;
         private IPEndPoint _discoveryAddress;
         private readonly Lock _alternateLock = new();
+        private ulong _alternateEnrSequence;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -373,6 +374,7 @@ namespace Nethermind.Stats.Model
             lock (_alternateLock)
             {
                 V6Address = newAlternate;
+                _alternateEnrSequence = enr.EnrSequence;
             }
         }
 
@@ -416,7 +418,13 @@ namespace Nethermind.Stats.Model
             }
         }
 
-        internal bool TryMergeAlternate(Node other, bool allowOverwrite = false)
+        /// <summary>
+        /// Merges the alternate endpoint from another node if its ENR is strictly newer than the
+        /// one this alternate was derived from. The alternate is derived from <paramref name="other"/>'s
+        /// ENR against this node's current address family, so merging onto a promoted node yields the
+        /// correct family.
+        /// </summary>
+        internal bool TryMergeAlternate(Node other)
         {
             if (other.Enr is null)
             {
@@ -425,12 +433,20 @@ namespace Nethermind.Stats.Model
 
             lock (_alternateLock)
             {
-                if (!allowOverwrite && V6Address is not null)
+                if (other.Enr.EnrSequence <= _alternateEnrSequence)
                 {
                     return false;
                 }
 
+#pragma warning disable IDE0074 // compound assignment not applicable here
                 V6Address = ComputeAlternate(other.Enr);
+                _alternateEnrSequence = other.Enr.EnrSequence;
+                if (_enr is null)
+                {
+                    _enr = other.Enr;
+                }
+#pragma warning restore IDE0074
+
                 return true;
             }
         }
