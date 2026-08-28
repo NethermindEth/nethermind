@@ -376,6 +376,26 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public void StreamInterpreter_DefaultEnablement_IsArchitectureSpecific(Architecture architecture, bool expected) =>
         Assert.That(StreamInterpreter.IsEnabledByDefault(architecture), Is.EqualTo(expected));
 
+    [TestCase("0", false)]
+    [TestCase("1", true)]
+    [TestCase("true", true)]
+    [TestCase("false", false)]
+    [TestCase("TRUE", true)]
+    [TestCase(" 1 ", true)]
+    [TestCase(" false ", false)]
+    public void StreamInterpreter_RecognizedEnvOverride_WinsOverArchitectureDefault(string value, bool expected) =>
+        Assert.That(StreamInterpreter.ParseEnabled(value), Is.EqualTo(expected));
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("   ")]
+    [TestCase("on")]
+    [TestCase("2")]
+    public void StreamInterpreter_UnrecognizedEnvOverride_KeepsArchitectureDefault(string? value) =>
+        Assert.That(
+            StreamInterpreter.ParseEnabled(value),
+            Is.EqualTo(StreamInterpreter.IsEnabledByDefault(RuntimeInformation.ProcessArchitecture)));
+
     private static readonly byte[] CalleeCode = Prepare.EvmCode
         .PushData(7).PushData(6).Op(Instruction.MUL)
         .PushData(0).Op(Instruction.MSTORE)

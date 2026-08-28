@@ -14,14 +14,21 @@ namespace Nethermind.Evm;
 internal static class StreamInterpreter
 {
     // Enabled by default except on ARM64, where the bytecode loop measured faster on the reference part.
-    // NETHERMIND_EVM_STREAM=0/1 overrides the default. Volatile so tests can flip it in-process.
-    public static volatile bool Enabled =
-        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") switch
-        {
-            "0" => false,
-            "1" => true,
-            _ => IsEnabledByDefault(RuntimeInformation.ProcessArchitecture),
-        };
+    // NETHERMIND_EVM_STREAM is an escape hatch for an unbenchmarked part, not a supported setting: promoting
+    // it to an IConfig item would need a reference this assembly does not have, and would publish a config
+    // key for a heuristic we expect to remove once one interpreter wins. The runner does not know the name,
+    // so it lists "Name:EVMSTREAM" among invalid settings - a warning, not a failure.
+    // Volatile so tests can flip it in-process.
+    public static volatile bool Enabled = ParseEnabled(Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM"));
+
+    // Accepts 0/1 and the true/false spelling Nethermind config bools use; anything else keeps the default.
+    internal static bool ParseEnabled(string? value) => value?.Trim() switch
+    {
+        "0" => false,
+        "1" => true,
+        string spelling when bool.TryParse(spelling, out bool parsed) => parsed,
+        _ => IsEnabledByDefault(RuntimeInformation.ProcessArchitecture),
+    };
 
     internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
 
