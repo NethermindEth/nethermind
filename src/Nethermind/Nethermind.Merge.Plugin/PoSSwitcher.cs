@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,6 +38,10 @@ namespace Nethermind.Merge.Plugin
      */
     public class PoSSwitcher : IPoSSwitcher
     {
+        /// <summary>Headers walked back from the head when reconstructing terminal metadata at startup.</summary>
+        /// <remarks>Comfortably above one deferred-event processing branch, which is what the walk has to cover.</remarks>
+        private const int MaxTerminalReconcileDepth = 256;
+
         private readonly IMergeConfig _mergeConfig;
         private readonly ISyncConfig _syncConfig;
         private readonly IDb _metadataDb;
@@ -150,15 +155,32 @@ namespace Nethermind.Merge.Plugin
         /// that window leaves a committed terminal head without terminal metadata. That head is never announced
         /// again and its successors are not terminal, so the merge block number would otherwise stay unknown for
         /// the lifetime of the database.
+        /// <para>
+        /// One <c>UpdateMainChain</c> commits a whole processing branch and defers its events, so the durable head
+        /// can already be past the terminal block. This walks back to it, stopping at the first header below the
+        /// terminal total difficulty; the depth bound keeps a misconfigured TTD from scanning the chain.
+        /// </para>
         /// </remarks>
         private void ReconcileTerminalBlockFromHead()
         {
             if (_terminalBlockNumber is not null)
                 return;
 
-            BlockHeader? head = _blockTree.Head?.Header;
-            if (head is not null)
-                TryUpdateTerminalBlock(head);
+            UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
+            if (terminalTotalDifficulty is null)
+                return;
+
+            BlockHeader? header = _blockTree.Head?.Header;
+            for (int depth = 0; depth < MaxTerminalReconcileDepth; depth++)
+            {
+                if (header?.TotalDifficulty is null || header.TotalDifficulty < terminalTotalDifficulty)
+                    return;
+
+                if (TryUpdateTerminalBlock(header))
+                    return;
+
+                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+            }
         }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);

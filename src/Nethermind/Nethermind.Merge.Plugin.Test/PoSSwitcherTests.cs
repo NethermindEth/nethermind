@@ -374,6 +374,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             blockTree.TryUpdateMainChain(terminalBlock.Header, true, preloadedBlocks: new[] { terminalBlock });
 
+            // Processing it flips the answer through the NewHeadBlock subscription recording the metadata, not
+            // through the head's total difficulty; that branch is covered by
+            // Local_chain_above_ttd_marks_terminal_block_as_reached_without_terminal_block_metadata.
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
         }
 
@@ -391,6 +394,39 @@ namespace Nethermind.Merge.Plugin.Test
             blockTree.SuggestBlock(terminalBlock);
             blockTree.TryUpdateMainChain(terminalBlock.Header, true, preloadedBlocks: new[] { terminalBlock });
             Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber), Is.False);
+
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MatchesTerminalBlock(ReadTerminalMetadata(metadataDb), terminalBlock), Is.True);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock.Number + 1));
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+            }
+        }
+
+        [Test]
+        public void Terminal_block_behind_a_committed_head_is_recovered_by_walking_back()
+        {
+            using MemDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            Block terminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
+            Block firstPoS = Build.A.Block.WithTotalDifficulty(5000000L).WithParent(terminalBlock).WithDifficulty(0L).TestObject;
+            Block secondPoS = Build.A.Block.WithTotalDifficulty(5000000L).WithParent(firstPoS).WithDifficulty(0L).TestObject;
+
+            // One UpdateMainChain commits a whole branch and defers its events, so the durable head can be
+            // several blocks past the terminal block when the process dies before those events are raised.
+            foreach (Block block in new[] { terminalBlock, firstPoS, secondPoS })
+                blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(secondPoS.Header, true, preloadedBlocks: new[] { terminalBlock, firstPoS, secondPoS });
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber), Is.False);
+                Assert.That(blockTree.Head!.Number, Is.EqualTo(secondPoS.Number), "the head must be past the terminal block");
+            }
 
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
 
@@ -696,8 +732,6 @@ namespace Nethermind.Merge.Plugin.Test
 
         private sealed class BatchTrackingTerminalMetadataDb : MemDb
         {
-            private int _openBatches;
-
             public int WriteBatchCount { get; private set; }
 
             public int TerminalMetadataWritesInsideBatch { get; private set; }
@@ -707,21 +741,38 @@ namespace Nethermind.Merge.Plugin.Test
             public override IWriteBatch StartWriteBatch()
             {
                 WriteBatchCount++;
-                _openBatches++;
-                return new FakeWriteBatch(this, () => _openBatches--);
+                return new TrackingWriteBatch(this);
             }
 
+            // Attribution is by the object the write arrives through, not by "a batch is open": a direct
+            // put made while a batch happens to be open is not atomic with it and must not count as inside.
             public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
                 if (IsTerminalMetadataKey(key))
-                {
-                    if (_openBatches > 0)
-                        TerminalMetadataWritesInsideBatch++;
-                    else
-                        TerminalMetadataWritesOutsideBatch++;
-                }
+                    TerminalMetadataWritesOutsideBatch++;
 
                 base.Set(key, value, flags);
+            }
+
+            private void SetThroughBatch(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
+            {
+                if (IsTerminalMetadataKey(key))
+                    TerminalMetadataWritesInsideBatch++;
+
+                base.Set(key, value, flags);
+            }
+
+            private sealed class TrackingWriteBatch(BatchTrackingTerminalMetadataDb owner) : IWriteBatch
+            {
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
+                    owner.SetThroughBatch(key, value, flags);
+
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+                    throw new NotSupportedException("Merging is not supported by this implementation.");
+
+                public void Clear() { }
+
+                public void Dispose() { }
             }
         }
 
