@@ -161,6 +161,9 @@ class SweepShellHelperTests(unittest.TestCase):
         self.assertIn('img="$(arm_image "$entry")"', SWEEP.read_text(encoding="utf-8"))
         self.assertIn("arm_image", LIB.read_text(encoding="utf-8"))
 
+class SweepContractTests(unittest.TestCase):
+    """Contracts read out of the sweep's text; no shell needed, so these must never skip."""
+
     def test_an_unchecked_saved_baseline_fails_the_run(self):
         sweep = SWEEP.read_text(encoding="utf-8")
 
@@ -171,6 +174,12 @@ class SweepShellHelperTests(unittest.TestCase):
         self.assertIn("fail=1", gate)
         skip_branch = sweep[sweep.index("elif (( status == 2 ))"):sweep.index("parity_skipped=$((parity_skipped + 1))")]
         self.assertIn("::error::", skip_branch)
+        # A 'use' run whose saved baseline is absent never reaches compare at all, so it must trip the same gate
+        # rather than capture this arm as its own baseline and pass.
+        self.assertIn("no saved parity baseline for corpus", sweep)
+        missing_branch = sweep[sweep.index('if [[ "$CORPUS_BASELINE" == "use" ]]; then'):]
+        self.assertIn("parity_skipped=$((parity_skipped + 1))",
+                      missing_branch[:missing_branch.index("-- PARITY")])
         # Exit 2 also covers an unreachable node and an unreadable corpus, which no re-recording fixes.
         self.assertNotIn("rerun the master baseline", sweep)
 
@@ -184,6 +193,10 @@ class SweepShellHelperTests(unittest.TestCase):
         self.assertNotIn('cp "$PARITY_STATE/$clabel.json" "$saved"', sweep)
         self.assertIn('> "$CORPUS_BASELINE_DIR/$clabel.label.tmp"', sweep)
         self.assertIn('mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label"', sweep)
+        # State before label: reversed, an interruption between the two renames leaves the new master's label
+        # naming the previous master's responses, and every later run then compares against the wrong set.
+        self.assertLess(sweep.index('mv -f "$saved.tmp" "$saved"'),
+                        sweep.index('mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp"'))
         # A literal newline inside a single-quoted format reads like the line-continuation damage fixed once before.
         self.assertNotIn("printf '%s\n", sweep)
 

@@ -1105,8 +1105,10 @@ jobs:
           body="${RUNNER_TEMP}/rpcbench-corpus-comment-body.md"
           { printf '%s\n\n' "${marker}"; cat "${COMMENT_FILE}"; } > "${body}"
           existing="$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" | tail -1)"
-          # An update that cannot go through (comment deleted, PATCH refused) falls back to posting a new one.
+            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" 2>/dev/null | tail -1 || true)"
+          # The lookup runs under errexit, hence '|| true': a transient gh failure must degrade to posting a
+          # new comment, not kill the step and leave the PR with no comparison. Same for the update itself
+          # (comment deleted, PATCH refused).
           if [[ -n "${existing}" ]] && jq -n --rawfile body "${body}" '{body: $body}' \
               | gh api -X PATCH "repos/${GH_REPO}/issues/comments/${existing}" --input - > /dev/null; then
             echo "Replaced the previous comparison comment (${existing})."

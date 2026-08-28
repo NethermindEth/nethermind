@@ -354,8 +354,10 @@ Labeling a PR `rpc-benchmark` runs the default preset for that PR's branch.
 Every master push that touches `src/Nethermind/**` publishes `nethermindeth/nethermind:master-<sha7>`;
 when that `Publish Docker image` run completes, a `workflow_run` trigger starts the `corpus-baseline`
 preset on the amd64 box: the new master image alone, 20k requests at 100 rps, the 40-pass replay.
-Bursts of pushes collapse to the newest (concurrency group `rpc-bench-master-baseline`). Two things
-are kept:
+Bursts of pushes collapse to the newest *pending* run (concurrency group `rpc-bench-master-baseline`,
+`cancel-in-progress: false`): GitHub keeps one running plus one queued, so an in-flight refresh always
+finishes rather than being starved by the next merge — at the cost of up to two cells on the box. Two
+things are kept:
 
 - the staged aggregates (`summary.json`, `resources.json`, `timings.*`, per-class metrics) plus a
   `baseline.json` (image, date, run, cell fingerprint) go to the Actions cache under

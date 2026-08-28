@@ -219,16 +219,23 @@ run_corpus() {
     PARITY_BASE_LABEL[$clabel]="$(cat "$CORPUS_BASELINE_DIR/$clabel.label" 2>/dev/null || echo master)"
     parity_compare "$clabel" "$label" "$corpus" "$saved" "${PARITY_BASE_LABEL[$clabel]}" "saved"
   else
-    [[ "$CORPUS_BASELINE" != "use" ]] || echo "::warning::no saved parity baseline for corpus $clabel — $label becomes the baseline for this run"
+    if [[ "$CORPUS_BASELINE" == "use" ]]; then
+      # The saved responses are the only correctness gate in cache mode, so a missing one is a failure, not a
+      # note: capturing this arm as its own baseline compares it against itself and always passes.
+      echo "::error::no saved parity baseline for corpus $clabel — nothing checked $label against master; re-run the corpus-baseline preset on this box"
+      parity_skipped=$((parity_skipped + 1))
+    fi
     echo "-- PARITY $clabel: capturing baseline ($label) --"
     if python3 "$here/corpus_parity.py" baseline --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json"; then
       PARITY_BASE_STATE[$clabel]="$PARITY_STATE/$clabel.json"; PARITY_BASE_LABEL[$clabel]="$label"; PARITY_BASE_SAVED[$clabel]=""
       if [[ "$CORPUS_BASELINE" == "save" ]]; then
         # Rename into place: a run killed mid-copy must not leave a truncated state behind, since the read side
-        # accepts any non-empty file and would then report "parity not checked" on every later run.
+        # accepts any non-empty file and would then report "parity not checked" on every later run. State before
+        # label, so an interruption between the two renames leaves a fresh state under a stale name rather than
+        # the new master's name over the previous master's responses.
         if mkdir -p "$CORPUS_BASELINE_DIR" \
           && cp "$PARITY_STATE/$clabel.json" "$saved.tmp" && printf '%s\n' "$label" > "$CORPUS_BASELINE_DIR/$clabel.label.tmp" \
-          && mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label" && mv -f "$saved.tmp" "$saved"; then
+          && mv -f "$saved.tmp" "$saved" && mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label"; then
           echo "   saved parity baseline for $clabel -> $saved"
         else
           echo "::warning::could not save the parity baseline for $clabel under $CORPUS_BASELINE_DIR"

@@ -467,7 +467,8 @@ def _slot_order(slot: str):
     return (int(head) if head.isdigit() else 0, slot)
 
 
-def _render_cells(lines: list[str], slot: str, cell: dict, no_repeat_floor: float = NOISE_FLOOR_PCT) -> None:
+def _render_cells(lines: list[str], slot: str, cell: dict, no_repeat_floor: float = NOISE_FLOOR_PCT,
+                  spread_is_control: bool = True) -> None:
     base, cand = cell.get("master"), cell.get("PR")
     if not base or not cand:
         lines.append(f"@ `{slot}` rps: missing a client, cannot compare.")
@@ -480,9 +481,13 @@ def _render_cells(lines: list[str], slot: str, cell: dict, no_repeat_floor: floa
 
     def row(name: str, base_values: list[float], cand_values: list[float], unit: str) -> None:
         spread = _spread_pct(base_values)
-        floor = no_repeat_floor if spread is None else max(2 * spread, 1.0)  # an n=2 range is a ~1 sigma estimate
+        # A measured spread may tighten the floor only when it is a control for THIS comparison. A cached
+        # baseline's repeats measure one job's internal repeatability, not the cross-job drift that separates
+        # it from this run, so they cannot speak for it.
+        control = spread if spread is not None and spread_is_control else None
+        floor = no_repeat_floor if control is None else max(2 * control, 1.0)  # an n=2 range is a ~1 sigma estimate
         delta = _delta_pct(_mean(base_values), _mean(cand_values))
-        spread_text = f"{spread:.1f}%" if spread is not None else "n/a"
+        spread_text = f"{control:.1f}%" if control is not None else "n/a"
         lines.append(f"| {name} | {_mean(base_values):.2f}{unit} | {_mean(cand_values):.2f}{unit} | {_arrow(delta, floor)} {delta:+.1f}% | {spread_text} |")
 
     if base["cpu"] and cand["cpu"]:
@@ -561,7 +566,8 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_b
     """Render the PR comment from the STAGED tree, which is what enforces the aggregate-only boundary.
 
     `cached_baseline` says master's numbers came from the cached master baseline instead of an arm run in this
-    job, which widens the noise floor the arrows use wherever no A/A repeat measured one.
+    job. There is then no A/A control at all: the wider floor applies to every row, and master's own repeats
+    cannot tighten it, because they do not measure the drift between the two jobs.
     """
     data = _collect(Path(stage_root), baseline_label, candidate_label)
     if not any(c["cells"] or c["timings"] for c in data.values()):
@@ -572,7 +578,7 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_b
         corpus = data[name]
         lines += [f"**`{name}`**", ""]
         for slot in sorted(corpus["cells"], key=_slot_order):
-            _render_cells(lines, slot, corpus["cells"][slot], floor)
+            _render_cells(lines, slot, corpus["cells"][slot], floor, spread_is_control=not cached_baseline)
         _render_timings(lines, corpus)
         _render_parity(lines, corpus["parity"])
         lines.append("")
