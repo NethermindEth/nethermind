@@ -275,14 +275,14 @@ public class ReceiptDecoderTests
     {
         int contentLength = Rlp.LengthOf((byte)1)
             + Rlp.LengthOf(1UL)
-            + Rlp.LengthOf((Bloom?)null)
+            + 1
             + Rlp.LengthOfSequence(0);
         byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
         RlpWriter writer = new(encoded);
         writer.StartSequence(contentLength);
         writer.Encode((byte)1);
         writer.Encode(1UL);
-        writer.Encode((Bloom?)null);
+        writer.EncodeEmptyByteArray();
         writer.StartSequence(0);
         return encoded;
     }

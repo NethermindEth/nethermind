@@ -280,7 +280,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Receipt_message_decoding_accepts_legacy_sequence_form_bloom()
         {
             TxReceipt receipt = Build.A.Receipt.WithBloom(Bloom.Empty).TestObject;
-            Bloom bloom = receipt.Bloom ?? throw new InvalidOperationException("Test receipt should have a bloom.");
+            Bloom bloom = receipt.Bloom;
             ReceiptMessageDecoder decoder = new();
             byte[] validRlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes;
             byte[] legacyBloom = new byte[5 + Bloom.ByteLength];
@@ -381,14 +381,14 @@ namespace Nethermind.Core.Test.Encoding
         {
             int contentLength = Rlp.LengthOf((byte)1)
                 + Rlp.LengthOf(1UL)
-                + Rlp.LengthOf((Bloom?)null)
+                + 1
                 + Rlp.LengthOfSequence(0);
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
             RlpWriter writer = new(encoded);
             writer.StartSequence(contentLength);
             writer.Encode((byte)1);
             writer.Encode(1UL);
-            writer.Encode((Bloom?)null);
+            writer.EncodeEmptyByteArray();
             writer.StartSequence(0);
             return encoded;
         }
@@ -404,7 +404,7 @@ namespace Nethermind.Core.Test.Encoding
                 + Rlp.LengthOf(TestItem.AddressC)
                 + Rlp.LengthOf(1UL)
                 + Rlp.LengthOf(1UL)
-                + Rlp.LengthOf((Bloom?)null)
+                + 1
                 + Rlp.LengthOfSequence(0);
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
             RlpWriter writer = new(encoded);
@@ -418,7 +418,7 @@ namespace Nethermind.Core.Test.Encoding
             writer.Encode(TestItem.AddressC);
             writer.Encode(1UL);
             writer.Encode(1UL);
-            writer.Encode((Bloom?)null);
+            writer.EncodeEmptyByteArray();
             writer.StartSequence(0);
             return encoded;
         }

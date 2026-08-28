@@ -31,7 +31,7 @@ public class GenesisBuilderTests
     }
 
     [Test]
-    public void Missing_allocations_are_treated_as_empty()
+    public void Missing_allocations_are_rejected()
     {
         ChainSpec chainSpec = new()
         {
@@ -39,11 +39,9 @@ public class GenesisBuilderTests
             GenesisStateUnavailable = true,
             Allocations = null,
         };
-        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
+        (GenesisBuilder builder, _) = BuildGenesisBuilder(chainSpec);
 
-        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
-
-        Assert.That(() => builder.Build(), Throws.Nothing);
+        Assert.That(() => builder.Build(), Throws.InvalidOperationException);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

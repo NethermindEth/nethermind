@@ -107,9 +107,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        [TestCase(true, false, TestName = "Missing_block_body_with_receipts_leaves_migration_pointer_gap")]
-        [TestCase(false, true, TestName = "Failed_receipt_recovery_leaves_migration_pointer_gap")]
-        public async Task Unmigratable_complete_receipts_leave_migration_pointer_gap(bool missingBlockBody, bool recoveryFails)
+        [TestCase(true, false, 0UL, TestName = "Missing_block_body_is_skipped_without_holding_migration_pointer")]
+        [TestCase(false, true, ulong.MaxValue, TestName = "Failed_receipt_recovery_leaves_migration_pointer_gap")]
+        public async Task Unmigrated_complete_receipts_preserve_legacy_data(
+            bool missingBlockBody,
+            bool recoveryFails,
+            ulong expectedMigratedBlockNumber)
         {
             InMemoryReceiptStorage source = new();
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
@@ -150,7 +153,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(destination.Count, Is.Zero);
-                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber));
                 Assert.That(source.Get(block), Is.Not.Empty);
             }
         }

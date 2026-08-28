@@ -496,7 +496,7 @@ public ref struct RlpReader
         return CreateBloom(bloomBytes);
     }
 
-    public Bloom DecodeBloomWithLegacySupport() =>
+    public Bloom DecodeBloomNonNull() =>
         DecodeBloomOrNull() ?? ThrowNullDecodedValue<Bloom>();
 
     private static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)

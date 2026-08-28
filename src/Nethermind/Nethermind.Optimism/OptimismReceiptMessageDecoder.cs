@@ -51,7 +51,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
-        txReceipt.Bloom = ctx.DecodeBloomWithLegacySupport();
+        txReceipt.Bloom = ctx.DecodeBloomNonNull();
 
         int logEntriesCheck = ctx.ReadSequenceLength() + ctx.Position;
 

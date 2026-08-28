@@ -8,14 +8,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -26,8 +24,6 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
-        private static readonly ObjectPool<Block> EmptyBlock = new DefaultObjectPool<Block>(new EmptyBlockObjectPolicy());
-
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
@@ -172,17 +168,15 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     (ulong blockNum, Hash256 blockHash) = item;
                     Block? storedBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                    bool usingEmptyBlock = storedBlock is null;
-                    Block block = storedBlock ?? GetMissingBlock(blockNum, blockHash);
-
                     _progressLogger.Update(Interlocked.Increment(ref synced));
-                    bool migrationCompleted = MigrateBlock(block);
-
-                    if (usingEmptyBlock)
+                    if (storedBlock is null)
                     {
-                        ReturnMissingBlock(block);
+                        if (_logger.IsDebug) _logger.Debug($"Block {blockNum} not found. Logs will not be searchable for this block.");
+                        pointerTracker?.ReportCompleted(blockNum);
+                        return;
                     }
 
+                    bool migrationCompleted = MigrateBlock(storedBlock);
                     if (migrationCompleted)
                     {
                         pointerTracker?.ReportCompleted(blockNum);
@@ -214,17 +208,6 @@ namespace Nethermind.Init.Steps.Migrations
                 if (_logger.IsInfo) _logger.Info("Receipt migration finished");
             }
         }
-
-        Block GetMissingBlock(ulong i, Hash256 blockHash)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Block {i} not found. Logs will not be searchable for this block.");
-            Block emptyBlock = EmptyBlock.Get();
-            emptyBlock.Header.Number = i;
-            emptyBlock.Header.Hash = blockHash;
-            return emptyBlock;
-        }
-
-        static void ReturnMissingBlock(Block emptyBlock) => EmptyBlock.Return(emptyBlock);
 
         IEnumerable<(ulong, Hash256)> GetBlockBodiesForMigration(ulong from, ulong to, MigrationPointerTracker? pointerTracker, CancellationToken token)
         {
@@ -478,11 +461,5 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private class EmptyBlockObjectPolicy : IPooledObjectPolicy<Block>
-        {
-            public Block Create() => new(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0UL, 0UL, 0UL, []));
-
-            public bool Return(Block obj) => true;
-        }
     }
 }

@@ -216,6 +216,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !header.BaseFeePerGas.IsZero;
             requiredItems[1] = header.WithdrawalsRoot is not null;
             requiredItems[2] = header.BlobGasUsed is not null;
+            // EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.
             requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null;
             requiredItems[4] = header.ParentBeaconBlockRoot is not null;
             requiredItems[5] = header.RequestsHash is not null;

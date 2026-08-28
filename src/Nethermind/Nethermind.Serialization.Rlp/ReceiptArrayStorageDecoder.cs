@@ -65,7 +65,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (decoderContext.PeekByte() == CompactEncoding)
         {
             decoderContext.ReadByte();
-            return DecodeCompactArray(ref decoderContext);
+            return CompactDecoder.DecodeNonNullArray(
+                ref decoderContext,
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
@@ -123,7 +125,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             RlpReader decoderContext = new(receiptsData[1..]);
-            return DecodeCompactArray(ref decoderContext);
+            return CompactDecoder.DecodeNonNullArray(
+                ref decoderContext,
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
@@ -169,32 +173,14 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    private static TxReceipt[] DecodeCompactArray(ref RlpReader decoderContext)
-    {
-        // The persisted compact format excludes its final byte from the outer sequence length.
-        // DecodeAllowingMissing scans the full span when migrations need that trailing item.
-        int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        int length = decoderContext.PeekNumberOfItemsRemaining(
-            declaredEnd,
-            RlpLimit.DefaultLimit.Limit + 1);
-        decoderContext.GuardLimit(length);
-        TxReceipt[] result = new TxReceipt[length];
-        for (int i = 0; i < result.Length; i++)
-        {
-            result[i] = CompactDecoder.DecodeGuardNotNull(
-                ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
-        }
-
-        return result;
-    }
-
     private static TxReceipt?[] DecodeArrayAllowingMissingReceipts(
         ref RlpReader decoderContext,
         RlpDecoder<TxReceipt> decoder,
         RlpBehaviors rlpBehaviors,
         bool includeTrailingItems = false)
     {
+        // The persisted compact format excludes its final byte from the outer sequence length.
+        // Migration decoding scans the full span to include that trailing item.
         int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int itemsEnd = includeTrailingItems ? decoderContext.Length : declaredEnd;
         int length = decoderContext.PeekNumberOfItemsRemaining(
