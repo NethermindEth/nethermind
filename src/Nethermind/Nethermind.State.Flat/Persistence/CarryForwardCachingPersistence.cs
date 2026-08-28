@@ -23,7 +23,8 @@ internal interface IAbortableWriteBatch
 /// </summary>
 /// <remarks>
 /// There is no per-entry account eviction. Account residency grows until the entry cap forces a wholesale
-/// wipe, so the account-count gauge and wipe counter form a sawtooth under sustained churn.
+/// wipe, so the account-count gauge and wipe counter form a sawtooth under sustained churn. Refreshing on
+/// commit removed the churn that used to bound residency; the wipe counter is the signal to revisit that.
 /// </remarks>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
@@ -65,7 +66,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
-        => new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, flags), to);
+        => new CacheUpdatingWriteBatch(this, _inner.CreateWriteBatch(from, to, flags), to);
 
     public void Flush() => _inner.Flush();
 
@@ -243,7 +244,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public void Dispose() => inner.Dispose();
     }
 
-    private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
+    private sealed class CacheUpdatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch, IAbortableWriteBatch
     {
         private Dictionary<Address, Account?>? _writtenAccounts;
