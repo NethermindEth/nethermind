@@ -52,11 +52,13 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         }
 
         IPAddress? configuredExternalIp = TryGetExternalIpOverride(_networkConfig.ExternalIp, nameof(NetworkConfig.ExternalIp), expectedFamily: null);
+        IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
         IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
 
-        // ExternalIpV6 must not become the primary address: IPv4-only consumers (enode, RLPx peer
-        // filter) would break, and an IPv6-only override would suppress IPv4 auto-detection.
+        // ExternalIpV6 must not become the primary address: IPv4-only consumers would break, and an
+        // IPv6-only override would suppress IPv4 auto-detection. ExternalIp can still select IPv6 explicitly.
         IPAddress externalIp = configuredExternalIp
+            ?? configuredExternalIpV4
             ?? await ResolveExternalIp(cancellationToken);
 
         if (configuredExternalIp?.AddressFamily == AddressFamily.InterNetworkV6 &&
@@ -72,7 +74,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }
 
-        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV6);
+        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
@@ -149,7 +151,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             return null;
         }
 
-        IPAddress? normalizedIp = NormalizeExternalIpOverride(ipAddress, expectedFamily);
+        IPAddress? normalizedIp = IIPResolver.NethermindIp.NormalizeExternalIp(ipAddress, expectedFamily);
         if (normalizedIp is null)
         {
             if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
@@ -164,14 +166,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
         return normalizedIp;
     }
-
-    private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
-        => expectedFamily switch
-        {
-            AddressFamily.InterNetworkV6 => IIPResolver.NethermindIp.GetExternalIpV6(ipAddress),
-            null => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress) ?? IIPResolver.NethermindIp.GetExternalIpV6(ipAddress),
-            _ => null
-        };
 
     private async Task<IPAddress> InitializeLocalIp()
     {

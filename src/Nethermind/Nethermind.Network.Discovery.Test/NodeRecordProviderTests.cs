@@ -150,6 +150,7 @@ public class NodeRecordProviderTests
         IIPResolver.NethermindIp updatedIp = new(
             IPAddress.Loopback,
             IPAddress.Parse("192.0.2.1"),
+            externalIpV4: null,
             IPAddress.Parse("2001:db8::1"));
         int resolveCalls = 0;
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
@@ -220,6 +221,7 @@ public class NodeRecordProviderTests
             new IIPResolver.NethermindIp(
                 IPAddress.IPv6Any,
                 IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("2001:db8::1")));
 
         NodeRecord record = await provider.GetCurrentAsync();
@@ -253,6 +255,7 @@ public class NodeRecordProviderTests
             new IIPResolver.NethermindIp(
                 IPAddress.Loopback,
                 IPAddress.Parse("192.0.2.1"),
+                externalIpV4: null,
                 IPAddress.Parse("2001:db8::1")));
 
         NodeRecord record = await provider.GetCurrentAsync();
@@ -271,6 +274,7 @@ public class NodeRecordProviderTests
             new IIPResolver.NethermindIp(
                 IPAddress.Parse("::ffff:0.0.0.0"),
                 IPAddress.Parse("192.0.2.1"),
+                externalIpV4: null,
                 IPAddress.Parse("2001:db8::1")));
 
         NodeRecord record = await provider.GetCurrentAsync();
@@ -291,6 +295,7 @@ public class NodeRecordProviderTests
             new IIPResolver.NethermindIp(
                 IPAddress.Parse("2001:db8::5"),
                 IPAddress.Parse("192.0.2.1"),
+                externalIpV4: null,
                 IPAddress.Parse("2001:db8::5")));
 
         NodeRecord record = await provider.GetCurrentAsync();
@@ -346,7 +351,6 @@ public class NodeRecordProviderTests
         long timestampMilliseconds,
         ILogManager? logManager = null)
     {
-
         INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
         networkConfig.P2PPort.Returns(30303);
         networkConfig.DiscoveryPort.Returns(30303);

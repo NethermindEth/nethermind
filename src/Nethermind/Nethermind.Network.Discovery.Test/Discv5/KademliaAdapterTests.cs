@@ -149,6 +149,18 @@ public class KademliaAdapterTests
     }
 
     [Test]
+    public void HasDiscoveryEndpoint_ShouldRejectNonIpv4IpEntry()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new NonIpv4IpEntry(IPAddress.Parse("2001:db8::c000:201")));
+        record.SetEntry(new UdpEntry(30304));
+
+        Assert.That(
+            KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("192.0.2.1:30304")),
+            Is.False);
+    }
+
+    [Test]
     public void HasDiscoveryEndpoint_ShouldMatchBothFamiliesInDualStackRecord()
     {
         IPAddress ip = IPAddress.Parse("172.19.0.2");
@@ -177,20 +189,6 @@ public class KademliaAdapterTests
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip6, 30304)), Is.False);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(fallbackRecord, new IPEndPoint(ip6, 30304)), Is.True);
         }
-    }
-
-    [Test]
-    public void HasDiscoveryEndpoint_RejectsNativeIpv6InIpEntry()
-    {
-        // Decoding does not enforce the 4-byte length of the `ip` key, so a peer can put a native IPv6
-        // address there; the family check must reject it rather than match it as IPv4.
-        NodeRecord record = new();
-        record.SetEntry(new IpEntry(IPAddress.Parse("2001:db8::1")));
-        record.SetEntry(new UdpEntry(30304));
-
-        Assert.That(
-            KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)),
-            Is.False);
     }
 
     [TestCaseSource(nameof(AcceptableNodeRecordCases))]
@@ -452,4 +450,9 @@ public class KademliaAdapterTests
         bool AllowNonRoutable,
         bool IncludeEth2,
         bool ExpectedResult);
+
+    private sealed class NonIpv4IpEntry(IPAddress ipAddress) : Ip6Entry(ipAddress)
+    {
+        public override string Key => EnrContentKey.Ip;
+    }
 }

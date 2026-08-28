@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Collections.Pooled;
+using FastEnumUtility;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -296,6 +297,7 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
             await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+            RecordSent(message);
             return pendingNonceKey;
         }
         catch
@@ -314,6 +316,7 @@ public sealed class KademliaAdapter(
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+        RecordSent(message);
     }
 
     [SkipLocalsInit]
@@ -397,6 +400,7 @@ public sealed class KademliaAdapter(
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
         await discoveryHandler.SendAsync(handshakePacket, endpoint, token);
+        RecordSent("Handshake");
     }
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
@@ -494,6 +498,7 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
             await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint, token);
+            RecordSent("WhoAreYou");
             return;
         }
 
@@ -508,6 +513,7 @@ public sealed class KademliaAdapter(
         SetSentChallenge(challengeKey, packet);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, endpoint, token);
+        RecordSent("WhoAreYou");
     }
 
     private ulong GetChallengeEnrSequence(ValueHash256 nodeId, IPEndPoint endpoint)
@@ -519,6 +525,11 @@ public sealed class KademliaAdapter(
 
         return HasDiscoveryEndpoint(record, endpoint) ? record.EnrSequence : 0UL;
     }
+
+    private static void RecordSent(Discv5Message message) => RecordSent(FastEnum.GetName(message.MessageType)!);
+
+    private static void RecordSent(string messageType)
+        => Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv5", messageType));
 
     private async Task HandleHandshakeMessage(
         IPEndPoint endpoint,

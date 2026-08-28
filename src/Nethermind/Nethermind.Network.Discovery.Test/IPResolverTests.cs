@@ -15,6 +15,22 @@ namespace Nethermind.Network.Discovery.Test;
 public class IPResolverTests
 {
     [Test]
+    public void Nethermind_ip_preserves_positional_api()
+    {
+        IPAddress localIp = IPAddress.Loopback;
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp ip = new(LocalIp: localIp, ExternalIp: externalIp);
+
+        (IPAddress deconstructedLocalIp, IPAddress deconstructedExternalIp) = ip;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deconstructedLocalIp, Is.SameAs(localIp));
+            Assert.That(deconstructedExternalIp, Is.SameAs(externalIp));
+        }
+    }
+
+    [Test]
     public async Task Ipv6_only_override_does_not_become_primary()
     {
         IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
@@ -37,17 +53,22 @@ public class IPResolverTests
         }
     }
 
-    [TestCase("99.99.99.99", "99.99.99.99", null)]
-    [TestCase("10.50.50.50", "10.50.50.50", null)]
-    [TestCase("2001:db8::1", null, "2001:db8::1")]
-    public async Task Can_resolve_external_ip_with_override(string ipOverride, string? expectedExternalIpV4, string? expectedExternalIpV6)
+    [TestCase("99.99.99.99", "99.99.99.99", "99.99.99.99", null)]
+    [TestCase("10.50.50.50", "10.50.50.50", "10.50.50.50", null)]
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1", "192.0.2.1", null)]
+    [TestCase("2001:db8::1", "2001:db8::1", null, "2001:db8::1")]
+    public async Task Can_resolve_external_ip_with_override(
+        string ipOverride,
+        string expectedExternalIp,
+        string? expectedExternalIpV4,
+        string? expectedExternalIpV6)
     {
         INetworkConfig networkConfig = new NetworkConfig { ExternalIp = ipOverride };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse(expectedExternalIp)));
             Assert.That(ip.ExternalIpV4, Is.EqualTo(expectedExternalIpV4 is null ? null : IPAddress.Parse(expectedExternalIpV4)));
             Assert.That(ip.ExternalIpV6, Is.EqualTo(expectedExternalIpV6 is null ? null : IPAddress.Parse(expectedExternalIpV6)));
         }
@@ -58,7 +79,7 @@ public class IPResolverTests
     {
         INetworkConfig networkConfig = new NetworkConfig
         {
-            ExternalIp = "192.0.2.1",
+            ExternalIpV4 = "192.0.2.1",
             ExternalIpV6 = "2001:db8::1"
         };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
@@ -80,7 +101,7 @@ public class IPResolverTests
     {
         INetworkConfig networkConfig = new NetworkConfig
         {
-            ExternalIp = "192.0.2.1",
+            ExternalIpV4 = "192.0.2.1",
             ExternalIpV6 = externalIpV6
         };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
@@ -102,6 +123,7 @@ public class IPResolverTests
         IIPResolver.NethermindIp ip = new(
             IPAddress.Loopback,
             IPAddress.Parse(externalIp),
+            externalIpV4: null,
             externalIpV6 is null ? null : IPAddress.Parse(externalIpV6));
 
         using (Assert.EnterMultipleScope())
@@ -129,7 +151,11 @@ public class IPResolverTests
     public void NethermindIp_preserves_explicit_ipv6_override_after_with_expression()
     {
         IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
-        IIPResolver.NethermindIp original = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"), externalIpV6);
+        IIPResolver.NethermindIp original = new(
+            IPAddress.Loopback,
+            IPAddress.Parse("192.0.2.1"),
+            externalIpV4: null,
+            externalIpV6);
 
         IIPResolver.NethermindIp changed = original with { ExternalIp = IPAddress.Parse("198.51.100.1") };
 
@@ -145,7 +171,11 @@ public class IPResolverTests
     {
         IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
         IIPResolver.NethermindIp derived = new(IPAddress.IPv6Any, externalIpV6);
-        IIPResolver.NethermindIp overridden = new(IPAddress.IPv6Any, externalIpV6, externalIpV6);
+        IIPResolver.NethermindIp overridden = new(
+            IPAddress.IPv6Any,
+            externalIpV6,
+            externalIpV4: null,
+            externalIpV6);
 
         Assert.That(overridden, Is.EqualTo(derived));
         Assert.That(overridden.GetHashCode(), Is.EqualTo(derived.GetHashCode()));

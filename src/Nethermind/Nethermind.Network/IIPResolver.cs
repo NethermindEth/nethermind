@@ -16,9 +16,8 @@ namespace Nethermind.Network
         /// </summary>
         /// <remarks>
         /// The result is resolved once and cached; concurrent callers await the same in-flight
-        /// resolution. An explicit <c>INetworkConfig.LocalIp</c>/<c>ExternalIp</c> override is
-        /// honored when set, otherwise the address is auto-detected. The IPv4 address to advertise
-        /// is derived from <c>ExternalIp</c>; <c>ExternalIpV6</c> optionally adds an IPv6 address.
+        /// resolution. Explicit local, primary, IPv4, and IPv6 overrides are honored when set;
+        /// otherwise the primary address is auto-detected.
         /// </remarks>
         /// <param name="cancellationToken">
         /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
@@ -30,74 +29,83 @@ namespace Nethermind.Network
         /// The resolved local and external IP addresses of this node.
         /// </summary>
         /// <remarks>
-        /// Equality compares the resolved addresses, regardless of whether the IPv6 address came
-        /// from an explicit override or was derived from <see cref="ExternalIp"/>.
+        /// Equality compares the resolved addresses, regardless of whether a family-specific address
+        /// came from an explicit override or was derived from <see cref="ExternalIp"/>.
         /// </remarks>
         /// <param name="LocalIp">The local address used for network listeners.</param>
         /// <param name="ExternalIp">The primary external address used by existing consumers.</param>
         public readonly record struct NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
         {
+            private readonly IPAddress? _externalIpV4Override;
             private readonly IPAddress? _externalIpV6Override;
 
             /// <summary>
-            /// Creates resolved node addresses with an optional IPv6 advertisement override.
+            /// Creates resolved node addresses with optional family-specific advertisement overrides.
             /// </summary>
             /// <param name="localIp">The local address used for network listeners.</param>
             /// <param name="externalIp">The primary external address used by existing consumers.</param>
+            /// <param name="externalIpV4">The optional IPv4 advertisement override.</param>
             /// <param name="externalIpV6">The optional IPv6 advertisement override.</param>
-            public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV6)
+            public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV4, IPAddress? externalIpV6)
                 : this(localIp, externalIp)
-                => _externalIpV6Override = GetExternalIpV6(externalIpV6);
+            {
+                _externalIpV4Override = NormalizeExternalIp(externalIpV4, AddressFamily.InterNetwork);
+                _externalIpV6Override = NormalizeExternalIp(externalIpV6, AddressFamily.InterNetworkV6);
+            }
 
             /// <summary>
-            /// Gets the external IPv4 address to advertise, derived from <see cref="ExternalIp"/>.
+            /// Gets the external IPv4 address to advertise. An explicit IPv4 override takes precedence;
+            /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV4 => GetExternalIpV4(ExternalIp);
+            public IPAddress? ExternalIpV4 => _externalIpV4Override ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetwork);
 
             /// <summary>
             /// Gets the external IPv6 address to advertise. An explicit IPv6 override takes precedence;
             /// otherwise the value is derived from <see cref="ExternalIp"/>.
             /// </summary>
-            public IPAddress? ExternalIpV6 => _externalIpV6Override ?? GetExternalIpV6(ExternalIp);
+            public IPAddress? ExternalIpV6 => _externalIpV6Override ?? NormalizeExternalIp(ExternalIp, AddressFamily.InterNetworkV6);
 
             public bool Equals(NethermindIp other) =>
                 LocalIp.Equals(other.LocalIp) &&
                 ExternalIp.Equals(other.ExternalIp) &&
+                Equals(ExternalIpV4, other.ExternalIpV4) &&
                 Equals(ExternalIpV6, other.ExternalIpV6);
 
-            public override int GetHashCode() => HashCode.Combine(LocalIp, ExternalIp, ExternalIpV6);
+            public override int GetHashCode() => HashCode.Combine(LocalIp, ExternalIp, ExternalIpV4, ExternalIpV6);
 
-            internal static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
+            internal static IPAddress? NormalizeExternalIp(IPAddress? ipAddress, AddressFamily? expectedFamily)
             {
                 if (ipAddress is null)
                 {
                     return null;
                 }
 
-                // Map first so a mapped unspecified value (::ffff:0.0.0.0) is rejected like its
-                // native IPv4 equivalent.
-                if (ipAddress.IsIPv4MappedToIPv6)
+                if (ipAddress.IsIPv4MappedToIPv6 && expectedFamily != AddressFamily.InterNetworkV6)
                 {
                     ipAddress = ipAddress.MapToIPv4();
                 }
 
-                return !IsUnspecified(ipAddress) && ipAddress.AddressFamily == AddressFamily.InterNetwork
-                    ? ipAddress
-                    : null;
-            }
+                if (IsUnspecified(ipAddress))
+                {
+                    return null;
+                }
 
-            internal static IPAddress? GetExternalIpV6(IPAddress? ipAddress)
-                => ipAddress is not null
-                   && !IsUnspecified(ipAddress)
-                   && ipAddress.AddressFamily == AddressFamily.InterNetworkV6
-                   && !ipAddress.IsIPv4MappedToIPv6
-                    ? ipAddress
-                    : null;
+                return expectedFamily switch
+                {
+                    AddressFamily.InterNetwork => ipAddress.AddressFamily == AddressFamily.InterNetwork ? ipAddress : null,
+                    AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 && !ipAddress.IsIPv4MappedToIPv6
+                        ? ipAddress
+                        : null,
+                    null => ipAddress,
+                    _ => null
+                };
+            }
 
             internal static bool IsUnspecified(IPAddress ipAddress)
                 => ipAddress.Equals(IPAddress.Any)
+                   || ipAddress.Equals(IPAddress.IPv6Any)
                    || ipAddress.Equals(IPAddress.None)
-                   || ipAddress.Equals(IPAddress.IPv6Any);
+                   || ipAddress.Equals(IPAddress.IPv6None);
         }
     }
 }
