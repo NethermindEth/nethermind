@@ -18,6 +18,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Events;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -175,6 +176,16 @@ public abstract partial class BaseEngineModuleTests
                 b => (parentHash is null || b.Header.ParentHash == parentHash)
                      && b.Transactions.Length >= minTransactions);
 
+        /// <summary>Waits for the tx pool to finish processing <paramref name="blockHash"/> as its head.</summary>
+        /// <remarks>
+        /// Callers must create the wait before the <c>forkchoiceUpdated</c> that canonicalizes the block, and should
+        /// assert that call succeeded — otherwise the event never fires and the wait times out without a cause.
+        /// </remarks>
+        public Task WaitForTxPoolHead(Hash256 blockHash) =>
+            Wait.ForEventCondition<Block>(CancellationToken,
+                h => TxPool.TxPoolHeadChanged += h,
+                h => TxPool.TxPoolHeadChanged -= h,
+                b => b.Hash == blockHash);
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 

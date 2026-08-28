@@ -14,7 +14,6 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -727,10 +726,7 @@ public partial class EngineModuleTests
             "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
-            h => chain.TxPool.TxPoolHeadChanged += h,
-            h => chain.TxPool.TxPoolHeadChanged -= h,
-            b => b.Hash == payload.BlockHash);
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
         Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),

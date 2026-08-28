@@ -8,7 +8,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -1113,13 +1112,12 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
 
-        // Tx pool head processing is asynchronous; without waiting for it, the next call's transactions
-        // are still unselectable when the one improvement scheduled for their pool bump runs.
-        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
-            h => chain.TxPool.TxPoolHeadChanged += h,
-            h => chain.TxPool.TxPoolHeadChanged -= h,
-            b => b.Hash == payload.ExecutionPayload.BlockHash);
-        await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        // Without this, the next call's transactions are still unselectable when the one improvement
+        // scheduled for their pool bump runs.
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.ExecutionPayload.BlockHash!);
+        ResultWrapper<ForkchoiceUpdatedV1Result> newFcuResult = await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        Assert.That(newFcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
         await txPoolHeadWait;
 
         return payload.ExecutionPayload;
