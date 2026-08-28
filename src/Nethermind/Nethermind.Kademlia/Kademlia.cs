@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Collections.Pooled;
 using Microsoft.Extensions.Logging;
 
@@ -70,9 +69,6 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
     public TNode CurrentNode => _currentNodeId;
 
     public void AddOrRefresh(TNode node) => _nodeHealthTracker.OnIncomingMessageFrom(node);
-
-    public bool TryGetNode(TNode node, [MaybeNullWhen(false)] out TNode storedNode)
-        => _routingTable.TryGet(_keyOperator.GetNodeHash(node), out storedNode);
 
     public void Remove(TNode node) => _routingTable.Remove(_keyOperator.GetNodeHash(node));
 

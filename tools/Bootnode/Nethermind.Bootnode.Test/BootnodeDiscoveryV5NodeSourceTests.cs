@@ -171,8 +171,6 @@ public class BootnodeDiscoveryV5NodeSourceTests
 
         public void AddOrRefresh(Node node) => throw new NotSupportedException();
 
-        public bool TryGetNode(Node node, out Node storedNode) => throw new NotSupportedException();
-
         public void Remove(Node node) => throw new NotSupportedException();
 
         public Task Run(CancellationToken token) => throw new NotSupportedException();

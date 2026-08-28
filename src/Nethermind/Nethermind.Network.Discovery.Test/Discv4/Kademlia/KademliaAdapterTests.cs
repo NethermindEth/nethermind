@@ -57,6 +57,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IKademliaAdapter _adapter = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
+        private IRoutingTable<Node, ValueHash256> _routingTable = null!;
         private INodeHealthTracker<Node> _nodeHealthTracker = null!;
         private INetworkConfig _networkConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
@@ -106,6 +107,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _testNode = new(_testPublicKey, "192.168.1.1", 30303);
 
             _kademliaMessageReceiver = Substitute.For<IKademlia<PublicKey, Node>>();
+            _routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
             _nodeHealthTracker = Substitute.For<INodeHealthTracker<Node>>();
             _networkConfig = Substitute.For<INetworkConfig>();
             _networkConfig.MaxActivePeers.Returns(25);
@@ -143,6 +145,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private KademliaAdapter CreateAdapter(int requestTimeoutMs) => new(
             new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
+            _routingTable,
             new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
             new DiscoveryConfig
             {
@@ -192,7 +195,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 enrSequence: 2);
             Node knownNode = new(TestItem.PublicKeyB, _receiver.Address);
             knownNode.SetVerifiedEnr(knownRecord);
-            _kademliaMessageReceiver.TryGetNode(Arg.Any<Node>(), out _).Returns(callInfo =>
+            _routingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == knownNode.Id.Hash), out _).Returns(callInfo =>
             {
                 callInfo[1] = knownNode;
                 return true;
@@ -206,7 +209,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 ReferenceEquals(added.Enr, knownRecord) &&
                 added.IsVerifiedEnr(knownRecord) &&
                 added.HighestObservedEnrSequence == knownRecord.EnrSequence));
-            _kademliaMessageReceiver.Received().TryGetNode(Arg.Any<Node>(), out _);
+            _routingTable.Received().TryGet(Arg.Is<ValueHash256>(hash => hash == knownNode.Id.Hash), out _);
             _kademliaMessageReceiver.DidNotReceive().GetAllAtDistance(Arg.Any<int>());
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
         }

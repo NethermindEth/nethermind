@@ -74,6 +74,7 @@ public class XdcKademliaAdapterTests
 
         _adapter = new XdcKademliaAdapter(
             new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
+            Substitute.For<IRoutingTable<Node, ValueHash256>>(),
             new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
             new DiscoveryConfig
             {

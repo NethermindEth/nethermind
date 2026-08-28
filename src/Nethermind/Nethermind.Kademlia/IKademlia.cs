@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace Nethermind.Kademlia;
 
 /// <summary>
@@ -17,14 +15,6 @@ public interface IKademlia<TKey, TNode>
     /// </summary>
     /// <param name="node">Node to add or refresh.</param>
     void AddOrRefresh(TNode node);
-
-    /// <summary>
-    /// Finds a routing-table entry with the same node key, including an entry waiting in the replacement cache.
-    /// </summary>
-    /// <param name="node">Node whose routing key should be found.</param>
-    /// <param name="storedNode">The stored node when found.</param>
-    /// <returns><see langword="true"/> when the node is stored in the routing table or replacement cache.</returns>
-    bool TryGetNode(TNode node, [MaybeNullWhen(false)] out TNode storedNode);
 
     /// <summary>
     /// Removes a node from the routing table.

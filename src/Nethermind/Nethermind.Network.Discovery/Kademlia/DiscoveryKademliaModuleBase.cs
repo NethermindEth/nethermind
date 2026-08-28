@@ -23,7 +23,6 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
         builder
             .AddModule(new KademliaModule<PublicKey, Node, ValueHash256>())
             .AddSingleton<ILoggerFactory, ILogManager>(static logManager => new NethermindLoggerFactory(logManager))
-            .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKademliaDistance<ValueHash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<PublicKey, Node, ValueHash256>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(currentNode, bootNodes, discoveryConfig));

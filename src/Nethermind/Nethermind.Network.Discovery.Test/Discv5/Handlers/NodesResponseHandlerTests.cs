@@ -139,7 +139,7 @@ public class NodesResponseHandlerTests
     private static int GetDistance(Node receiver, NodeRecord record)
     {
         PublicKey nodeId = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress();
-        return Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash, nodeId.Hash);
+        return Hash256KademliaDistance.Instance.CalculateLogDistance(receiver.Id.Hash.ValueHash256, nodeId.Hash.ValueHash256);
     }
 
     private static void AssertUniqueNodeIds(Node[] nodes)

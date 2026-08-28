@@ -261,8 +261,6 @@ public class RandomWalkKademliaDiscoveryTests
 
         public void AddOrRefresh(int node) => throw new NotSupportedException();
 
-        public bool TryGetNode(int node, out int storedNode) => throw new NotSupportedException();
-
         public void Remove(int node) => throw new NotSupportedException();
 
         public Task Run(CancellationToken token) => throw new NotSupportedException();

@@ -27,7 +27,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// </summary>
 public sealed class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency: Kademlia uses this adapter as its message sender.
-    IRoutingTable<Node, ValueHash256> routingTable, // Packet headers expose a node hash before the public key is authenticated.
+    IRoutingTable<Node, ValueHash256> routingTable, // Direct hash lookup also works before a packet's public key is authenticated.
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
@@ -35,7 +35,7 @@ public sealed class KademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
-    IKademliaDistance<Hash256> distance,
+    IKademliaDistance<ValueHash256> distance,
     ILogManager logManager) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
@@ -56,8 +56,8 @@ public sealed class KademliaAdapter(
 
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
-    private readonly IKademliaDistance<Hash256> _distance = distance;
-    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
+    private readonly IKademliaDistance<ValueHash256> _distance = distance;
+    private readonly ValueHash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash.ValueHash256;
     private readonly int _bucketSize = kademliaConfig.KSize;
     private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
     private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges");
@@ -596,7 +596,7 @@ public sealed class KademliaAdapter(
     {
         ValueHash256 remoteNodeId = remotePublicKey.Hash.ValueHash256;
         Node remoteNode = Node.FromDiscoveryEndpoint(remotePublicKey, endpoint);
-        if (kademlia.Value.TryGetNode(remoteNode, out Node? knownNode))
+        if (routingTable.TryGet(remoteNodeId, out Node? knownNode))
         {
             // Routing refreshes replace Node objects. Sharing this identity's ENR state keeps
             // concurrent packet workers and an awaiting record refresh on one atomic cache.
@@ -695,7 +695,7 @@ public sealed class KademliaAdapter(
         IKademlia<PublicKey, Node> table = kademlia.Value;
         if (node.ValidatedProtocol == true)
         {
-            int distance = _distance.CalculateLogDistance(_currentNodeHash, node.Id.Hash);
+            int distance = _distance.CalculateLogDistance(_currentNodeHash, node.Id.Hash.ValueHash256);
             // Removing a stale bucket entry may promote an unvalidated replacement, so keep evicting until the
             // endpoint-validated node can be admitted or no stale, non-static entries remain at this distance.
             while (true)
@@ -865,7 +865,7 @@ public sealed class KademliaAdapter(
     [SkipLocalsInit]
     internal Distances GetLookupDistances(Node receiver, PublicKey target)
     {
-        int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
+        int distance = _distance.CalculateLogDistance(receiver.Id.Hash.ValueHash256, target.Hash.ValueHash256);
 
         Span<int> distances = stackalloc int[3];
         distances[0] = distance;

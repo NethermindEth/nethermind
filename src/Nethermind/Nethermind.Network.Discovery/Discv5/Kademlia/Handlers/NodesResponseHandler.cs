@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 internal sealed class NodesResponseHandler(
     Node receiver,
     Distances requestedDistances,
-    IKademliaDistance<Hash256> distanceCalculator,
+    IKademliaDistance<ValueHash256> distanceCalculator,
     IPAddress localIp)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
@@ -176,7 +176,7 @@ internal sealed class NodesResponseHandler(
 
     private bool MatchesRequestedDistance(Node node, Distances requestedDistances)
     {
-        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash, node.Id.Hash);
+        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash.ValueHash256, node.Id.Hash.ValueHash256);
         for (int i = 0; i < requestedDistances.Count; i++)
         {
             if (requestedDistances[i] == distance)

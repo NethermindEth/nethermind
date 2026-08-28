@@ -22,6 +22,7 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
 public class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
+    IRoutingTable<Node, ValueHash256> routingTable,
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
@@ -283,7 +284,7 @@ public class KademliaAdapter(
 
     private void MergeKnownEnrState(Node node)
     {
-        if (kademlia.Value.TryGetNode(node, out Node? knownNode))
+        if (routingTable.TryGet(node.Id.Hash.ValueHash256, out Node? knownNode))
         {
             node.MergeEnrStateFrom(knownNode);
         }
