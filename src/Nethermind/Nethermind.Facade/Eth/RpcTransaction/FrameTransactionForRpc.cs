@@ -55,13 +55,32 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
+        if (!FrameForRpc.TryToFrames(Frames, out TxFrame[]? frames))
+            return RpcTransactionErrors.NullEntryIn("frames");
+
+        if (!FrameSignatureForRpc.TryToSignatures(Signatures, out TxFrameSignature[]? signatures))
+            return RpcTransactionErrors.NullEntryIn("signatures");
+
+        if (!RecentRootReferenceForRpc.TryToReferences(RecentRootReferences, out RecentRootReference[]? references))
+            return RpcTransactionErrors.NullEntryIn("recentRootReferences");
+
+        // The caller's gas field is not what this type spends, so the cap the base applied to
+        // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
+        ulong effectiveCap = gasCap.EffectiveGasCap();
+        ulong totalFrameGas = FrameTxValidation.TotalGasLimit(frames);
+        if (totalFrameGas > effectiveCap)
+            return RpcTransactionErrors.FrameGasAboveCap(totalFrameGas, effectiveCap);
+
         Transaction tx = baseResult.Data;
+        // The invariant FrameTxDecoder establishes for a decoded frame tx, so GasLimit readers see the same
+        // value whichever path built it. The processor still derives the real budget from the frames.
+        tx.GasLimit = totalFrameGas;
         tx.NonceKeys = NonceKeys;
-        tx.Frames = FrameForRpc.ToFrames(Frames);
-        tx.FrameSignatures = FrameSignatureForRpc.ToSignatures(Signatures);
+        tx.Frames = frames;
+        tx.FrameSignatures = signatures;
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
-        tx.RecentRootReferences = RecentRootReferenceForRpc.ToReferences(RecentRootReferences);
+        tx.RecentRootReferences = references;
         return tx;
     }
 
