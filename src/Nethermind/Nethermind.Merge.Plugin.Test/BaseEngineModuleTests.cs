@@ -191,6 +191,10 @@ public abstract partial class BaseEngineModuleTests
 
         public bool? ParallelExecutionOverride { get; set; }
 
+        private const double CiSafeSingleBlockImprovementOfSlot = 5;
+
+        public double? SingleBlockImprovementOfSlotOverride { get; set; }
+
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
@@ -221,9 +225,14 @@ public abstract partial class BaseEngineModuleTests
             List<IConfig> materialized = configs.ToList();
             foreach (IConfig config in materialized)
             {
-                if (config is IBlocksConfig blocksConfig && blocksConfig.SingleBlockImprovementOfSlot == defaultImprovementOfSlot)
+                if (config is not IBlocksConfig blocksConfig) continue;
+                if (SingleBlockImprovementOfSlotOverride.HasValue)
                 {
-                    blocksConfig.SingleBlockImprovementOfSlot = 5;
+                    blocksConfig.SingleBlockImprovementOfSlot = SingleBlockImprovementOfSlotOverride.Value;
+                }
+                else if (blocksConfig.SingleBlockImprovementOfSlot == defaultImprovementOfSlot)
+                {
+                    blocksConfig.SingleBlockImprovementOfSlot = CiSafeSingleBlockImprovementOfSlot;
                 }
             }
             return materialized;
