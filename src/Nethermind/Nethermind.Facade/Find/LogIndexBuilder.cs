@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
@@ -70,6 +71,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private ref DirectionState Direction(bool isForward) => ref _directions[isForward ? 1 : 0];
 
     private LogIndexUpdateStats _stats;
+    private readonly bool _indexRetainedSlices;
 
     public string Description => "log index builder";
 
@@ -77,7 +79,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager)
+        ILogManager logManager, IFlatDbConfig? flatDbConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -92,6 +94,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _receiptStorage = receiptStorage;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
+        _indexRetainedSlices = !string.IsNullOrEmpty(flatDbConfig?.HistorySliceAddresses);
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -481,6 +484,15 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
+            // A sliced node keeps receipt islands below the pruned boundary. The pruner only reclaimed a
+            // height after proving no sliced address logged there, so an empty batch keeps the descent
+            // contiguous without losing a log the node can still serve.
+            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
+            {
+                blockReceipts = new((int)blockNumber, []);
+                return true;
+            }
+
             return false;
         }
 
@@ -494,6 +506,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (receipts.Length == 0)
         {
+            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
+            {
+                blockReceipts = new((int)blockNumber, []);
+                return true;
+            }
+
             return false; // block should have transactions but nothing in storage
         }
 

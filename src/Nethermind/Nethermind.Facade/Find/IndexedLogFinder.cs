@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Facade.Filters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -29,7 +30,8 @@ public class IndexedLogFinder(
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
-    IPrunedLogsRetention? prunedLogsRetention = null)
+    IPrunedLogsRetention? prunedLogsRetention = null,
+    IBlockTree? blockTree = null)
     : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
@@ -82,6 +84,17 @@ public class IndexedLogFinder(
             Math.Max((int)fromBlock.Number, indexFrom),
             Math.Min((int)toBlock.Number, indexTo)
         );
+
+        // Below the pruned boundary the index holds only the receipt islands slice retention kept, and those
+        // blocks also carry other addresses' logs - complete for the sliced addresses, a partial answer for any
+        // other filter. A filter the retention does not cover starts at the boundary instead, so its below-boundary
+        // prefix falls back to the endpoint probe and fails closed rather than answering short.
+        if (blockTree is not null
+            && (ulong)range.from < blockTree.GetLowestBlock()
+            && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+        {
+            range.from = (int)ulong.Min(blockTree.GetLowestBlock(), int.MaxValue);
+        }
 
         if (range.from > range.to)
             return null;

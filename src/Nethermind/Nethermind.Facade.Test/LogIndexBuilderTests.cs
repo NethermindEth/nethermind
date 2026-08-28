@@ -14,6 +14,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
@@ -156,8 +157,8 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null) => new LogIndexBuilder(
-            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig
         ).AddTo(_testDisposables);
 
     [Test]
@@ -284,6 +285,45 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
                 "receipts below the oldest stored block are pruned, not late - the backward sync must complete there rather than poll forever");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_ContinueBackwardSyncThroughRetainedIslands_BelowTheOldestStoredBlock_WhenSlicesAreConfigured(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int islandLow = 20;
+        const int islandHigh = 21;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                bool pruned = number < oldestStored && (number < islandLow || number > islandHigh);
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        TestLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(storage, prunedTree, new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" });
+
+        Task completion = WaitMinBlockAsync(storage, 0, cancellation);
+        await builder.StartAsync();
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(0),
+                "a sliced node keeps receipt islands below the pruned boundary, so the backward sync must descend past the boundary and index them instead of completing there");
         }
     }
 
