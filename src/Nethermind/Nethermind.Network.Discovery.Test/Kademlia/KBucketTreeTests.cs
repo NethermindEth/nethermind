@@ -133,7 +133,11 @@ public class KBucketTreeTests
 
         tree.Remove(activeHash);
 
-        Assert.That(tree.GetKNearestNeighbour(replacementHash), Is.EqualTo(new[] { 2 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.GetKNearestNeighbour(replacementHash), Is.EqualTo(new[] { 2 }));
+            Assert.That(tree.TryGet(activeHash, out _), Is.False);
+        }
     }
 
     [Test]

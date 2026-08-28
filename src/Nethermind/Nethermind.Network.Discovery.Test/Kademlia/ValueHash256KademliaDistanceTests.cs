@@ -99,12 +99,16 @@ public class ValueHash256KademliaDistanceTests
         ValueHash256 h1 = new("0x0010000000000000000000000000000000000000000000000000000000000000");
         ValueHash256 h2 = new("0x0110000000000000000000000000000000000000000000000000000000000000");
         ValueHash256 target = h2;
+        ValueHash256 bothNonZeroH2 = new("0x0012000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 bothNonZeroTarget = new("0x0011000000000000000000000000000000000000000000000000000000000000");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Distance.Compare(h1, h2, target), Is.GreaterThan(0));
             Assert.That(Distance.Compare(h2, h1, target), Is.LessThan(0));
             Assert.That(Distance.Compare(h1, h1, target), Is.Zero);
+            Assert.That(Distance.Compare(h1, bothNonZeroH2, bothNonZeroTarget), Is.LessThan(0));
+            Assert.That(Distance.Compare(bothNonZeroH2, h1, bothNonZeroTarget), Is.GreaterThan(0));
         }
     }
 
