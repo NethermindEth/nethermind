@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -13,6 +14,7 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>Rejects a frame transaction whose payer's summed pending maximum cost would exceed its balance (EIP-8141).</summary>
 /// <remarks>The reservation is taken at admission and released when the transaction leaves the pool.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
+    IChainHeadSpecProvider specProvider,
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool,
@@ -27,11 +29,13 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // EIP8141-DEVIATION: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go
-        // unreserved — nothing at all, and so no bound, when every frame gas limit is zero.
-        if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+        // The upper-bound TXPARAM(0x06), priced with the processor's helper so the admission bound
+        // and the payer-solvency gate cannot drift.
+        IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
+        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
-            return AcceptTxResult.Int256Overflow;
+            // Unincludable rather than malformed: Invalid is the one result that disconnects the relaying peer.
+            return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
         }
 
         // A simulated third-party payer must be read from state, or the bound gates the wrong account.
@@ -51,16 +55,21 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.FrameTxPayerExposureExceeded;
         }
 
+        // Held so the release subtracts exactly this, whatever the transaction still carries by then.
+        tx.PayerExposure = maxCost;
         return AcceptTxResult.Accepted;
     }
 
     /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
     /// set instead.</summary>
-    /// <remarks>Matched on the payer too, since displacing another payer's tx frees that payer.</remarks>
+    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
+    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.
+    /// Read from what the incumbent recorded at admission, so the discount cannot drift from what its removal
+    /// releases.</remarks>
     private UInt256 ReplacedPendingReservation(Transaction tx, Address payer) =>
         PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
         && replaced.PayerAddress == payer
-        && !replaced.IsOverflowInTxCostAndValue(out UInt256 cost)
+        && replaced.PayerExposure is { } cost
             ? cost
             : UInt256.Zero;
 }

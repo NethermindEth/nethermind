@@ -619,17 +619,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameReceiptTracer.ReportFrameTxReceipt(payer, frameReceipts);
             }
 
-            // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
-            // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
-            LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
             {
+                // The failed receipt rebuilds the log set from the frame receipts reported above.
                 tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
             }
             else
             {
-                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
+                // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
+                // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
+                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], TxFrameReceipt.ConcatLogs(frameReceipts));
             }
         }
 
@@ -778,10 +778,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
 
-        TransactionResult costed = CalculateSimulatedMaxCost(tx, spec, out UInt256 maxCost);
-        if (!costed)
+        // A bound this simulation rolls back, not an escrow: shared with the admission gate so both judge the
+        // same number, and its blob leg prices at max_fee_per_blob_gas since the fee at inclusion is unknown here.
+        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
-            return costed;
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
         }
 
         effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
@@ -805,26 +806,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
             ? TransactionResult.Ok
             : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
-    }
-
-    /// <summary>The <c>max_cost</c> (TXPARAM 0x06) the simulated prefix's APPROVE gate reads.</summary>
-    /// <remarks>Taken from the same helper the main path escrows on, so the two cannot decide against
-    /// different numbers, except that the blob leg is priced at <c>max_fee_per_blob_gas</c> rather than the
-    /// blob base fee execution uses: the fee at inclusion is unknowable here, and over-reserving can only
-    /// make admission stricter.</remarks>
-    private static TransactionResult CalculateSimulatedMaxCost(Transaction tx, IReleaseSpec spec, out UInt256 maxCost)
-    {
-        maxCost = default;
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong txGasLimit))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
-        }
-
-        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-        return UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out maxCost)
-            || UInt256.AddOverflow(maxCost, (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault(), out maxCost)
-            ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction max cost overflows")
-            : TransactionResult.Ok;
     }
 
     /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>

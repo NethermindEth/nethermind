@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -32,10 +33,14 @@ public class FrameTransactionForRpcTests
         DecodedMaxFeePerGas = 100,
         Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            SelfVerify(PrefixFrameGas),
         ],
         FrameSignatures = [],
     };
+
+    private static readonly EthereumJsonSerializer Serializer = new();
+
+    private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
     [Test]
     public void FromTransaction_FrameTx_ReturnedAsFrameTransactionForRpc()
@@ -54,8 +59,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildMinimalFrameTx();
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         Assert.That(doc.RootElement.GetProperty("type").GetString(), Is.EqualTo("0x6"));
     }
@@ -63,25 +67,11 @@ public class FrameTransactionForRpcTests
     [Test]
     public void FrameTransactionForRpc_SerializesFrames()
     {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 3151908,
-            Nonce = 0,
-            SenderAddress = TestItem.AddressA,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 100,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default),
-            ],
-            FrameSignatures = [],
-        };
+        Transaction tx = BuildMinimalFrameTx();
+        tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
         JsonElement frames = doc.RootElement.GetProperty("frames");
 
         using (Assert.EnterMultipleScope())
@@ -98,28 +88,11 @@ public class FrameTransactionForRpcTests
     [Test]
     public void FrameTransactionForRpc_SerializesSignatures()
     {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 3151908,
-            Nonce = 0,
-            SenderAddress = TestItem.AddressA,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 100,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-            ],
-            FrameSignatures =
-            [
-                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, msg: default, new byte[65]),
-            ],
-        };
+        Transaction tx = BuildMinimalFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, msg: default, new byte[65])];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
         JsonElement signatures = doc.RootElement.GetProperty("signatures");
 
         using (Assert.EnterMultipleScope())
@@ -154,8 +127,7 @@ public class FrameTransactionForRpcTests
 
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -170,8 +142,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildMinimalFrameTx();
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -229,8 +200,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildKeyedFrameTx(nonceKeys);
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -246,8 +216,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildKeyedFrameTx(nonceKeys: null);
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out _), Is.False);
     }
@@ -290,7 +259,7 @@ public class FrameTransactionForRpcTests
             }
             """;
 
-        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json);
 
         Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
         Transaction tx = rpc.ToTransaction().Data!;

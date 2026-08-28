@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 
@@ -32,9 +31,29 @@ public class FrameSignatureForRpc
 
     public TxFrameSignature ToSignature() => new(Scheme, Signer, Msg, Signature);
 
-    public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures) =>
-        signatures?.Select(static s => new FrameSignatureForRpc(s)).ToArray();
+    public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures)
+    {
+        if (signatures is null) return null;
 
-    public static TxFrameSignature[]? ToSignatures(FrameSignatureForRpc[]? signatures) =>
-        signatures?.Select(static s => s.ToSignature()).ToArray();
+        FrameSignatureForRpc[] result = new FrameSignatureForRpc[signatures.Length];
+        for (int i = 0; i < signatures.Length; i++)
+        {
+            result[i] = new FrameSignatureForRpc(signatures[i]);
+        }
+
+        return result;
+    }
+
+    public static TxFrameSignature[]? ToSignatures(FrameSignatureForRpc[]? signatures)
+    {
+        if (signatures is null) return null;
+
+        TxFrameSignature[] result = new TxFrameSignature[signatures.Length];
+        for (int i = 0; i < signatures.Length; i++)
+        {
+            result[i] = signatures[i].ToSignature();
+        }
+
+        return result;
+    }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -3719,25 +3718,25 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
-        // blob tx must route unchanged.
-        [Test]
-        public void blob_carrying_frame_tx_is_routed_to_blob_pool()
+        // EIP-8141: a frame tx (type 6) routes by whether it carries versioned hashes — to the blob pool
+        // when it does, mirroring type-3 routing and inheriting blob-pool rules, and to the normal pool otherwise.
+        [TestCase(1, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
+        [TestCase(0, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
+        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, int expectedBlobPool, int expectedNormalPool)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: blobCount > 0);
 
-            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedBlobPool));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedNormalPool));
             }
         }
 
@@ -3829,25 +3828,6 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
-            }
-        }
-
-        [Test]
-        public void non_blob_frame_tx_is_routed_to_normal_pool()
-        {
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 0);
-
-            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
             }
         }
@@ -4024,6 +4004,9 @@ namespace Nethermind.TxPool.Test
         // The persistent pool holds a light record, and it is that record's removal which releases the payer's
         // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
         [Test]
+        // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
+        // transaction admitted alongside would move it.
+        [NonParallelizable]
         public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
         {
             // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
@@ -4039,16 +4022,20 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction first = SignedBlobFrameTx(deadline: null);
-            // Balance for exactly one such tx, so a reservation outliving the first rejects the second.
             EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
                 + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
 
+            // The gauge, not a second submission: the payer here is the sender, whose balance already covers
+            // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
+            // residue from earlier tests, whose pools are never disposed.
+            long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
+
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
-            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 1), "admission must reserve against the payer");
 
-            // Same payer and same cost, told apart only by its expiry frame: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 1_000_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
 
         // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check
@@ -4220,21 +4207,19 @@ namespace Nethermind.TxPool.Test
             List<TxFrame> frames = [];
             if (deadline is not null)
             {
-                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 40_000, UInt256.Zero, expiryData));
+                frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
             }
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
             // signature verification gas join it.
             if (paymaster is null)
             {
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
+                frames.Add(FrameTxTestFrames.SelfVerify(gasLimit: 40_000));
             }
             else
             {
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 40_000, UInt256.Zero, default));
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, paymaster, gasLimit: 40_000, UInt256.Zero, default));
+                frames.Add(FrameTxTestFrames.OnlyVerify(gasLimit: 40_000));
+                frames.Add(FrameTxTestFrames.Pay(paymaster, gasLimit: 40_000));
             }
 
             Transaction tx = new()

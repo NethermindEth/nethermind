@@ -41,7 +41,14 @@ namespace Nethermind.JsonRpc.Data
             if (receipt.TxType == TxType.FrameTx)
             {
                 Payer = receipt.Payer;
-                FrameReceipts = (receipt.FrameReceipts ?? []).Select(static f => new FrameReceiptForRpc(f)).ToArray();
+                TxFrameReceipt[] frameReceipts = receipt.FrameReceipts ?? [];
+                FrameReceiptForRpc[] frameReceiptsForRpc = new FrameReceiptForRpc[frameReceipts.Length];
+                for (int i = 0; i < frameReceipts.Length; i++)
+                {
+                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i]);
+                }
+
+                FrameReceipts = frameReceiptsForRpc;
             }
         }
 
