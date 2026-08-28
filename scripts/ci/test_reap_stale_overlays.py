@@ -30,6 +30,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 STEP_NAME = "Reap stale expb overlay mounts"
+HOLDER_STEP_NAME = "Reap leftover benchmark containers and networks"
 WORKFLOWS = [
     REPO / ".github/workflows/arm-runner-maintenance.yml",
     REPO / ".github/workflows/run-expb-reproducible-benchmarks.yml",
@@ -203,6 +204,20 @@ class ReapStepTestCase(unittest.TestCase):
 
 
 class CopiesInSync(ReapStepTestCase):
+    def test_the_holder_reap_covers_every_container_that_can_hold_a_swept_overlay(self):
+        """The sweep is data-dir-wide, so the reap ahead of it must not stop at expb's own names."""
+        lists = []
+        for wf in WORKFLOWS:
+            for body in extract_step_bodies(wf, HOLDER_STEP_NAME):
+                match = re.search(r"^\s*for filter in (.*); do$", body, re.M)
+                self.assertIsNotNone(match, "no filter loop in {}".format(wf.name))
+                lists.append(match.group(1).split())
+        self.assertEqual(3, len(lists), "expected one holder reap per job")
+        for names in lists[1:]:
+            self.assertEqual(lists[0], names, "the holder reap filter lists have drifted")
+        for filter_ in ("name=expb", "label=expb", "name=rpcbench-", "name=nethermind-rpcbench"):
+            self.assertIn(filter_, lists[0])
+
     def test_all_three_copies_are_byte_identical(self):
         """Sharing the body would need a checkout none of the three jobs has; this is the guard."""
         for i, body in enumerate(self.bodies[1:], start=2):

@@ -863,7 +863,7 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
-      - name: Reap leftover expb containers and networks
+      - name: Reap leftover benchmark containers and networks
         shell: bash
         run: |
           set -uo pipefail
@@ -871,8 +871,10 @@ jobs:
           # step unmounts - so the plain umount there would fall back to a lazy detach that leaves the
           # filesystem alive - and it holds the deterministic name, network and ports the replacement
           # run needs. arm-runner-maintenance.yml reaps containers ahead of the same sweep for this
-          # reason; expb names and labels every container and network it creates `expb`.
-          for filter in name=expb label=expb; do
+          # reason; expb names and labels every container and network it creates `expb`. The rest of
+          # the filter list matches that file, because the sweep is anchored on the whole benchmark
+          # data dir and rpc-bench parks its scratch overlays under it too.
+          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
             docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
             # Orphaned expb networks fail scenario re-runs with a 409 on the name collision.
             docker network ls -q --filter "${filter}" | xargs -r docker network rm >/dev/null 2>&1 || true
@@ -2114,7 +2116,7 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
-      - name: Reap leftover expb containers and networks
+      - name: Reap leftover benchmark containers and networks
         shell: bash
         run: |
           set -uo pipefail
@@ -2122,8 +2124,10 @@ jobs:
           # step unmounts - so the plain umount there would fall back to a lazy detach that leaves the
           # filesystem alive - and it holds the deterministic name, network and ports the replacement
           # run needs. arm-runner-maintenance.yml reaps containers ahead of the same sweep for this
-          # reason; expb names and labels every container and network it creates `expb`.
-          for filter in name=expb label=expb; do
+          # reason; expb names and labels every container and network it creates `expb`. The rest of
+          # the filter list matches that file, because the sweep is anchored on the whole benchmark
+          # data dir and rpc-bench parks its scratch overlays under it too.
+          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
             docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
             # Orphaned expb networks fail scenario re-runs with a 409 on the name collision.
             docker network ls -q --filter "${filter}" | xargs -r docker network rm >/dev/null 2>&1 || true
