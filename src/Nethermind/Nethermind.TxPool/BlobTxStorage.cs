@@ -13,11 +13,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -34,6 +35,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
     private readonly IDb _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     private readonly IDb _processedBlobTxsDb = database.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<BlobTxStorage>();
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
@@ -100,14 +102,30 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
+    /// <summary>Enumerates all stored light blob transactions.</summary>
+    /// <remarks>
+    /// Undecodable records are skipped so that a single corrupt entry cannot abort restoration of the whole
+    /// pool at startup; the number skipped is reported once, after enumeration completes.
+    /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
+        int skipped = 0;
+
         foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
         {
             if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
             {
-                yield return transaction!;
+                yield return transaction;
             }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        if (skipped > 0 && _logger.IsWarn)
+        {
+            _logger.Warn($"Skipped {skipped} unreadable blob transaction record(s) while restoring the blob transaction pool.");
         }
     }
 
@@ -234,12 +252,20 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         return false;
     }
 
-    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
+    private static bool TryDecodeLightTx(byte[]? txBytes, [NotNullWhen(true)] out LightTransaction? lightTx)
     {
         if (txBytes is not null)
         {
-            lightTx = LightTxDecoder.Decode(txBytes);
-            return true;
+            try
+            {
+                lightTx = LightTxDecoder.Decode(txBytes);
+                return true;
+            }
+            // A truncated record escapes as ArgumentOutOfRangeException or IndexOutOfRangeException rather than
+            // RlpException, because RlpReader.Read slices without bounds checking.
+            catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+            }
         }
 
         lightTx = default;
