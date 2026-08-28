@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -147,21 +148,18 @@ public sealed class MempoolStatePrewarmer : IDisposable
         foreach (Transaction tx in orderedTxs)
         {
             if (tx.SenderAddress is not Address sender) continue;
-            if (!bySender.TryGetValue(sender, out List<Transaction>? group))
-            {
-                group = new(4);
-                bySender[sender] = group;
-            }
-            group.Add(tx);
+            ref List<Transaction>? group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out _);
+            (group ??= new(4)).Add(tx);
             total++;
         }
 
         using ArrayPoolListRef<Transaction> delta = new(total);
         foreach (KeyValuePair<AddressAsKey, List<Transaction>> senderGroup in bySender)
         {
-            if (senderGroup.Value.Count <= warmedPerSender.GetValueOrDefault(senderGroup.Key)) continue;
+            ref int warmed = ref CollectionsMarshal.GetValueRefOrAddDefault(warmedPerSender, senderGroup.Key, out _);
+            if (senderGroup.Value.Count <= warmed) continue;
             delta.AddRange(senderGroup.Value);
-            warmedPerSender[senderGroup.Key] = senderGroup.Value.Count;
+            warmed = senderGroup.Value.Count;
         }
 
         return delta.ToArray();

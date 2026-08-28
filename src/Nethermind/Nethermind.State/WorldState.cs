@@ -233,8 +233,6 @@ namespace Nethermind.State
             return _stateProvider.GetNonce(address);
         }
 
-        public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
-
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
@@ -336,7 +334,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || account.Nonce != 0 || !_persistentStorageProvider.IsStorageEmpty(address));
+            return accountExists && (account!.IsContract || account.Nonce != 0);
         }
 
         public bool IsDeadAccount(Address address)

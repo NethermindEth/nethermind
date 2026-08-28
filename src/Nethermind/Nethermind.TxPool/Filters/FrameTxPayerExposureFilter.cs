@@ -8,7 +8,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
-using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -66,36 +65,10 @@ internal sealed class FrameTxPayerExposureFilter(
     /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.
     /// Read from what the incumbent recorded at admission, so the discount cannot drift from what its removal
     /// releases.</remarks>
-    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
-    {
-        ReplacementSearch search = new(tx, payer);
-        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
-        {
-            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
-            if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce > state.Nonce) return false;
-
-            // Same nonce, another domain: only one entry can compete, so keep looking for it.
-            if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)) return true;
-
-            // The competing entry, and there is only one, so stop whether or not it discounts this payer.
-            if (pending.PayerAddress == state.Payer && pending.PayerExposure is { } cost)
-            {
-                state.Reserved = cost;
-            }
-
-            return false;
-        });
-
-        return search.Reserved;
-    }
-
-    private struct ReplacementSearch(Transaction tx, Address payer)
-    {
-        public readonly Transaction Tx = tx;
-        public readonly ulong Nonce = tx.Nonce;
-        public readonly Address Payer = payer;
-        public UInt256 Reserved;
-    }
+    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer) =>
+        PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
+        && replaced.PayerAddress == payer
+        && replaced.PayerExposure is { } cost
+            ? cost
+            : UInt256.Zero;
 }

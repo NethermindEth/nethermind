@@ -726,8 +726,6 @@ namespace Nethermind.Facade
 
                 try
                 {
-                    // EIP-158 must not delete accounts whose code and nonce were overridden to zero while
-                    // storage remains, or the EIP-7610 collision check would stop seeing that storage.
                     IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
                     IWorldState worldState = scope.Component.WorldState;
                     worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);

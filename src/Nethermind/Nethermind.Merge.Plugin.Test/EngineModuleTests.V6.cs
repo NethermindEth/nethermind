@@ -351,16 +351,16 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase("0x", true)]
-    [TestCase("0x80", true)]
-    [TestCase("0xc1", true)]
-    [TestCase("0xf8", true)]
-    [TestCase("0xf800", true)]
-    [TestCase("0xf838", true)]
-    [TestCase("0xff", true)]
-    [TestCase("0xc0c0", true)]
-    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", false)]
-    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, bool expectsInvalidParams)
+    [TestCase("0x", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0x80", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xc1", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf8", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf800", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf838", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xff", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xc0c0", "Error decoding block access list: Must be a complete RLP list")]
+    [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
+    public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         Block block = Build.A.Block
@@ -379,23 +379,14 @@ public partial class EngineModuleTests
             Keccak.Zero,
             []);
 
-        if (expectsInvalidParams)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
-                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-            }
-
-            return;
-        }
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(response.Data, Is.Not.Null);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
             Assert.That(response.Data.LatestValidHash, Is.Null);
-            Assert.That(response.Data.ValidationError, Does.StartWith("Error decoding block access list:"));
+            Assert.That(response.Data.ValidationError, Does.StartWith(expectedValidationError));
         }
     }
 
@@ -1426,9 +1417,9 @@ public partial class EngineModuleTests
 
         (Transaction tx, Transaction tx2, Transaction tx3, Withdrawal withdrawal) = BuildTestTransactionsAndWithdrawal(gasPrice, gasLimit);
 
-        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None);
-        chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
+        Assert.That(chain.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         Hash256 parentHash = chain.BlockTree.HeadHash;
         PayloadAttributes payloadAttributes = new()
@@ -1443,7 +1434,8 @@ public partial class EngineModuleTests
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
-        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash);
+        // All three transactions have sequential nonces and must land for the expected hashes below to be meaningful.
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash, minTransactions: 3);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpc.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
         await blockImprovementWait;

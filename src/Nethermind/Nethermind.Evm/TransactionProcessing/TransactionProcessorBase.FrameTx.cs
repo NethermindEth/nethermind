@@ -283,6 +283,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         long prefixEndStateGas = 0;
         int prefixEndJournal = 0;
         bool postTxReverted = false;
+        // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
+        // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
+        bool shouldRestoreRipemdTouch = false;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -325,6 +328,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             int frameStartJournal = frameContext.StateGasJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
@@ -399,6 +403,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
+                VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                 refundCounter = prefixEndRefund;
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
@@ -450,6 +455,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Unroll: restore pre-batch state and skip the rest (status 0x2); the failed frame
                     // keeps its failure receipt.
                     WorldState.Restore(batchStartSnapshot);
+                    VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                     batchTracker.Restore();
 
                     // Earlier frames' logs go with their state; status and gas_used stay.
@@ -935,7 +941,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             long remainingStateGas = stateReservoirSeed - stateGasUsed;
             if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
             {
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                // The replacement is the substate the caller sees, so it has to carry the RIPEMD touch
+                // the frame recorded; the rollback below and the transaction accumulator both read it.
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
+                {
+                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+                };
                 gasUsed = frame.ExecutionGasLimit;
                 stateGasUsed = 0;
             }
@@ -949,6 +960,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (substate.ShouldRevert || substate.IsError)
         {
             WorldState.Restore(snapshot);
+            // The machine re-applies the EIP-161 RIPEMD touch over its own rollback; this restore
+            // rewinds past that, so it has to be re-applied here too.
+            VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             frameTracker.Restore();
         }
 

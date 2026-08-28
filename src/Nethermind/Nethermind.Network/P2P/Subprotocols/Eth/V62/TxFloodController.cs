@@ -461,8 +461,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     if (_returned[i])
                     {
                         ulong fingerprint = _fingerprints[i];
-                        creditedFingerprints.TryGetValue(fingerprint, out int count);
-                        creditedFingerprints[fingerprint] = count + 1;
+                        creditedFingerprints.Increment(fingerprint);
                     }
                 }
             }

@@ -419,8 +419,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Eip8037_top_level_create_on_balance_only_target_does_not_charge_create_state_gas()
+    [TestCase(false, TestName = "Eip8037_top_level_create_on_existing_target_clears_storage_without_charging_create_state_gas")]
+    [TestCase(true, TestName = "Eip8037_top_level_create_on_pruned_storage_target_clears_stale_storage")]
+    public void Eip8037_top_level_create_clears_storage(bool pruneTarget)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -436,10 +437,17 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         transaction.Data = initCode;
 
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
-        TestState.CreateAccount(contractAddress, 1);
+        TestState.CreateAccount(contractAddress, pruneTarget ? UInt256.Zero : (UInt256)1);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        if (pruneTarget)
+        {
+            TestState.Commit(Spec, commitRoots: false);
+            Assert.That(TestState.AccountExists(contractAddress), Is.False);
+        }
 
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        transaction.GasLimit = intrinsicGas.MinimalGas;
+        if (!pruneTarget)
+            transaction.GasLimit = intrinsicGas.MinimalGas;
         block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
 
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -448,9 +456,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo((UInt256)1));
+            if (!pruneTarget)
+                Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(pruneTarget ? (ulong)GasCostOf.CreateState : 0));
+            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(pruneTarget ? UInt256.Zero : (UInt256)1));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
         }
     }
 
@@ -721,19 +731,21 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE")]
-    [TestCase(true, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE2")]
-    public void Eip8037_nested_storage_only_collision_refunds_create_state_gas(bool create2)
+    [TestCase(false, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE2")]
+    public void Eip8037_nested_pruned_storage_only_target_charges_create_state_gas(bool create2)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
         byte[] salt = [0x01];
-        Address collisionAddress = create2
+        Address createAddress = create2
             ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
             : ContractAddress.From(Recipient, 0);
-        TestState.CreateAccount(collisionAddress, 0);
-        TestState.Set(new StorageCell(collisionAddress, 0), [0x01]);
+        TestState.CreateAccount(createAddress, 0);
+        TestState.Set(new StorageCell(createAddress, 0), [1]);
+        TestState.Commit(Spec, commitRoots: false);
+        Assert.That(TestState.AccountExists(createAddress), Is.False);
 
         Prepare codeBuilder = create2
             ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
@@ -742,16 +754,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
-        ulong creatorNonceBefore = TestState.GetNonce(Recipient);
 
         TestAllTracerWithOutput tracer = Execute(Activation, 600_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(creatorNonceBefore + 1));
-            AssertStorage(new StorageCell(collisionAddress, 0), (UInt256)1);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo((ulong)GasCostOf.CreateState));
+            AssertStorage(new StorageCell(createAddress, 0), UInt256.Zero);
         }
     }
 
