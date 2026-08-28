@@ -13,10 +13,7 @@ namespace Nethermind.TxPool.Comparison
     /// Comparer to check if two pending <see cref="Transaction"/>s compete with each other.
     /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain.
     /// </summary>
-    /// <remarks>
-    /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> replaces the account nonce with a set of
-    /// keyed sequences, so a keyed transaction's slot is <c>(sender, nonce_keys, nonce_seq)</c>.
-    /// </remarks>
+    /// <remarks>EIP-8250 replaces the account nonce with keyed sequences, so a keyed transaction's slot is <c>(sender, nonce_keys, nonce_seq)</c>.</remarks>
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
     {
         public static readonly CompetingTransactionEqualityComparer Instance = new();
@@ -51,10 +48,7 @@ namespace Nethermind.TxPool.Comparison
         }
 
         /// <summary>The keys whose sequences <paramref name="tx"/> consumes, or an empty span when it consumes the account nonce.</summary>
-        /// <remarks>
-        /// The set <c>[0]</c> aliases the account nonce, so it must hash and compare as the account-nonce domain:
-        /// otherwise a frame transaction on key 0 stops competing with the plain transactions it does share a slot with.
-        /// </remarks>
+        /// <remarks>The set <c>[0]</c> aliases the account nonce, so it must compare as the account-nonce domain or it stops competing with plain transactions.</remarks>
         private static ReadOnlySpan<UInt256> KeyedDomain(Transaction tx) =>
             tx.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys) ? nonceKeys : default;
 

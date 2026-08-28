@@ -42,8 +42,7 @@ internal sealed class FrameTxSimulationFilter(
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
 
             case FrameTxSimulationOutcome.Undecided:
-                // No verdict was reached, so defer exactly as an unwired simulator does rather than return
-                // a non-accepting result the sending peer would be charged for.
+                // No verdict, so defer as an unwired simulator does rather than charge the sending peer for it.
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationUndecided);
                 if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, validation-prefix simulation was unavailable: {result.Reason}.");
                 return AcceptTxResult.Accepted;

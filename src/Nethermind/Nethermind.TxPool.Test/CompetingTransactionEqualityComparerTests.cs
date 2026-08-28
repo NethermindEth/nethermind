@@ -28,8 +28,8 @@ namespace Nethermind.TxPool.Test
                 yield return new TestCaseData(transaction, transaction).Returns(true).SetArgDisplayNames("Same_instance");
                 yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetArgDisplayNames("Same_sender_and_nonce");
 
-                // EIP-8250 replaces the account nonce with a set of keyed sequences, so a keyed transaction's
-                // slot is (sender, nonce_keys, nonce_seq); the set [0] still aliases the account nonce.
+                // Under EIP-8250 a keyed transaction's slot is (sender, nonce_keys, nonce_seq); the set [0]
+                // still aliases the account nonce.
                 yield return new TestCaseData(KeyedTx([1]), KeyedTx([2])).Returns(false).SetArgDisplayNames("Different_nonce_keys");
                 yield return new TestCaseData(KeyedTx([1, 2]), KeyedTx([1, 2])).Returns(true).SetArgDisplayNames("Same_nonce_keys");
                 yield return new TestCaseData(KeyedTx([1]), Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(false).SetArgDisplayNames("Keyed_and_account_nonce_domains");

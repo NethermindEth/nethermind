@@ -93,13 +93,8 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [frame_receipt, ...]],
-        // frame_receipt = [status, gas_used, logs]. Spec-literal — no top-level status and no bloom
-        // on the wire (receipts-root parity with other clients).
-        // EIP8141-GAP: the spec receipt has no top-level status or bloom; StatusCode is derived from
-        // the frame statuses (see TxFrameReceipt.AggregateStatus) so a receipt taken off the wire
-        // reads the same as one produced by executing the block, and Logs holds the union of frame
-        // logs so bloom calculation and log indexing keep working.
+        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [[status, gas_used, logs], ...]], gas_used = [execution, state].
+        // EIP8141-GAP: the spec receipt has no top-level status or bloom; both are derived from the frame receipts.
         private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
         {
             int sequenceLength = ctx.ReadSequenceLength();

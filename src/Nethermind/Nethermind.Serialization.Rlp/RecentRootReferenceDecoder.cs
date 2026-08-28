@@ -54,9 +54,8 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
 
     public int GetArrayLength(RecentRootReference[] items) => Rlp.LengthOfSequence(GetArrayContentLength(items));
 
-    /// <summary>The zero and non-zero byte counts of the encoded reference array, which the split EIP-8141
-    /// calldata pricing needs. Measured off the encoding rather than recomputed, so the charge cannot drift
-    /// from the wire form.</summary>
+    /// <summary>Zero and non-zero byte counts of the encoded reference array, measured off the encoding so the
+    /// EIP-8141 calldata charge cannot drift from the wire form.</summary>
     public (int ZeroBytes, int NonZeroBytes) Measure(RecentRootReference[]? references)
     {
         if (references is null)

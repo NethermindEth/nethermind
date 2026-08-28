@@ -49,10 +49,8 @@ internal class KeyedNonceFilterTests
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    /// <remarks>
-    /// Also covers the case this filter exists for: the sender's account nonce is <see cref="AccountNonce"/> throughout,
-    /// so every accepted case here is one the account-nonce filters would have rejected as "nonce too low".
-    /// </remarks>
+    /// <remarks>The sender's account nonce is <see cref="AccountNonce"/> throughout, so every accepted case here
+    /// is one the account-nonce filters would have rejected as "nonce too low".</remarks>
     [TestCase(0ul, 0ul, true, TestName = "first use of an unused key")]
     [TestCase(3ul, 3ul, true, TestName = "key at the declared sequence")]
     [TestCase(3ul, 2ul, false, TestName = "sequence already consumed")]
@@ -72,10 +70,8 @@ internal class KeyedNonceFilterTests
     public void Leaves_the_account_nonce_domain_to_the_account_nonce_filters() =>
         Assert.That((bool)Accept(KeyedTx([UInt256.Zero], 0), StateWith(0)), Is.True);
 
-    /// <remarks>
-    /// The decoder rejects a malformed set before the pool sees it, so this pins the filter's own guard rather than a
-    /// reachable ingress path; the verdict it reports is the shared <see cref="AcceptTxResult.KeyedNonceUnmet"/>.
-    /// </remarks>
+    /// <remarks>The decoder rejects a malformed set before the pool sees it, so this pins the filter's own guard
+    /// rather than a reachable ingress path.</remarks>
     [Test]
     public void Rejects_a_key_set_that_is_not_well_formed() =>
         Assert.That((bool)Accept(KeyedTx([NonceKey, NonceKey], 0), StateWith(0)), Is.False);

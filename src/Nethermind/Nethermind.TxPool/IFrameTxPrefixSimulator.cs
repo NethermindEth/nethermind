@@ -6,12 +6,8 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Runs the validation prefix of an EIP-8141 frame transaction whose payer the native resolver could not
-/// decide (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) in a bounded, read-only EVM at chain head.
-/// </summary>
-/// <remarks>Optional in the pool: with no simulator wired, such transactions are admitted with an
-/// unresolved payer and therefore without an exposure reservation.</remarks>
+/// <summary>Runs the validation prefix of an EIP-8141 frame transaction the native resolver could not decide, in a bounded read-only EVM at chain head.</summary>
+/// <remarks>Optional: with no simulator wired, such transactions are admitted unresolved and hold no exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
     /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed

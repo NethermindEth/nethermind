@@ -9,12 +9,8 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-/// <summary>
-/// Decodes the EIP-8141 signature tuple <c>[scheme, signer, msg, signature]</c>.
-/// An empty signer byte string decodes to null (resolves to the transaction sender).
-/// Encoding supports eliding the raw signature bytes of canonical-hash (empty msg) entries,
-/// as required by <c>compute_sig_hash</c>.
-/// </summary>
+/// <summary>Decodes the EIP-8141 signature tuple <c>[scheme, signer, msg, signature]</c>; an empty signer decodes to
+/// null. Encoding can elide the signature bytes of canonical-hash (empty msg) entries, as <c>compute_sig_hash</c> needs.</summary>
 public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 {
     public static readonly TxFrameSignatureDecoder Instance = new();
