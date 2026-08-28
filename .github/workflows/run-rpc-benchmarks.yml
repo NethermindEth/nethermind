@@ -419,7 +419,9 @@ jobs:
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","node_env_vars",
                       "ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes","timings_rps","vus"]'
-          cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}"             --arg freq "${cpu_max_freq_khz}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}"             '{cell: ($t | with_entries(select(.key as $k | $keys | index($k)))),
+          cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
+            --arg freq "${cpu_max_freq_khz}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
+            '{cell: ($t | with_entries(select(.key as $k | $keys | index($k)))),
               node: {cpu_max_freq_khz: $freq, cpuset: $cpuset, memory: $memory}}')"
           cell_key="$(printf '%s' "${cell_shape}" | sha256sum | cut -c1-12)"
 
