@@ -69,6 +69,9 @@ public static class FrameExceptionFragments
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,
         FrameTxSignatureValidator.InvalidP256Signer,
+        // A decoder literal, no constant to reference: the trailing element is present but is not
+        // the recent-root-reference sequence. Thrown before any rule runs, so no rule names it.
+        "frame transaction must not carry a trailing signature",
     ];
 
     /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>
