@@ -144,5 +144,8 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = ["Non-canonical integer", .. s_rlpDecodeFragments],
         ["TransactionException.RLP_INVALID_NONCE"] = [.. s_rlpDecodeFragments],
+        // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
+        // signature failures, which the fixtures file under a separate label.
+        ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
     };
 }
