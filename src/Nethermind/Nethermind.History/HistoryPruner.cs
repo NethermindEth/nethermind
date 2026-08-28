@@ -57,6 +57,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
     private readonly ISyncConfig _syncConfig;
+    private bool _ancientHoldLogged;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
@@ -365,8 +366,21 @@ public class HistoryPruner : IHistoryPruner
 
         // The bodies feed stops at max(config barrier, pruning cutoff), not at the config barrier alone.
         ulong barrier = ulong.Max(_syncConfig.AncientBodiesBarrierCalc, CutoffBlockNumber ?? 0);
-        byte[]? pointer = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
-        return pointer is null || new RlpReader(pointer).DecodeULong() > barrier;
+        byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
+        ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
+        if (pointer <= barrier)
+        {
+            return false;
+        }
+
+        if (!_ancientHoldLogged)
+        {
+            _ancientHoldLogged = true;
+            if (_logger.IsInfo) _logger.Info(
+                $"Holding history pruning until the ancient bodies backfill reaches #{barrier} (currently #{pointer?.ToString() ?? "none"}).");
+        }
+
+        return true;
     }
 
     /// <summary>

@@ -54,6 +54,7 @@ namespace Nethermind.Synchronization
         private readonly ISpecProvider _specProvider;
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
+        private readonly ISyncConfig _syncConfig;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -86,6 +87,7 @@ namespace Nethermind.Synchronization
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncConfig = config;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -484,9 +486,12 @@ namespace Nethermind.Synchronization
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
             if (earliest is null || earliest.Number > latestBlock.Number)
             {
-                // While the pruner defers its discovery, the body pointer is what is actually on disk.
-                ulong floor = ulong.Max(_blockTree.GetLowestBlock(), _syncPointers?.LowestInsertedBodyNumber ?? 0);
-                floor = ulong.Min(floor, latestBlock.Number);
+                // While the pruner defers its discovery, the download pointers are what is actually on disk;
+                // the range covers bodies and receipts, so the later of the two frontiers is the honest floor.
+                ulong pointerFloor = _syncPointers?.LowestInsertedBodyNumber ?? 0;
+                if (_syncConfig.DownloadReceiptsInFastSync)
+                    pointerFloor = ulong.Max(pointerFloor, _syncPointers?.LowestInsertedReceiptBlockNumber ?? 0);
+                ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), pointerFloor), latestBlock.Number);
                 earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
             }
 

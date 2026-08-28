@@ -634,6 +634,39 @@ public class SyncServerTests
 
     [Test]
     [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_floors_at_the_download_pointers_while_the_pruner_defers()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
+        ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
+        ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+            "while the pruner defers, the advertised earliest must track the later of the body and receipt frontiers, not the config barrier");
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_clamps_earliest_to_the_announced_block()
     {
         Context ctx = new();
@@ -819,6 +852,7 @@ public class SyncServerTests
             BlockTree = Substitute.For<IBlockTree>();
             WorldStateManager = Substitute.For<IWorldStateManager>();
             HistoryPruner = Substitute.For<IHistoryPruner>();
+            SyncPointers = Substitute.For<ISyncPointers>();
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
@@ -835,11 +869,13 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                SyncPointers);
         }
 
         public IBlockTree BlockTree { get; }
         public IHistoryPruner HistoryPruner { get; }
+        public ISyncPointers SyncPointers { get; }
         public IWorldStateManager WorldStateManager { get; }
         public ISyncPeerPool PeerPool { get; }
         public SyncServer SyncServer { get; set; }

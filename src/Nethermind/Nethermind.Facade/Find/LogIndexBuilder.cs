@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
@@ -72,6 +73,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
+    private readonly ISyncPointers? _syncPointers;
     private int _stalledBelowBoundary = -1;
     private bool _stallWarned;
 
@@ -81,7 +83,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null)
+        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
+        ISyncPointers? syncPointers = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -97,6 +100,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _indexRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
+        _syncPointers = syncPointers;
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -108,7 +112,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     {
         // Skip backward sync if storage already reached the target. Null MinBlockNumber
         // means nothing indexed yet — must not skip.
-        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= MinTargetBlockNumber)
+        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= BackwardTargetBlockNumber)
         {
             MarkCompleted(false);
             return;
@@ -261,6 +265,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ? 0UL
         : _syncConfig.AncientReceiptsBarrierCalc;
 
+    // Nothing below the lowest body the node ever downloaded can be a retained island, so the sliced
+    // descent stops there instead of fabricating down to the barrier.
+    private ulong BackwardTargetBlockNumber => _indexRetainedSlices
+        ? ulong.Max(MinTargetBlockNumber, _syncPointers?.LowestInsertedBodyNumber ?? 0UL)
+        : MinTargetBlockNumber;
+
     public bool IsRunning { get; private set; }
     public DateTimeOffset? LastUpdate { get; private set; }
     public Exception? LastError { get; private set; }
@@ -333,7 +343,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        if (_logIndexStorage.MinBlockNumber <= (int)MinTargetBlockNumber)
+        if (_logIndexStorage.MinBlockNumber <= (int)BackwardTargetBlockNumber)
             MarkCompleted(false);
     }
 
@@ -350,7 +360,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < (int)MinTargetBlockNumber)
+                if (!isForward && start < (int)BackwardTargetBlockNumber)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
@@ -360,7 +370,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                end = Math.Max(end, (int)MinTargetBlockNumber);
+                end = Math.Max(end, (int)(isForward ? MinTargetBlockNumber : BackwardTargetBlockNumber));
                 end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
@@ -446,8 +456,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ref DirectionState backward = ref Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
-            backwardProgress.TargetValue = pivotNumber >= MinTargetBlockNumber
-                ? pivotNumber - MinTargetBlockNumber
+            backwardProgress.TargetValue = pivotNumber >= BackwardTargetBlockNumber
+                ? pivotNumber - BackwardTargetBlockNumber
                 : 0UL;
             backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min && pivotNumber >= (ulong)min
                 ? pivotNumber - (ulong)min
@@ -508,8 +518,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
-            // GetLowestBlock only rises above its initial barrier once the pruner publishes a real post-backfill
-            // boundary, so a height absent below it was reclaimed - not late - and an empty entry is the truth.
+            // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
+            // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
+            // release can over-report; healing it must invalidate the below-boundary index range first.
             if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
             {
                 blockReceipts = new((int)blockNumber, []);
