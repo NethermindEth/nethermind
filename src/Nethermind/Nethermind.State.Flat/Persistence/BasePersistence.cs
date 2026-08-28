@@ -32,6 +32,9 @@ public static class BasePersistence
 {
     public const int StoragePrefixPortion = 4;
 
+    /// <summary>Stack buffer for one RLP-encoded account, comfortably above the largest encoding.</summary>
+    internal const int AccountSpanBufferSize = 256;
+
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
@@ -266,12 +269,13 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
+        [SkipLocalsInit]
         public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
         {
             if (addresses.Length != accounts.Length)
                 throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-            Span<byte> accountBuffer = stackalloc byte[256];
+            Span<byte> accountBuffer = stackalloc byte[AccountSpanBufferSize];
             for (int i = 0; i < addresses.Length; i++)
             {
                 int responseSize = GetAccount(addresses[i], accountBuffer);
@@ -430,12 +434,11 @@ public static class BasePersistence
         where TFlatReader : struct, IHashedFlatReader
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
@@ -499,7 +502,7 @@ public static class BasePersistence
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }

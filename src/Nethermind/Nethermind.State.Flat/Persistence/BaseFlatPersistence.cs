@@ -205,9 +205,10 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
+            // TryGetStorage caps len at RlpSlotValueBufferSize by reading into a buffer of that size, but GetStorages
+            // hands over whatever length the DB returned, so len is unbounded here. This guard catches an over-length
+            // value — e.g. a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32) — which would otherwise
+            // underflow the unchecked InitBlock below into a multi-GB wild memset.
             int len = value.Length;
             if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
 

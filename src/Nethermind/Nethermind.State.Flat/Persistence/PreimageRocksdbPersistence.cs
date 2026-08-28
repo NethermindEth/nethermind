@@ -197,7 +197,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
     ) : BasePersistence.IFlatReader
         where TFlatReader : struct, BasePersistence.IHashedFlatReader
     {
-        private const int AccountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
@@ -205,7 +204,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             ValueHash256 fakeHash = ValueKeccak.Zero;
             address.Bytes.CopyTo(fakeHash.BytesAsSpan);
 
-            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[BasePersistence.AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(fakeHash, valueBuffer);
             if (responseSize == 0)
             {
