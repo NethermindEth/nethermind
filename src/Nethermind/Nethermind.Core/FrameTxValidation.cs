@@ -31,6 +31,8 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
+    public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
+        $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
     public const string InvalidSignatureScheme = "unknown signature scheme";
@@ -39,6 +41,7 @@ public static class FrameTxValidation
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
+    public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
 
@@ -154,7 +157,7 @@ public static class FrameTxValidation
 
             if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
-                if (frame.Flags != 0 || !frame.Value.IsZero || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
+                if (frame.Flags != 0 || !frame.Value.IsZero || frame.StateGasLimit != 0 || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
                 {
                     error = InvalidExpiryFrame;
                     return false;
@@ -169,8 +172,9 @@ public static class FrameTxValidation
                 hasExpiryFrame = true;
             }
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 error = FrameGasOverflow;
                 return false;
@@ -249,17 +253,10 @@ public static class FrameTxValidation
     };
 
     /// <summary>
-    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the gas limits
-    /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
+    /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
+    /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
-    /// <remarks>
-    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
-    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
-    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
-    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
-    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
-    /// </remarks>
-    /// <param name="transaction">The frame transaction to price.</param>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -268,12 +265,31 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].GasLimit);
+            total = Saturating(total, frames[i].ExecutionGasLimit);
         }
 
         foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
         {
             total = Saturating(total, SignatureVerificationGas(signature.Scheme));
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Upper bound on the state growth EIP-8141 admits through the public mempool: the sum of a frame
+    /// transaction's validation prefix <c>limits.state</c>, saturating at <see cref="ulong.MaxValue"/> and
+    /// bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
+    /// </summary>
+    public static ulong ValidationWorkStateGas(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+
+        ulong total = 0;
+        for (int i = 0; i < counted; i++)
+        {
+            total = Saturating(total, frames[i].StateGasLimit);
         }
 
         return total;
@@ -452,18 +468,27 @@ public static class FrameTxValidation
         ulong tokens = 0;
         ulong dataLength = 0;
         ulong totalFrameGas = 0;
+        ulong totalStateGas = 0;
+        ulong valueTransferCost = 0;
         foreach (TxFrame frame in frames)
         {
             tokens += CountCalldataTokens(frame.Data.Span, spec);
             dataLength += (ulong)frame.Data.Length;
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 return false;
             }
 
             totalFrameGas = accumulated;
+            totalStateGas += frame.StateGasLimit;
+
+            if (spec.IsEip2780Enabled && !frame.Value.IsZero && frame.Target is not null && frame.Target != transaction.SenderAddress)
+            {
+                valueTransferCost += GasCostOf.TxValueCostEip2780;
+            }
         }
 
         ulong signatureVerificationCost = 0;
@@ -499,6 +524,7 @@ public static class FrameTxValidation
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
+                             + valueTransferCost
                              + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
@@ -510,7 +536,51 @@ public static class FrameTxValidation
             return false;
         }
 
-        maxGas = Math.Max(standardGas, floorGas);
+        ulong floorReservation = floorGas + totalStateGas;
+        if (floorReservation < floorGas)
+        {
+            return false;
+        }
+
+        maxGas = Math.Max(standardGas, floorReservation);
+        return true;
+    }
+
+    /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
+    public static bool TryCalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out ulong executionReservation,
+        out ulong stateReservation)
+    {
+        executionReservation = 0;
+        stateReservation = 0;
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
+        {
+            return false;
+        }
+
+        ulong frameExecution = 0;
+        foreach (TxFrame frame in transaction.Frames ?? [])
+        {
+            ulong nextExecution = frameExecution + frame.ExecutionGasLimit;
+            ulong nextState = stateReservation + frame.StateGasLimit;
+            if (nextExecution < frameExecution || nextState < stateReservation)
+            {
+                return false;
+            }
+
+            frameExecution = nextExecution;
+            stateReservation = nextState;
+        }
+
+        ulong standardExecution = intrinsicGas + frameExecution;
+        if (standardExecution < intrinsicGas)
+        {
+            return false;
+        }
+
+        executionReservation = Math.Max(standardExecution, floorGas);
         return true;
     }
 

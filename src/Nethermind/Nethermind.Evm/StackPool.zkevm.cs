@@ -5,11 +5,11 @@ using System;
 
 namespace Nethermind.Evm;
 
-internal sealed partial class StackPool
+internal static partial class StackPool
 {
-    private readonly ZkEvmQueue<StackItem> _stackPool = new();
+    private static readonly EvmObjectPool<StackItem> _stackPool = new();
 
-    public partial void ReturnStacks(byte[] dataStack)
+    public static partial void ReturnStacks(byte[] dataStack)
     {
         // Single-threaded guest: bound directly off the queue's O(1) count, no atomics needed.
         if (_stackPool.Count >= MaxStacksPooled)
@@ -18,7 +18,7 @@ internal sealed partial class StackPool
         _stackPool.Enqueue(new(dataStack));
     }
 
-    public partial byte[] RentStacks()
+    public static partial byte[] RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))
             return result.DataStack;

@@ -120,8 +120,15 @@ public sealed class TxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
@@ -131,10 +138,17 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -206,6 +220,16 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
+        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        {
+            return FrameTxValidation.FrameGasOverflow;
+        }
+
+        if (releaseSpec.IsEip8037Enabled && executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
+        {
+            return FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap);
+        }
+
         // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
         // versioned-hash version byte as a type-3 blob tx.
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
@@ -227,8 +251,12 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 /// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
 /// <remarks>
 /// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
-/// one would make the transaction replayable. Well-formedness is re-checked because <c>eth_call</c>,
-/// <c>eth_estimateGas</c> and block building construct a transaction without going through the decoder.
+/// one would make the transaction replayable. Post-fork EIP-8250 replaces the scalar <c>nonce</c> with
+/// <c>nonce_keys, nonce_seq</c>, so the fork-blind decoder's legacy scalar-nonce shape is refused. Well-formedness
+/// is re-checked because <c>eth_call</c>, <c>eth_estimateGas</c> and block building construct a transaction
+/// without going through the decoder. A pre-fork scalar-nonce frame tx is valid on admission but invalid once
+/// EIP-8250 activates, so this also runs in <see cref="HeadTxValidator"/> to evict it at the transition; it
+/// guards on the frame type because that validator is not type-dispatched.
 /// </remarks>
 public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 {
@@ -237,10 +265,17 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
+        if (!transaction.SupportsFrames)
+        {
+            return ValidationResult.Success;
+        }
+
         UInt256[]? nonceKeys = transaction.NonceKeys;
         if (nonceKeys is null)
         {
-            return ValidationResult.Success;
+            return releaseSpec.IsEip8250Enabled
+                ? FrameTxValidation.LegacyNonceNotAllowed
+                : ValidationResult.Success;
         }
 
         if (!releaseSpec.IsEip8250Enabled)
@@ -418,21 +453,37 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     private MempoolBlobTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
             // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3.
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when transaction.SupportsBlobs || transaction.CarriesBlobs => ValidateBlobs(transaction, wrapper),
+            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when transaction.SupportsBlobs || transaction.CarriesBlobs => ValidateBlobs(transaction, wrapper, options),
             _ => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, TxValidationOptions options)
         {
-            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
+            {
+                return TxErrorMessages.InvalidProofVersion;
+            }
 
-            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
+            int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
+
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
+                !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }

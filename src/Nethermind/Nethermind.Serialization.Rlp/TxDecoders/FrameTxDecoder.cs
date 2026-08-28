@@ -87,7 +87,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         if (transaction is not null)
         {
-            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext);
+            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, rlpBehaviors);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
             {
@@ -132,9 +132,12 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
+        int feesLength = decoderContext.ReadSequenceLength();
+        int feesCheck = feesLength + decoderContext.Position;
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        decoderContext.Check(feesCheck);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
         transaction.RecentRootReferences = null;
 
@@ -144,7 +147,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         ulong gasLimit = 0;
         foreach (TxFrame frame in transaction.Frames)
         {
-            gasLimit = frame.GasLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frame.GasLimit;
+            ulong frameLimit = frame.ExecutionGasLimit > ulong.MaxValue - frame.StateGasLimit
+                ? ulong.MaxValue
+                : frame.ExecutionGasLimit + frame.StateGasLimit;
+            gasLimit = frameLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frameLimit;
         }
         transaction.GasLimit = gasLimit;
 
@@ -165,7 +171,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
 
-        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper);
+        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
         int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
@@ -186,7 +192,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             writer.StartSequence(payloadContentLength);
             // Elide on forSigning like payloadContentLength, or the declared length and the bytes drift.
             EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
-            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);
+            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper, rlpBehaviors);
         }
     }
 
@@ -202,7 +208,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         int bodyLength = wrapper is null
             ? payloadSequenceLength
-            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper));
+            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
 
         return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
             ? 1 + bodyLength
@@ -220,6 +226,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         writer.Encode(transaction.SenderAddress);
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
+        writer.StartSequence(GetFeesContentLength(transaction));
         writer.Encode(transaction.GasPrice);
         writer.Encode(transaction.DecodedMaxFeePerGas);
         writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
@@ -230,6 +237,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
+    private static int GetFeesContentLength(Transaction transaction) =>
+        Rlp.LengthOf(transaction.GasPrice)
+        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
+        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
         bool isEip155Enabled = false, ulong chainId = 0) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
@@ -237,9 +249,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.SenderAddress)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
-        + Rlp.LengthOf(transaction.GasPrice)
-        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault())
+        + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
         + Rlp.LengthOf(transaction.BlobVersionedHashes ?? EmptyVersionedHashes)
         + (transaction.RecentRootReferences is { } references ? RecentRootReferenceDecoder.Instance.GetArrayLength(references) : 0);
 
