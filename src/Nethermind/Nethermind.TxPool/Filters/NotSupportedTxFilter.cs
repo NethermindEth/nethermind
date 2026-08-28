@@ -31,6 +31,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // exists), the payer and paymaster on blob-pool records restored from disk, which LightTxDecoder cannot
         // tell from the expiry deadline as a second optional trailing scalar, and an approve-flagged prefix
         // frame whose target declines, which moves the real payer past the frame the cap keys on.
+        // Revalidation itself is account-keyed, so it does not see a helper contract an opaque prefix
+        // reaches through CALL*, nor the block context the prefix reads.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

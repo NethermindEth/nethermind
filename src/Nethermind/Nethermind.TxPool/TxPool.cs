@@ -64,6 +64,7 @@ namespace Nethermind.TxPool
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
+        private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
 
         // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
         // more transactions to the deadline order, which is the order the spec asks for anyway.
@@ -871,6 +872,10 @@ namespace Nethermind.TxPool
         private void CollectFrameTxsToRevalidate(ArrayPoolList<AddressAsKey>? completeAccountChanges)
         {
             _frameTxsToRevalidate.Clear();
+            // Carried from the previous head: a bound this node spent judged nothing, and a one-off change
+            // leaves no later change list that would name the transaction's dependencies again.
+            _frameTxsToRevalidate.UnionWith(_frameTxsDeferredToNextHead);
+            _frameTxsDeferredToNextHead.Clear();
             if (_frameDependencies.Count == 0) return;
 
             if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
@@ -894,9 +899,11 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
-            if (_frameTxsToRevalidate.Count == 0 || !_specProvider.GetSpec(block.Header).IsEip8141Enabled)
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            if (_frameTxsToRevalidate.Count == 0 || !spec.IsEip8141Enabled)
             {
                 _frameTxsToRevalidate.Clear();
+                _frameTxsDeferredToNextHead.Clear();
                 return;
             }
 
@@ -912,7 +919,7 @@ namespace Nethermind.TxPool
                 }
 
                 Metrics.FrameTxRevalidations++;
-                if (!TryRevalidateFrameTransaction(tx, state, out bool holdsNoReservation))
+                if (!TryRevalidateFrameTransaction(tx, state, spec, out bool holdsNoReservation))
                 {
                     // The Removed handler must release exactly once: an unreleased reservation is permanent,
                     // and releasing one that was never taken under-counts the payer just as badly.
@@ -944,17 +951,16 @@ namespace Nethermind.TxPool
         /// A transaction that stays pending is re-indexed: both the payer and the sender's delegation target
         /// are head-state snapshots, so either can move without the other.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, out bool holdsNoReservation)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec, out bool holdsNoReservation)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out holdsNoReservation);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, spec, out holdsNoReservation);
             if (stillValid) IndexFrameTxDependencies(tx);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out bool holdsNoReservation)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec, out bool holdsNoReservation)
         {
             holdsNoReservation = false;
-            if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
             if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
@@ -971,24 +977,45 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
-                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, token: _cts.Token);
-                    // A node fault or an admission bound decides nothing, so the transaction stays pending.
-                    if (simulated.Outcome != FrameTxSimulationOutcome.Accepted) return simulated.Indeterminate;
+                    // validate_signature reads no state, so admission's verdict still holds and re-verifying
+                    // would only spend the per-head simulation budget this pool rations.
+                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                    if (simulated.Outcome != FrameTxSimulationOutcome.Accepted)
+                    {
+                        // A node fault or an admission bound decides nothing, so the transaction stays
+                        // pending — and stays queued, or a one-off change is never rechecked against a
+                        // later head whose change list does not mention its dependencies.
+                        if (simulated.Indeterminate) _frameTxsDeferredToNextHead.Add(tx.Hash!.ValueHash256);
+                        return simulated.Indeterminate;
+                    }
                     payer = simulated.Payer;
                     break;
             }
 
-            Address? previousPayer = tx.PayerAddress;
-            if (previousPayer == payer)
+            if (tx.PayerAddress == payer)
             {
                 // Same payer: only its balance can have invalidated the bound.
                 return payer is null || _payerExposure.GetReserved(payer) <= BalanceOf(state, payer);
             }
 
-            if (previousPayer is not null) _payerExposure.Subtract(previousPayer, maxCost);
+            // Release what admission recorded, not a re-priced figure: the ledger is keyed on
+            // PayerExposure, and a restored light record has no frames left to price.
+            if (TryGetPayerReservation(tx, out Address? heldPayer, out UInt256 maxCost)) _payerExposure.Subtract(heldPayer, maxCost);
             holdsNoReservation = true;
             tx.PayerAddress = payer;
-            return payer is null || _payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _);
+
+            if (payer is null)
+            {
+                tx.PayerExposure = null;
+                return true;
+            }
+
+            if (heldPayer is null && !FrameTxValidation.TryCalculateMaxCost(tx, spec, out maxCost)) return false;
+            if (!_payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _)) return false;
+
+            // The pool releases this figure verbatim, so a moved reservation has to record it as admission does.
+            tx.PayerExposure = maxCost;
+            return true;
         }
 
         private static UInt256 BalanceOf(IReadOnlyStateProvider state, Address address) =>
