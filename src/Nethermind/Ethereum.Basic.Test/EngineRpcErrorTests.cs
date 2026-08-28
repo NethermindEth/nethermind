@@ -6,7 +6,7 @@ using Ethereum.Test.Base;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Pyspec.Test;
+namespace Ethereum.Basic.Test;
 
 // A JSON-RPC error from engine_newPayloadV* means the payload was refused before any consensus rule
 // ran. The harness used to accept any such error as proof of a fixture's expected rejection, which
@@ -27,6 +27,12 @@ public class EngineRpcErrorTests
     [TestCase(UnsupportedFork, InvalidParams, ExpectedResult = false, TestName = "An error code other than the one the fixture asked for")]
     public bool Rpc_error_is_accepted_only_when_the_fixture_asked_for_it(int errorCode, int? expectedErrorCode) =>
         BlockchainTestBase.DescribeUnexpectedRpcError(errorCode, "some message", expectedErrorCode, payloadVersion: 5) is null;
+
+    // The converse: a payload status only satisfies a fixture that asked for no error.
+    [TestCase(null, ExpectedResult = true, TestName = "Validated where the fixture expects validation")]
+    [TestCase(InvalidParams, ExpectedResult = false, TestName = "Validated where the fixture expects an error")]
+    public bool Validated_payload_is_accepted_only_when_the_fixture_expected_no_error(int? expectedErrorCode) =>
+        BlockchainTestBase.DescribeMissingRpcError(expectedErrorCode, payloadVersion: 5) is null;
 
     // EEST emits errorCode as a quoted string, like newPayloadVersion.
     [TestCase("""{"errorCode": "-32602"}""", ExpectedResult = InvalidParams, TestName = "Expected error code")]

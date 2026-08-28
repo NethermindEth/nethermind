@@ -45,7 +45,7 @@ using System.Text.Json;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 
-[assembly: InternalsVisibleTo("Ethereum.Blockchain.Pyspec.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Basic.Test")]
 
 namespace Ethereum.Test.Base;
 
@@ -458,46 +458,49 @@ public abstract class BlockchainTestBase
             {
                 AssertExpectedRpcError(errorCode, errorMessage, expectedErrorCode, newPayloadVersion);
             }
-            else if (expectWitness)
-            {
-                using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
-                PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
-                lastStatus = payloadStatus.Status;
-                if (payloadStatus.ValidationError is not null)
-                    lastValidationError = payloadStatus.ValidationError;
-
-                if (payloadStatus.Status == PayloadStatus.Valid)
-                {
-                    Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
-                    if (witnessResult.ExecutionWitness is null)
-                    {
-                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
-                    }
-                    else
-                    {
-                        CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
-                    }
-
-                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
-                }
-            }
             else
             {
-                Assert.That(expectedErrorCode, Is.Null,
-                    $"engine_newPayloadV{newPayloadVersion} was expected to fail with JSON-RPC error {expectedErrorCode}, but the payload was accepted for validation.");
+                // Covers both non-error branches: a fixture expecting an errorCode must not see the payload validated.
+                AssertPayloadWasNotExpectedToError(expectedErrorCode, newPayloadVersion);
 
-                PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
-                lastStatus = payloadStatus.Status;
-                if (payloadStatus.ValidationError is not null)
-                    lastValidationError = payloadStatus.ValidationError;
-
-                // The block is committed even when unsatisfied, so the head must still advance.
-                if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
+                if (expectWitness)
                 {
-                    string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                    using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
+                    PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                    lastStatus = payloadStatus.Status;
+                    if (payloadStatus.ValidationError is not null)
+                        lastValidationError = payloadStatus.ValidationError;
+
+                    if (payloadStatus.Status == PayloadStatus.Valid)
+                    {
+                        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                        if (witnessResult.ExecutionWitness is null)
+                        {
+                            witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitnessV{newPayloadVersion} returned VALID but no witness");
+                        }
+                        else
+                        {
+                            CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
+                        }
+
+                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                    }
+                }
+                else
+                {
+                    PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
+                    AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
+                    lastStatus = payloadStatus.Status;
+                    if (payloadStatus.ValidationError is not null)
+                        lastValidationError = payloadStatus.ValidationError;
+
+                    // The block is committed even when unsatisfied, so the head must still advance.
+                    if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
+                    {
+                        string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                    }
                 }
             }
         }
@@ -560,8 +563,20 @@ public abstract class BlockchainTestBase
         int expected => $"engine_newPayloadV{payloadVersion} returned JSON-RPC error {errorCode} {errorMessage}, expected {expected}."
     };
 
+    /// <summary>
+    /// Describes why the payload having been accepted for validation contradicts the fixture, or null
+    /// when the fixture expected no JSON-RPC error.
+    /// </summary>
+    internal static string? DescribeMissingRpcError(int? expectedErrorCode, int payloadVersion) =>
+        expectedErrorCode is int expected
+            ? $"engine_newPayloadV{payloadVersion} was expected to fail with JSON-RPC error {expected}, but the payload was accepted for validation."
+            : null;
+
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, int? expectedErrorCode, int payloadVersion) =>
         Assert.That(DescribeUnexpectedRpcError(errorCode, errorMessage, expectedErrorCode, payloadVersion), Is.Null);
+
+    private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, int payloadVersion) =>
+        Assert.That(DescribeMissingRpcError(expectedErrorCode, payloadVersion), Is.Null);
 
     private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
     {
