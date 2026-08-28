@@ -332,7 +332,7 @@ public class FrameTxValidationPrefixSimulationTests
 
         (TransactionResult result, _) = Simulate(tx);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -364,7 +364,7 @@ public class FrameTxValidationPrefixSimulationTests
 
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameSignaturesPreValidated);
 
-        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     /// <summary>A canonical SECP256K1 entry that recovers to nobody, so only <c>validate_signature</c> rejects it.</summary>
