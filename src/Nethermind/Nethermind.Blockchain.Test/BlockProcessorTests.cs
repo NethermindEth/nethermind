@@ -102,6 +102,50 @@ public class BlockProcessorTests
             });
     }
 
+    // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
+    // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
+    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    [Test]
+    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False));
+    }
+
+    [Test]
+    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    {
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, code))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
+                }
+            });
+    }
+
     [Test]
     public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
     {
@@ -281,16 +325,15 @@ public class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
     }
 
-    /// <summary>
-    /// Installs the execution-request predeploys (EIP-7002/7251/8282) that Amsterdam-based specs read
-    /// while processing a post-genesis block; without them ProcessExecutionRequests rejects the block.
-    /// </summary>
+    /// <summary>Installs the EIP-7002/7251/8282 predeploys that Amsterdam-based specs read while processing
+    /// a post-genesis block; without them execution-request processing rejects the block.</summary>
     private static void InstallExecutionRequestPredeploys(IWorldState stateProvider, IReleaseSpec spec)
     {
         stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
@@ -328,7 +371,7 @@ public class BlockProcessorTests
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 
-        // First post-activation block installs the predeploy: its code, and its nonce where the EIP mandates one.
+        // First post-activation block installs the predeploy.
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
@@ -336,11 +379,10 @@ public class BlockProcessorTests
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         if (!spec.IsEip8250Enabled)
         {
-            // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
+            // An unrelated predeploy must stay absent: only what the spec activates is installed.
             Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
         }
 
-        // The install must appear in the generated block-level access list (code + nonce change).
         GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
         Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
         using (Assert.EnterMultipleScope())
@@ -351,8 +393,7 @@ public class BlockProcessorTests
                 Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
             }
 
-            // No nonce entry at all where the EIP mandates none: an unmandated one moves the BAL hash and the
-            // block is rejected before execution.
+            // An unmandated nonce entry moves the BAL hash, and the block is then rejected before execution.
             Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
             if (expectedNonce != 0)
             {
@@ -360,7 +401,7 @@ public class BlockProcessorTests
             }
         }
 
-        // Second block is a no-op: state unchanged and no BAL entry for the predeploy.
+        // Second block must be a no-op.
         Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 

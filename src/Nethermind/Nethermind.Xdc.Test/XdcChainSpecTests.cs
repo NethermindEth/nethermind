@@ -60,6 +60,22 @@ public class XdcChainSpecTests
         });
     }
 
+    // Apothem sets the post-TIPUpgradePenalty parole window in its v2 config and mainnet does not, where
+    // PenaltyHandler falls back to a single epoch. Both feed a consensus rule, so pin what the files resolve to.
+    [TestCase("xdc-testnet.json", 5UL)]
+    [TestCase("xdc.json", 0UL)]
+    public void Penalty_window_is_taken_from_the_v2_config(string chainSpecFile, ulong expectedLimitPenaltyEpoch)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecEngineParameters engineParameters = EngineParameters(chainSpec);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, engineParameters, LimboLogs.Instance);
+
+        ulong latestRound = engineParameters.V2Configs[^1].SwitchRound;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(engineParameters.SwitchBlock + 1, latestRound);
+
+        Assert.That(spec.LimitPenaltyEpoch, Is.EqualTo(expectedLimitPenaltyEpoch));
+    }
+
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>
         new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(chainSpecFile);
 

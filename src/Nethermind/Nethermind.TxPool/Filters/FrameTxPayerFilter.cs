@@ -6,10 +6,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Resolves the fee-payer of an EIP-8141 frame transaction at admission, records it on
-/// <see cref="Transaction.PayerAddress"/>, and rejects prefixes that can never approve a payer.
-/// </summary>
+/// <summary>Resolves the fee-payer of an EIP-8141 frame transaction at admission onto <see cref="Transaction.PayerAddress"/>, rejecting prefixes that can never approve one.</summary>
 internal sealed class FrameTxPayerFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
@@ -22,8 +19,7 @@ internal sealed class FrameTxPayerFilter(ILogger logger) : IIncomingTxFilter
         FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state.SenderAccount);
         tx.PayerAddress = resolution.Payer;
 
-        // NoPayer is structural: the prefix has no payment-approving frame, so it can never be included
-        // — drop it rather than re-gossip. RequiresSimulation is deferred to execution, not rejected.
+        // NoPayer is structural, so drop rather than re-gossip; RequiresSimulation is deferred to execution.
         if (resolution.Outcome == FrameTxPayerOutcome.NoPayer)
         {
             Metrics.PendingTransactionsFrameTxNoPayer++;

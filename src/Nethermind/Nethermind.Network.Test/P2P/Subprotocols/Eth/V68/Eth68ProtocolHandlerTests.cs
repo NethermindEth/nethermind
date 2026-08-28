@@ -23,6 +23,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -35,6 +36,7 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using GetPooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -157,6 +159,71 @@ public class Eth68ProtocolHandlerTests
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
+    [Test]
+    public void Should_accept_full_blob_tx_with_announced_network_size()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [Test]
+    public void Should_accept_geth_blob_size_estimate()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+        int gethSizeEstimate = tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
+        Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { gethSizeEstimate },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [TestCase(-8)]
+    [TestCase(8)]
+    public void Should_reject_inexact_blob_size_estimate(int sizeDifference)
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() + sizeDifference },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received(1).InitiateDisconnect(
+            DisconnectReason.BackgroundTaskFailure,
+            "invalid pooled tx type or size");
+    }
+
 
     [Test]
     public void Should_disconnect_if_tx_type_is_wrong()
@@ -171,6 +238,25 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void should_disconnect_if_pooled_transactions_response_contains_sparse_blob_tx()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction sparseTx = BuildSparseBlobTransaction();
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)sparseTx.Type },
+            new ArrayPoolList<int>(1) { sparseTx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { sparseTx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { sparseTx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
@@ -250,6 +336,102 @@ public class Eth68ProtocolHandlerTests
             (TxType)m.Types[0] == tx.Type));
     }
 
+    [Test]
+    public void should_not_announce_sparse_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = BuildSparseBlobTransaction();
+
+        _handler.SendNewTransaction(tx);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+    }
+
+    [Test]
+    public void should_not_announce_sparse_light_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = new LightTransaction(BuildSparseBlobTransaction());
+
+        _handler.SendNewTransaction(tx);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void should_announce_completed_blob_tx_after_skipping_sparse_version(bool sendBatch)
+    {
+        Transaction fullTx = BuildFullBlobTransaction();
+        Transaction sparseTx = BuildSparseBlobTransaction(fullTx);
+
+        SendTransaction(sparseTx, sendBatch);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+
+        SendTransaction(fullTx, sendBatch);
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m =>
+            m.Hashes.Count == 1 && m.Hashes[0] == fullTx.Hash));
+    }
+
+    [Test]
+    public async Task should_not_serve_sparse_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = BuildSparseBlobTransaction();
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using GetPooledTransactionsMessage65 request = new(new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
+    }
+
+    [Test]
+    public async Task should_not_serve_sparse_light_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = new LightTransaction(BuildSparseBlobTransaction());
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using GetPooledTransactionsMessage65 request = new(new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
+    }
+
+    [Test]
+    public async Task should_reject_many_sparse_blob_hashes_without_loading_transactions()
+    {
+        const int hashCount = 300;
+        Hash256[] hashes = new Hash256[hashCount];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        BlobCellMask sparseMask = BlobCellMask.FromIndices([0]);
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+            .Returns(x =>
+            {
+                x[1] = sparseMask;
+                return true;
+            });
+
+        using GetPooledTransactionsMessage65 request = new(hashes.ToPooledList());
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response =
+            await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
+        _transactionPool.Received(hashCount).TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>());
+        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+    }
+
     [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
     [TestCase(NewPooledTransactionHashesMessage68.MaxCount)]
     [TestCase(10000)]
@@ -280,15 +462,7 @@ public class Eth68ProtocolHandlerTests
         _handler = BuildHandler(txPoolConfig, frameTxsEnabled: true);
 
         // Between MaxTxSize (128 KiB) and MaxBlobTxSize (1 MiB): admissible only where blobs are supported.
-        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { (int)txPoolConfig.MaxTxSize! + 1 };
-        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
-
-        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        AssertFrameTxAnnouncementRequested((int)txPoolConfig.MaxTxSize! + 1, expectedRequests);
     }
 
     // Without the fork a frame tx is rejected at ingress, so requesting one is always wasted bandwidth.
@@ -299,19 +473,10 @@ public class Eth68ProtocolHandlerTests
         TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
         _handler = BuildHandler(txPoolConfig, frameTxsEnabled);
 
-        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { 100 };
-        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
-
-        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests);
     }
 
-    // The gate must read the header the ingress filter reads. Best-suggested leads the processed head, so
-    // a gate keyed on the latter would still decline while the pool had already started accepting.
+    // Best-suggested leads the processed head, so a gate keyed on the latter would decline while the pool already accepts.
     [Test]
     public void Frame_tx_announcement_is_requested_as_soon_as_the_ingress_filter_would_accept()
     {
@@ -327,15 +492,21 @@ public class Eth68ProtocolHandlerTests
 
         _handler = CreateHandler(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, specProvider);
 
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests: 1);
+    }
+
+    /// <summary>Runs the status handshake, then announces exactly one frame transaction hash of the given size.</summary>
+    private void AssertFrameTxAnnouncementRequested(int announcedSize, int expectedRequests)
+    {
         using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { 100 };
+        using ArrayPoolList<int> sizes = new(1) { announcedSize };
         using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
 
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     private Eth68ProtocolHandler BuildHandler(ITxPoolConfig txPoolConfig, bool frameTxsEnabled)
@@ -709,6 +880,35 @@ public class Eth68ProtocolHandlerTests
             specProvider ?? Substitute.For<IChainHeadSpecProvider>(),
             _txGossipPolicy);
 
+    private static Transaction BuildFullBlobTransaction() => Build.A.Transaction
+        .WithNonce(0UL)
+        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+        .SignedAndResolved()
+        .TestObject;
+
+    private static Transaction BuildSparseBlobTransaction() => BuildSparseBlobTransaction(BuildFullBlobTransaction());
+
+    private static Transaction BuildSparseBlobTransaction(Transaction tx)
+    {
+        Transaction sparseTx = new();
+        tx.CopyTo(sparseTx, copyHash: true);
+        sparseTx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Blobs = [] };
+        sparseTx.ClearLengthCache();
+        return sparseTx;
+    }
+
+    private void SendTransaction(Transaction tx, bool sendBatch)
+    {
+        if (sendBatch)
+        {
+            _handler.SendNewTransactions([tx], sendFullTx: false);
+        }
+        else
+        {
+            _handler.SendNewTransaction(tx);
+        }
+    }
+
     private void ReplaceHandler(ITxPoolConfig txPoolConfig)
     {
         // Complete the outgoing handler's handshake so its pending protocol-init timeout cannot disconnect the shared session substitute.
@@ -723,6 +923,15 @@ public class Eth68ProtocolHandlerTests
         using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+    }
+
+    private void RecreateHandlerWithBlobSupport()
+    {
+        _handler.Dispose();
+        ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
+        txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _handler = CreateHandler(txPoolConfig);
+        _handler.Init();
     }
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)

@@ -9,17 +9,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-/// <summary>
-/// Enforces the EIP-8141 validation-prefix trace and opcode rules while a frame transaction's
-/// prefix is simulated at mempool admission, and captures the resolved payer.
-/// </summary>
-/// <remarks>Covers the per-opcode <see href="https://eips.ethereum.org/EIPS/eip-8141">validation trace rules</see>
-/// only. EIP8141-GAP: deploy-frame carve-outs unhandled, so the processor declines any prefix containing one.</remarks>
+/// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
+/// and captures the resolved payer.</summary>
+/// <remarks>EIP8141-GAP: deploy-frame carve-outs unhandled, so the processor declines any prefix containing one.</remarks>
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer
 {
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
-    // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
+    // SetOperationStack, as the operands aren't available any earlier.
     private int _targetStackIndex = -1;
 
     public override bool IsTracingInstructions => true;
@@ -121,10 +118,8 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         ViolationReason = reason;
     }
 
-    /// <summary>
-    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract or a precompile;
-    /// tx.sender is exempt because its code hash and nonce are already tracked dependencies.
-    /// </summary>
+    /// <summary>Disallowed unless an undelegated existing contract or a precompile; tx.sender is exempt,
+    /// its code hash and nonce being tracked dependencies already.</summary>
     private bool IsForbiddenCallTarget(Address target)
     {
         if (target == sender || spec.IsPrecompile(target)) return false;

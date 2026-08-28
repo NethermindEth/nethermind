@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -634,6 +635,36 @@ public class JsonRpcServiceTests
             "Too many requests");
 
         Assert.That(response.Error!.SuppressWarning, Is.True);
+    }
+
+    [Test]
+    public void Overload_rejections_are_counted_from_both_shedding_paths()
+    {
+        // Per-path deltas so a double-count on one path cannot masquerade as both paths counted.
+        // >= rather than == on each: the counter is a global metric other parallel tests may bump.
+        long beforeInvocation = Metrics.JsonRpcOverloadRejections;
+
+        // During-invocation path: the override-environment cap throws from inside the handler.
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(new ConcurrencyLimitReachedException("cap"));
+        using JsonRpcErrorResponse invocationRejection = AssertJsonRpcError(
+            TestRequest(ethRpcModule, "eth_getLogs", "{}"),
+            ErrorCodes.LimitExceeded,
+            "Too many requests");
+        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(beforeInvocation + 1),
+            "invocation-path rejection was not counted");
+
+        long beforeRental = Metrics.JsonRpcOverloadRejections;
+
+        // Before-invocation path: module rental times out.
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new ModuleRentalTimeoutException("timeout")));
+        using JsonRpcErrorResponse rentalRejection = AssertJsonRpcError(
+            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            ErrorCodes.ModuleTimeout,
+            "Timeout");
+        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(beforeRental + 1),
+            "rental-path rejection was not counted");
     }
 
     [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]
