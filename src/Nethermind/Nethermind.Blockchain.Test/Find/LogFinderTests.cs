@@ -423,6 +423,108 @@ public class LogFinderTests
         Assert.That(() => CreateLogFinder(_rawBlockTree, receiptStorage).FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray(), Throws.TypeOf<InvalidOperationException>().With.Message.Contains(@"missing block data"));
     }
 
+    private const ulong BoundaryOldestStored = 50;
+    private const int BoundaryFrom = 10;
+    private const int BoundaryTo = 200;
+
+    private static IndexedLogFinder CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, IPrunedLogsRetention? retention = null, int indexFrom = 0, ulong lowestStored = BoundaryOldestStored)
+    {
+        blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.GetLowestBlock().Returns(lowestStored);
+        index = Substitute.For<ILogIndexStorage>();
+        index.Enabled.Returns(true);
+        index.MinBlockNumber.Returns(indexFrom);
+        index.MaxBlockNumber.Returns(BoundaryTo);
+        return new IndexedLogFinder(
+            blockFinder, Substitute.For<IReceiptFinder>(), Substitute.For<IReceiptStorage>(), LimboLogs.Instance,
+            Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention);
+    }
+
+    private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
+        FilterBuilder.New().FromBlock(from).ToBlock(BoundaryTo).WithAddress(TestItem.AddressA).Build();
+
+    private static BlockHeader BoundaryHeader(ulong number) => Build.A.BlockHeader.WithNumber(number).TestObject;
+
+    [Test]
+    public void Should_ServeBelowTheOldestStoredBlockFromTheIndex_WhenTheRetentionCoversTheFilter()
+    {
+        IPrunedLogsRetention retention = Substitute.For<IPrunedLogsRetention>();
+        retention.RetainsLogsFor(Arg.Any<IReadOnlyCollection<AddressAsKey>>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, retention);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+    }
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_WhenTheRetentionDoesNotCoverTheFilter()
+    {
+        IPrunedLogsRetention retention = Substitute.For<IPrunedLogsRetention>();
+        retention.RetainsLogsFor(Arg.Any<IReadOnlyCollection<AddressAsKey>>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(false);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _, retention);
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_WhenNoRetentionIsConfigured()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_EvenWhenBothEndpointsCarryNoReceipts()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+        BlockHeader emptyFrom = BoundaryHeader(BoundaryFrom);
+        BlockHeader emptyTo = BoundaryHeader(BoundaryTo);
+
+        Assert.That(emptyFrom.ReceiptsRoot, Is.EqualTo(Keccak.EmptyTreeHash),
+            "the scenario needs endpoints the endpoint probe cannot see, so their receipt roots must be empty");
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(BoundaryFilter(), emptyFrom, emptyTo).ToArray());
+    }
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_EvenWhenTheIndexStartsExactlyAtTheBoundary()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _, indexFrom: (int)BoundaryOldestStored);
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
+    public void Should_UseTheFullIndexRange_WhenTheQueryDoesNotReachBelowTheOldestStoredBlock()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, lowestStored: 1UL);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+    }
+
+    [Test]
+    public void Should_AnswerAFromGenesisQueryUnchanged_OnANodeThatNeverPrunedHistory()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, lowestStored: 1UL);
+        BlockHeader genesis = BoundaryHeader(0);
+        blockFinder.FindHeader(0UL).Returns(genesis);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(from: 0), genesis, BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.Received().GetEnumerator(TestItem.AddressA, 1, BoundaryTo);
+    }
+
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
     // NSubstitute cannot stub a method with a ref-struct out parameter, so the throwing finder is hand-rolled.

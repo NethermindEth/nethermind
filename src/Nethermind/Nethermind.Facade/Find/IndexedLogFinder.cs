@@ -33,8 +33,7 @@ public class IndexedLogFinder(
     : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
-    // Direct parameter use in a method body is CS9107 for a parameter that also flows to the base constructor,
-    // so the boundary guard reads this initializer-copied member instead.
+    // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
     private readonly IBlockFinder _blockFinder = blockFinder;
 
     public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
@@ -86,20 +85,16 @@ public class IndexedLogFinder(
             Math.Min((int)toBlock.Number, indexTo)
         );
 
-        // Below the oldest stored block the index can only answer short: on a pruning node its entries point at
-        // receipts that are gone, and on a sliced node it holds just the receipt islands the retention kept - and
-        // an index entry does not say which it is, so this cannot be gated on today's config. A filter the
-        // retention does not vouch for is rejected outright rather than handed to the endpoint probe, which only
-        // inspects the two endpoint headers - endpoints with empty receipt roots would let interior blocks whose
-        // receipts were reclaimed answer short. The one prefix with nothing to lose is genesis, which carries no
-        // receipts on any chain.
+        // Rejected eagerly: the endpoint probe only sees the two endpoint headers, so it cannot notice
+        // reclaimed receipts in the interior. Genesis is the one below-boundary prefix with nothing to lose.
         ulong lowestStored = _blockFinder.GetLowestBlock();
-        if ((ulong)range.from < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+        if (fromBlock.Number < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
         {
             if (fromBlock.Number != 0 || lowestStored != 1)
                 throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
 
-            range.from = (int)lowestStored;
+            if ((ulong)range.from < lowestStored)
+                range.from = (int)lowestStored;
         }
 
         if (range.from > range.to)

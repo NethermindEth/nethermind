@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
@@ -72,6 +73,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
+    private readonly ISyncPointers? _syncPointers;
     private int _stalledBelowBoundary = -1;
     private bool _stallWarned;
 
@@ -81,7 +83,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null)
+        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
+        ISyncPointers? syncPointers = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -97,6 +100,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _indexRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
+        _syncPointers = syncPointers;
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -385,17 +389,18 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                             return;
                         }
 
-                        if (start != _stalledBelowBoundary)
+                        if (AncientDownloadsReachedTheirBarriers())
                         {
-                            // First empty tick at a height is routinely the pruner mid-reclaim (receipts dropped,
-                            // body not yet) and resolves itself - only a second consecutive tick is worth a Warn.
-                            _stalledBelowBoundary = start;
-                        }
-                        else if (!_stallWarned)
-                        {
-                            _stallWarned = true;
-                            if (_logger.IsWarn) _logger.Warn(
-                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} still has a body but no readable receipts - the descent is stalled until it is reclaimed.");
+                            if (start != _stalledBelowBoundary)
+                            {
+                                _stalledBelowBoundary = start;
+                            }
+                            else if (!_stallWarned)
+                            {
+                                _stallWarned = true;
+                                if (_logger.IsWarn) _logger.Warn(
+                                    $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} still has a body but no readable receipts - the descent is stalled until it is reclaimed.");
+                            }
                         }
                     }
 
@@ -503,6 +508,17 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
     }
 
+    private bool AncientDownloadsReachedTheirBarriers()
+    {
+        if (!_syncConfig.FastSync || _syncConfig.PivotNumber == 0)
+            return true;
+
+        return _syncConfig.DownloadBodiesInFastSync
+            && _syncConfig.DownloadReceiptsInFastSync
+            && _syncPointers?.LowestInsertedBodyNumber is { } bodies && bodies <= _syncConfig.AncientBodiesBarrierCalc
+            && _syncPointers.LowestInsertedReceiptBlockNumber is { } receipts && receipts <= _syncConfig.AncientReceiptsBarrierCalc;
+    }
+
     // TODO: move to IReceiptStorage?
     private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
     {
@@ -510,10 +526,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
-            // A sliced node keeps receipt islands below the pruned boundary. A height is only absent below
-            // it because a reclaim ran, so an empty batch keeps the descent contiguous without losing a log
-            // the node can still serve; depths the retention cannot vouch for are refused at query time.
-            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
+            // Once the ancient downloads are done, a height absent below the boundary was reclaimed - not late -
+            // so an empty entry is the truth and keeps the descent contiguous.
+            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock() && AncientDownloadsReachedTheirBarriers())
             {
                 blockReceipts = new((int)blockNumber, []);
                 return true;
