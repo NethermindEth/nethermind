@@ -100,7 +100,9 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
+            // so index 4 there is the inclusion list rather than the error.
+            int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
                 return null;
@@ -479,7 +481,8 @@ namespace Ethereum.Test.Base
 
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(name);
+            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
@@ -488,7 +491,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

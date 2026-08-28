@@ -19,14 +19,14 @@ public class OptimismProtocolVersionTest
                 .SetName(name);
 
         yield return Case("Zero", "0x0000000000000000000000000000000000000000000000000000000000000000", new(new byte[8], 0, 0, 0, 0));
-        yield return Case("PrereleaseOne", "0x0000000000000000000000000000000000000000000000000000000000000100", new(new byte[8], 0, 0, 0, 1));
-        yield return Case("PatchOne", "0x0000000000000000000000000000000000000000000000000000010000000000", new(new byte[8], 0, 0, 1, 0));
-        yield return Case("MajorMinorPatchPrerelease", "0x0000000000000000000000000000000000000400000003000000020000000100", new(new byte[8], 4, 3, 2, 1));
-        yield return Case("MinorPatch", "0x0000000000000000000000000000000000000000000064000000020000000000", new(new byte[8], 0, 100, 2, 0));
-        yield return Case("OpModBuild", "0x000000000000004f502d6d6f6400000000002a00000000000000020000000100", new([(byte)'O', (byte)'P', (byte)'-', (byte)'m', (byte)'o', (byte)'d', 0, 0], 42, 0, 2, 1));
-        yield return Case("BetaBuild", "0x00000000000000626574612e3132330000000100000000000000000000000000", new([(byte)'b', (byte)'e', (byte)'t', (byte)'a', (byte)'.', (byte)'1', (byte)'2', (byte)'3'], 1, 0, 0, 0));
-        yield return Case("BinaryBuildWithZeros", "0x0000000000000061620100000000000000002a00000000000000020000000000", new([(byte)'a', (byte)'b', 1, 0, 0, 0, 0, 0], 42, 0, 2, 0));
-        yield return Case("BinaryBuildNoZeros", "0x0000000000000001020304050607080000002a00000000000000020000000000", new([1, 2, 3, 4, 5, 6, 7, 8], 42, 0, 2, 0));
+        yield return Case("PrereleaseOne", "0x0000000000000000000000000000000000000000000000000000000000000001", new(new byte[8], 0, 0, 0, 1));
+        yield return Case("PatchOne", "0x0000000000000000000000000000000000000000000000000000000100000000", new(new byte[8], 0, 0, 1, 0));
+        yield return Case("MajorMinorPatchPrerelease", "0x0000000000000000000000000000000000000004000000030000000200000001", new(new byte[8], 4, 3, 2, 1));
+        yield return Case("MinorPatch", "0x0000000000000000000000000000000000000000000000640000000200000000", new(new byte[8], 0, 100, 2, 0));
+        yield return Case("OpModBuild", "0x00000000000000004f502d6d6f6400000000002a000000000000000200000001", new([(byte)'O', (byte)'P', (byte)'-', (byte)'m', (byte)'o', (byte)'d', 0, 0], 42, 0, 2, 1));
+        yield return Case("BetaBuild", "0x0000000000000000626574612e31323300000001000000000000000000000000", new([(byte)'b', (byte)'e', (byte)'t', (byte)'a', (byte)'.', (byte)'1', (byte)'2', (byte)'3'], 1, 0, 0, 0));
+        yield return Case("BinaryBuildWithZeros", "0x000000000000000061620100000000000000002a000000000000000200000000", new([(byte)'a', (byte)'b', 1, 0, 0, 0, 0, 0], 42, 0, 2, 0));
+        yield return Case("BinaryBuildNoZeros", "0x000000000000000001020304050607080000002a000000000000000200000000", new([1, 2, 3, 4, 5, 6, 7, 8], 42, 0, 2, 0));
     }
     [TestCaseSource(nameof(V0ReadWriteCases))]
     public void OptimismProtocolVersionV0_ReadWrite((string HexString, OptimismProtocolVersion.V0 Expected) testCase)
@@ -40,6 +40,18 @@ public class OptimismProtocolVersionTest
 
         Assert.That(actual, Is.EqualTo(testCase.Expected));
         Assert.That(testCase.HexString, Is.EqualTo(bytesWrittenHex));
+    }
+
+    [Test]
+    public void OptimismProtocolVersionV0_WriteInitializesEntireBuffer()
+    {
+        OptimismProtocolVersion.V0 version = new(new byte[8], 0, 0, 0, 0);
+        byte[] bytes = new byte[OptimismProtocolVersion.ByteLength];
+        Array.Fill(bytes, (byte)0xaa);
+
+        version.Write(bytes);
+
+        Assert.That(bytes, Is.EqualTo(new byte[OptimismProtocolVersion.ByteLength]));
     }
 
     private static IEnumerable<TestCaseData> V0CompareCases()
@@ -106,7 +118,7 @@ public class OptimismProtocolVersionTest
     [TestCase("0x0010000000000000000000000000000000000000000000000000000000000000", true)]
     [TestCase("0x0001000000000000000000000000000000000000000000000000000000000000", true)]
     [TestCase("0x0000000000001000000000000000000000000000000000000000000000000000", true)]
-    [TestCase("0x0000000000000100000000000000000000000000000000000000000000000000", true)]
+    [TestCase("0x0000000000000001000000000000000000000000000000000000000000000000", true)]
     public void OptimismProtocolVersionV0_ReservedIsZero(string hexString, bool shouldThrow)
     {
         byte[] bytes = Bytes.FromHexString(hexString);

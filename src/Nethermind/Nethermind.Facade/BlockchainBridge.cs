@@ -223,10 +223,7 @@ namespace Nethermind.Facade
         }
 
         /// <summary>Whether the sender's balance bounds <paramref name="tx"/>'s gas limit, and what is left for gas after its value.</summary>
-        /// <remarks>
-        /// False for an EIP-8141 frame transaction: its gas limit is derived from the frames rather than
-        /// chosen, and the reservation is owed by the frame-approved payer rather than by the sender.
-        /// </remarks>
+        /// <remarks>False for an EIP-8141 frame transaction: the gas is owed by the frame-approved payer, not the sender.</remarks>
         private static bool IsCappedBySenderAllowance(Transaction tx, in UInt256 senderBalance, in UInt256 feeCap, out UInt256 availableForGas)
         {
             availableForGas = UInt256.Zero;
@@ -337,7 +334,8 @@ namespace Nethermind.Facade
         {
             // Loop-invariant: the addresses to filter from the discovered AL depend only on header
             // and tx, neither of which change between iterations. Compute once and reuse.
-            FrozenSet<AddressAsKey> precompiles = specProvider.GetSpec(header).Precompiles;
+            IReleaseSpec spec = specProvider.GetSpec(header);
+            FrozenSet<AddressAsKey> precompiles = spec.Precompiles;
             int bufferSize = (optimize ? 3 : 1) + precompiles.Count;
             Address[] addressBuffer = new Address[bufferSize];
             FillAddressesToOptimize(addressBuffer, nonceSource, header, tx, optimize, precompiles);
@@ -359,6 +357,27 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
+            // EIP-7981 bills access-list bytes at the calldata floor-token rate, so a pre-warmed entry
+            // can cost more than the cold access it saves and the gas-minimal list is empty. Return it
+            // only when it reaches the same outcome with strictly less gas, so removing entries that
+            // alter execution (e.g. gasleft branching) can't swap in a failing or costlier run.
+            if (optimize && spec.IsEip7981Enabled && result.TransactionExecuted && accessTracer.AccessList is { IsEmpty: false })
+            {
+                CallOutputTracer emptyOutputTracer = new();
+                CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
+                tx.AccessList = null;
+                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, emptyTracer);
+                if (emptyResult.TransactionExecuted
+                    && emptyOutputTracer.StatusCode == outputTracer.StatusCode
+                    && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
+                    return BuildCallOutput(emptyResult, emptyOutputTracer, AccessList.Empty);
+            }
+
+            return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
+        }
+
+        private static CallOutput BuildCallOutput(TransactionResult result, CallOutputTracer outputTracer, AccessList? accessList)
+        {
             bool executionReverted = result.EvmExceptionType == EvmExceptionType.Revert;
             // Geth always surfaces plain "execution reverted" for eth_createAccessList,
             // regardless of whether the revert payload carries a decoded reason.
@@ -374,7 +393,7 @@ namespace Nethermind.Facade
                 OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = executionReverted,
-                AccessList = accessTracer.AccessList,
+                AccessList = accessList,
             };
         }
 
@@ -707,8 +726,6 @@ namespace Nethermind.Facade
 
                 try
                 {
-                    // EIP-158 must not delete accounts whose code and nonce were overridden to zero while
-                    // storage remains, or the EIP-7610 collision check would stop seeing that storage.
                     IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
                     IWorldState worldState = scope.Component.WorldState;
                     worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);

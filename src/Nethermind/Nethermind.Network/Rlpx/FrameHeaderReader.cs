@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -12,7 +12,8 @@ namespace Nethermind.Network.Rlpx
 {
     internal class FrameHeaderReader
     {
-        private int? _currentContextId;
+        private const int HeaderBodyOffset = 3;
+        private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
 
         public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
 
@@ -23,21 +24,41 @@ namespace Nethermind.Network.Rlpx
             frameSize = (frameSize << 8) + (HeaderBytes[1] & 0xFF);
             frameSize = (frameSize << 8) + (HeaderBytes[2] & 0xFF);
 
-            RlpReader headerBodyItems = new(HeaderBytes.AsSpan(3, 13));
-            int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
-            headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
-            _currentContextId = contextId;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
+            ReadHeaderBody(out int? contextId, out int? totalPacketSize);
 
             ValidateTotalPacketSize(frameSize, totalPacketSize);
+            return new FrameInfo(frameSize, contextId, totalPacketSize);
+        }
 
-            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-            bool isFirst = totalPacketSize.HasValue || !isChunked;
+        /// <summary>Decodes the RLP header body of the frame header just read into <see cref="HeaderBytes"/>.</summary>
+        /// <remarks>
+        /// Kept separate from <see cref="ReadFrameHeader"/> so that the exception handling region covers the RLP
+        /// decoding only, rather than also spanning the frame size read and <see cref="ValidateTotalPacketSize"/>.
+        /// </remarks>
+        /// <exception cref="CorruptedFrameException">The header body is not a well formed RLP sequence.</exception>
+        private void ReadHeaderBody(out int? contextId, out int? totalPacketSize)
+        {
+            try
+            {
+                RlpReader headerBodyItems = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
+                int headerDataLength = headerBodyItems.ReadSequenceLength();
+                int remaining = headerBodyItems.Length - headerBodyItems.Position;
+                if ((uint)headerDataLength > (uint)remaining)
+                {
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {headerDataLength} exceeds the {remaining} bytes left in the header");
+                }
 
-            headerBodyItems.Check(headerDataEnd);
-            return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
+                int headerDataEnd = headerDataLength + headerBodyItems.Position;
+                int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
+                headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
+                contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
+                totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
+                headerBodyItems.Check(headerDataEnd);
+            }
+            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                throw new CorruptedFrameException(exception);
+            }
         }
 
         private static void ValidateTotalPacketSize(int frameSize, int? totalPacketSize)
@@ -59,12 +80,11 @@ namespace Nethermind.Network.Rlpx
             static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize) => throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
         }
 
-        internal readonly struct FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
+        internal readonly struct FrameInfo(int size, int? contextId, int? totalPacketSize)
         {
-            public bool IsChunked { get; } = isChunked;
-            public bool IsFirst { get; } = isFirst;
             public int Size { get; } = size;
-            public int TotalPacketSize { get; } = totalPacketSize;
+            public int? ContextId { get; } = contextId;
+            public int? TotalPacketSize { get; } = totalPacketSize;
             public int Padding => Frame.CalculatePadding(Size);
 
             public int PayloadSize => Size + Padding;

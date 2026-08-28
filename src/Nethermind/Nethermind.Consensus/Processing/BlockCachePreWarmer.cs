@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -747,12 +748,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 continue;
             }
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
-            {
-                list = new(4);
-                groups[sender] = list;
-            }
-            list.Add((i, tx));
+            ref ArrayPoolList<(int, Transaction)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out _);
+            (list ??= new(4)).Add((i, tx));
         }
 
         ArrayPoolList<WarmupJob> result = new(groups.Count);
@@ -987,15 +984,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
+                    int txCount = block.Transactions.Length;
+                    int ilCount = block.InclusionListTransactions?.Length ?? 0;
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        txCount + ilCount,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        Transaction tx = state.Payload.Transactions[i];
+                        Transaction[] txs = state.Payload.Transactions;
+                        // Indexes past the block txs warm inclusion-list txs — they may be promoted into the block.
+                        Transaction tx = i < txs.Length ? txs[i] : state.Payload.InclusionListTransactions![i - txs.Length];
                         WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
                         return state;

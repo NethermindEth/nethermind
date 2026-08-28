@@ -219,7 +219,7 @@ public abstract class BlockchainTestBase
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
-                        Assert.Fail($"Failed to process genesis block: {args.Exception}");
+                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
                         genesisProcessed.Set();
                     }
                 };
@@ -444,7 +444,8 @@ public abstract class BlockchainTestBase
                 && validationError is null;
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
+            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
+            string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
@@ -481,12 +482,13 @@ public abstract class BlockchainTestBase
             else
             {
                 PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
                 lastStatus = payloadStatus.Status;
                 if (payloadStatus.ValidationError is not null)
                     lastValidationError = payloadStatus.ValidationError;
 
-                if (payloadStatus.Status == PayloadStatus.Valid)
+                // The block is committed even when unsatisfied, so the head must still advance.
+                if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                 {
                     string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
                     AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
@@ -528,6 +530,8 @@ public abstract class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
+            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving inclusionListSatisfied.
+            ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
             _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
@@ -536,10 +540,15 @@ public abstract class BlockchainTestBase
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
         Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
     {
         string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
         Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+
+        // EIP-7805: IL compliance is only reported for a VALID payload (execution-apis#609).
+        if (expectedInclusionListSatisfied is { } expectedIlSatisfied && payloadStatus.Status == PayloadStatus.Valid)
+            Assert.That((payloadStatus as PayloadStatusV2)?.InclusionListSatisfied, Is.EqualTo(expectedIlSatisfied),
+                $"engine_newPayloadV{payloadVersion} reported inclusionListSatisfied={(payloadStatus as PayloadStatusV2)?.InclusionListSatisfied}, expected {expectedIlSatisfied}");
 
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
@@ -618,7 +627,29 @@ public abstract class BlockchainTestBase
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        // EIP-7825's per-transaction gas cap, which a frame transaction reports against its own budget.
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
+        // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
+        ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
+        // The decoder names neither the field nor the type, so these widen both labels suite-wide to any
+        // untyped collection-limit rejection, not merely to the other fee field. No narrowing available.
+        ("TransactionException.GASPRICE_OVERFLOW", "Collection count of"),
+        ("TransactionException.PRIORITY_OVERFLOW", "Collection count of"),
+        .. Eip8141Mappings(),
     ];
+
+    // EIP-8141 splits a rejected frame transaction three ways, and the fixtures name each separately.
+    private static IEnumerable<(string, string)> Eip8141Mappings()
+    {
+        foreach (string fragment in FrameExceptionFragments.Format)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.Signature)
+            yield return ("TransactionException.TYPE_6_INVALID_SIGNATURE", fragment);
+        foreach (string fragment in FrameExceptionFragments.Execution)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
+        foreach (string fragment in FrameExceptionFragments.Decode)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+    }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
@@ -741,7 +772,8 @@ public abstract class BlockchainTestBase
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
-        stateProvider.Commit(specProvider.GenesisSpec);
+        // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+        stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
     }

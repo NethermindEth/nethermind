@@ -10,10 +10,8 @@ namespace Nethermind.TxPool.Test;
 
 public class AcceptTxResultTests
 {
-    /// <remarks>
-    /// Equality is by id alone, so two results sharing an id are indistinguishable and a filter test can
-    /// pass while comparing against the wrong one. Reflection keeps the guard current as results are added.
-    /// </remarks>
+    /// <remarks>Equality is by id alone, so two results sharing an id are indistinguishable and a filter test
+    /// can pass while comparing against the wrong one.</remarks>
     [Test]
     public void Every_result_is_distinguishable_from_every_other()
     {

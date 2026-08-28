@@ -52,13 +52,14 @@ public static partial class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
+        public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+
         /// <summary>
-        /// Returns a spec with EIP-158 disabled, preventing empty-account deletion on commit.
-        /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
+        /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
             spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;

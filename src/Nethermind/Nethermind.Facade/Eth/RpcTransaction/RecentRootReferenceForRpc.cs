@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,9 +29,29 @@ public class RecentRootReferenceForRpc
 
     public RecentRootReference ToReference() => new(SourceId.ValueHash256, Slot, Root.ValueHash256);
 
-    public static RecentRootReferenceForRpc[]? FromReferences(RecentRootReference[]? references) =>
-        references?.Select(static r => new RecentRootReferenceForRpc(r)).ToArray();
+    public static RecentRootReferenceForRpc[]? FromReferences(RecentRootReference[]? references)
+    {
+        if (references is null) return null;
 
-    public static RecentRootReference[]? ToReferences(RecentRootReferenceForRpc[]? references) =>
-        references?.Select(static r => r.ToReference()).ToArray();
+        RecentRootReferenceForRpc[] result = new RecentRootReferenceForRpc[references.Length];
+        for (int i = 0; i < references.Length; i++)
+        {
+            result[i] = new RecentRootReferenceForRpc(references[i]);
+        }
+
+        return result;
+    }
+
+    public static RecentRootReference[]? ToReferences(RecentRootReferenceForRpc[]? references)
+    {
+        if (references is null) return null;
+
+        RecentRootReference[] result = new RecentRootReference[references.Length];
+        for (int i = 0; i < references.Length; i++)
+        {
+            result[i] = references[i].ToReference();
+        }
+
+        return result;
+    }
 }

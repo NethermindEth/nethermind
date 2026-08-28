@@ -9,16 +9,15 @@ using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.TxPool.Test.FrameTxTestFrames;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves
-    // at all depends on code the sender controls, so the frames behind it may still run before any gas is
-    // paid. A layout that fits under the ceiling anyway costs the node no more than a recognized one.
+    // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves at
+    // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
         yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted)
@@ -65,9 +64,8 @@ internal class FrameTxVerifyGasFilterTest
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
 
-    // The pool's account cache stores the empty account on a miss while the reader beneath it may
-    // leave the out-value zeroed, so a filter reading the first probe and a filter reading the
-    // second one must not see a different sender.
+    // The account cache stores the empty account on a miss while the reader beneath may leave the out-value
+    // zeroed, so filters reading the first and second probe must not see a different sender.
     [Test]
     public void SenderAccount_OfAMissingAccount_ReadsTheSameOnEveryProbe()
     {

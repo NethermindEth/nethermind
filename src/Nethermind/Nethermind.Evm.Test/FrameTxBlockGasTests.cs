@@ -19,9 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// EIP-7778 block-gas accounting for EIP-8141 frame transactions.
-/// </summary>
+/// <summary>EIP-7778 block-gas accounting for EIP-8141 frame transactions.</summary>
 [TestFixture]
 public class FrameTxBlockGasTests
 {
@@ -34,11 +32,13 @@ public class FrameTxBlockGasTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Writer = TestItem.AddressB;
     private static readonly Address Inert = TestItem.AddressC;
+    private static readonly Address Asserter = TestItem.AddressD;
 
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance));
+        // EIP-7906 is on so a POST_TX frame is admissible; the opcodes it adds are unused here.
+        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         _state = TestWorldStateFactory.CreateForTest();
         _closer = _state.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_state);
@@ -238,10 +238,8 @@ public class FrameTxBlockGasTests
     }
 
     /// <summary>An atomic batch whose later frame fails gives back the state gas its earlier frame owed.</summary>
-    /// <remarks>
-    /// The unroll restores the pre-batch state, so the fresh slot the first frame wrote never reaches the
-    /// block; charging the block's state dimension for it would price state that does not exist.
-    /// </remarks>
+    /// <remarks>The unroll restores the pre-batch state, so the slot the first frame wrote never reaches
+    /// the block and must not be priced into the block's state dimension.</remarks>
     [Test]
     public void Execute_AtomicBatchUnrolls_GivesBackTheStateGasOfTheRolledBackFrames()
     {
@@ -259,6 +257,38 @@ public class FrameTxBlockGasTests
 
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "the batch was rolled back, so the slot its first frame wrote never grew the state");
+    }
+
+    /// <summary>A failed EIP-7906 assertion gives back the state gas of the body it discards.</summary>
+    /// <remarks>
+    /// The body's writes go with the prefix snapshot the assertion restores. Leaving their charge in the
+    /// state dimension inflates S, and header gasUsed = max(G - S, S) then lands below the true G.
+    /// </remarks>
+    [TestCase(true, 0ul, TestName = "A reverted POST_TX assertion discards the body's state gas")]
+    [TestCase(false, (ulong)GasCostOf.SSetState, TestName = "A satisfied POST_TX assertion keeps the body's state gas")]
+    public void Execute_PostTxOutcome_DecidesWhetherTheBodyOwesStateGas(bool assertionReverts, ulong expectedStateGas)
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        Deploy(Asserter, assertionReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModePostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas - expectedStateGas),
+                "the two dimensions must together account for the gas the transaction spent");
+        }
     }
 
     private static byte[] ApproveCode(byte scope) =>

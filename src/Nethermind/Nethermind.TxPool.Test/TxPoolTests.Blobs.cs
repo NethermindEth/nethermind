@@ -1,21 +1,24 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -26,6 +29,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Spec;
 
@@ -220,11 +224,89 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
             Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+            Assert.That(_txPool.TryGetPendingTransactionWithoutBlobs(blobTxAdded.Hash!, out Transaction metadataTx), Is.True);
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper!;
+            ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fullWrapper.HasFullBlobs(), Is.True);
+                Assert.That(metadataWrapper.Blobs, Is.Empty);
+                Assert.That(metadataWrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(metadataWrapper.Cells, Is.Null);
+                Assert.That(metadataWrapper.Commitments, Is.SameAs(fullWrapper.Commitments));
+                Assert.That(metadataWrapper.Proofs, Is.SameAs(fullWrapper.Proofs));
+            }
 
             Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
             if (isPersistentStorage)
             {
                 Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            }
+        }
+
+        [Test]
+        public void should_load_full_sidecar_from_db_when_getting_blob_tx_after_cache_eviction()
+        {
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry();
+            using (blobPool)
+            {
+                Assert.That(blobPool.TryGetValue(target.Hash, out Transaction fullTx), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
+                Assert.That(fullTx.NetworkWrapper, Is.Not.Null);
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs(bool legacyRecord)
+        {
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry();
+            using (blobPool)
+            {
+                if (legacyRecord)
+                {
+                    blobTxStorage.RemoveWithoutBlobs(target.Hash);
+                }
+
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out Transaction metadataTx), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(legacyRecord ? 1 : 0));
+                Assert.That(blobTxStorage.ContainsWithoutBlobs(target.Hash), Is.True);
+
+                blobTxStorage.ResetTryGetCount();
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(0));
+
+                ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)target.NetworkWrapper!;
+                ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(metadataTx.Hash, Is.EqualTo(target.Hash));
+                    Assert.That(metadataTx.Nonce, Is.EqualTo(target.Nonce));
+                    Assert.That(metadataTx.SenderAddress, Is.EqualTo(target.SenderAddress));
+                    Assert.That(metadataTx.Signature, Is.Not.Null);
+                    Assert.That(metadataWrapper.Blobs, Is.Empty);
+                    Assert.That(metadataWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
+                    Assert.That(metadataWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
+                    Assert.That(metadataWrapper.Version, Is.EqualTo(originalWrapper.Version));
+                }
+            }
+        }
+
+        [Test]
+        public void should_cache_sidecar_free_fallback_for_storage_without_metadata_capability()
+        {
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry(supportsMetadata: false);
+            using (blobPool)
+            {
+                blobTxStorage.RemoveWithoutBlobs(target.Hash);
+
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
             }
         }
 
@@ -309,7 +391,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
+        public void should_allow_nonce_gap_only_for_non_blob_tx_when_pool_has_capacity([Values(true, false)] bool isBlob)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -331,7 +413,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None), Is.EqualTo(isBlob ? AcceptTxResult.NonceGap : AcceptTxResult.Accepted));
+            Assert.That(
+                _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None),
+                Is.EqualTo(isBlob ? AcceptTxResult.NonceGap : AcceptTxResult.Accepted));
         }
 
         [Test]
@@ -1202,7 +1286,7 @@ namespace Nethermind.TxPool.Test
                 {
                     yield return MakeTestCase("V0 should be evicted in Osaka", 0, mode, TestAction.AddV0, TestAction.Fork);
                     yield return MakeTestCase("Take only V0 ones before Osaka", 2, mode, TestAction.AddV0, TestAction.AddV0, TestAction.AddV1);
-                    yield return MakeTestCase("Evict old proof and all the next txs", 0, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
+                    yield return MakeTestCase("Evict old proof and later sparse txs", 0, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
                     yield return MakeTestCase("Replace with new proof", 1, mode, TestAction.AddV0, TestAction.Fork, TestAction.ResetNonce, TestAction.AddV1);
                     yield return MakeTestCase("Ignore V1 before Osaka, no gaps", 0, mode, TestAction.AddV1);
                 }
@@ -1320,7 +1404,7 @@ namespace Nethermind.TxPool.Test
                 BlobCacheSize = 1,
                 Size = 10
             };
-            BlobTxStorage blobTxStorage = new();
+            CountingBlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -1337,8 +1421,10 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
+            Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1357,6 +1443,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobs[1], Is.Not.Null);
                 Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
                 Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
 
@@ -1399,6 +1486,521 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_return_blob_cells_from_persistent_storage_after_cache_eviction()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction tx1 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction tx2 = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            BlobCellMask requestedMask = BlobCellMask.FromIndices([3]);
+            Assert.That(_txPool.TryGetBlobCells(tx1.Hash!, requestedMask, out BlobCellMask availableMask, out byte[][] cells), Is.True);
+            Assert.That(availableMask, Is.EqualTo(requestedMask));
+            Assert.That(cells, Is.Not.Null);
+            Assert.That(cells!.Length, Is.EqualTo(tx1.BlobVersionedHashes!.Length * requestedMask.Count));
+
+            Assert.That(_txPool.TryGetBlobCellsAndProofsV1(tx1.BlobVersionedHashes[0], requestedMask, out availableMask, out cells, out byte[][] proofs), Is.True);
+            Assert.That(availableMask, Is.EqualTo(requestedMask));
+            Assert.That(cells, Is.Not.Null);
+            Assert.That(cells!.Length, Is.EqualTo(requestedMask.Count));
+            Assert.That(proofs, Is.Not.Null);
+            Assert.That(proofs!.Length, Is.EqualTo(requestedMask.Count));
+        }
+
+        [Test]
+        public void should_use_later_full_candidate_when_first_matching_blob_hash_is_sparse([Values(true, false)] bool isPersistentStorage)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: new BlobTxStorage());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction txWithSparseCells = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Transaction txWithFullBlob = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            Assert.That(txWithFullBlob.BlobVersionedHashes![0], Is.EqualTo(txWithSparseCells.BlobVersionedHashes![0]));
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)txWithSparseCells.NetworkWrapper!;
+            BlobCellMask sparseMask = BlobCellMask.FromIndices([1]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, sparseMask, out byte[][] sparseCells), Is.True);
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            Array.Fill(emptyBlobs, []);
+            txWithSparseCells.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = sparseMask,
+                Cells = sparseCells,
+            };
+            txWithSparseCells.ClearLengthCache();
+
+            Assert.That(_txPool.SubmitTx(txWithSparseCells, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(txWithFullBlob, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
+            Assert.That(_txPool.TryGetBlobCellsAndProofsV1(txWithSparseCells.BlobVersionedHashes[0], requestedMask, out BlobCellMask availableMask, out byte[][] cells, out byte[][] proofs), Is.True);
+            Assert.That(availableMask, Is.EqualTo(requestedMask));
+            Assert.That(cells, Is.Not.Null);
+            Assert.That(cells.Length, Is.EqualTo(requestedMask.Count));
+            Assert.That(proofs, Is.Not.Null);
+            Assert.That(proofs.Length, Is.EqualTo(requestedMask.Count));
+
+            byte[] requestedHash = txWithSparseCells.BlobVersionedHashes[0];
+            Assert.That(_txPool.TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out byte[][] fullProofs), Is.True);
+            Assert.That(fullBlob, Is.EqualTo(((ShardBlobNetworkWrapper)txWithFullBlob.NetworkWrapper!).Blobs[0]));
+            Assert.That(fullProofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
+
+            byte[][] batchBlobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] batchProofs = new ReadOnlyMemory<byte[]>[1];
+            Assert.That(_txPool.TryGetBlobsAndProofsV1([requestedHash], batchBlobs, batchProofs), Is.EqualTo(1));
+            Assert.That(batchBlobs[0], Is.EqualTo(fullBlob));
+            Assert.That(batchProofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+        }
+
+        [Test]
+        public void should_use_persisted_full_candidate_after_more_than_four_sparse_cache_misses()
+        {
+            const int sparseCandidateCount = 5;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            CountingBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            BlobCellMask sparseMask = BlobCellMask.FromIndices([1]);
+            byte[] requestedBlobVersionedHash = null!;
+
+            for (int i = 0; i < sparseCandidateCount; i++)
+            {
+                Transaction sparseTx = Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithMaxFeePerGas(1.GWei + (UInt256)i)
+                    .WithMaxPriorityFeePerGas(1.GWei + (UInt256)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                ConvertToSparseBlobTransaction(sparseTx, sparseMask);
+                requestedBlobVersionedHash ??= sparseTx.BlobVersionedHashes![0];
+                Assert.That(sparseTx.BlobVersionedHashes![0], Is.EqualTo(requestedBlobVersionedHash));
+                Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
+            }
+
+            Transaction fullTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei + (UInt256)sparseCandidateCount)
+                .WithMaxPriorityFeePerGas(1.GWei + (UInt256)sparseCandidateCount)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[sparseCandidateCount]).TestObject;
+            Assert.That(fullTx.BlobVersionedHashes![0], Is.EqualTo(requestedBlobVersionedHash));
+            Assert.That(blobPool.TryInsert(fullTx.Hash, fullTx, out _), Is.True);
+
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei + (UInt256)(sparseCandidateCount + 1))
+                .WithMaxPriorityFeePerGas(1.GWei + (UInt256)(sparseCandidateCount + 1))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[sparseCandidateCount + 1]).TestObject;
+            ReplaceBlobSidecar(cacheEvictor, firstBlobByte: 42);
+            Assert.That(cacheEvictor.BlobVersionedHashes![0], Is.Not.EqualTo(requestedBlobVersionedHash));
+            Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+
+            byte[][] requestedHashes = [requestedBlobVersionedHash!];
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+
+            int found = blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
+
+            Assert.That(found, Is.EqualTo(1));
+            Assert.That(blobs[0], Is.Not.Null);
+            Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            Assert.That(storage.LastTryGetManyCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void persistent_v1_cell_lookup_should_not_report_v0_blob_as_available()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction v0Tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(blobPool.TryInsert(v0Tx.Hash, v0Tx, out _), Is.True);
+
+            bool found = blobPool.TryGetBlobCellsAndProofsV1(
+                v0Tx.BlobVersionedHashes![0],
+                BlobCellMask.FromIndices([1]),
+                out _,
+                out _,
+                out _);
+
+            Assert.That(found, Is.False);
+        }
+
+        [Test]
+        public void should_keep_invalid_blob_proofs_known_until_explicitly_forgotten()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+            Transaction invalid = CloneSparseBlobTransaction(template, 0, cellMask);
+            ((ShardBlobNetworkWrapper)invalid.NetworkWrapper!).Cells![0][0] ^= 1;
+            Transaction valid = CloneSparseBlobTransaction(template, 0, cellMask);
+            IMessageHandler<PooledTransactionRequestMessage> firstPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> alternatePeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> latePeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, firstPeer), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, alternatePeer), Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, latePeer), Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            _txPool.ForgetRejectedBlobTransaction(valid.Hash!);
+
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public void should_keep_removed_blob_transaction_known_after_forgetting_rejected_hash()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.RemoveTransaction(tx.Hash), Is.True);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            _txPool.ForgetRejectedBlobTransaction(tx.Hash!);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+        }
+
+        [Test]
+        public void should_reject_blob_sender_whose_first_nonce_is_in_the_future()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gap = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(2UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(), Does.Not.ContainKey((AddressAsKey)TestItem.AddressA));
+        }
+
+        [Test]
+        public void should_merge_complementary_blob_cell_candidates([Values(true, false)] bool isPersistentStorage)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: new BlobTxStorage());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction first = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            Assert.That(second.BlobVersionedHashes![0], Is.EqualTo(first.BlobVersionedHashes![0]));
+            ConvertToSparseBlobTransaction(first, BlobCellMask.FromIndices([1]));
+            ConvertToSparseBlobTransaction(second, BlobCellMask.FromIndices([3]));
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            BlobCellMask requestedMask = BlobCellMask.FromIndices([1, 3]);
+            Assert.That(_txPool.TryGetBlobCellsAndProofsV1(first.BlobVersionedHashes[0], requestedMask, out BlobCellMask availableMask, out byte[][] cells, out byte[][] proofs), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(availableMask, Is.EqualTo(requestedMask));
+                Assert.That(cells, Has.Length.EqualTo(requestedMask.Count));
+                Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
+            }
+        }
+
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void should_return_unavailable_for_malformed_blob_cell_candidate(bool fullBlobs, bool truncateProofs)
+        {
+            IComparer<Transaction> comparer = new TransactionComparerProvider(GetOsakaSpecProvider(), _blockTree).GetDefaultComparer();
+            BlobTxDistinctSortedPool blobPool = new(4, comparer, LimboLogs.Instance);
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            byte[] requestedBlobVersionedHash = [.. tx.BlobVersionedHashes![0]];
+            requestedBlobVersionedHash[^1] ^= 1;
+            tx.BlobVersionedHashes = [tx.BlobVersionedHashes[0], requestedBlobVersionedHash];
+            byte[][] commitments = [wrapper.Commitments[0], wrapper.Commitments[0]];
+            byte[][] proofs = truncateProofs ? wrapper.Proofs : [.. wrapper.Proofs, .. wrapper.Proofs];
+
+            if (fullBlobs)
+            {
+                byte[][] blobs = truncateProofs
+                    ? [wrapper.Blobs[0], wrapper.Blobs[0]]
+                    : wrapper.Blobs;
+                tx.NetworkWrapper = wrapper with { Blobs = blobs, Commitments = commitments, Proofs = proofs };
+            }
+            else
+            {
+                BlobCellMask cellMask = BlobCellMask.FromIndices([1]);
+                Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] sparseCells), Is.True);
+                tx.NetworkWrapper = wrapper with
+                {
+                    Blobs = [],
+                    Commitments = commitments,
+                    Proofs = proofs,
+                    CellMask = cellMask,
+                    Cells = sparseCells,
+                };
+            }
+
+            tx.ClearLengthCache();
+            Assert.That(blobPool.TryInsert(tx.Hash, tx, out _), Is.True);
+
+            bool found = blobPool.TryGetBlobCellsAndProofsV1(
+                requestedBlobVersionedHash,
+                BlobCellMask.FromIndices([1]),
+                out BlobCellMask availableMask,
+                out byte[][] cells,
+                out byte[][] cellProofs);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.False);
+                Assert.That(availableMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(cells, Is.Null);
+                Assert.That(cellProofs, Is.Null);
+            }
+        }
+
+        [Test]
+        public void should_not_let_redundant_persistent_candidates_hide_complementary_cells()
+        {
+            const int redundantCandidateCount = BlobCellMask.CellCount;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = redundantCandidateCount + 1,
+                Size = redundantCandidateCount + 1,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            byte[] requestedBlobVersionedHash = template.BlobVersionedHashes![0];
+            BlobCellMask redundantMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask complementaryMask = BlobCellMask.FromIndices([3]);
+
+            for (int i = 0; i < redundantCandidateCount; i++)
+            {
+                Transaction candidate = CloneSparseBlobTransaction(template, i, redundantMask);
+                Assert.That(blobPool.TryInsert(candidate.Hash, candidate, out _), Is.True);
+            }
+
+            Transaction complementaryCandidate = CloneSparseBlobTransaction(template, redundantCandidateCount, complementaryMask);
+            Assert.That(blobPool.TryInsert(complementaryCandidate.Hash, complementaryCandidate, out _), Is.True);
+
+            BlobCellMask requestedMask = redundantMask | complementaryMask;
+            Assert.That(blobPool.TryGetBlobCellsAndProofsV1(
+                requestedBlobVersionedHash,
+                requestedMask,
+                out BlobCellMask availableMask,
+                out byte[][] cells,
+                out byte[][] proofs), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(availableMask, Is.EqualTo(requestedMask));
+                Assert.That(cells, Has.Length.EqualTo(requestedMask.Count));
+                Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
+            }
+        }
+
+        [Test]
+        public void should_return_known_blob_when_no_requested_cells_are_available([Values(true, false)] bool isPersistentStorage)
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                    BlobCacheSize = 1,
+                    Size = 10
+                },
+                GetOsakaSpecProvider(),
+                txStorage: new BlobTxStorage());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction sparseTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ConvertToSparseBlobTransaction(sparseTx, BlobCellMask.FromIndices([1]));
+            Assert.That(_txPool.SubmitTx(sparseTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            bool found = _txPool.TryGetBlobCellsAndProofsV1(
+                sparseTx.BlobVersionedHashes![0],
+                BlobCellMask.FromIndices([3]),
+                out BlobCellMask availableMask,
+                out byte[][] cells,
+                out byte[][] proofs);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True);
+                Assert.That(availableMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(cells, Is.Empty);
+                Assert.That(proofs, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void should_not_return_sparse_blob_from_persistent_storage_full_blob_lookup()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask cellMask = BlobCellMask.FromIndices([1]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, cellMask, out byte[][] cells), Is.True);
+
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            Array.Fill(emptyBlobs, []);
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = [],
+                CellMask = BlobCellMask.Empty,
+                Cells = null,
+            };
+            sparseBlobTx.ClearLengthCache();
+            Assert.That(_txPool.ValidateTxForBlobSampling(sparseBlobTx), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.IncompleteBlobData));
+
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = cellMask,
+                Cells = cells,
+            };
+            sparseBlobTx.ClearLengthCache();
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            byte[][] requestedHashes = [sparseBlobTx.BlobVersionedHashes![0]!];
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+
+            int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
+
+            Assert.That(found, Is.EqualTo(0));
+            Assert.That(blobs[0], Is.Null);
+            Assert.That(proofs[0].IsEmpty, Is.True);
+        }
+
+        [Test]
         public void should_batch_return_blobs_from_cache_and_db()
         {
             // BlobCacheSize = 1: after inserting tx1 and tx2, only tx2 remains in cache.
@@ -1410,7 +2012,7 @@ namespace Nethermind.TxPool.Test
                 BlobCacheSize = 1,
                 Size = 10
             };
-            BlobTxStorage blobTxStorage = new();
+            CountingBlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
@@ -1427,8 +2029,10 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
+            Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -1449,46 +2053,1757 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobs[1], Is.Not.Null);
                 Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
                 Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
-        // blob tx must route unchanged.
         [Test]
-        public void blob_carrying_frame_tx_is_routed_to_blob_pool()
+        public void should_accept_sparse_osaka_blob_tx_and_merge_sampled_cells()
         {
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            BlobCellMask requestedMask = initialMask | additionalMask;
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, requestedMask, out byte[][] mergedCellsExpected), Is.True);
+
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            for (int i = 0; i < emptyBlobs.Length; i++)
+            {
+                emptyBlobs[i] = [];
+            }
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            AcceptTxResult result = _txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), result.ToString());
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx), Is.True);
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedSparseBlobTx!.NetworkWrapper!;
+            Assert.That(storedWrapper.HasFullBlobs(), Is.False);
+            Assert.That(storedWrapper.CellMask, Is.EqualTo(initialMask));
+            Assert.That(storedWrapper.Cells, Is.EquivalentTo(initialCells));
+
+            Assert.That(_txPool.MergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells), Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction mergedSparseBlobTx), Is.True);
+
+            ShardBlobNetworkWrapper mergedWrapper = (ShardBlobNetworkWrapper)mergedSparseBlobTx!.NetworkWrapper!;
+            Assert.That(mergedWrapper.CellMask, Is.EqualTo(requestedMask));
+            Assert.That(mergedWrapper.Cells, Is.EquivalentTo(mergedCellsExpected));
+
+            Assert.That(_txPool.TryGetBlobCells(sparseBlobTx.Hash!, requestedMask, out BlobCellMask availableMask, out byte[][] mergedCells), Is.True);
+            Assert.That(availableMask, Is.EqualTo(requestedMask));
+            Assert.That(mergedCells, Is.EquivalentTo(mergedCellsExpected));
+        }
+
+        [Test]
+        public void should_merge_cells_after_equivalent_sidecar_rehydration()
+        {
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            RehydratingBlobTxDistinctSortedPool blobPool = new(4, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)template.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([3]);
+            Transaction sparseTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+            Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
+            blobPool.RehydrateOnSecondLookup = true;
+
+            Assert.That(
+                blobPool.MergeCells(sparseTx.Hash!.ValueHash256, additionalMask, additionalCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(blobPool.TryGetValue(sparseTx.Hash!.ValueHash256, out Transaction merged), Is.True);
+            Assert.That(((ShardBlobNetworkWrapper)merged.NetworkWrapper!).CellMask, Is.EqualTo(initialMask | additionalMask));
+        }
+
+        [Test]
+        public void should_apply_cheap_balance_filter_before_blob_proof_validation()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, 1);
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithValue(2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
+            for (int i = 0; i < invalidProofs.Length; i++)
+            {
+                invalidProofs[i] = [.. wrapper.Proofs[i]];
+            }
+
+            invalidProofs[0][0] ^= 1;
+            tx.NetworkWrapper = wrapper with { Proofs = invalidProofs };
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InsufficientFunds));
+        }
+
+        [Test]
+        public void should_validate_only_new_cells_when_merging_sparse_blob_cells()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask mergeMask = BlobCellMask.FromIndices([1, 7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, mergeMask, out byte[][] mergeCells), Is.True);
+            mergeCells[0] = (byte[])mergeCells[0].Clone();
+            mergeCells[0][0] ^= 0x01;
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = [[]],
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.MergeBlobCells(sparseBlobTx.Hash!, mergeMask, mergeCells), Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(_txPool.TryGetBlobCells(sparseBlobTx.Hash!, mergeMask, out BlobCellMask availableMask, out byte[][] storedCells), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(availableMask, Is.EqualTo(mergeMask));
+                Assert.That(storedCells[0], Is.EqualTo(initialCells[0]));
+                Assert.That(storedCells[1], Is.EqualTo(mergeCells[1]));
+            }
+        }
+
+        [Test]
+        public void should_reconstruct_full_blob_after_sixty_four_verified_cells(
+            [Values(true, false)] bool isPersistentStorage,
+            [Values(1, 2)] int blobCount,
+            [Values(true, false)] bool cellsArriveBeforeInsertion)
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                    BlobCacheSize = 1,
+                    Size = 10
+                },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            int initialCellCount = cellsArriveBeforeInsertion ? BlobCellsHelper.RequiredCellsForRecovery : 32;
+            int[] initialIndices = new int[initialCellCount];
+            for (int i = 0; i < initialCellCount; i++)
+            {
+                initialIndices[i] = i * 2;
+            }
+
+            BlobCellMask initialMask = BlobCellMask.FromIndices(initialIndices);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            byte[][] emptyBlobs = new byte[blobCount][];
+            Array.Fill(emptyBlobs, []);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            if (!cellsArriveBeforeInsertion)
+            {
+                int[] additionalIndices = new int[32];
+                for (int i = 0; i < additionalIndices.Length; i++)
+                {
+                    additionalIndices[i] = 64 + i * 2;
+                }
+
+                BlobCellMask additionalMask = BlobCellMask.FromIndices(additionalIndices);
+                Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+                Assert.That(_txPool.MergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells), Is.EqualTo(BlobCellMergeResult.Accepted));
+            }
+
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction reconstructedTx), Is.True);
+
+            ShardBlobNetworkWrapper reconstructed = (ShardBlobNetworkWrapper)reconstructedTx.NetworkWrapper!;
+            Assert.That(_txPool.TryGetBlobAndProofV1(sparseBlobTx.BlobVersionedHashes![0], out byte[] blob, out byte[][] proofs), Is.True);
+            IBlobProofsBuilder verifier = IBlobProofsManager.For(ProofVersion.V1);
+            ShardBlobNetworkWrapper recomputed = verifier.AllocateWrapper(reconstructed.Blobs);
+            verifier.ComputeProofsAndCommitments(recomputed);
+            byte[][] recoveredHashes = verifier.ComputeHashes(recomputed);
+            Transaction[] lightBlobTransactions = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
+            Assert.That(lightBlobTransactions, Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reconstructed.HasFullBlobs(), Is.True);
+                Assert.That(reconstructed.Blobs, Is.EqualTo(fullWrapper.Blobs));
+                Assert.That(recomputed.Commitments, Is.EqualTo(reconstructed.Commitments));
+                Assert.That(recoveredHashes, Is.EqualTo(sparseBlobTx.BlobVersionedHashes));
+                Assert.That(reconstructed.CellMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(reconstructed.Cells, Is.Null);
+                Assert.That(blob, Is.EqualTo(fullWrapper.Blobs[0]));
+                Assert.That(proofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs, Is.EqualTo(recomputed.Proofs[..Ckzg.CellsPerExtBlob]));
+                Assert.That(lightBlobTransactions[0].GetLength(), Is.EqualTo(fullBlobTx.GetLength()));
+            }
+        }
+
+        [Test]
+        public void should_not_reconstruct_full_blob_after_sixty_three_verified_cells(
+            [Values(true, false)] bool isPersistentStorage)
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                    BlobCacheSize = 1,
+                    Size = 10
+                },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            int[] cellIndices = new int[BlobCellsHelper.RequiredCellsForRecovery - 1];
+            for (int i = 0; i < cellIndices.Length; i++)
+            {
+                cellIndices[i] = i;
+            }
+
+            BlobCellMask cellMask = BlobCellMask.FromIndices(cellIndices);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, cellMask, out byte[][] cells), Is.True);
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = [[]],
+                CellMask = cellMask,
+                Cells = cells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedTx), Is.True);
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedTx.NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storedWrapper.HasFullBlobs(), Is.False);
+                Assert.That(storedWrapper.CellMask.Count, Is.EqualTo(BlobCellsHelper.RequiredCellsForRecovery - 1));
+                Assert.That(storedWrapper.Cells, Has.Length.EqualTo(BlobCellsHelper.RequiredCellsForRecovery - 1));
+            }
+        }
+
+        [Test]
+        public void should_refresh_pending_blob_cell_mask_after_merging_cells_in_persistent_pool()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper;
+            ConvertToSparseBlobTransaction(sparseBlobTx, initialMask);
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobCellMask(sparseBlobTx.Hash!, out BlobCellMask lightMask), Is.True);
+            Assert.That(lightMask, Is.EqualTo(initialMask));
+            Assert.That(_txPool.TryGetPendingBlobCellMetadata(
+                sparseBlobTx.Hash!,
+                out BlobCellMask metadataMask,
+                out int blobCount,
+                out int materializationWork), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metadataMask, Is.EqualTo(initialMask));
+                Assert.That(blobCount, Is.EqualTo(sparseBlobTx.BlobVersionedHashes!.Length));
+                Assert.That(materializationWork, Is.EqualTo(blobCount * initialMask.Count));
+            }
+
+            Assert.That(_txPool.MergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells), Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobCellMask(sparseBlobTx.Hash!, out lightMask), Is.True);
+            Assert.That(lightMask, Is.EqualTo(initialMask | additionalMask));
+            Assert.That(_txPool.TryGetPendingBlobCellMetadata(
+                sparseBlobTx.Hash!,
+                out metadataMask,
+                out blobCount,
+                out materializationWork), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metadataMask, Is.EqualTo(initialMask | additionalMask));
+                Assert.That(blobCount, Is.EqualTo(sparseBlobTx.BlobVersionedHashes!.Length));
+                Assert.That(materializationWork, Is.EqualTo(blobCount * (initialMask | additionalMask).Count));
+            }
+        }
+
+        [Test]
+        public async Task should_persist_latest_sparse_blob_update_when_writes_complete_out_of_order(
+            [Values(true, false)] bool firstWriteFails)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingBlobTxStorage storage = new(firstWriteFails ? 1 : 0);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask firstUpdateMask = BlobCellMask.FromIndices([3]);
+            BlobCellMask secondUpdateMask = BlobCellMask.FromIndices([5]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, firstUpdateMask, out byte[][] firstUpdateCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, secondUpdateMask, out byte[][] secondUpdateCells), Is.True);
+
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> firstUpdate = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, firstUpdateMask, firstUpdateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                Task<BlobCellMergeResult> secondUpdate = RunOnDedicatedThread(() =>
+                    blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells));
+                Assert.That(
+                    await secondUpdate.WaitAsync(TimeSpan.FromSeconds(5)),
+                    Is.EqualTo(BlobCellMergeResult.Accepted));
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            Assert.That(await firstUpdate, Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(storage.TryGet(fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp, out Transaction storedTx), Is.True);
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedTx.NetworkWrapper!;
+            Assert.That(storedWrapper.CellMask, Is.EqualTo(initialMask | firstUpdateMask | secondUpdateMask));
+        }
+
+        [Test]
+        public async Task should_read_pending_sparse_update_before_stale_storage_after_cache_eviction()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)template.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            Transaction sparseTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+                Task<bool> insert = RunOnDedicatedThread(() => blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _));
+                Assert.That(await insert.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+                Transaction latestTx = null;
+                Task<bool> lookup = RunOnDedicatedThread(() => blobPool.TryGetValue(sparseTx.Hash!.ValueHash256, out latestTx));
+                Assert.That(await lookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(
+                    ((ShardBlobNetworkWrapper)latestTx!.NetworkWrapper!).CellMask,
+                    Is.EqualTo(initialMask | updateMask));
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
+        }
+
+        [Test]
+        public async Task should_retry_sparse_blob_update_after_immediate_storage_retries_fail()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
+            using BlockingBlobTxStorage storage = new(failedUpdateCount: 2);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance, timeProvider);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            storage.ReleaseFirstUpdate();
+            Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(1)), Is.True);
+
+            Assert.That(storage.TryGet(fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp, out Transaction storedTx), Is.True);
+            Assert.That(((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask, Is.EqualTo(initialMask | updateMask));
+        }
+
+        [Test]
+        public void should_evict_sparse_blob_update_when_persistence_retry_capacity_is_exhausted()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(
+                new FailingBlobTxUpdateStorage(),
+                txPoolConfig,
+                comparer,
+                LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)template.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            Transaction retainedTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Transaction excessTx = CloneSparseBlobTransaction(template, 1, initialMask);
+            Assert.That(blobPool.TryInsert(retainedTx.Hash, retainedTx, out _), Is.True);
+            Assert.That(blobPool.TryInsert(excessTx.Hash, excessTx, out _), Is.True);
+
+            Assert.That(
+                blobPool.MergeCells(retainedTx.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(
+                blobPool.MergeCells(excessTx.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(blobPool.TryGetValue(retainedTx.Hash!.ValueHash256, out _), Is.True);
+                Assert.That(blobPool.TryGetValue(excessTx.Hash!.ValueHash256, out _), Is.False);
             }
         }
 
         [Test]
-        public void non_blob_frame_tx_is_routed_to_normal_pool()
+        public void should_not_evict_same_hash_replacement_for_stale_unpersistable_update()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using InterceptingPersistentBlobTxDistinctSortedPool blobPool = new(
+                new FailingBlobTxUpdateStorage(),
+                txPoolConfig,
+                comparer,
+                LimboLogs.Instance,
+                new ManualTimeProvider());
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)template.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            Transaction retainedTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Transaction replacementTx = CloneSparseBlobTransaction(template, 1, initialMask);
+            Assert.That(blobPool.TryInsert(retainedTx.Hash, retainedTx, out _), Is.True);
+            Assert.That(blobPool.TryInsert(replacementTx.Hash, replacementTx, out _), Is.True);
+            Assert.That(
+                blobPool.MergeCells(retainedTx.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+
+            blobPool.InterceptNextUpdate(replacementTx.Hash!.ValueHash256, () =>
+            {
+                Assert.That(blobPool.TryRemove(replacementTx.Hash!.ValueHash256), Is.True);
+                Assert.That(blobPool.TryInsert(replacementTx.Hash, replacementTx, out _), Is.True);
+            });
+
+            Assert.That(
+                blobPool.MergeCells(replacementTx.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(blobPool.TryGetValue(replacementTx.Hash!.ValueHash256, out _), Is.True);
+        }
+
+        [Test]
+        public async Task should_converge_removal_during_in_flight_sparse_blob_update()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
+            bool removed;
+            try
+            {
+                removed = await removal.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            BlobCellMergeResult updated = await update;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updated, Is.EqualTo(BlobCellMergeResult.Accepted));
+                Assert.That(removed, Is.True);
+                Assert.That(storage.WaitForDelete(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(storage.TryGet(
+                    fullBlobTx.Hash!.ValueHash256,
+                    fullBlobTx.SenderAddress!,
+                    fullBlobTx.Timestamp,
+                    out _), Is.False);
+            }
+        }
+
+        [TestCase(false, false, false)]
+        [TestCase(true, false, false)]
+        [TestCase(true, true, false)]
+        [TestCase(true, true, true)]
+        public async Task should_apply_pending_removal_before_same_hash_reinsertion(
+            bool changeTimestamp,
+            bool failReinsertion,
+            bool removeAfterFailedReinsertion)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingBlobTxStorage storage = new(failedDeleteCount: failReinsertion ? 3 : 2);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            UInt256 removedTimestamp = fullBlobTx.Timestamp;
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() =>
+                blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
+            try
+            {
+                Assert.That(await removal.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
+            if (changeTimestamp)
+            {
+                fullBlobTx.Timestamp = removedTimestamp + 1;
+            }
+
+            if (failReinsertion)
+            {
+                Assert.That(
+                    () => blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _),
+                    Throws.TypeOf<InvalidOperationException>());
+                if (removeAfterFailedReinsertion)
+                {
+                    Assert.That(blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256), Is.True);
+                }
+            }
+            else
+            {
+                Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    storage.WaitForSuccessfulDeletes(removeAfterFailedReinsertion ? 2 : 1, TimeSpan.FromSeconds(5)),
+                    Is.True);
+                if (failReinsertion && !removeAfterFailedReinsertion)
+                {
+                    Assert.That(SpinWait.SpinUntil(
+                        () => storage.TryGet(
+                            fullBlobTx.Hash!.ValueHash256,
+                            fullBlobTx.SenderAddress!,
+                            fullBlobTx.Timestamp,
+                            out _),
+                        TimeSpan.FromSeconds(5)), Is.True);
+                }
+
+                Assert.That(storage.TryGet(
+                    fullBlobTx.Hash!.ValueHash256,
+                    fullBlobTx.SenderAddress!,
+                    fullBlobTx.Timestamp,
+                    out _), Is.EqualTo(!removeAfterFailedReinsertion));
+                if (changeTimestamp)
+                {
+                    Assert.That(storage.TryGet(
+                        fullBlobTx.Hash!.ValueHash256,
+                        fullBlobTx.SenderAddress!,
+                        removedTimestamp,
+                        out _), Is.False);
+                }
+            }
+        }
+
+        [Test]
+        public async Task should_not_cache_stale_persistent_read_over_newer_cell_merge()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingReadBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([3]);
+            Transaction sparseTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(
+                (ShardBlobNetworkWrapper)template.NetworkWrapper!,
+                additionalMask,
+                out byte[][] additionalCells), Is.True);
+            Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
+
+            Transaction firstEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(blobPool.TryInsert(firstEvictor.Hash, firstEvictor, out _), Is.True);
+            storage.BlockNextRead();
+            Task firstRead = RunOnDedicatedThread(() => blobPool.TryGetBlobCellsAndProofsV1(
+                sparseTx.BlobVersionedHashes![0],
+                initialMask,
+                out _,
+                out _,
+                out _));
+            Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                Assert.That(
+                    blobPool.MergeCells(sparseTx.Hash!.ValueHash256, additionalMask, additionalCells),
+                    Is.EqualTo(BlobCellMergeResult.Accepted));
+                Transaction secondEvictor = CloneFullBlobTransaction(template, 2, firstBlobByte: 2);
+                Assert.That(blobPool.TryInsert(secondEvictor.Hash, secondEvictor, out _), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseBlockedRead();
+            }
+
+            await firstRead;
+            BlobCellMask requestedMask = initialMask | additionalMask;
+            Assert.That(blobPool.TryGetBlobCellsAndProofsV1(
+                sparseTx.BlobVersionedHashes![0],
+                requestedMask,
+                out BlobCellMask availableMask,
+                out byte[][] cells,
+                out byte[][] proofs), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(availableMask, Is.EqualTo(requestedMask));
+                Assert.That(cells, Has.Length.EqualTo(requestedMask.Count));
+                Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
+            }
+        }
+
+        [Test]
+        public async Task should_not_hold_pool_lock_while_loading_transaction_for_cell_merge()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingReadBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Transaction sparseTx = CloneSparseBlobTransaction(template, 0, initialMask);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(
+                (ShardBlobNetworkWrapper)template.NetworkWrapper!,
+                updateMask,
+                out byte[][] updateCells), Is.True);
+            Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
+            Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+
+            storage.BlockNextRead();
+            Task<BlobCellMergeResult> merge = RunOnDedicatedThread(() =>
+                blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            Task<bool> concurrentLookup = RunOnDedicatedThread(() =>
+                blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _));
+            try
+            {
+                Assert.That(await concurrentLookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseBlockedRead();
+            }
+
+            Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal(bool legacyRecord)
+        {
+            (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
+                CreatePersistentBlobPoolWithBlockingReadStorage();
+            using (storage)
+            using (blobPool)
+            {
+                if (legacyRecord)
+                {
+                    storage.RemoveWithoutBlobs(storedTx.Hash);
+                    storage.BlockNextRead();
+                }
+                else
+                {
+                    storage.BlockNextElidedRead();
+                }
+
+                Task<bool> staleRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+                Task<bool> duplicateRead = null;
+                if (legacyRecord)
+                {
+                    duplicateRead = RunOnDedicatedThread(() =>
+                        blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                    Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
+                    Assert.That(await duplicateRead.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
+                    Assert.That(storage.FullReadCount, Is.EqualTo(1));
+                }
+
+                try
+                {
+                    Assert.That(blobPool.TryRemove(storedTx.Hash!.ValueHash256), Is.True);
+                }
+                finally
+                {
+                    storage.ReleaseBlockedRead();
+                }
+
+                Assert.That(await staleRead, Is.False);
+                Assert.That(storage.ContainsWithoutBlobs(storedTx.Hash), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task should_not_block_concurrent_legacy_sidecar_read()
+        {
+            (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
+                CreatePersistentBlobPoolWithBlockingReadStorage();
+            using (storage)
+            using (blobPool)
+            {
+                storage.RemoveWithoutBlobs(storedTx.Hash);
+                storage.BlockNextRead();
+
+                Task<bool> firstRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+                Task<bool> duplicateRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                try
+                {
+                    Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
+                    Assert.That(await duplicateRead.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
+                    Assert.That(storage.FullReadCount, Is.EqualTo(1));
+                }
+                finally
+                {
+                    storage.ReleaseBlockedRead();
+                }
+
+                Assert.That(await firstRead, Is.True);
+                Assert.That(storage.FullReadCount, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public async Task should_not_accept_stale_persistent_read_after_same_hash_replacement()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingReadBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            Transaction original = CloneSparseBlobTransaction(template, 0, initialMask);
+            Assert.That(blobPool.TryInsert(original.Hash, original, out _), Is.True);
+            Transaction firstEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(blobPool.TryInsert(firstEvictor.Hash, firstEvictor, out _), Is.True);
+
+            storage.BlockNextRead();
+            Task<(bool Found, byte FirstByte)> staleRead = RunOnDedicatedThread(() =>
+            {
+                bool found = blobPool.TryGetCells(original.Hash!.ValueHash256, initialMask, out _, out byte[][] cells);
+                return (found, found ? cells[0][0] : default);
+            });
+            Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            byte replacementFirstByte;
+            try
+            {
+                Assert.That(blobPool.TryRemove(original.Hash!.ValueHash256), Is.True);
+                Transaction replacement = CloneSparseBlobTransaction(template, 0, initialMask);
+                ShardBlobNetworkWrapper replacementWrapper = (ShardBlobNetworkWrapper)replacement.NetworkWrapper!;
+                byte[][] replacementCells = new byte[replacementWrapper.Cells.Length][];
+                for (int i = 0; i < replacementCells.Length; i++)
+                {
+                    replacementCells[i] = [.. replacementWrapper.Cells[i]];
+                }
+                replacementCells[0][0] ^= 0xff;
+                replacementFirstByte = replacementCells[0][0];
+                replacement.NetworkWrapper = replacementWrapper with { Cells = replacementCells };
+                Assert.That(replacement.Hash, Is.EqualTo(original.Hash));
+                Assert.That(blobPool.TryInsert(replacement.Hash, replacement, out _), Is.True);
+                Transaction secondEvictor = CloneFullBlobTransaction(template, 2, firstBlobByte: 2);
+                Assert.That(blobPool.TryInsert(secondEvictor.Hash, secondEvictor, out _), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseBlockedRead();
+            }
+
+            Assert.That((await staleRead).Found, Is.False);
+            Assert.That(blobPool.TryGetCells(
+                original.Hash!.ValueHash256,
+                initialMask,
+                out _,
+                out byte[][] replacementResult), Is.True);
+            Assert.That(replacementResult[0][0], Is.EqualTo(replacementFirstByte));
+        }
+
+        [Test]
+        public async Task should_not_return_stale_persistent_batch_read_after_removal()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingReadBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction storedTx = CloneFullBlobTransaction(template, 0, firstBlobByte: 0);
+            Assert.That(blobPool.TryInsert(storedTx.Hash, storedTx, out _), Is.True);
+            Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+            byte[][] requestedHashes = [storedTx.BlobVersionedHashes![0]];
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            int found = -1;
+
+            storage.BlockNextRead();
+            Task batchRead = RunOnDedicatedThread(() => found = blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
+            Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                Assert.That(blobPool.TryRemove(storedTx.Hash, out _), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseBlockedRead();
+            }
+
+            await batchRead;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.Zero);
+                Assert.That(blobs[0], Is.Null);
+                Assert.That(proofs[0].IsEmpty, Is.True);
+            }
+        }
+
+        [Test]
+        public async Task should_fall_back_to_second_persistent_candidate_after_first_is_removed()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingReadBlobTxStorage storage = new();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction first = CloneFullBlobTransactionWithSameSidecar(template, 0);
+            Transaction second = CloneFullBlobTransactionWithSameSidecar(template, 1);
+            Assert.That(blobPool.TryInsert(first.Hash, first, out _), Is.True);
+            Assert.That(blobPool.TryInsert(second.Hash, second, out _), Is.True);
+            System.Reflection.FieldInfo cacheField = typeof(PersistentBlobTxDistinctSortedPool).GetField(
+                "_blobTxCache",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            ((Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)cacheField.GetValue(blobPool)!).Clear();
+            byte[][] requestedHashes = [template.BlobVersionedHashes![0]];
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+
+            storage.BlockNextRead();
+            Task<int> read = RunOnDedicatedThread(() => blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
+            Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                Assert.That(blobPool.TryRemove(first.Hash!.ValueHash256), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseBlockedRead();
+            }
+
+            Assert.That(await read, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobs[0], Is.EqualTo(((ShardBlobNetworkWrapper)second.NetworkWrapper!).Blobs[0]));
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
+        }
+
+        [Test]
+        public void should_reject_invalid_sparse_cells_merge()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] invalidCells), Is.True);
+
+            invalidCells[0] = (byte[])invalidCells[0].Clone();
+            invalidCells[0][0] ^= 0x01;
+
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            for (int i = 0; i < emptyBlobs.Length; i++)
+            {
+                emptyBlobs[i] = [];
+            }
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.MergeBlobCells(sparseBlobTx.Hash!, additionalMask, invalidCells), Is.EqualTo(BlobCellMergeResult.InvalidCells));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx), Is.True);
+
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedSparseBlobTx!.NetworkWrapper!;
+            Assert.That(storedWrapper.CellMask, Is.EqualTo(initialMask));
+            Assert.That(storedWrapper.Cells, Is.EquivalentTo(initialCells));
+        }
+
+        private static void ConvertToSparseBlobTransaction(Transaction tx, BlobCellMask cellMask)
+        {
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+            byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+            Array.Fill(emptyBlobs, []);
+            tx.NetworkWrapper = wrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = cellMask,
+                Cells = cells,
+            };
+            tx.ClearLengthCache();
+        }
+
+        private static Transaction CloneSparseBlobTransaction(Transaction template, int id, BlobCellMask cellMask)
+        {
+            Transaction clone = new();
+            template.CopyTo(clone);
+            clone.Nonce = (ulong)id;
+            ConvertToSparseBlobTransaction(clone, cellMask);
+            clone.Hash = clone.CalculateHash();
+            return clone;
+        }
+
+        private static Transaction CloneFullBlobTransaction(Transaction template, int id, byte firstBlobByte)
+        {
+            Transaction clone = new();
+            template.CopyTo(clone);
+            clone.Nonce = (ulong)id;
+            ReplaceBlobSidecar(clone, firstBlobByte);
+            clone.Hash = clone.CalculateHash();
+            return clone;
+        }
+
+        private static Transaction CloneFullBlobTransactionWithSameSidecar(Transaction template, int id)
+        {
+            Transaction clone = new();
+            template.CopyTo(clone);
+            clone.Nonce = (ulong)id;
+            clone.Hash = clone.CalculateHash();
+            return clone;
+        }
+
+        private static void ReplaceBlobSidecar(Transaction tx, byte firstBlobByte)
+        {
+            byte[] blob = new byte[Ckzg.BytesPerBlob];
+            blob[0] = firstBlobByte;
+            IBlobProofsBuilder blobProofsBuilder = IBlobProofsManager.For(ProofVersion.V1);
+            ShardBlobNetworkWrapper wrapper = blobProofsBuilder.AllocateWrapper(blob);
+            blobProofsBuilder.ComputeProofsAndCommitments(wrapper);
+            tx.NetworkWrapper = wrapper;
+            tx.BlobVersionedHashes = blobProofsBuilder.ComputeHashes(wrapper);
+            tx.ClearLengthCache();
+        }
+
+        private static Task<TResult> RunOnDedicatedThread<TResult>(Func<TResult> action) =>
+            Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+        private (BlockingReadBlobTxStorage Storage, PersistentBlobTxDistinctSortedPool Pool, Transaction Target)
+            CreatePersistentBlobPoolWithBlockingReadStorage()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            BlockingReadBlobTxStorage storage = new();
+            PersistentBlobTxDistinctSortedPool pool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction target = CloneFullBlobTransaction(template, 0, firstBlobByte: 0);
+            Assert.That(pool.TryInsert(target.Hash, target, out _), Is.True);
+            Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(pool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+            return (storage, pool, target);
+        }
+
+        private (CountingBlobTxStorage Storage, PersistentBlobTxDistinctSortedPool Pool, Transaction Target)
+            CreatePersistentBlobPoolWithEvictedCacheEntry(bool supportsMetadata = true)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 10,
+                BlobCacheSize = 1,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            CountingBlobTxStorage storage = new();
+            ITxStorage poolStorage = supportsMetadata ? storage : new BlobTxStorageWithoutMetadata(storage);
+            PersistentBlobTxDistinctSortedPool pool = new(poolStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction target = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            target.Timestamp = 42;
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei + UInt256.One)
+                .WithMaxPriorityFeePerGas(1.GWei + UInt256.One)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            cacheEvictor.Timestamp = 43;
+            Assert.That(pool.TryInsert(target.Hash, target, out _), Is.True);
+            Assert.That(pool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+            return (storage, pool, target);
+        }
+
+        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage
+        {
+            private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
+            private readonly BlobTxStorage _inner;
+
+            public CountingBlobTxStorage() => _inner = new BlobTxStorage(_columnsDb);
+
+            public int LastTryGetManyCount { get; private set; }
+            public int TryGetCount { get; private set; }
+
+            public void ResetTryGetCount() => TryGetCount = 0;
+
+            public void RemoveWithoutBlobs(in ValueHash256 hash)
+            {
+                Span<byte> key = stackalloc byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key[1..]);
+                _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Remove(key);
+            }
+
+            public bool ContainsWithoutBlobs(in ValueHash256 hash)
+            {
+                Span<byte> key = stackalloc byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key[1..]);
+                return _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).KeyExists(key);
+            }
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+            {
+                TryGetCount++;
+                return _inner.TryGet(hash, sender, timestamp, out transaction);
+            }
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+            {
+                LastTryGetManyCount = count;
+                return _inner.TryGetMany(keys, count, results);
+            }
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Add(Transaction transaction) => _inner.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => _inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
+        private sealed class BlobTxStorageWithoutMetadata(CountingBlobTxStorage inner) : IBlobTxStorage
+        {
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+                => inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => inner.GetAll();
+
+            public void Add(Transaction transaction) => inner.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => inner.DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
+        private sealed class RehydratingBlobTxDistinctSortedPool(
+            int capacity,
+            IComparer<Transaction> comparer,
+            ILogManager logManager)
+            : BlobTxDistinctSortedPool(capacity, comparer, logManager)
+        {
+            private int _lookupCount;
+
+            public bool RehydrateOnSecondLookup { get; set; }
+
+            protected override bool TryGetValueNonLocked(ValueHash256 hash, out Transaction value)
+            {
+                bool found = base.TryGetValueNonLocked(hash, out value);
+                if (found
+                    && RehydrateOnSecondLookup
+                    && ++_lookupCount == 2
+                    && value.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                {
+                    value.NetworkWrapper = wrapper with
+                    {
+                        Commitments = CloneByteArrays(wrapper.Commitments),
+                        Proofs = CloneByteArrays(wrapper.Proofs),
+                    };
+                    RehydrateOnSecondLookup = false;
+                }
+
+                return found;
+            }
+
+            private static byte[][] CloneByteArrays(byte[][] values)
+            {
+                byte[][] clone = new byte[values.Length][];
+                for (int i = 0; i < values.Length; i++)
+                {
+                    clone[i] = [.. values[i]];
+                }
+
+                return clone;
+            }
+        }
+
+        private sealed class FailingBlobTxUpdateStorage : IBlobTxStorage, IBlobTxMetadataStorage
+        {
+            private readonly BlobTxStorage _inner = new();
+            private readonly HashSet<ValueHash256> _insertedHashes = [];
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+                => _inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Add(Transaction transaction)
+            {
+                lock (_insertedHashes)
+                {
+                    if (!_insertedHashes.Add(transaction.Hash!.ValueHash256))
+                    {
+                        throw new InvalidOperationException("Persistent sparse blob update failure.");
+                    }
+                }
+
+                _inner.Add(transaction);
+            }
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp)
+            {
+                lock (_insertedHashes)
+                {
+                    _insertedHashes.Remove(hash);
+                }
+
+                _inner.Delete(hash, timestamp);
+            }
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => _inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
+        private sealed class InterceptingPersistentBlobTxDistinctSortedPool(
+            ITxStorage blobTxStorage,
+            ITxPoolConfig txPoolConfig,
+            IComparer<Transaction> comparer,
+            ILogManager logManager,
+            TimeProvider timeProvider)
+            : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager, timeProvider)
+        {
+            private Action _nextUpdate;
+            private ValueHash256 _nextUpdateHash;
+
+            public void InterceptNextUpdate(in ValueHash256 hash, Action action)
+            {
+                _nextUpdateHash = hash;
+                Volatile.Write(ref _nextUpdate, action);
+            }
+
+            protected override void OnBlobTransactionUpdated(ValueHash256 hash, in UInt256 timestamp)
+            {
+                if (hash == _nextUpdateHash)
+                {
+                    Interlocked.Exchange(ref _nextUpdate, null)?.Invoke();
+                }
+
+                base.OnBlobTransactionUpdated(hash, timestamp);
+            }
+        }
+
+        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
+        {
+            private readonly BlobTxStorage _inner = new();
+            private readonly ManualResetEventSlim _firstUpdateEntered = new();
+            private readonly ManualResetEventSlim _releaseFirstUpdate = new();
+            private readonly ManualResetEventSlim _deleteEntered = new();
+            private readonly ManualResetEventSlim _successfulUpdate = new();
+            private int _remainingUpdateFailures = failedUpdateCount;
+            private int _remainingDeleteFailures = failedDeleteCount;
+            private int _successfulDeleteCount;
+            private int _addCount;
+
+            public bool WaitForFirstUpdate(TimeSpan timeout) => _firstUpdateEntered.Wait(timeout);
+
+            public void ReleaseFirstUpdate() => _releaseFirstUpdate.Set();
+
+            public bool WaitForDelete(TimeSpan timeout) => _deleteEntered.Wait(timeout);
+
+            public bool WaitForSuccessfulDeletes(int count, TimeSpan timeout) =>
+                SpinWait.SpinUntil(() => Volatile.Read(ref _successfulDeleteCount) >= count, timeout);
+
+            public bool WaitForSuccessfulUpdate(TimeSpan timeout) => _successfulUpdate.Wait(timeout);
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+                => _inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Add(Transaction transaction)
+            {
+                int addCount = Interlocked.Increment(ref _addCount);
+                if (addCount == 2)
+                {
+                    _firstUpdateEntered.Set();
+                    if (!_releaseFirstUpdate.Wait(TimeSpan.FromSeconds(10)))
+                    {
+                        throw new TimeoutException("Timed out waiting to release the first sparse blob update.");
+                    }
+
+                }
+
+                if (addCount > 1 && Interlocked.Decrement(ref _remainingUpdateFailures) >= 0)
+                {
+                    throw new InvalidOperationException("Transient sparse blob update failure.");
+                }
+
+                _inner.Add(transaction);
+                if (addCount > 1)
+                {
+                    _successfulUpdate.Set();
+                }
+            }
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp)
+            {
+                _deleteEntered.Set();
+                if (Interlocked.Decrement(ref _remainingDeleteFailures) >= 0)
+                {
+                    throw new InvalidOperationException("Transient sparse blob delete failure.");
+                }
+
+                _inner.Delete(hash, timestamp);
+                Interlocked.Increment(ref _successfulDeleteCount);
+            }
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => _inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
+
+            public void Dispose()
+            {
+                _firstUpdateEntered.Dispose();
+                _releaseFirstUpdate.Dispose();
+                _deleteEntered.Dispose();
+                _successfulUpdate.Dispose();
+            }
+        }
+
+        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
+        {
+            private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
+            private readonly BlobTxStorage _inner;
+            private readonly ManualResetEventSlim _readEntered = new();
+            private readonly ManualResetEventSlim _releaseRead = new();
+            private readonly ManualResetEventSlim _secondElidedReadEntered = new();
+            private int _blockNextRead;
+            private int _blockNextElidedRead;
+            private int _elidedReadCount;
+            private int _fullReadCount;
+
+            public BlockingReadBlobTxStorage() => _inner = new BlobTxStorage(_columnsDb);
+
+            public void BlockNextRead() => Volatile.Write(ref _blockNextRead, 1);
+
+            public void BlockNextElidedRead() => Volatile.Write(ref _blockNextElidedRead, 1);
+
+            public int FullReadCount => Volatile.Read(ref _fullReadCount);
+
+            public bool WaitForBlockedRead(TimeSpan timeout) => _readEntered.Wait(timeout);
+
+            public bool WaitForSecondElidedRead(TimeSpan timeout) => _secondElidedReadEntered.Wait(timeout);
+
+            public void ReleaseBlockedRead() => _releaseRead.Set();
+
+            public bool ContainsWithoutBlobs(in ValueHash256 hash) => GetElidedDb().KeyExists(GetElidedKey(hash));
+
+            public void RemoveWithoutBlobs(in ValueHash256 hash) => GetElidedDb().Remove(GetElidedKey(hash));
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+            {
+                Interlocked.Increment(ref _fullReadCount);
+                if (Interlocked.Exchange(ref _blockNextRead, 0) == 0)
+                {
+                    return _inner.TryGet(hash, sender, timestamp, out transaction);
+                }
+
+                bool found = _inner.TryGet(hash, sender, timestamp, out Transaction snapshot);
+                _readEntered.Set();
+                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                {
+                    throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
+                }
+
+                transaction = snapshot;
+                return found;
+            }
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+            {
+                if (Interlocked.Increment(ref _elidedReadCount) == 2)
+                {
+                    _secondElidedReadEntered.Set();
+                }
+
+                bool found = _inner.TryGetWithoutBlobs(hash, sender, out Transaction snapshot);
+                if (Interlocked.Exchange(ref _blockNextElidedRead, 0) != 0)
+                {
+                    _readEntered.Set();
+                    if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                    {
+                        throw new TimeoutException("Timed out waiting to release the sidecar-free transaction read.");
+                    }
+                }
+
+                transaction = snapshot;
+                return found;
+            }
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+            {
+                if (Interlocked.Exchange(ref _blockNextRead, 0) == 0)
+                {
+                    return _inner.TryGetMany(keys, count, results);
+                }
+
+                int found = _inner.TryGetMany(keys, count, results);
+                _readEntered.Set();
+                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                {
+                    throw new TimeoutException("Timed out waiting to release the stale blob transaction batch read.");
+                }
+
+                return found;
+            }
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Add(Transaction transaction) => _inner.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => _inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
+
+            private IDb GetElidedDb() => _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+
+            private static byte[] GetElidedKey(in ValueHash256 hash)
+            {
+                byte[] key = new byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key.AsSpan(1));
+                return key;
+            }
+
+            public void Dispose()
+            {
+                _readEntered.Dispose();
+                _releaseRead.Dispose();
+                _secondElidedReadEntered.Dispose();
+            }
+        }
+
+        // EIP-8141: a frame tx (type 6) routes by whether it carries versioned hashes — to the blob pool
+        // when it does, mirroring type-3 routing and inheriting blob-pool rules, and to the normal pool otherwise.
+        [TestCase(1, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
+        [TestCase(0, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
+        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, int expectedBlobPool, int expectedNormalPool)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 0);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: blobCount > 0);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedBlobPool));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedNormalPool));
+            }
+        }
+
+        // EIP-8141: at the shipped blob mode the pool stores a frameless light record, so this is the only
+        // shape that exercises the cap's counting path end to end.
+        [Test]
+        public void Blob_carrying_frame_txs_sharing_a_paymaster_are_bound_by_the_pending_cap()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyA);
+            Transaction second = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyB);
+            Transaction third = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyC);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(third, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the light record still counts against its sponsor");
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.Accepted), "removing the record frees the sponsor's slot");
+            }
+        }
+
+        // EIP8141-GAP: this pins a known bypass, not correct behaviour. A reloaded record carries no paymaster,
+        // so it takes no slot; the key cannot be persisted until the light-record trailing-field layout is settled
+        // (two adjacent optional sequences are ambiguous), which is why the fix is not here. Asserted so that a
+        // half-fix encoding the key on write but not on read fails here rather than silently under-counting.
+        [Test]
+        public void Restored_blob_carrying_frame_tx_bypasses_the_sponsor_cap_until_its_key_is_persisted()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD })
+            {
+                EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            }
+
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
+            Transaction Sponsored(PrivateKey sender) =>
+                BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF, sender: sender);
+
+            Transaction restored = Sponsored(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(restored, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
+
+            AcceptTxResult afterRestart = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
+            AcceptTxResult beyondTheHole = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(restored.Hash);
+            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the bypass: the reloaded record has no sponsor to count");
+                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the bypass costs one slot per restart rather than being unbounded");
+                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "a record that took no slot must at least not free one");
+            }
+        }
+
+        // EIP-8141: MalformedTxFilter skips blob proofs, so BlobProofsTxFilter is the only thing verifying
+        // them. Gated on the type alone it would let a type-6 carrier into the pool with unverified proofs.
+        [Test]
+        public void blob_carrying_frame_tx_with_corrupt_proofs_is_rejected()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            ((ShardBlobNetworkWrapper)frameBlobTx.NetworkWrapper!).Proofs[0][0] ^= 1;
+
+            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
             }
         }
@@ -1578,9 +3893,8 @@ namespace Nethermind.TxPool.Test
                 "a reloaded blob-carrying frame tx must still expire out of the pool");
         }
 
-        // Restoring the pool evicts as it goes, and each eviction decrements the expiry count — so the count has to
-        // be seeded from the restored records before the removal handler is attached, or an eviction cancels out a
-        // surviving transaction's own entry and the sweep never runs again.
+        // Restoring the pool evicts as it goes and each eviction decrements the expiry count, so the count must be
+        // seeded from the restored records before the removal handler is attached or the sweep never runs again.
         [Test]
         public async Task Expiring_blob_carrying_frame_tx_still_expires_when_the_restart_evicts_another_one()
         {
@@ -1611,9 +3925,8 @@ namespace Nethermind.TxPool.Test
                 "the surviving transaction must still expire out of the pool");
         }
 
-        // The mempool form of a blob-carrying frame tx is the sidecar wrapper, so a record without one cannot be read
-        // back — the RLP decoder rejects it. Everything off the wire passes that decoder, but an eth_sendTransaction
-        // request builds its transaction field by field and skips it.
+        // The mempool form is the sidecar wrapper, so a record without one cannot be read back. Everything off the
+        // wire passes that decoder, but an eth_sendTransaction request builds its transaction field by field.
         [Test]
         public void Blob_carrying_frame_tx_without_a_sidecar_is_rejected_rather_than_stored_unreadable()
         {
@@ -1665,6 +3978,9 @@ namespace Nethermind.TxPool.Test
         // The persistent pool holds a light record, and it is that record's removal which releases the payer's
         // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
         [Test]
+        // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
+        // transaction admitted alongside would move it.
+        [NonParallelizable]
         public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
         {
             // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
@@ -1680,16 +3996,20 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction first = SignedBlobFrameTx(deadline: null);
-            // Balance for exactly one such tx, so a reservation outliving the first rejects the second.
             EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
                 + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
 
+            // The gauge, not a second submission: the payer here is the sender, whose balance already covers
+            // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
+            // residue from earlier tests, whose pools are never disposed.
+            long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
+
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
-            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 1), "admission must reserve against the payer");
 
-            // Same payer and same cost, told apart only by its expiry frame: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 1_000_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
 
         // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check
@@ -1790,7 +4110,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
+        private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Eip8141Prototype.Instance);
 
         // The pool holds a light record, not the full transaction, and UpdateBucket reads its nonce. Without the
         // keys that read is an account-nonce comparison, which a keyed sequence has no relation to.
@@ -1820,7 +4140,29 @@ namespace Nethermind.TxPool.Test
                 "a new head must not evict a reloaded keyed transaction whose sequence is current");
         }
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null)
+        // Block production takes the ready-filtered blob snapshot, and an EIP-8250 keyed sequence is unrelated to the
+        // account nonce, so comparing the two would keep the transaction out of every block it is otherwise ready for.
+        [Test]
+        public void Keyed_blob_carrying_frame_tx_is_ready_for_block_production()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // The account nonce advances independently of key 0xbeef, whose sequence stays at 0 and stays includable.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingLightBlobTransactionsBySender(filterToReadyTx: true);
+
+            Assert.That(ready.TryGetValue(TestItem.AddressA, out Transaction[] readyForSender), Is.True,
+                "a bucket whose lowest entry is keyed must not be filtered out wholesale");
+            Assert.That(readyForSender, Has.Length.EqualTo(1));
+        }
+
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -1861,20 +4203,26 @@ namespace Nethermind.TxPool.Test
             List<TxFrame> frames = [];
             if (deadline is not null)
             {
-                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 40_000, UInt256.Zero, expiryData));
+                frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
             }
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
             // signature verification gas join it.
-            frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
+            if (paymaster is null)
+            {
+                frames.Add(FrameTxTestFrames.SelfVerify(gasLimit: 40_000));
+            }
+            else
+            {
+                frames.Add(FrameTxTestFrames.OnlyVerify(gasLimit: 40_000));
+                frames.Add(FrameTxTestFrames.Pay(paymaster, gasLimit: 40_000));
+            }
 
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
                 ChainId = _specProvider.ChainId,
-                SenderAddress = TestItem.AddressA,
+                SenderAddress = (sender ?? TestItem.PrivateKeyA).Address,
                 Nonce = nonce,
                 GasLimit = 1_000_000,
                 GasPrice = 1,
