@@ -45,7 +45,7 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    /// <summary>Error emitted when the required gas exceeds the transaction and block gas limits, or the transaction gas limit cap.</summary>
+    /// <summary>Reported when the gas required exceeds the transaction and block gas limits, or the gas limit cap.</summary>
     public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
     private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
@@ -100,14 +100,15 @@ public class GasEstimator(
     }
 
     /// <summary>The gas an EIP-8141 frame transaction reserves, or a failure when that budget is unestimable.</summary>
-    /// <remarks>
-    /// A frame transaction has no <c>gas_limit</c> to search: the processor derives the budget from the
-    /// signed per-frame limits and ignores <see cref="Transaction.GasLimit"/>. Affordability gates are
-    /// skipped because the payer is frame-chosen rather than the sender; the tracer's out-of-gas and
-    /// revert flags are not consulted because each frame runs as its own top-level action.
-    /// </remarks>
+    /// <remarks>There is nothing to binary-search: the budget is fixed by the signed per-frame limits. The
+    /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.</remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
+        // The budget below is computable from an empty or oversized frame list, so a count no valid
+        // transaction can carry is reported rather than priced.
+        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+            return EstimationResult.Failure(FrameTxValidation.MissingFrames);
+
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
@@ -166,9 +167,12 @@ public class GasEstimator(
         Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,
         EstimationBounds bounds, ulong errorMargin, CancellationToken token)
     {
-        // Short-circuit: simple ETH transfers need exactly the intrinsic gas.
-        if (IsSimpleTransfer(tx) && TryExecute(tx, header, spec, bounds.IntrinsicGas, gasTracer, token, out _))
-            return EstimationResult.Success(bounds.IntrinsicGas);
+        if (IsSimpleTransfer(tx) && !stateProvider.IsContract(tx.To!))
+        {
+            ulong exact = Math.Max(bounds.IntrinsicGas, gasTracer.GasSpent);
+            if (exact <= bounds.RightBound && TryExecute(tx, header, spec, exact, gasTracer, token, out _))
+                return EstimationResult.Success(exact);
+        }
 
         // Execute at maximum gas first (Geth parity): gas-related failure → allowance error; other → surface directly.
         if (!TryExecute(tx, header, spec, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
@@ -223,7 +227,7 @@ public class GasEstimator(
                              EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
     {
         Transaction txClone = new();
-        transaction.CopyTo(txClone);
+        transaction.CopyTo(txClone, copyHash: false);
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));

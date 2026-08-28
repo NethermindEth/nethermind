@@ -239,12 +239,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool IsContract(Address address)
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
-    public override bool IsStorageEmpty(Address address)
-    {
-        (IWorldState parentReader, _) = ResolveContext(address);
-        return parentReader.IsStorageEmpty(address);
-    }
-
     public override bool IsDeadAccount(Address address)
         => !AccountExists(address) ||
                 (GetBalance(address) == 0 &&

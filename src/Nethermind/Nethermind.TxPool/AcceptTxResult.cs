@@ -117,6 +117,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult DelegatorHasPendingTx = new(TxPoolErrorMessages.DelegationAuthorityHasPendingTx);
 
         /// <summary>
+        /// Blob or cell proofs failed cryptographic validation after cheaper admission checks passed.
+        /// </summary>
+        public static readonly AcceptTxResult InvalidBlobProofs = new(TxErrorMessages.InvalidBlobProofs);
+
+        /// <summary>
+        /// The blob transaction sidecar does not contain full blobs or any sparse cells.
+        /// </summary>
+        public static readonly AcceptTxResult IncompleteBlobData = new(TxErrorMessages.IncompleteBlobData);
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(TxPoolErrorMessages.NodeIsSyncing);
@@ -140,51 +150,32 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>.
-        /// A separate mempool bound from <see cref="FrameTxVerifyGasTooHigh"/>; it too refuses only propagation, not validity.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>. A propagation bound separate from <see cref="FrameTxVerifyGasTooHigh"/>, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
 
-        /// <summary>
-        /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
-        /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
-        /// </summary>
+        /// <summary>An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c>: an exact match, so neither old nor future.</summary>
         public static readonly AcceptTxResult KeyedNonceUnmet = new(TxPoolErrorMessages.KeyedNonceUnmet);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.</summary>
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(TxPoolErrorMessages.FrameTxPayerExposureExceeded);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose validation prefix can never approve a payer.
-        /// </summary>
-        /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
+        /// <summary>An EIP-8141 frame transaction whose validation prefix can never approve a payer: unincludable rather than malformed, so the relaying peer is not disconnected.</summary>
         public static readonly AcceptTxResult FrameTxNoPayer = new(TxPoolErrorMessages.FrameTxNoPayer);
 
-        /// <summary>
-        /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
-        /// </summary>
+        /// <summary>An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.</summary>
         public static readonly AcceptTxResult FrameTxMissingSidecar = new(TxPoolErrorMessages.FrameTxMissingSidecar);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix, whose revert
-        /// would invalidate the transaction on state the pool never validated. It stays consensus-valid; only public
-        /// mempool propagation is refused.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction with a <c>VERIFY</c> frame behind its validation prefix. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list, the only placement
-        /// the spec permits. It stays consensus-valid; only public mempool propagation is refused.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.</summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(TxPoolErrorMessages.FrameSimulationFailed);
+
+        /// <summary>An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.</summary>
+        public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
         /// <summary>
         /// Declares a result distinct from every other declared result.

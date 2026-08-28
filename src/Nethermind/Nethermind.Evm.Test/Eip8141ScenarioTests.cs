@@ -26,12 +26,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// EIP-8141 spec example scenarios executed block-level under the real receipts tracer — the layer
-/// <see cref="FrameTxProcessorTests"/> (NullTxTracer) does not exercise: per-frame receipt statuses,
-/// the receipt payer field, cumulative gas across transaction boundaries, and the receipts root of
-/// blocks mixing frame and regular transactions.
-/// </summary>
+/// <summary>EIP-8141 spec examples run block-level under the real receipts tracer — the layer
+/// <see cref="FrameTxProcessorTests"/>'s NullTxTracer does not exercise.</summary>
 [TestFixture]
 public class Eip8141ScenarioTests
 {
@@ -84,10 +80,8 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
-    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so the log must
-    // still reach the frame receipt and the transaction log union. Recipient is fresh, exercising
-    // the dead-recipient path where default code always logs (the VM path suppresses it when the
-    // EIP-8037 NEW_ACCOUNT gas is unaffordable).
+    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so its log must
+    // still reach the frame receipt and the transaction log union.
     [Test]
     public void CodelessSenderFrameTransfer_EmitsEip7708TransferLog()
     {
@@ -150,8 +144,8 @@ public class Eip8141ScenarioTests
             "contract creation sets the account nonce to 1 and payment approval increments it");
     }
 
-    // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
-    // + per-scheme verification cost + max(standard token cost + frame gas consumed, floor token cost).
+    // EIP-8141 § Gas Accounting: intrinsic + per-frame + per-scheme verification
+    // + max(standard token cost + frame gas consumed, floor token cost).
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -254,8 +248,7 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // Rejecting a transaction that reserves less than its floor would fork away from any client that
-    // reserves `max(standard_gas_limit, calldata_floor_gas)` instead, as the spec requires.
+    // The spec reserves max(standard_gas_limit, calldata_floor_gas) rather than rejecting.
     [Test]
     public void ChargedGas_FloorExceedsTheFramesGasReservation_ReservesTheFloorAndExecutes()
     {
@@ -313,9 +306,8 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // EIP-3529 storage refunds (ethereum/EIPs#11940) accumulate into one transaction-scoped counter,
-    // netted once at the transaction total and capped at a fifth of the gross gas, while per-frame
-    // receipts stay gross.
+    // EIP-3529 refunds net once at the transaction total, capped at a fifth of the gross gas, while
+    // per-frame receipts stay gross.
     [Test]
     public void StorageRefund_NetsAtTransactionLevel_WhileFrameReceiptsStayGross()
     {
@@ -342,8 +334,7 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // Spec Example 3 core: the payer is a sponsor contract, not the sender — sender approves
-    // execution only, the sponsor's VERIFY frame approves payment, and the receipt reports it.
+    // Spec Example 3: the sender approves execution only and a sponsor's VERIFY frame approves payment.
     [Test]
     public void SponsoredTransaction_SponsorPaysGasAndSenderPaysNothing()
     {
@@ -367,9 +358,8 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sponsor), Is.Zero);
     }
 
-    // Spec Example 2: atomic approve+swap — an ERC-20-style approval frame batched with a swap
-    // frame. If the swap reverts, the approval (state and its log) must not survive: the classic
-    // dangling-approval hazard the atomic batch exists to prevent.
+    // Spec Example 2: an ERC-20-style approval batched with a swap — if the swap reverts, neither the
+    // approval state nor its log may survive.
     [TestCase(true)]
     [TestCase(false)]
     public void AtomicApproveAndSwap_NoDanglingApprovalWhenSwapReverts(bool swapReverts)
@@ -405,8 +395,7 @@ public class Eip8141ScenarioTests
 
         if (swapReverts)
         {
-            // ethereum/EIPs#12008: an unrolled batch discards the logs of frames that ran before the
-            // failure along with their state, but keeps their status and gas_used.
+            // An unrolled batch discards earlier frames' logs with their state, keeping status and gas_used.
             Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
                 "the unrolled frame's per-frame receipt logs must be discarded");
             Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
@@ -421,13 +410,8 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // Pins the bounds of the unrolled-batch log-clear window and that the batch can unroll in the
-    // middle of the frame list. AtomicApproveAndSwap can't catch a batchStartIndex that is too low
-    // (its only log-emitting frame is inside the batch, so an over-wide clear still passes) nor a
-    // clear that runs past the batch, because nothing runs after its terminal frame. Here a pre-batch
-    // frame and a post-batch frame each emit a surviving log, so the derived tx log union must be
-    // exactly [pre-batch log] ++ [] ++ [post-batch log] in frame order: clearing at or below the batch
-    // start wipes the pre-batch log, and resuming at i = terminal must leave the post-batch log intact.
+    // Pins both bounds of the unrolled-batch log-clear window: a pre-batch and a post-batch frame each
+    // emit a surviving log, which AtomicApproveAndSwap (all its logs inside the batch) cannot catch.
     [Test]
     public void UnrolledBatch_DiscardsBatchLogsKeepsPreAndPostBatchLogs()
     {
@@ -475,15 +459,8 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // Two batches in one transaction, the load-bearing multi-batch case the single-batch fixtures
-    // can't reach: per-batch bounds depend on batchStartIndex being re-seeded when batch B opens,
-    // which rests on inBatch being reset once batch A closes (unroll path here). A lost reset would
-    // leave batch B reusing batch A's start index, so batch B's unroll would clear back through the
-    // committed "between" frame and under-fill the bloom.
-    // Batch A always unrolls (its log discarded); a committed "between" frame follows; batch B then
-    // either commits (secondBatchReverts=false: its log survives) or unrolls (its log discarded).
-    // Either way the pre-, between-, and post-batch committed logs must survive in frame order — the
-    // guard bites in the revert case, where a stale batch start would wipe the between frame's log.
+    // Two batches in one transaction: batch B's bounds depend on batchStartIndex being re-seeded, which
+    // rests on inBatch being reset when batch A closes. A stale start would wipe the between frame's log.
     [TestCase(false)]
     [TestCase(true)]
     public void TwoBatches_EachClearsOnlyItsOwnFrames_CommittedLogsBetweenSurvive(bool secondBatchReverts)
@@ -538,9 +515,8 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
-    // Asserts the tx log set equals the frame-order concatenation of the surviving frame logs, and
-    // that a wire round-trip yields the same bloom — i.e. the header logsBloom and the receipts-root
-    // logs agree.
+    // The tx log set must equal the frame-order concatenation of surviving frame logs, and survive a
+    // wire round-trip with the same bloom.
     private static void AssertBloomAndReceiptLogsAgree(TxReceipt receipt)
     {
         LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
@@ -562,9 +538,8 @@ public class Eip8141ScenarioTests
             "the receipts-root logs and the header bloom must agree");
     }
 
-    // Spec Expiry Verifier Frame: a VERIFY frame targeting EXPIRY_VERIFIER whose 8-byte big-endian
-    // calldata is the expiry timestamp; the call reverts unless block.timestamp <= expiry, and a
-    // reverted VERIFY invalidates the whole transaction.
+    // EIP-8141 § Expiry Verifier Frame: reverts unless block.timestamp <= the 8-byte calldata expiry,
+    // and a reverted VERIFY invalidates the whole transaction.
     [TestCase(false)]
     [TestCase(true)]
     public void ExpiryVerifierFrame_GatesTransactionOnBlockTimestamp(bool expired)
@@ -595,8 +570,7 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // Spec Cross-frame interactions: the EIP-2929 warm/cold journal is shared across frames — a
-    // slot touched by one frame is warm for the next.
+    // EIP-8141 § Cross-frame interactions: a slot touched by one frame is warm for the next.
     [Test]
     public void WarmColdJournal_SharedAcrossFrames_SecondTouchIsWarm()
     {
@@ -619,8 +593,7 @@ public class Eip8141ScenarioTests
             "warm cost must be stable across further frames");
     }
 
-    // Spec Cross-frame interactions: "If a frame reverts, warm / cold status reverts to the state
-    // before the frame" — a reverted frame's touches must not warm later frames.
+    // EIP-8141 § Cross-frame interactions: a reverted frame's touches must not warm later frames.
     [Test]
     public void WarmColdJournal_RevertedFrameTouchesAreReverted()
     {
@@ -651,10 +624,8 @@ public class Eip8141ScenarioTests
             "the first probe must pay cold access — the reverted frame's touch was rolled back");
     }
 
-    // A block mixing a regular transaction with a frame transaction: cumulative gas chains across
-    // the type boundary and the frame-aware receipts root computes.
-    // The regular transfer targets a fresh account, so under the EIP-8037/8038 state-gas repricing
-    // its cost (~205k) is well above a pre-repricing transfer; the gas limit is sized accordingly.
+    // Cumulative gas must chain across the type boundary. The regular transfer targets a fresh account,
+    // so under EIP-8037/8038 it costs ~205k and the gas limit is sized accordingly.
     [Test]
     public void MixedBlock_LegacyAndFrameTx_CumulativeGasChainsAndReceiptsRootComputes()
     {
@@ -684,8 +655,7 @@ public class Eip8141ScenarioTests
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
-    // Two frame transactions from the same sender in one block: the nonce consumed by the first
-    // payment approval sequences the second, and both frame-aware receipts land in the root.
+    // The nonce consumed by the first payment approval sequences the second transaction.
     [Test]
     public void TwoFrameTxsSameSenderInOneBlock_NonceSequencesAndBothSucceed()
     {
@@ -853,8 +823,7 @@ public class Eip8141ScenarioTests
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
-    // Reads the 8-byte big-endian expiry from calldata and reverts when block.timestamp exceeds it —
-    // the reference behavior of the EXPIRY_VERIFIER predeploy.
+    // Reference EXPIRY_VERIFIER behaviour: revert when block.timestamp exceeds the 8-byte calldata expiry.
     private static byte[] ExpiryVerifierCode() =>
         [
             0x60, 0x00, // PUSH1 0

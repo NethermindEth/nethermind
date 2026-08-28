@@ -8,6 +8,7 @@ namespace Nethermind.Consensus.Test
     public class ManualGasLimitCalculator : IGasLimitCalculator
     {
         public ulong GasLimit { get; set; }
+
         public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null) => GasLimit;
     }
 }

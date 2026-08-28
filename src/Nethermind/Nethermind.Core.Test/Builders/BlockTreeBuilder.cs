@@ -34,6 +34,7 @@ namespace Nethermind.Core.Test.Builders
         private Hash256? _stateRoot;
         private Func<Block, Hash256>? _stateRootGen;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         private bool _onlyHeaders;
         private bool _noHead = false;
@@ -76,7 +77,7 @@ namespace Nethermind.Core.Test.Builders
                         _specProvider,
                         SyncConfig,
                         StateBoundary,
-                        LimboLogs.Instance);
+                        _logManager);
                 }
 
                 return _blockTree;
@@ -470,6 +471,13 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithBestPersistedState(ulong? bestPersistedState)
         {
             StateBoundary.BestPersistedState = bestPersistedState;
+            return this;
+        }
+
+        public BlockTreeBuilder WithLogManager(ILogManager logManager)
+        {
+            ArgumentNullException.ThrowIfNull(logManager);
+            _logManager = logManager;
             return this;
         }
 

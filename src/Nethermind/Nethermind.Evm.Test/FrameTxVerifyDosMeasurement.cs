@@ -21,16 +21,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// Measures the unpaid wall-clock cost of the EIP-8141 validation prefix when a transaction names a
-/// solvent payer but never reaches APPROVE: every node runs the whole verification budget and then
-/// drops the transaction, so no fee is collected for the work.
-/// </summary>
-/// <remarks>
-/// A measurement harness for sizing MAX_VERIFY_GAS, not an assertion of behaviour. Each case first
-/// proves the whole budget is actually consumed, then reports several independent repeats so that
-/// run-to-run spread is visible in the output rather than hidden behind a single median.
-/// </remarks>
+/// <summary>Measures the unpaid wall-clock cost of an EIP-8141 validation prefix that burns the whole
+/// verification budget and is then dropped without a fee.</summary>
+/// <remarks>A harness for sizing MAX_VERIFY_GAS, not an assertion of behaviour.</remarks>
 [TestFixture]
 [Explicit("measurement harness")]
 public class FrameTxVerifyDosMeasurement
@@ -141,8 +134,8 @@ public class FrameTxVerifyDosMeasurement
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        // Without these two facts the timings below mean nothing: the transaction must be dropped,
-        // and it must be dropped only after the whole verification budget has been burned.
+        // Without both facts the timings mean nothing: the transaction must be dropped, and only after
+        // the whole verification budget has been burned.
         BudgetProbe probe = new();
         TransactionResult probeResult = Process(AttackTx(verifyGas), probe);
         Assert.That(probeResult.TransactionExecuted, Is.False, "the attack transaction must not settle");
@@ -183,14 +176,13 @@ public class FrameTxVerifyDosMeasurement
             $"us_per_Mgas={best * 1_000_000 / verifyGas:F1} " +
             $"tx_per_block={txPerBlock} unpaid_block_ms={best * txPerBlock / 1000.0:F1}";
         TestContext.Out.WriteLine(line);
-        System.IO.File.AppendAllText("/tmp/frame-dos-results.txt", line + System.Environment.NewLine);
+        string path = Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
+                      ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "frame-dos-results.txt");
+        System.IO.File.AppendAllText(path, line + Environment.NewLine);
     }
 
-    /// <summary>
-    /// The unpaid gas one block-production attempt burns on a prefix that never approves, without the
-    /// timing loops: this is the per-attempt multiplicand for the pool-retention count measured in
-    /// <c>Nethermind.TxPool.Test/FrameTxPrefixRetryMeasurement</c>.
-    /// </summary>
+    /// <summary>The unpaid gas one block-production attempt burns on a prefix that never approves — the
+    /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests.</summary>
     [TestCase(100_000L, TestName = "burn at the spec default budget")]
     [TestCase(236_285L, TestName = "burn at the measured pool prefix")]
     public void UnpaidBurnPerAttempt(long verifyGas)

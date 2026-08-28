@@ -9,37 +9,22 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <summary>
-/// Installs the frame-transaction cluster's predeploy runtime code at activation during block
-/// processing.
-/// </summary>
-/// <remarks>
-/// Each predeploy is described as data — address, code, nonce, and fork gate — so a new one is a list
-/// entry rather than another installer. The install is idempotent: a non-empty predeploy re-installs only
-/// when the account's code differs from the canonical bytecode or its nonce is below the predeploy nonce;
-/// an empty-canonical predeploy (a protocol-managed storage namespace such as EIP-8272's) is gated on the
-/// nonce alone, since it writes no code to compare against — so such an entry must declare a nonce, or it
-/// has nothing to be gated on and never installs. A predeploy nonce of 1 matches the EIP-2935/4788/7002/7251
-/// convention; a null nonce installs the code alone and leaves the account's nonce as it stands.
-/// <c>max(existing_nonce, 1)</c> is applied only where a predeploy sets
-/// <see cref="Predeploy.PreservesHigherNonce"/> (EIP-8272).
-/// </remarks>
+/// <summary>Installs the frame-transaction cluster's predeploy runtime code at activation.</summary>
+/// <remarks>A predeploy with empty canonical code has nothing to compare against, so it must declare a nonce
+/// or it is never installed. The nonce of 1 follows the EIP-2935/4788/7002/7251 convention.</remarks>
 public static class PredeployInstaller
 {
     private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
 
     private static readonly Predeploy[] Predeploys =
     [
-        // EIP-8141 mandates the runtime code only; the account's other fields survive activation untouched.
+        // EIP-8141 mandates the runtime code only, leaving the account's other fields; installing at the fork
+        // is a stop-gap, and deploying it like the other system contracts later would give it a nonce.
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, null, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
         new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true),
     ];
 
-    /// <summary>
-    /// Returns whether <paramref name="spec"/> activates any declared predeploy, i.e. whether
-    /// <see cref="Install"/> can write anything for a block using this spec.
-    /// </summary>
     internal static bool HasActivePredeploys(IReleaseSpec spec)
     {
         foreach (Predeploy predeploy in Predeploys)
@@ -53,17 +38,10 @@ public static class PredeployInstaller
         return false;
     }
 
-    /// <summary>
-    /// Ensures every predeploy activated by <paramref name="spec"/> has its canonical code + nonce present.
-    /// </summary>
-    /// <remarks>
-    /// The idempotency probe reads the current code from <paramref name="readState"/> (which must not
-    /// record into the block-level access list) so that on a no-op block nothing is written to
-    /// <paramref name="writeState"/> and no BAL entry is produced. On the standard, non-BAL path the
-    /// same world state is passed for both.
-    /// </remarks>
-    /// <param name="readState">Untraced state used only to decide whether an install is required.</param>
-    /// <param name="writeState">State the code + nonce change is applied to (BAL-traced on the BAL path).</param>
+    /// <summary>Ensures every predeploy activated by <paramref name="spec"/> has its canonical code and nonce.</summary>
+    /// <param name="readState">Untraced state probed to decide whether an install is needed, so that a no-op
+    /// block produces no BAL entry; on the non-BAL path the same world state is passed for both.</param>
+    /// <param name="writeState">State the code and nonce change is applied to (BAL-traced on the BAL path).</param>
     /// <param name="spec">The release spec in effect for the block being processed.</param>
     public static void Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec)
     {

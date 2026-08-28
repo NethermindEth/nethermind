@@ -74,6 +74,7 @@ jobs:
           - Nethermind.HealthChecks.Test
           - Nethermind.History.Test
           - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
@@ -361,7 +362,7 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
-  # EEST fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
+  # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
   # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
   # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
   # layout runs from nethermind-tests-flat.yml.
@@ -369,7 +370,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest
       setup_group: sequential
 
   matrix-guard:
@@ -383,11 +384,12 @@ jobs:
         run: |
           # Intentional exclusions:
           # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
+          # - Nethermind.Core.ZkEvm.Test: runs with EnableZkEvm=true in stateless-tests.yml
           # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
           #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
           #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
           #   run exceeds the job timeout. Wiring those tests needs a project move.
-          allowlist="Nethermind.Precompiles.Benchmark.Test Ethereum.Blockchain.Pyspec.Test"
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
           missing=0
           for dir in src/Nethermind/*.Test; do
             project=$(basename "$dir")

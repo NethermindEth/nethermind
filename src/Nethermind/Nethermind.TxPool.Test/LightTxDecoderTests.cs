@@ -1,12 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -36,20 +45,20 @@ public class LightTxDecoderTests
         }
     }
 
-    // Both trailing fields are one RLP byte, so dropping them reproduces the two older record layouts.
-    [TestCase(1, ProofVersion.V1, TestName = "Legacy_record_without_the_type_field_decodes_as_a_blob_tx")]
-    [TestCase(2, default(ProofVersion), TestName = "Legacy_record_without_the_proof_version_or_type_fields_decodes_as_a_blob_tx")]
-    public void Legacy_record_decodes_as_a_blob_tx(int droppedTrailingFields, ProofVersion expectedProofVersion)
+    // The type is the last always-written field and is one RLP byte, so dropping it reproduces the older layout.
+    [Test]
+    public void Legacy_record_without_the_type_field_decodes_as_a_blob_tx()
     {
         byte[] full = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
 
-        LightTransaction decoded = LightTxDecoder.Decode(full[..^droppedTrailingFields]);
+        LightTransaction decoded = LightTxDecoder.Decode(full[..^1]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Type, Is.EqualTo(TxType.Blob));
-            Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
             Assert.That(decoded.NonceKeys, Is.Null);
+            Assert.That(decoded.PersistedExpiryDeadline, Is.Null);
         }
     }
 
@@ -106,6 +115,137 @@ public class LightTxDecoderTests
         return keys;
     }
 
+    // The blob fields were later put ahead of the frame-transaction ones, so a record written by an earlier build of
+    // this branch no longer decodes. The pool is a cache, so it has to lose that record rather than refuse to start.
+    [TestCase(TxType.Blob, null)]
+    [TestCase(TxType.FrameTx, null)]
+    [TestCase(TxType.FrameTx, 1_000ul)]
+    public void Unreadable_record_is_skipped_and_leaves_the_rest_of_the_pool_loadable(TxType type, ulong? deadline)
+    {
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        lightBlobTxs.Set(UnreadableRecordKey, EncodeWithBlobFieldsLast(BlobCarryingTx(type, deadline)));
+        lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
+    // A record layout change leaves every record unreadable at once, so the skips have to collapse into one line
+    // rather than one per blob transaction in the pool.
+    [Test]
+    public void Unreadable_records_are_reported_as_one_warning()
+    {
+        const int unreadableCount = 5;
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < unreadableCount; i++)
+        {
+            lightBlobTxs.Set([(byte)i], EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)));
+        }
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+
+        // The exception type is what tells a layout change apart from one corrupt record, so the summary names it.
+        string expectedType = Assert.Catch(() => LightTxDecoder.Decode(EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx))))!.GetType().Name;
+
+        List<LightTransaction> loaded = [.. new BlobTxStorage(database, new OneLoggerLogManager(new ILogger(logger))).GetAll()];
+
+        Assert.That(loaded, Is.Empty);
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString()) && text.Contains(expectedType)));
+    }
+
+    // The catch must span every shape a foreign or damaged record decodes into, not just the mask check:
+    // a truncated record surfaces from the reader's unchecked slice rather than as an RlpException.
+    [Test]
+    public void Records_failing_in_different_ways_are_all_skipped()
+    {
+        // A long-form list prefix mid-record makes the reader take a bogus length and index past the buffer,
+        // which is the third root and reaches neither the mask check nor the RLP grammar errors.
+        byte[] longFormPrefix = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
+        longFormPrefix[64] = 0xf8;
+
+        byte[][] corrupt =
+        [
+            EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)),
+            LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob))[..^5],
+            longFormPrefix,
+            [0xff, 0xff, 0xff, 0xff],
+        ];
+
+        HashSet<string> shapes = [];
+        foreach (byte[] record in corrupt)
+        {
+            shapes.Add(Assert.Catch(() => LightTxDecoder.Decode(record))!.GetType().Name);
+        }
+
+        Assert.That(shapes, Has.Count.GreaterThanOrEqualTo(3),
+            $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
+
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < corrupt.Length; i++)
+        {
+            lightBlobTxs.Set([(byte)i], corrupt[i]);
+        }
+
+        lightBlobTxs.Set([(byte)corrupt.Length], LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
+    private static readonly byte[] UnreadableRecordKey = [0];
+    private static readonly byte[] ReadableRecordKey = [1];
+
+    /// <summary>Writes the record layout that preceded the blob fields moving in front of the frame-transaction ones.</summary>
+    private static byte[] EncodeWithBlobFieldsLast(Transaction tx)
+    {
+        bool hasDeadline = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline);
+        int length = Rlp.LengthOf(tx.Timestamp)
+            + Rlp.LengthOf(tx.SenderAddress)
+            + Rlp.LengthOf(tx.Nonce)
+            + Rlp.LengthOf(tx.Hash)
+            + Rlp.LengthOf(tx.Value)
+            + Rlp.LengthOf(tx.GasLimit)
+            + Rlp.LengthOf(tx.GasPrice)
+            + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.BlobVersionedHashes!)
+            + Rlp.LengthOf(tx.PoolIndex)
+            + Rlp.LengthOf(tx.GetLength())
+            + Rlp.LengthOf(sizeof(byte))
+            + Rlp.LengthOf((byte)tx.Type)
+            + (hasDeadline ? Rlp.LengthOf(expiryDeadline) : 0);
+
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode((byte)tx.Type);
+        if (hasDeadline) writer.Encode(expiryDeadline);
+
+        return bytes;
+    }
+
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
     {
         byte[][] versionedHashes = [new byte[32]];
@@ -143,5 +283,183 @@ public class LightTxDecoderTests
 
         tx.Hash = tx.CalculateHash();
         return tx;
+    }
+
+    [Test]
+    public void should_roundtrip_sparse_blob_tx_cell_mask_and_consensus_size()
+    {
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        Array.Fill(emptyBlobs, []);
+        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs, CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
+        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
+        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+    }
+
+    [Test]
+    public void should_roundtrip_v0_proof_version()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V0));
+    }
+
+    [Test]
+    public void should_preserve_sparse_metadata_when_reencoding_light_transaction()
+    {
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        Array.Fill(emptyBlobs, []);
+        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs, CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
+
+        LightTransaction first = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        LightTransaction second = LightTxDecoder.Decode(LightTxDecoder.Encode(first));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
+            Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
+            Assert.That(second.GetConsensusEncodingSize(), Is.EqualTo(first.GetConsensusEncodingSize()));
+        }
+    }
+
+    [Test]
+    public void should_not_treat_legacy_sparse_network_size_as_consensus_encoding_size()
+    {
+        Transaction tx = BuildBlobTx();
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
+            tx,
+            includeProofVersion: true,
+            cellMask,
+            sparseBlobNetworkSize: 12345));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+            Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void should_decode_legacy_entry_without_mask_as_full(bool includeProofVersion)
+    {
+        Transaction tx = BuildBlobTx();
+
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion));
+
+        // Entries persisted before the mask field was added always hold full blobs.
+        Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
+        Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
+        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(0));
+        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+    }
+
+    [Test]
+    public void should_preserve_sparse_pool_public_api()
+    {
+        Type[] constructorParameters =
+        [
+            typeof(UInt256), typeof(Address), typeof(ulong), typeof(Hash256), typeof(UInt256),
+            typeof(ulong), typeof(UInt256), typeof(UInt256), typeof(UInt256), typeof(byte[][]),
+            typeof(ulong), typeof(int), typeof(ProofVersion)
+        ];
+        Transaction fullTx = BuildBlobTx();
+        LightTransaction lightTx = new(fullTx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(LightTransaction).GetConstructor(constructorParameters), Is.Not.Null);
+            Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
+        }
+    }
+
+    private static Transaction BuildBlobTx() => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithNonce(0UL)
+        .SignedAndResolved()
+        .TestObject;
+
+    private static byte[] EncodeLegacy(
+        Transaction tx,
+        bool includeProofVersion,
+        BlobCellMask? cellMask = null,
+        int? sparseBlobNetworkSize = null)
+    {
+        int length = Rlp.LengthOf(tx.Timestamp)
+            + Rlp.LengthOf(tx.SenderAddress)
+            + Rlp.LengthOf(tx.Nonce)
+            + Rlp.LengthOf(tx.Hash)
+            + Rlp.LengthOf(tx.Value)
+            + Rlp.LengthOf(tx.GasLimit)
+            + Rlp.LengthOf(tx.GasPrice)
+            + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.BlobVersionedHashes!)
+            + Rlp.LengthOf(tx.PoolIndex)
+            + Rlp.LengthOf(tx.GetLength())
+            + (includeProofVersion ? Rlp.LengthOf(sizeof(byte)) : 0)
+            + (cellMask is null ? 0 : Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0))
+            + (sparseBlobNetworkSize is null ? 0 : Rlp.LengthOf(sparseBlobNetworkSize.Value));
+
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        if (includeProofVersion)
+        {
+            writer.Encode((byte)ProofVersion.V1);
+        }
+
+        if (cellMask is { } availableCellMask)
+        {
+            Span<byte> maskBytes = stackalloc byte[BlobCellMask.FixedByteLength];
+            availableCellMask.WriteTo(maskBytes);
+            writer.Encode(maskBytes);
+        }
+
+        if (sparseBlobNetworkSize is { } networkSize)
+        {
+            writer.Encode(networkSize);
+        }
+
+        return bytes;
     }
 }
