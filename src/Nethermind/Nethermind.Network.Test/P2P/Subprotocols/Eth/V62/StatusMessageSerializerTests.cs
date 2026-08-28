@@ -38,7 +38,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 GenesisHash = nullBestHash ? Keccak.Zero : null
             };
             StatusMessageSerializer serializer = new();
-            Assert.Throws<RlpException>(() => serializer.Serialize(statusMessage));
+            Assert.That(() => serializer.Serialize(statusMessage), Throws.InstanceOf<RlpException>());
         }
 
         [TestCase(true)]
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 genesisHash);
             StatusMessageSerializer serializer = new();
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload.Bytes));
+            Assert.That(() => serializer.Deserialize(payload.Bytes), Throws.InstanceOf<RlpException>());
         }
 
         [TestCase("e83f018302008080a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d")]

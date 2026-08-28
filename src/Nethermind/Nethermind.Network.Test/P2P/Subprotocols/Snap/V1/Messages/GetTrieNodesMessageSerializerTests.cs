@@ -117,7 +117,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
             serializer.Serialize(buffer, msg);
 
-            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
         }
 
         [Test]

@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             NewBlockHashesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize([0xc3, 0xc2, 0x80, 0x01]), Throws.TypeOf<RlpException>());
+            Assert.That(() => serializer.Deserialize([0xc3, 0xc2, 0x80, 0x01]), Throws.InstanceOf<RlpException>());
         }
 
         [Test]

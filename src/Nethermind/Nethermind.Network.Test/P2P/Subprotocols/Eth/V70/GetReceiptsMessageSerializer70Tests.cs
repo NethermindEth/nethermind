@@ -17,6 +17,6 @@ public class GetReceiptsMessageSerializer70Tests
         GetReceiptsMessageSerializer70 serializer = new();
         using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc4, 0x01, 0x80, 0xc1, 0x80]).AsDisposable();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
     }
 }

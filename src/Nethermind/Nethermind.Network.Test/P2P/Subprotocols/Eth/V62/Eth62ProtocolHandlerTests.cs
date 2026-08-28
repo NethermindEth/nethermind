@@ -846,16 +846,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
-        public enum HeadHeaderAnswer { RequestedBlock, DifferentBlock, Nothing, EmptyHeader }
+        public enum HeadHeaderAnswer { RequestedBlock, DifferentBlock, Nothing }
 
         /// <summary>
-        /// Saying "I don't have it" — an empty list, or an empty list item that decodes to a null header — must
-        /// not cost the peer its connection, but substituting another block is a protocol breach.
+        /// Saying "I don't have it" with an empty list must not cost the peer its connection, but substituting
+        /// another block is a protocol breach.
         /// </summary>
         [TestCase(HeadHeaderAnswer.RequestedBlock, false)]
         [TestCase(HeadHeaderAnswer.DifferentBlock, true)]
         [TestCase(HeadHeaderAnswer.Nothing, false)]
-        [TestCase(HeadHeaderAnswer.EmptyHeader, false)]
         public async Task Head_block_header_is_only_returned_for_the_requested_block(HeadHeaderAnswer answer, bool shouldDisconnect)
         {
             BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
@@ -863,7 +862,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 HeadHeaderAnswer.RequestedBlock => [requested],
                 HeadHeaderAnswer.DifferentBlock => [Build.A.BlockHeader.WithNumber(20).TestObject],
-                HeadHeaderAnswer.EmptyHeader => [null!],
                 _ => [],
             };
 

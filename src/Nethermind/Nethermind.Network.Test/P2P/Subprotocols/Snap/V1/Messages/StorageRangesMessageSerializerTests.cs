@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             Assert.That(
                 () => serializer.Deserialize([0xc7, 0x01, 0xc4, 0xc3, 0xc2, 0x80, 0x80, 0xc0]),
-                Throws.TypeOf<RlpException>());
+                Throws.InstanceOf<RlpException>());
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]

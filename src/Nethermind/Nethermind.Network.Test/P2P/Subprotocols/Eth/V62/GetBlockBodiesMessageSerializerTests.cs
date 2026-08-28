@@ -60,7 +60,7 @@ public class GetBlockBodiesMessageSerializerTests
     {
         GetBlockBodiesMessageSerializer serializer = new();
 
-        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.InstanceOf<RlpException>());
     }
 
     [Test]

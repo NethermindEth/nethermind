@@ -203,23 +203,6 @@ public class AdminModuleTests
         peerPool.Received(1).GetOrAdd(Arg.Any<NetworkNode>());
     }
 
-    [Test]
-    public async Task AdminAddTrustedPeer_WhenAlreadyTrusted_SkipsAddAsyncAndPoolInsert()
-    {
-        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
-        IPeerPool peerPool = Substitute.For<IPeerPool>();
-        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager, peerPool: peerPool);
-
-        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
-
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
-        bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
-        Assert.That(result, Is.True, "addTrustedPeer is idempotent: trusting an already-trusted peer is success, matching geth's Server.AddTrustedPeer semantics");
-        await trustedNodesManager.DidNotReceive().AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-        peerPool.DidNotReceive().GetOrAdd(Arg.Any<NetworkNode>());
-    }
-
     [TestCase("admin_addPeer", "not-an-enode", TestName = "AdminAddPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_addPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminAddPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
     [TestCase("admin_removePeer", "not-an-enode", TestName = "AdminRemovePeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]

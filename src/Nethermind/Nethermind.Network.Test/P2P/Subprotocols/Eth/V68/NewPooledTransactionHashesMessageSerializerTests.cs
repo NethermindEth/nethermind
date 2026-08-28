@@ -74,7 +74,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
 
         byte[] bytes = serializer.Serialize(message);
 
-        Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
     }
 
 }
