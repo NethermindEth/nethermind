@@ -60,6 +60,23 @@ def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
     return conditions[0]
 
 
+RESOLVE_RUN_MARKER = "        run: |\n"
+
+
+def resolve_script(workflow: str) -> str:
+    """The resolve step's shell body, dedented so it can be run under bash on its own."""
+    marker = workflow.index(RESOLVE_RUN_MARKER, workflow.index("      - name: Resolve configuration\n"))
+    lines = []
+    for line in workflow[marker + len(RESOLVE_RUN_MARKER) :].split("\n"):
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:])
+    body = "\n".join(lines)
+    if "${{" in body or "warmup_seconds=" not in body:
+        raise AssertionError("could not extract a runnable resolve body")
+    return body
+
+
 def find_bash() -> str | None:
     if os.name == "nt":
         git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
@@ -977,6 +994,62 @@ esac
         self.assertEqual(preparations(), (5, 5))
         self.assertNotIn("Reusing", seventh.stdout)
 
+    def resolve(self, **inputs: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+        """Run the workflow's resolve body with these dispatch inputs; return it plus its outputs."""
+        script = self.directory / "resolve.sh"
+        script.write_text(resolve_script(RPC_WORKFLOW.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
+        output = self.directory / "github-output"
+        output.write_text("", encoding="utf-8")
+        environment = os.environ.copy()
+        environment.update(
+            EVENT_NAME="workflow_dispatch",
+            PUSH_BRANCH="feature/profiling",
+            GITHUB_OUTPUT=output.as_posix(),
+            **inputs,
+        )
+        result = subprocess.run(
+            [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+        values: dict[str, str] = {}
+        for line in output.read_text(encoding="utf-8").splitlines():
+            name, separator, value = line.partition("=")
+            if separator:
+                values.setdefault(name, value)
+        return result, values
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_dotnet_trace_is_only_resolved_where_a_warmup_precedes_the_measured_cell(self) -> None:
+        # The collector attaches between the warm-up and the cell, and nettrace-report.cs states GC
+        # pause and contention as a share of the window it covers. So dotnet_trace is accepted only on
+        # the shape that has a warm-up, and it supplies one when the dispatch does not: otherwise the
+        # window would also hold json-bench's clone, image build and corpus conversion, deflating both
+        # shares with nothing in the artifact to show it had happened.
+        jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
+
+        result, outputs = self.resolve(**jsonbench, IN_DOTNET_TRACE="true", IN_TOOL_CONFIG='{"duration":"600s"}')
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["warmup_seconds"], "60")
+        # The cap runs from the attach, which the warm-up now keeps immediately ahead of the cell.
+        self.assertEqual(outputs["dotnet_trace_max_seconds"], "1200")
+
+        # An explicitly requested warm-up is kept as given; without dotnet_trace nothing is implied.
+        _, outputs = self.resolve(
+            **jsonbench, IN_DOTNET_TRACE="true", IN_TOOL_CONFIG='{"duration":"600s","corpus_warmup_duration":"120"}'
+        )
+        self.assertEqual(outputs["warmup_seconds"], "120")
+        _, outputs = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"duration":"600s"}')
+        self.assertEqual(outputs["warmup_seconds"], "0")
+
+        for label, inputs in (
+            ("an explicit zero warm-up", {**jsonbench, "IN_TOOL_CONFIG": '{"corpus_warmup_duration":0}'}),
+            ("a tool with no warm-up", {"IN_TOOL": "flood", "IN_CLIENT": "nethermind"}),
+            ("a comparison run", {**jsonbench, "IN_REFERENCE_CLIENT": "geth"}),
+        ):
+            with self.subTest(rejected=label):
+                result, _ = self.resolve(IN_DOTNET_TRACE="true", **inputs)
+                self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+                self.assertIn("::error::", result.stdout)
+
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
         start_profilers = START_PROFILERS.read_text(encoding="utf-8")
@@ -1155,14 +1228,15 @@ esac
             with self.subTest(collector=collector):
                 self.assertIn(f'if [[ "${{{collector}}}" == "true" && "${{client}}" != "nethermind" ]]; then', resolve)
 
-        # The session cap runs from the attach, which without a warm-up is ahead of json-bench's
-        # clone, image build and corpus conversion; an elapsed cap there would end the trace before
-        # the measured cell started, and the collector's exit would then look like a clean stop.
-        self.assertIn('[[ "${warmup_seconds}" == "0" ]] && margin=$(( margin + 1800 ))', resolve)
+        # The cap runs from the attach, which the implied warm-up keeps immediately ahead of the cell
+        # (behaviour covered by test_dotnet_trace_is_only_resolved_where_a_warmup_precedes_the_measured_cell);
+        # sizing it before the warm-up is resolved would cap against the wrong window.
+        implied_warmup = 'if [[ "${dotnet_trace}" == "true" && "${warmup_seconds}" == "0" ]]; then'
+        self.assertIn(implied_warmup, resolve)
         self.assertLess(
-            resolve.index('warmup_seconds="0"'),
+            resolve.index(implied_warmup),
             resolve.index('dotnet_trace_max_seconds=""'),
-            "the cap reads warmup_seconds, so it must be resolved first",
+            "the cap is sized against the cell the warm-up keeps the attach in front of",
         )
         self.assertIn(
             "the dotnet-trace collector exited before it was stopped; the trace does not cover the measured phase",

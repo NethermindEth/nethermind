@@ -173,7 +173,7 @@ the workflow's defensive-cleanup step).
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
-| `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a single-node Nethermind benchmark. See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
+| `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
@@ -561,35 +561,37 @@ scripts/perf-report.sh compare before.folded after.folded 30
 
 ## dotnet-trace sidecar
 
-Set `dotnet_trace: true` (single-node Nethermind tools; rejected for `jsonbench-sweep`
-like `perf`) to collect an EventPipe `.nettrace` of **runtime events** — GC start/end
-and pause durations, monitor contention with the owning thread's stack, thread-pool
-adjustments, exception throws. With a `corpus_warmup_duration` it covers the **measured
-phase only**; without one the collector attaches as soon as RPC is ready, so the window also
-holds json-bench's clone, image build and corpus conversion — and the report's per-window
-percentages (GC pause share, contention share) are diluted by exactly that padding. It records
-no CPU samples, so it can run next to `dottrace` and `perf` without double-sampling the node;
-its providers are `gc+contention+threading+exception` at level **verbose**, which is
-required because informational `Contention` events carry no stacks and lock-owner
-attribution is the point.
+Set `dotnet_trace: true` (Nethermind `benchmark_tool=jsonbench` with no `reference_client`;
+rejected on every other shape) to collect an EventPipe `.nettrace` of **runtime events** — GC
+start/end and pause durations, monitor contention with the owning thread's stack, thread-pool
+adjustments, exception throws — during the **measured phase only**. The collector attaches
+between the warm-up and the measured cell, which is why that is the one accepted shape and why a
+dispatch setting no `corpus_warmup_duration` is given the canonical 60s: attached at RPC-ready
+instead, the window would also hold json-bench's clone, image build and corpus conversion, and the
+report's per-window percentages (GC pause share, contention share) would be diluted by exactly
+that padding. It records no CPU samples, so it can run next to `dottrace` and `perf` without
+double-sampling the node; its providers are `gc+contention+threading+exception` at level
+**verbose**, which is required because informational `Contention` events carry no stacks and
+lock-owner attribution is the point.
 
 The collector is the framework-dependent `dotnet-trace` global tool installed on the host
-on demand (`dotnet tool install --tool-path /opt/dotnet-trace dotnet-trace`), bind-mounted
+on demand (`dotnet tool install --version <pinned> --tool-path /opt/dotnet-trace dotnet-trace`,
+pinned by `DOTNET_TRACE_VERSION` in `start-node.sh`), bind-mounted
 read-only into the container and started **inside it** with `docker exec` against the
 runtime's default diagnostics IPC socket (`dotnet-trace collect -p <container pid>`), with
 `DOTNET_ROOT` resolved from the container's own `dotnet --list-runtimes` and
 `DOTNET_ROLL_FORWARD=Major`. Attaching from inside, late, is what excludes the warm-up:
 expb's alternative — a diagnostic port the runtime connects to at start — has to listen
 before the runtime starts and records everything from launch. `start-profilers.sh` attaches
-it after a `jsonbench` warm-up (or `start-node.sh` once RPC is ready without one), fails
+it after the `jsonbench` warm-up (`start-node.sh` starts perf and dotTrace at RPC-ready when
+there is none, but `dotnet_trace` never runs without one), fails
 loudly if the collector exits within a second (the apphost's ".NET location: Not found" is
 otherwise a silent 400-byte log), and `stop-node.sh` sends it SIGINT inside the container
 and waits for the `.nettrace` to finalize **before** the node is stopped. With a plain
 `tool_config.duration` the session is also capped (`--duration`) at that duration plus ten
-minutes, and plus a further thirty without a warm-up, where the cap starts ahead of the
-preparation rather than at the cell — so a hung cell cannot grow the file until the job times
-out. A collector that ended before teardown reached it fails the run instead of shipping a
-trace that misses the cell.
+minutes, counted from the attach the warm-up keeps immediately ahead of the cell — so a hung
+cell cannot grow the file until the job times out. A collector that ended before teardown
+reached it fails the run instead of shipping a trace that misses the cell.
 
 The `dotnet-trace-rpcbench` artifact holds `rpcbench.nettrace` plus the collector log.
 [`scripts/nettrace-report.cs`](../nettrace-report.cs) summarizes it — GC count and pause per
