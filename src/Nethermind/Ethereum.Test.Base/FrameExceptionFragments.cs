@@ -95,10 +95,16 @@ public static class FrameExceptionFragments
     /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
     /// also name as format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
+    /// <remarks>
+    /// The last two fragments are one rejection under two wordings: <c>Rlp.ThrowCountOverLimit</c> composes the
+    /// detailed text only when <c>Rlp</c>'s static logger has trace enabled and otherwise throws the bare message,
+    /// so both are listed rather than depending on which log manager the runner leaves installed.
+    /// </remarks>
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
         "Unexpected RLP prefix",
         "Collection count",
+        "An RLP limit exceeded",
     ];
 }

@@ -631,8 +631,8 @@ public abstract class BlockchainTestBase
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
         // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
         ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
-        // A fee field wider than 32 bytes is rejected by the decoder, which names neither the field nor
-        // the type, so the two fee overflows are indistinguishable here.
+        // The decoder names neither the field nor the type, so these widen both labels suite-wide to any
+        // untyped collection-limit rejection, not merely to the other fee field. No narrowing available.
         ("TransactionException.GASPRICE_OVERFLOW", "Collection count of"),
         ("TransactionException.PRIORITY_OVERFLOW", "Collection count of"),
         .. Eip8141Mappings(),
