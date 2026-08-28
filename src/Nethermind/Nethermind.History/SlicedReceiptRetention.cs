@@ -3,16 +3,16 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Text;
+using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Logging;
 
 namespace Nethermind.History;
 
@@ -20,10 +20,18 @@ namespace Nethermind.History;
 /// stay queryable where the general history pruner reclaims. A bounded slice retains only heights inside its own
 /// window, measured from the head at sweep time. The bloom is only a first filter; where the
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
-public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree, IDbProvider? dbProvider = null) : IPrunedReceiptRetention, IPrunedLogsRetention
+public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree, IDbProvider? dbProvider = null, ILogManager? logManager = null) : IPrunedReceiptRetention, IPrunedLogsRetention
 {
+    private const int StampValueLength = 2 * sizeof(ulong);
+
+    private static ReadOnlySpan<byte> StampKeyPrefix => "history:sliceLogsFrom:"u8;
+    private const int StampKeyPrefixLength = 22; // == StampKeyPrefix.Length
+
     private readonly FrozenDictionary<Address, ulong?> _slices = ParseSlices(flatDbConfig.HistorySliceAddresses);
-    private readonly ulong _logsRetainedFrom = StampLogsRetainedFrom(flatDbConfig.HistorySliceAddresses, blockTree, dbProvider);
+    private readonly ConcurrentDictionary<AddressAsKey, ulong> _stampCache = new();
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<SlicedReceiptRetention>();
+
+    static SlicedReceiptRetention() => Debug.Assert(StampKeyPrefix.Length == StampKeyPrefixLength);
 
     public bool ShouldRetainReceipts(BlockHeader header)
     {
@@ -136,14 +144,16 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             return false;
         }
 
-        if (blockTree.Head?.Number is not { } head || fromBlock < _logsRetainedFrom)
+        if (blockTree.Head?.Number is not { } head)
         {
             return false;
         }
 
         foreach (AddressAsKey address in addresses)
         {
-            if (!_slices.TryGetValue(address.Value, out ulong? retention) || !InsideSliceWindow(fromBlock, retention, head))
+            if (!_slices.TryGetValue(address.Value, out ulong? retention)
+                || !InsideSliceWindow(fromBlock, retention, head)
+                || fromBlock < StampedRetainedFrom(address))
             {
                 return false;
             }
@@ -152,37 +162,71 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return true;
     }
 
-    /// <summary>The height this slice set's receipt retention has provably been in force from: everything the
-    /// pruner reclaims above it is reclaimed retention-aware. Below it nothing is known - the receipts may
-    /// predate the slice config, or never have been downloaded at all - so log coverage is refused there.
-    /// Stamped at construction, before the pruner can move, at the availability floor of the moment the set is
-    /// first seen; a stored stamp is reused while the set is unchanged and re-stamped when it changes.</summary>
-    private static ulong StampLogsRetainedFrom(string? sliceAddresses, IBlockTree blockTree, IDbProvider? dbProvider)
+    /// <summary>Records, per configured address, the height its receipt retention has provably been in force from:
+    /// everything the pruner reclaims from this call on is reclaimed retention-aware, and
+    /// <paramref name="pruningUpTo"/> extends the proof over the pass that follows. An address first seen here is
+    /// stamped at <paramref name="oldestStoredReceipts"/> - anything below was reclaimed before this retention
+    /// existed, or never stored at all. An address whose record trails <paramref name="oldestStoredReceipts"/> was
+    /// removed from the config while reclaims ran, so its earned depth lapsed and it restarts. The stamp never
+    /// lowers itself: receipts backfilled below it stay refused rather than guessed at.</summary>
+    public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong pruningUpTo)
     {
-        if (string.IsNullOrEmpty(sliceAddresses) || dbProvider?.MetadataDb is not { } metadata)
+        if (_slices.Count == 0 || dbProvider?.MetadataDb is not { } metadata) return;
+
+        Span<byte> key = stackalloc byte[StampKeyPrefixLength + Address.Size];
+        StampKeyPrefix.CopyTo(key);
+        Span<byte> value = stackalloc byte[StampValueLength];
+        ulong retainedThrough = ulong.Max(oldestStoredReceipts, pruningUpTo);
+
+        foreach (Address address in _slices.Keys)
         {
-            return 0;
+            address.Bytes.CopyTo(key[StampKeyPrefixLength..]);
+            byte[]? stored = metadata.Get(key);
+            ulong stampFrom;
+            if (stored is { Length: StampValueLength })
+            {
+                stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
+                ulong storedThrough = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
+                if (oldestStoredReceipts > storedThrough)
+                {
+                    stampFrom = oldestStoredReceipts;
+                    if (_logger.IsInfo) _logger.Info(
+                        $"Slice log coverage for {address} restarts at #{stampFrom}: heights up to there were reclaimed while it was not configured.");
+                }
+                else if (storedThrough >= retainedThrough)
+                {
+                    _stampCache[address] = stampFrom;
+                    continue;
+                }
+            }
+            else
+            {
+                stampFrom = oldestStoredReceipts;
+                if (_logger.IsInfo) _logger.Info($"Slice log coverage for {address} starts at #{stampFrom}.");
+            }
+
+            BinaryPrimitives.WriteUInt64BigEndian(value, stampFrom);
+            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], retainedThrough);
+            metadata.PutSpan(key, value);
+            _stampCache[address] = stampFrom;
         }
+    }
 
-        byte[] currentSet = Encoding.UTF8.GetBytes(sliceAddresses);
-        byte[]? storedSet = metadata.Get(MetadataDbKeys.HistorySliceLogsSliceSet);
-        byte[]? storedMark = metadata.Get(MetadataDbKeys.HistorySliceLogsRetainedFrom);
-        if (storedMark is { Length: sizeof(ulong) } && storedSet is not null && Bytes.AreEqual(storedSet, currentSet))
-        {
-            return BinaryPrimitives.ReadUInt64BigEndian(storedMark);
-        }
+    /// <summary>Missing means refuse: an address no pruning pass has ever stamped has no proven depth - the
+    /// pruner may simply not have run yet, and failing closed until it does costs minutes, not correctness.</summary>
+    private ulong StampedRetainedFrom(AddressAsKey address)
+    {
+        if (_stampCache.TryGetValue(address, out ulong cached)) return cached;
+        if (dbProvider?.MetadataDb is not { } metadata) return ulong.MaxValue;
 
-        ulong deletePointer = metadata.Get(MetadataDbKeys.HistoryPruningDeletePointer) is { } pointer
-            ? new RlpReader(pointer).DecodeULong()
-            : 0;
-        ulong mark = ulong.Max(deletePointer, blockTree.GetLowestBlock());
+        Span<byte> key = stackalloc byte[StampKeyPrefixLength + Address.Size];
+        StampKeyPrefix.CopyTo(key);
+        address.Value.Bytes.CopyTo(key[StampKeyPrefixLength..]);
+        if (metadata.Get(key) is not { Length: StampValueLength } stored) return ulong.MaxValue;
 
-        Span<byte> markBytes = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(markBytes, mark);
-        metadata.Set(MetadataDbKeys.HistorySliceLogsRetainedFrom, markBytes.ToArray());
-        metadata.Set(MetadataDbKeys.HistorySliceLogsSliceSet, currentSet);
-
-        return mark;
+        ulong stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
+        _stampCache[address] = stampFrom;
+        return stampFrom;
     }
 
     /// <inheritdoc/>

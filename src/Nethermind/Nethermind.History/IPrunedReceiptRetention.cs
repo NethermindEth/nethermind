@@ -31,4 +31,11 @@ public interface IPrunedReceiptRetention
     /// holding previously retained data below it should re-ask. Zero - the default - promises no retention ever
     /// expires, so nothing already retained needs revisiting.</summary>
     ulong ExpiredRetentionUpperBound() => 0;
+
+    /// <summary>Called at the start of every pruning pass, after the pruner has loaded its pointers: the oldest
+    /// height whose receipts this node can be assumed to hold, and the height the pass is about to reclaim up to.
+    /// Lets an implementation record from which height its retention has provably been in force - anything
+    /// reclaimed before its first call predates it, and reclaims between calls that never saw an entry lapse it.
+    /// The default ignores it.</summary>
+    void OnPruningPassStarting(ulong oldestStoredReceipts, ulong pruningUpTo) { }
 }

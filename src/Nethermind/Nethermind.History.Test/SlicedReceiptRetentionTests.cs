@@ -429,7 +429,10 @@ public class SlicedReceiptRetentionTests
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = $"{unbounded},{bounded}:1000" };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(5000).TestObject);
-        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 0, pruningUpTo: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -449,64 +452,89 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
-    public void RetainsLogsFor_RefusesBelowTheHeightRetentionWasConfiguredAt_AndStampsItOnce()
+    public void RetainsLogsFor_RefusesUntilAPruningPassStampsTheAddress_ThenServesFromTheStamp()
     {
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
-        blockTree.GetLowestBlock().Returns(0UL);
-        IDb metadata = new MemDb();
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5000UL).Bytes);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(metadata);
+        dbProvider.MetadataDb.Returns(new MemDb());
 
         SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+
+        Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.False,
+            "no pruning pass has stamped this address, so no depth is proven and the gate fails closed");
+
+        retention.OnPruningPassStarting(oldestStoredReceipts: 5000, pruningUpTo: 6000);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 4000, 9000), Is.False,
-                "everything below the delete pointer at configuration time was reclaimed - or never stored - without this retention in force");
+                "below the stamp the receipts were reclaimed - or never stored - without this retention in force");
             Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.True,
                 "from the stamp up, every reclaim has been retention-aware");
         }
 
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(8000UL).Bytes);
         SlicedReceiptRetention restarted = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        restarted.OnPruningPassStarting(oldestStoredReceipts: 5500, pruningUpTo: 7000);
         Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.True,
-            "the stamp is stored: a later restart under the same slice set must not lose the depth already earned");
+            "the stamp is stored: continuous passes must not lose the depth already earned as the pointer advances");
     }
 
     [Test]
-    public void RetainsLogsFor_ReStampsWhenTheSliceSetChanges()
+    public void RetainsLogsFor_ANewAddressStampsAtTheCurrentFloor_WithoutTouchingTheOldOnesDepth()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
-        blockTree.GetLowestBlock().Returns(0UL);
-        IDb metadata = new MemDb();
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(metadata);
+        dbProvider.MetadataDb.Returns(new MemDb());
 
         SlicedReceiptRetention first = new(new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() },
             Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        Assert.That(first.RetainsLogsFor([TestItem.AddressA], 0, 9000), Is.True);
+        first.OnPruningPassStarting(oldestStoredReceipts: 1, pruningUpTo: 6000);
 
-        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(6000UL).Bytes);
         SlicedReceiptRetention widened = new(new FlatDbConfig { HistorySliceAddresses = $"{TestItem.AddressA},{TestItem.AddressB}" },
             Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        widened.OnPruningPassStarting(oldestStoredReceipts: 6000, pruningUpTo: 7000);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(widened.RetainsLogsFor([TestItem.AddressB], 4000, 9000), Is.False,
-                "the new set's coverage starts where the availability floor stood when it appeared");
-            Assert.That(widened.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+                "the new address's coverage starts where the availability floor stood when it appeared");
+            Assert.That(widened.RetainsLogsFor([TestItem.AddressB], 6000, 9000), Is.True);
+            Assert.That(widened.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.True,
+                "the old address keeps its earned depth - a config edit must not discard it");
         }
+    }
+
+    [Test]
+    public void RetainsLogsFor_AnAddressRemovedWhileReclaimsRan_RestartsAtTheCurrentFloorWhenReAdded()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
+
+        SlicedReceiptRetention before = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        before.OnPruningPassStarting(oldestStoredReceipts: 1, pruningUpTo: 3000);
+
+        SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, pruningUpTo: 7000);
+
+        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+            "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
+        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
     }
 
     [Test]
     public void RetainsLogsFor_RefusesWithoutAHead()
     {
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
-        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>(), dbProvider);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 0, pruningUpTo: 0);
 
         Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 100), Is.False,
             "a bounded window cannot be evaluated before the head exists, and failing open is the one wrong direction");
@@ -518,6 +546,18 @@ public class SlicedReceiptRetentionTests
         SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
 
         Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 100), Is.False);
+    }
+
+    [Test]
+    public void RetainsLogsFor_returns_false_without_a_metadata_database()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree);
+
+        Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 9000), Is.False,
+            "no stamp store means no proven depth - absence fails closed, exactly like a missing head");
     }
 
     [Test]

@@ -549,25 +549,23 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         int accountCount = pending.Accounts.Count;
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
+        ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
+        Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
+
+        byte[][] accountChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
+        for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
         {
-            ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
-            Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
-
-            byte[][] chunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, accountCount)][];
-            for (int offset = 0; offset < accountCount; offset += PreValueMultiGetChunkSize)
+            int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
+            byte[][] keys = count == accountChunkKeys.Length ? accountChunkKeys : new byte[count][];
+            for (int i = 0; i < count; i++)
             {
-                int count = Math.Min(PreValueMultiGetChunkSize, accountCount - offset);
-                byte[][] keys = count == chunkKeys.Length ? chunkKeys : new byte[count][];
-                for (int i = 0; i < count; i++)
-                {
-                    keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
-                }
+                keys[i] = HistoryKeyLayout.ToFlatStateKey(accounts[offset + i].Key.Bytes).ToArray();
+            }
 
-                KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
-                for (int i = 0; i < count; i++)
-                {
-                    _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
-                }
+            KeyValuePair<byte[], byte[]?>[] preValues = _persistedAccounts[keys];
+            for (int i = 0; i < count; i++)
+            {
+                _accountHistoryV3!.RecordPreValue(accounts[offset + i].Value, accounts[offset + i].Key.Bytes, preValues[i].Value ?? ReadOnlySpan<byte>.Empty, accountBatch);
             }
         }
 
@@ -575,36 +573,34 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         int storageCount = pending.Storages.Count;
         KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
+        ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
+        Array.Sort(storages, 0, storageCount, StorageKeyOrder);
+
+        byte[][] storageChunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
+        for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
         {
-            ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
-            Array.Sort(storages, 0, storageCount, StorageKeyOrder);
-
-            byte[][] chunkKeys = new byte[Math.Min(PreValueMultiGetChunkSize, storageCount)][];
-            for (int offset = 0; offset < storageCount; offset += PreValueMultiGetChunkSize)
+            int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
+            byte[][] keys = count == storageChunkKeys.Length ? storageChunkKeys : new byte[count][];
+            for (int i = 0; i < count; i++)
             {
-                int count = Math.Min(PreValueMultiGetChunkSize, storageCount - offset);
-                byte[][] keys = count == chunkKeys.Length ? chunkKeys : new byte[count][];
-                for (int i = 0; i < count; i++)
+                keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+            }
+
+            KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
+            for (int i = 0; i < count; i++)
+            {
+                ulong touch = storages[offset + i].Value;
+                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+
+                if (pending.Destructs.Count != 0
+                    && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
+                    && destructBlock < touch)
                 {
-                    keys[i] = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, storages[offset + i].Key.AddrPath, storages[offset + i].Key.SlotHash).ToArray();
+                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                    preValue = ReadOnlySpan<byte>.Empty;
                 }
 
-                KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
-                for (int i = 0; i < count; i++)
-                {
-                    ulong touch = storages[offset + i].Value;
-                    ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
-
-                    if (pending.Destructs.Count != 0
-                        && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
-                        && destructBlock < touch)
-                    {
-                        _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
-                        preValue = ReadOnlySpan<byte>.Empty;
-                    }
-
-                    _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
-                }
+                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
             }
         }
 

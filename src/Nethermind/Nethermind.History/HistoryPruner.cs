@@ -54,6 +54,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _ancientBarrier;
+    private readonly ulong _ancientReceiptsBarrier;
     private readonly ulong _minDeletableBlockNumber;
 
     private ulong _blocksDeletePointer = 1;
@@ -110,6 +111,7 @@ public class HistoryPruner : IHistoryPruner
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
+        _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
         CheckConfig();
@@ -271,6 +273,7 @@ public class HistoryPruner : IHistoryPruner
 
                 ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
+                _receiptRetention.OnPruningPassStarting(ulong.Max(_blocksDeletePointer, _ancientReceiptsBarrier), blockUpper);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
