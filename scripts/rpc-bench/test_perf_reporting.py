@@ -509,7 +509,10 @@ class PerfReportingTests(unittest.TestCase):
             "    printf '%s (perf) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4243 0\\n' \"$$\" > \"$RPC_BENCH_PROC_ROOT/$$/stat\"\n"
             "    printf 'perf\\n' > \"$RPC_BENCH_PROC_ROOT/$$/comm\"\n"
             "    : > \"$RPC_BENCH_PROC_ROOT/$$/exe\"\n"
-            "    sleep 4 ;;\n"
+            # Long enough to outlive the whole fixture: the tests kill it themselves, and a
+            # recorder that expired mid-test would fail them on the teardown kill rather than on
+            # anything real.
+            "    sleep 120 ;;\n"
             "  *) exit 64 ;;\n"
             "esac\n",
         )
