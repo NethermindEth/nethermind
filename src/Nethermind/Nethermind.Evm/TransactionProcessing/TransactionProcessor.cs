@@ -343,6 +343,9 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, loadRecipient, ref gasAvailable, ref topFrameOutOfGas, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
+            // EIP-7702/EIP-8037: capture after durable authorizations but before reversible top-level state charges.
+            long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
+
             // A new (dead) recipient — including an empty precompile — pays NEW_ACCOUNT state gas.
             if (!topFrameOutOfGas && spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
@@ -360,13 +363,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 gasAvailable = prePreparationGas;
                 executionIntrinsicGasStandard = intrinsicGas.Standard;
+                postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             }
 
             IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
             int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
 
             UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
 
@@ -450,8 +454,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 && WorldState.IsDeadAccount(recipient))
             {
                 newAccountOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
-                if (newAccountOutOfGas)
-                    TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
             }
 
             // Self-send: sender account is already touched/warmed by gas charging and any
@@ -467,6 +469,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
+            // Forfeit after the action start is traced: a halted frame reports the gas it would have received.
+            if (newAccountOutOfGas)
+                TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
+
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
             {
@@ -480,13 +486,23 @@ namespace Nethermind.Evm.TransactionProcessing
                 refund: 0,
                 destroyList: null,
                 logs: logs,
+                // shouldRevert: false keeps IsError false — Refund and CalculateSpentGasAndRefund branch on
+                // IsError, so this halt must surface via EvmExceptionType only, or gas accounting changes.
                 shouldRevert: false,
                 isTracerConnected: false, // safe: the ctor reads this only when shouldRevert is true
+                evmExceptionType: newAccountOutOfGas ? EvmExceptionType.OutOfGas : EvmExceptionType.None,
                 logger: Logger);
 
             if (isTracingActions)
             {
-                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                if (newAccountOutOfGas)
+                {
+                    tracer.ReportActionError(EvmExceptionType.OutOfGas);
+                }
+                else
+                {
+                    tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                }
             }
 
             TGasPolicy floorGas = intrinsicGas.FloorGas;
@@ -520,6 +536,24 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 tracer.ReportByteCode(default);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void TraceHaltedTopFrameAction(Transaction tx, ExecutionEnvironment env, ITxTracer tracer, in TGasPolicy gasAvailable)
+        {
+            if (!tracer.IsTracingActions) return;
+
+            bool isContractCreation = tx.IsContractCreation;
+            tracer.ReportAction(
+                TGasPolicy.GetRemainingGas(in gasAvailable),
+                env.Value,
+                env.Caller,
+                env.CodeSource ?? env.ExecutingAccount,
+                isContractCreation ? env.CodeInfo.Code : env.InputData,
+                isContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION);
+
+            if (tracer.IsTracingCode) tracer.ReportByteCode(env.CodeInfo.Code);
+            tracer.ReportActionError(EvmExceptionType.OutOfGas);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -643,7 +677,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
-                    tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
+                    string? error = substate.Error;
+                    if (error is null && substate.EvmExceptionType is not EvmExceptionType.None)
+                    {
+                        error = substate.EvmExceptionType.FastToString();
+                    }
+                    tracer.MarkAsFailed(executingAccount, spentGas, output, error, stateRoot);
                 }
                 else
                 {
@@ -1268,6 +1307,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionOptions opts,
             long delegationRefunds,
             IntrinsicGas<TGasPolicy> gas,
+            long postIntrinsicStateReservoir,
             in StackAccessTracker accessedItems,
             TGasPolicy gasAvailable,
             ExecutionEnvironment env,
@@ -1280,10 +1320,6 @@ namespace Nethermind.Evm.TransactionProcessing
             gasConsumed = tx.GasLimit;
             byte statusCode = StatusCode.Failure;
 
-            // EIP-7702 + EIP-8037: capture the tx-start state reservoir after authorization refunds.
-            // The halt path needs this to correctly initialize the reservoir in ResetForHalt.
-            long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
-
             Snapshot snapshot = WorldState.TakeSnapshot();
             ulong floorGasLong = TGasPolicy.GetRemainingGas(gas.FloorGas);
 
@@ -1292,6 +1328,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (topFrameOutOfGas)
             {
+                TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
@@ -1309,6 +1347,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                         WorldState.Restore(snapshot);
+                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, tracer.IsTracing);
                         TGasPolicy collisionIntrinsicGasStandard = gas.Standard;
                         gasConsumed = RefundOnContractCollision(
                             tx,
@@ -1339,6 +1378,8 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.ConsumeCreateStateGas(ref state.Gas))
                 {
+                    TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
+                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
                     TGasPolicy.SetOutOfGas(ref gasAvailable);
                     WorldState.Restore(snapshot);
@@ -1364,6 +1405,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                     WorldState.Restore(snapshot);
+                    VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
                 }
                 else
                 {
@@ -1415,11 +1457,23 @@ namespace Nethermind.Evm.TransactionProcessing
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+            // Surface the deployment failure to RPC while keeping Error null — IsError must stay
+            // false because Refund and CalculateSpentGasAndRefund branch on it for gas accounting.
+            EvmExceptionType deployException = CodeDepositHandler.CodeIsInvalid(spec, substate.Output)
+                ? EvmExceptionType.InvalidCode
+                : EvmExceptionType.OutOfGas;
+            bool shouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch;
+            substate = new(substate.Output, substate.Refund, substate.DestroyList, substate.Logs,
+                shouldRevert: false, isTracerConnected: false, evmExceptionType: deployException, logger: Logger)
+            {
+                ShouldRestoreRipemdTouch = shouldRestoreRipemdTouch,
+            };
             if (spec.ChargeForTopLevelCreate)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
             }
             WorldState.Restore(snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             TGasPolicy intrinsicGasStandard = gas.Standard;
             if (spec.IsEip8037Enabled)
             {
@@ -1476,7 +1530,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
-            long postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
+            // EIP-8037 restores the reservoir to its frame-entry value; any refilled spill is execution gas and burns on halt.
+            long postHaltStateReservoir = postIntrinsicStateReservoir;
             if (refundedTopLevelCreateStateGas > 0)
             {
                 postHaltStateReservoir = Math.Max(postHaltStateReservoir, refundedTopLevelCreateStateGas);
@@ -1677,11 +1732,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareDeployment(Address contractAddress)
         {
-            if (!WorldState.IsNonZeroAccount(contractAddress, out _))
-                return true;
+            if (WorldState.IsNonZeroAccount(contractAddress, out _))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
+                return false;
+            }
 
-            if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
-            return false;
+            WorldState.ClearStorage(contractAddress);
+
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

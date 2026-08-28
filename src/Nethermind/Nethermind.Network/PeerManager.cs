@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
@@ -27,7 +28,6 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
@@ -42,6 +42,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private Task? _peerUpdateLoopTask;
+        private Task? _peerUpdateTimerTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
         private readonly List<PeerStats> _candidates;
@@ -52,8 +53,6 @@ namespace Nethermind.Network
         private int _newActiveNodes;
         private int _failedInitialConnect;
         private int _connectionRounds;
-
-        private Timer? _peerUpdateTimer;
 
         private int _maxPeerPoolLength;
 
@@ -174,6 +173,12 @@ namespace Nethermind.Network
 
         public void Start()
         {
+            int peersUpdateInterval = _networkConfig.PeersUpdateInterval;
+            if (peersUpdateInterval is <= 0)
+            {
+                ThrowInvalidPeersUpdateInterval(peersUpdateInterval);
+            }
+
             lock (_sessionLock)
             {
                 _isStopping = false;
@@ -183,8 +188,7 @@ namespace Nethermind.Network
                 _rlpxHost.SessionDisconnected += _onSessionDisconnected;
             }
 
-            StartPeerUpdateLoop();
-
+            _peerUpdateTimerTask = RunPeerUpdateTimerAsync(peersUpdateInterval);
             _peerUpdateLoopTask = RunPeerUpdateLoopAsync();
 
             _isStarted = true;
@@ -241,7 +245,10 @@ namespace Nethermind.Network
                 }
             }
 
-            StopTimers();
+            if (_peerUpdateTimerTask is not null)
+            {
+                await _peerUpdateTimerTask;
+            }
 
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete. Please wait for all components to close");
         }
@@ -360,8 +367,6 @@ namespace Nethermind.Network
                         await Task.Delay(1000, _cancellationTokenSource.Token);
                     }
                 }
-
-                _peerUpdateTimer?.Start();
             }
 
             taskChannel.Writer.Complete();
@@ -621,35 +626,25 @@ namespace Nethermind.Network
             }
         }
 
-        private void StartPeerUpdateLoop()
+        private async Task RunPeerUpdateTimerAsync(int peersUpdateInterval)
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
-            _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
-            _peerUpdateTimer.Elapsed += PeerUpdateTimerOnElapsed;
-
-            _peerUpdateTimer.Start();
-        }
-
-        private void StopTimers()
-        {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
-                Timer? peerUpdateTimer = _peerUpdateTimer;
-                if (peerUpdateTimer is null)
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(peersUpdateInterval));
+                while (await timer.WaitForNextTickAsync(_cancellationTokenSource.Token))
                 {
-                    return;
+                    SignalPeerUpdateNeeded();
                 }
-
-                peerUpdateTimer.Elapsed -= PeerUpdateTimerOnElapsed;
-                peerUpdateTimer.Stop();
-                peerUpdateTimer.Dispose();
-                _peerUpdateTimer = null;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException)
             {
-                _logger.Error("Error during peer timers stop", e);
+                if (_logger.IsError) _logger.Error("Peer update timer encountered an exception.", e);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Peer update timer stopped.");
             }
         }
 
@@ -678,12 +673,6 @@ namespace Nethermind.Network
             {
                 ProcessOutgoingConnection(session);
             }
-        }
-
-        private void PeerUpdateTimerOnElapsed(object? sender, System.Timers.ElapsedEventArgs e)
-        {
-            _peerUpdateTimer?.Stop();
-            SignalPeerUpdateNeeded();
         }
 
         private void CleanupCandidatePeers()
@@ -1353,5 +1342,11 @@ namespace Nethermind.Network
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOnDisconnectedState(ISession session)
             => throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidPeersUpdateInterval(int peersUpdateInterval)
+            => throw new InvalidConfigurationException(
+                $"{nameof(INetworkConfig.PeersUpdateInterval)} must be greater than zero, but was {peersUpdateInterval}.",
+                ExitCodes.ForbiddenOptionValue);
     }
 }

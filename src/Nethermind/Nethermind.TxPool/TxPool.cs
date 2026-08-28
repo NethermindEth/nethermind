@@ -94,7 +94,7 @@ namespace Nethermind.TxPool
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         /// <param name="transactionsGossipPolicy"></param>
-        /// <param name="incomingTxFilter"></param>
+        /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
         public TxPool(IEthereumEcdsa ecdsa,
@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
             ILogManager? logManager,
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
-            IIncomingTxFilter? incomingTxFilter = null,
+            IIncomingTxFilter[]? incomingTxFilters = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false)
         {
@@ -174,12 +174,13 @@ namespace Nethermind.TxPool
                 new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
-            if (incomingTxFilter is not null)
+            if (incomingTxFilters is not null)
             {
-                postHashFilters.Add(incomingTxFilter);
+                postHashFilters.AddRange(incomingTxFilters);
             }
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
+            postHashFilters.Add(new BlobProofsTxFilter());
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -206,6 +207,11 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
+
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
+            _blobTransactions.GetBucketSnapshot(filterToReadyTx
+                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                : null);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
@@ -234,8 +240,49 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
+        public bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
+            => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
+
+        public bool TryGetPendingBlobCellMetadata(
+            Hash256 hash,
+            out BlobCellMask availableMask,
+            out int blobCount,
+            out int materializationWork) =>
+            _blobTransactions.TryGetAvailableCellMetadata(
+                hash,
+                out availableMask,
+                out blobCount,
+                out materializationWork);
+
+        public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
+            => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
+
+        public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
+            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
+
+        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
+            MergeBlobCells(hash, cellMask, cells) == BlobCellMergeResult.Accepted;
+
+        public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
+        {
+            BlobCellMergeResult result = _blobTransactions.MergeCells(hash, cellMask, cells);
+            if (result != BlobCellMergeResult.Accepted)
+            {
+                return result;
+            }
+
+            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
+            {
+                _broadcaster.Broadcast(transaction, isPersistent: false);
+            }
+
+            return BlobCellMergeResult.Accepted;
+        }
+
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args) => AddPendingDelegations(args.Value);
+
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -580,6 +627,11 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    if (accepted == AcceptTxResult.IncompleteBlobData && tx.Hash is not null)
+                    {
+                        _hashCache.DeleteFromCurrentBlock(tx.Hash);
+                    }
+
                     Metrics.PendingTransactionsDiscarded++;
                 }
             }
@@ -588,7 +640,8 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (accepted != AcceptTxResult.Invalid)
+            if (accepted != AcceptTxResult.Invalid
+                && accepted != AcceptTxResult.InvalidBlobProofs)
             {
                 _retryCache.Received(tx.Hash!);
             }
@@ -608,7 +661,30 @@ namespace Nethermind.TxPool
                 AnnounceResult.Delayed :
                 _retryCache.Announced(hash, retryHandler);
 
-        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
+        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
+        {
+            if (!tx.SupportsBlobs)
+            {
+                return AcceptTxResult.Invalid;
+            }
+
+            TxFilteringState state = new(tx, _accounts);
+            _newHeadLock.EnterReadLock();
+            try
+            {
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, skipSamplingDeferredFilters: true);
+            }
+            finally
+            {
+                _newHeadLock.ExitReadLock();
+            }
+        }
+
+        private AcceptTxResult FilterTransactions(
+            Transaction tx,
+            TxHandlingOptions handlingOptions,
+            ref TxFilteringState state,
+            bool skipSamplingDeferredFilters = false)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
@@ -625,6 +701,12 @@ namespace Nethermind.TxPool
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
+                if (skipSamplingDeferredFilters
+                    && filters[i] is AlreadyKnownTxFilter or BlobProofsTxFilter)
+                {
+                    continue;
+                }
+
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
@@ -811,7 +893,6 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // evict all following txs to prevent nonce gaps between blob tx
                 evictNextTxs |= tx.SupportsBlobs;
             }
         }
@@ -906,6 +987,21 @@ namespace Nethermind.TxPool
             || _blobTransactions.TryGetValue(hash, out transaction)
             || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
+        public bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        {
+            if ((_transactions.TryGetValue(hash, out transaction)
+                || _blobTransactions.TryGetValueWithoutBlobs(hash.ValueHash256, out transaction)
+                || _broadcaster.TryGetPersistentTx(hash, out transaction))
+                && transaction is not null)
+            {
+                transaction = BlobTransactionPayload.Elide(transaction);
+                return true;
+            }
+
+            transaction = default;
+            return false;
+        }
+
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
             _blobTransactions.TryGetValue(hash, out blobTransaction);
 
@@ -971,6 +1067,8 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
 
+        public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
+
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
         public event EventHandler<TxEventArgs>? RemovedPending;
@@ -988,6 +1086,7 @@ namespace Nethermind.TxPool
             _headBlocksChannel.Writer.Complete();
             _transactions.Inserted -= OnInsertedTx;
             _transactions.Removed -= OnRemovedTx;
+            (_blobTransactions as IDisposable)?.Dispose();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

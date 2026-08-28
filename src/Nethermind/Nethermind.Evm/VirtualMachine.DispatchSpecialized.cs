@@ -80,13 +80,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #if DEBUG
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
-        if (ReturnData is byte[] data)
-        {
-            return new CallResult(data, null);
-        }
-        else if (ReturnData is VmState<TGasPolicy> state)
+        // A nested frame is the common outcome here, and it is the cheaper test: an array `isinst` needs
+        // the general helper, while a class one has a specialized fast path. Order them accordingly.
+        if (ReturnData is VmState<TGasPolicy> state)
         {
             return new CallResult(state);
+        }
+        else if (ReturnData is byte[] data)
+        {
+            return new CallResult(data, null);
         }
         return new CallResult(ReturnDataBuffer, null);
 

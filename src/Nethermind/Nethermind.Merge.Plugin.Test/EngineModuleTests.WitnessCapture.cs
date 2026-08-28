@@ -14,6 +14,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -721,8 +722,16 @@ public partial class EngineModuleTests
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
-        await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+
+        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
+            h => chain.TxPool.TxPoolHeadChanged += h,
+            h => chain.TxPool.TxPoolHeadChanged -= h,
+            b => b.Hash == payload.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
+        await txPoolHeadWait;
     }
 
     /// <summary>
@@ -757,9 +766,8 @@ public partial class EngineModuleTests
     /// <paramref name="expectedTxCount"/> transactions.
     /// </summary>
     /// <remarks>
-    /// Callers must pass the number of transactions they submitted: the first block improvement can complete
-    /// before the tx pool has made them selectable, and a wait keyed only on the parent hash would then hand
-    /// back the empty payload.
+    /// Callers must pass what they submitted: the first improvement can complete before the tx pool has made
+    /// those transactions selectable, and a parent-only wait would then hand back the empty payload.
     /// </remarks>
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
         BuildAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount = 0)

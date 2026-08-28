@@ -2517,7 +2517,7 @@ namespace Nethermind.TxPool.Test
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
-                incomingTxFilter,
+                incomingTxFilter is null ? null : [incomingTxFilter],
                 new HeadTxValidator(),
                 thereIsPriorityContract);
         }

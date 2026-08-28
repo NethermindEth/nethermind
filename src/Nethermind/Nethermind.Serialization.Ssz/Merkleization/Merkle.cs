@@ -82,16 +82,18 @@ public static partial class Merkle
             return;
         }
 
-        int rightChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        ReadOnlySpan<UInt256> leftChunks = chunks[rightChunkCount..];
-        UInt256 left = UInt256.Zero;
-        if (!leftChunks.IsEmpty)
+        // The `numLeaves`-sized subtree is the left child; the remaining chunks recurse into the right.
+        int subtreeChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        Merkleize(out UInt256 subtree, chunks[..subtreeChunkCount], numLeaves);
+
+        ReadOnlySpan<UInt256> remainingChunks = chunks[subtreeChunkCount..];
+        UInt256 continuation = UInt256.Zero;
+        if (!remainingChunks.IsEmpty)
         {
-            MerkleizeProgressive(out left, leftChunks, checked(numLeaves * 4));
+            MerkleizeProgressive(out continuation, remainingChunks, checked(numLeaves * 4));
         }
 
-        Merkleize(out UInt256 right, chunks[..rightChunkCount], numLeaves);
-        root = HashConcatenation(left, right, 0);
+        root = HashConcatenation(subtree, continuation, 0);
     }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)

@@ -43,6 +43,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Nethermind.History;
 using Nethermind.Init.Modules;
 
@@ -164,13 +165,11 @@ public abstract partial class BaseEngineModuleTests
         /// <paramref name="minTransactions"/> transactions.
         /// </summary>
         /// <remarks>
-        /// The payload service publishes an initial empty block for a parent and only then improves it, so a wait
-        /// matching on the parent hash alone is satisfied by the first improvement even when that improvement is
-        /// still empty. Callers that submitted transactions must therefore pass <paramref name="minTransactions"/>;
-        /// otherwise <c>engine_getPayload*</c> races the tx pool (whose head processing is asynchronous) and can
-        /// return the empty block. Improvements are monotonic — each new context is seeded with the previous best
-        /// block — so once an improvement carrying N transactions is observed, the payload keeps at least N.
+        /// The payload service publishes an empty block for a parent before improving it, so a parent-only wait is
+        /// satisfied by that empty improvement; callers that submitted transactions must pass a minimum.
         /// </remarks>
+        /// <param name="parentHash">The required parent hash, or <see langword="null"/> to match any parent.</param>
+        /// <param name="minTransactions">The minimum transaction count, or zero to impose no transaction requirement.</param>
         public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
                 b => (parentHash is null || b.Header.ParentHash == parentHash)
@@ -216,6 +215,8 @@ public abstract partial class BaseEngineModuleTests
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
+
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
 
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
@@ -276,13 +277,15 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
                 blocksConfig,
                 LogManager,
-                targetAdjustedGasLimitCalculator);
+                targetAdjustedGasLimitCalculator,
+                InclusionListTxSource);
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
