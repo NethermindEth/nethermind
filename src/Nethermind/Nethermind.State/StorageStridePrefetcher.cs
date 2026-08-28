@@ -30,13 +30,20 @@ namespace Nethermind.State;
 /// write layers. Warming is best-effort throughout: readers swallow failures and the pattern
 /// detector simply disengages on mismatch.
 /// </para>
+/// <para>
+/// All of this prefetcher's readers drive the single tree the factory returns, so the backend's read
+/// path must be safe to enter from several threads at once. That is what
+/// <see cref="IWorldStateScopeProvider.SupportsConcurrentScopes"/> gates engagement on: the flat
+/// snapshot read path qualifies, its storage-trie cross-check does not.
+/// </para>
 /// </remarks>
 internal sealed class StorageStridePrefetcher(
     Func<IWorldStateScopeProvider.IStorageTree> treeFactory,
     SeqlockCache<StorageCell, byte[]> cache,
     Address address,
     CancellationToken token,
-    int readerConcurrency) : IDisposable
+    int readerConcurrency,
+    Func<bool> tryReserveEngagement) : IDisposable
 {
     /// <summary>On-pattern reads required before readers start.</summary>
     private const int EngageRunLength = 8;
@@ -58,6 +65,7 @@ internal sealed class StorageStridePrefetcher(
     private readonly Address _address = address;
     private readonly CancellationToken _token = token;
     private readonly int _readerConcurrency = readerConcurrency;
+    private readonly Func<bool> _tryReserveEngagement = tryReserveEngagement;
 
     private IWorldStateScopeProvider.IStorageTree? _tree;
 
@@ -71,6 +79,7 @@ internal sealed class StorageStridePrefetcher(
     private long _consumed;
     private volatile bool _engaged;
     private volatile bool _broken;
+    private int _publishing;
     private Task[]? _readers;
 
     /// <summary>Feeds a consumer read into the detector; engages or advances the readers.</summary>
@@ -121,11 +130,28 @@ internal sealed class StorageStridePrefetcher(
 
     private void Engage(in UInt256 index)
     {
-        if (_token.IsCancellationRequested)
+        // The owner's engagement budget is the only bound on how much work one block can trigger here:
+        // every engagement creates reader threads and issues up to MaxLookahead speculative reads.
+        if (_token.IsCancellationRequested || !_tryReserveEngagement())
         {
             _broken = true;
             return;
         }
+
+        _engaged = true;
+        _engageIndex = index;
+        // Engagement runs on the block-processing thread inside an EVM storage read, so nothing that
+        // can block belongs here: opening the readers' isolated scope (the flat backend retries a
+        // snapshot-bundle gather to a deadline) happens on the starter thread instead. That thread
+        // owns the readers, so joining it joins them all.
+        _readers = [Task.Factory.StartNew(StartReaders, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)];
+    }
+
+    private void StartReaders()
+    {
+        // Teardown may already have run: opening the readers' scope now would only buy a scope for the
+        // teardown continuation to dispose.
+        if (_broken || _token.IsCancellationRequested) return;
 
         try
         {
@@ -133,19 +159,24 @@ internal sealed class StorageStridePrefetcher(
         }
         catch (Exception)
         {
-            // Engagement runs inside an EVM storage read; a tree-creation failure must degrade
-            // to "no prefetch", never fault block processing.
+            // Best-effort warming: a tree-creation failure (a scope racing block-end teardown, a
+            // backend that cannot open one) only means no prefetch for this contract.
             _broken = true;
             return;
         }
 
-        _engaged = true;
-        _engageIndex = index;
-        _readers = new Task[_readerConcurrency];
-        for (int t = 0; t < _readerConcurrency; t++)
+        if (_broken || _token.IsCancellationRequested) return;
+
+        // This thread is one of the readers; the others run alongside it, and waiting on them here is
+        // what lets this single task stand in for the whole reader set.
+        Task[] readers = new Task[_readerConcurrency - 1];
+        for (int t = 0; t < readers.Length; t++)
         {
-            _readers[t] = Task.Factory.StartNew(ReadAhead, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            readers[t] = Task.Factory.StartNew(ReadAhead, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
+
+        ReadAhead();
+        Task.WaitAll(readers);
     }
 
     private void ReadAhead()
@@ -171,12 +202,19 @@ internal sealed class StorageStridePrefetcher(
                 UInt256 offset = (UInt256)(ulong)(k + 1) * _stride;
                 UInt256 index = _engageIndex + offset;
                 byte[] value = _tree!.Get(in index);
-                // The cancelled token marks the end of the block these parent-state values are
-                // valid for; re-check after the read so a straggler cannot repopulate a cache
-                // that is being handed to the next block.
-                if (_broken || _token.IsCancellationRequested) return;
-                StorageCell cell = new(_address, in index);
-                _cache.Set(in cell, value);
+                // The cancelled token marks the end of the block these parent-state values are valid
+                // for; re-check under the publish latch so a straggler cannot repopulate a cache that
+                // is being handed to the next block.
+                if (!TryBeginPublish()) return;
+                try
+                {
+                    StorageCell cell = new(_address, in index);
+                    _cache.Set(in cell, value);
+                }
+                finally
+                {
+                    EndPublish();
+                }
             }
             catch (Exception)
             {
@@ -186,6 +224,25 @@ internal sealed class StorageStridePrefetcher(
             }
         }
     }
+
+    /// <summary>Enters the publish section, returning <c>false</c> when publishing is already sealed.</summary>
+    /// <remarks>
+    /// Teardown seals publishing and then waits for this section to drain, so a reader that gets past
+    /// the check here always completes its cache write before the owner hands the cache to the next
+    /// block — closing the window between the check and the write. Internal only so the tests can
+    /// assert that seal; production enters it from <see cref="ReadAhead"/>.
+    /// </remarks>
+    internal bool TryBeginPublish()
+    {
+        Interlocked.Increment(ref _publishing);
+        if (!_broken && !_token.IsCancellationRequested) return true;
+
+        EndPublish();
+        return false;
+    }
+
+    /// <inheritdoc cref="TryBeginPublish"/>
+    internal void EndPublish() => Interlocked.Decrement(ref _publishing);
 
     /// <summary>True once a sustained off-pattern run has disengaged this prefetcher.</summary>
     /// <remarks>
@@ -205,9 +262,22 @@ internal sealed class StorageStridePrefetcher(
     internal Task[] StopAndGetReaders()
     {
         _broken = true;
+        // Full fence between the seal and the drain: without it a reader's latch increment and this
+        // thread's read of it can each miss the other (store-buffered), letting a reader publish
+        // parent state into the next block's cache after teardown returned. The wait only covers
+        // threads inside the publish section — a cache write, never an in-flight _tree.Get.
+        Interlocked.MemoryBarrier();
+        SpinWait spin = new();
+        while (Volatile.Read(ref _publishing) != 0) spin.SpinOnce();
+
         return _readers ?? [];
     }
 
     /// <summary>Signals readers to stop and blocks until they exit.</summary>
+    /// <remarks>
+    /// Test-only. Production tears down through <see cref="StopAndGetReaders"/> and joins the returned
+    /// tasks in the background, because a synchronous join at block-end would stall the hot path on an
+    /// in-flight storage read; nothing leaks by not disposing, as this type owns no unmanaged state.
+    /// </remarks>
     public void Dispose() => Task.WaitAll(StopAndGetReaders());
 }

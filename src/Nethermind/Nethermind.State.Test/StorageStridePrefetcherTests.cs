@@ -24,7 +24,8 @@ public class StorageStridePrefetcherTests
             new SeqlockCache<StorageCell, byte[]>(),
             TestItem.AddressA,
             cts.Token,
-            readerConcurrency: 4);
+            readerConcurrency: 4,
+            tryReserveEngagement: static () => true);
 
         Read(3);
         Read(2);
@@ -58,7 +59,8 @@ public class StorageStridePrefetcherTests
             cache,
             TestItem.AddressA,
             cts.Token,
-            readerConcurrency: 4);
+            readerConcurrency: 4,
+            tryReserveEngagement: static () => true);
 
         UInt256 index = 1;
         UInt256 stride = 1;
@@ -83,7 +85,8 @@ public class StorageStridePrefetcherTests
             new SeqlockCache<StorageCell, byte[]>(),
             TestItem.AddressA,
             cts.Token,
-            readerConcurrency: 4);
+            readerConcurrency: 4,
+            tryReserveEngagement: static () => true);
 
         UInt256 stride = 10;
         UInt256 start = UInt256.MaxValue - (stride * 7);
@@ -95,6 +98,81 @@ public class StorageStridePrefetcherTests
 
         Thread.Sleep(50);
         cts.Cancel();
+
+        Assert.DoesNotThrow(() => prefetcher.Dispose());
+    }
+
+    [Test]
+    public void StopAndGetReaders_WaitsForAnInFlightPublish()
+    {
+        using CancellationTokenSource cts = new();
+        StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            new SeqlockCache<StorageCell, byte[]>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 1,
+            tryReserveEngagement: static () => true);
+
+        // Stand in for a reader that has passed the seal check and is about to write to the cache.
+        // Teardown must not return until that write has landed: the owner clears the cache for the
+        // next block right after, so a write completing later publishes parent state into it.
+        Assert.That(prefetcher.TryBeginPublish(), Is.True);
+
+        Thread teardown = new(() => prefetcher.StopAndGetReaders()) { IsBackground = true };
+        teardown.Start();
+
+        Assert.That(SpinWait.SpinUntil(() => prefetcher.IsBroken, 5000), Is.True, "teardown never started");
+        Assert.That(teardown.Join(200), Is.False, "teardown returned while a publish was in flight");
+
+        prefetcher.EndPublish();
+        Assert.That(teardown.Join(5000), Is.True);
+        Assert.That(prefetcher.TryBeginPublish(), Is.False, "publishing must stay sealed after teardown");
+    }
+
+    [Test]
+    public void OnRead_DoesNotEngageWithoutAnEngagementBudget()
+    {
+        using CancellationTokenSource cts = new();
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        int engageAttempts = 0;
+        int treeCreations = 0;
+        StorageStridePrefetcher prefetcher = new(
+            () =>
+            {
+                Interlocked.Increment(ref treeCreations);
+                return EmptyStorageTree.Instance;
+            },
+            cache,
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 4,
+            tryReserveEngagement: () =>
+            {
+                engageAttempts++;
+                return false;
+            });
+
+        UInt256 index = 1;
+        UInt256 stride = 1;
+        for (int i = 0; i < 32; i++, index += stride)
+        {
+            prefetcher.OnRead(in index);
+        }
+
+        Thread.Sleep(50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // A refused engagement disengages the detector for good, so the block's budget cannot be
+            // re-probed once per read for the rest of the scan.
+            Assert.That(engageAttempts, Is.EqualTo(1));
+            Assert.That(prefetcher.IsBroken, Is.True);
+            Assert.That(treeCreations, Is.Zero, "no reader may start without an engagement budget");
+        }
+
+        StorageCell farCell = new(TestItem.AddressA, 64);
+        Assert.That(cache.TryGetValue(in farCell, out _), Is.False);
 
         Assert.DoesNotThrow(() => prefetcher.Dispose());
     }

@@ -87,6 +87,13 @@ public class PrewarmerScopeProvider(
         // reader threads.
         private const int MaxStridePrefetchers = 4;
 
+        // Total engagements allowed per scope. The concurrency cap alone bounds nothing over a whole
+        // block: every break frees a slot, so a block crafted from contracts that each stride briefly
+        // and then stop could otherwise engage without limit, each engagement creating reader threads
+        // and issuing up to a full lookahead window of speculative reads. Bounding engagements also
+        // bounds _stridePrefetchers, which keeps a broken entry until its readers are joined.
+        private const int MaxStridePrefetcherEngagements = 2 * MaxStridePrefetchers;
+
         // Reader threads issue blocking, latency-bound storage reads, so we run more than one per
         // core (2×CPU) to hide individual RocksDB fetch latency, capped at 32. The budget is shared
         // across the concurrently engaged prefetchers rather than granted per prefetcher, so a block
@@ -99,6 +106,7 @@ public class PrewarmerScopeProvider(
         private readonly CancellationTokenSource _prefetchCts = new();
         private readonly Lock _prefetchScopeLock = new();
         private IWorldStateScopeProvider.IScope? _prefetchScope;
+        private int _stridePrefetcherEngagements;
 
         public void Dispose()
         {
@@ -109,7 +117,8 @@ public class PrewarmerScopeProvider(
             // Unregister before teardown so no new warm hints target a disposing scope.
             if (!isPrewarmer) preBlockCaches.MainScope = null;
 
-            // Joins reader threads and releases their private scope.
+            // Seals the readers out of the shared cache; joining them and releasing their private
+            // scope happens in the background.
             StopStridePrefetchers();
             _prefetchCts.Dispose();
 
@@ -135,11 +144,16 @@ public class PrewarmerScopeProvider(
             AddressAsKey key = address;
             if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
 
+            // With the block's engagement budget spent no new contract can engage, so adding detectors
+            // would only grow the map — and the scan below — for nothing.
+            if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetcherEngagements) return null;
+
             // Only prefetchers still reading count against the cap. A broken one has stopped issuing
             // reads but stays in the map so its (exited) readers are still joined before the shared
             // scope is disposed; excluding it here keeps a broken slot from locking out a later
-            // striding contract for the rest of the block. Scanning is bounded (≤ MaxStridePrefetchers
-            // live entries plus a few broken ones) and only runs once the fast Count check trips.
+            // striding contract for the rest of the block. The engagement budget is what bounds the
+            // map (≤ MaxStridePrefetchers live entries plus one per engagement), so this scan stays
+            // small; it only runs once the fast Count check trips.
             if (_stridePrefetchers.Count >= MaxStridePrefetchers && CountActiveStridePrefetchers() >= MaxStridePrefetchers)
             {
                 return null;
@@ -154,12 +168,16 @@ public class PrewarmerScopeProvider(
             return _stridePrefetchers.GetOrAdd(
                 key,
                 k => new StorageStridePrefetcher(
-                    () => GetOrCreatePrefetchScope().CreateStorageTree(k.Value),
+                    () => CreatePrefetchStorageTree(k.Value),
                     storageCache,
                     k.Value,
                     _prefetchCts.Token,
-                    PrefetcherReaderConcurrency));
+                    PrefetcherReaderConcurrency,
+                    TryReserveStridePrefetcherEngagement));
         }
+
+        private bool TryReserveStridePrefetcherEngagement() =>
+            Interlocked.Increment(ref _stridePrefetcherEngagements) <= MaxStridePrefetcherEngagements;
 
         private int CountActiveStridePrefetchers()
         {
@@ -171,13 +189,26 @@ public class PrewarmerScopeProvider(
             return active;
         }
 
-        private IWorldStateScopeProvider.IScope GetOrCreatePrefetchScope()
+        /// <summary>Opens the prefetch readers' shared scope on first use and creates a storage tree on it.</summary>
+        /// <remarks>
+        /// Reached only from an engaging prefetcher's own thread, never from the block-processing
+        /// thread: opening a scope can block (the flat backend retries a snapshot-bundle gather to a
+        /// deadline) and engagement is triggered from inside an EVM storage read.
+        /// <para>
+        /// The lock covers both the lazy open and <c>CreateStorageTree</c>: prefetchers share one scope
+        /// and a scope memoizes its storage trees in a non-concurrent dictionary. Nothing on the
+        /// block-processing thread takes it — the teardown continuation runs in the background — so it
+        /// can never hold up block processing.
+        /// </para>
+        /// </remarks>
+        private IWorldStateScopeProvider.IStorageTree CreatePrefetchStorageTree(Address address)
         {
             lock (_prefetchScopeLock)
             {
                 // A private, never-flushed LocalMetrics: the block's own instance is single-threaded
                 // by contract, while this scope is shared by the concurrent prefetch readers.
-                return _prefetchScope ??= baseProvider.BeginScope(baseBlock, new LocalMetrics());
+                _prefetchScope ??= baseProvider.BeginScope(baseBlock, new LocalMetrics());
+                return _prefetchScope.CreateStorageTree(address);
             }
         }
 
@@ -230,57 +261,56 @@ public class PrewarmerScopeProvider(
             // to repopulate the cache after the block moves on; only the reader join is deferred.
             _prefetchCts.Cancel();
 
+            if (_stridePrefetchers.IsEmpty) return;
+
             List<Task>? readers = null;
-            if (!_stridePrefetchers.IsEmpty)
+            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
             {
-                foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+                Task[] prefetcherReaders = kv.Value.StopAndGetReaders();
+                if (prefetcherReaders.Length > 0)
                 {
-                    Task[] prefetcherReaders = kv.Value.StopAndGetReaders();
-                    if (prefetcherReaders.Length > 0)
-                    {
-                        (readers ??= []).AddRange(prefetcherReaders);
-                    }
+                    (readers ??= []).AddRange(prefetcherReaders);
                 }
-                _stridePrefetchers.Clear();
             }
+            _stridePrefetchers.Clear();
 
-            IWorldStateScopeProvider.IScope? scope;
-            lock (_prefetchScopeLock)
-            {
-                scope = _prefetchScope;
-                _prefetchScope = null;
-            }
+            // Nothing engaged, so no shared scope was opened either: only an engaged prefetcher's own
+            // thread opens one, and engaging always registers that thread here.
+            if (readers is null) return;
 
-            if (scope is null) return; // Nothing engaged: no private scope was ever opened.
-
-            if (readers is null)
-            {
-                // Readers already exited (or none were live); disposing the scope cannot race them.
-                scope.Dispose();
-                return;
-            }
-
-            // Join the readers and release their private scope on a background continuation. A
+            // Join the readers and release their shared scope on a background continuation. A
             // synchronous join would stall block-end on the tail latency of an in-flight,
-            // uncancellable storage read — exactly on the striding blocks this targets. The token is
-            // already cancelled, so no straggler can publish into the next block's cache; deferring
-            // only delays disposing the readers' isolated scope until they have all returned.
-            IWorldStateScopeProvider.IScope scopeToDispose = scope;
+            // uncancellable storage read — exactly on the striding blocks this targets. Publishing is
+            // already sealed (StopAndGetReaders drained the publish latch), so no straggler can reach
+            // the next block's cache; deferring only delays disposing the readers' isolated scope
+            // until they have all returned.
             Task.WhenAll(readers).ContinueWith(
-                static (_, state) =>
+                static (joined, state) =>
                 {
+                    // Readers swallow their own failures, so a fault here is unexpected; observe it
+                    // rather than let it surface as an unobserved task exception.
+                    _ = joined.Exception;
+
+                    ScopeWrapper self = (ScopeWrapper)state!;
+                    IWorldStateScopeProvider.IScope? scope;
+                    lock (self._prefetchScopeLock)
+                    {
+                        scope = self._prefetchScope;
+                        self._prefetchScope = null;
+                    }
+
                     try
                     {
-                        ((IWorldStateScopeProvider.IScope)state!).Dispose();
+                        scope?.Dispose();
                     }
-                    catch
+                    catch (Exception e)
                     {
-                        // Best-effort: the isolated scope is reached here only after all its readers
-                        // returned. A disposal that races provider/harness teardown must not surface
-                        // as a faulted, unobserved task.
+                        // The scope is reached here only after all its readers returned; a disposal
+                        // racing provider/harness teardown must not fault this continuation.
+                        if (self._logger.IsDebug) self._logger.Debug($"Failed to dispose the stride prefetch scope. {e}");
                     }
                 },
-                scopeToDispose,
+                this,
                 CancellationToken.None,
                 TaskContinuationOptions.None,
                 TaskScheduler.Default);

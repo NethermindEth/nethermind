@@ -341,6 +341,29 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>Waits for the stride prefetcher to publish <paramref name="expected"/> at <paramref name="cell"/>.</summary>
+    /// <remarks>
+    /// Polls a plain condition rather than retrying an assertion: engagement is asynchronous (the readers'
+    /// scope is opened off the block-processing thread), and NUnit records a failed <c>Assert.That</c>
+    /// against the test even when a later retry succeeds.
+    /// </remarks>
+    private static async Task<bool> WaitForWarmedSlot(PreBlockCaches caches, StorageCell cell, byte[] expected)
+    {
+        for (int attempt = 0; attempt < 400; attempt++)
+        {
+            if (caches.StorageCache.TryGetValue(in cell, out byte[] value) &&
+                value is not null &&
+                value.AsSpan().SequenceEqual(expected))
+            {
+                return true;
+            }
+
+            await Task.Delay(10);
+        }
+
+        return false;
+    }
+
     [Test]
     public async Task Test_StridePrefetcher_WarmsAheadOfStridingReads()
     {
@@ -394,11 +417,8 @@ public class ScopeProviderTests(bool useFlat)
             StorageCell farCell = new(TestItem.AddressA, start + (stride * 200));
             if (useFlat)
             {
-                await Eventually.AssertAsync<AssertionException>(() =>
-                {
-                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
-                    Assert.That(value, Is.EqualTo(new byte[] { 201, 1 }));
-                }, attempts: 200, delayMilliseconds: 10);
+                Assert.That(await WaitForWarmedSlot(caches, farCell, [201, 1]), Is.True,
+                    "Stride prefetcher did not warm the far slot.");
             }
             else
             {
@@ -466,11 +486,8 @@ public class ScopeProviderTests(bool useFlat)
             // prefetcher never engages, so this positive check is flat-only.
             if (useFlat)
             {
-                await Eventually.AssertAsync<AssertionException>(() =>
-                {
-                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
-                    Assert.That(value, Is.EqualTo(parentValue));
-                }, attempts: 200, delayMilliseconds: 10);
+                Assert.That(await WaitForWarmedSlot(caches, farCell, parentValue), Is.True,
+                    "Stride prefetcher did not warm the far slot with parent state.");
             }
 
             // The executing block rewrites the slot the reader already cached; StartWriteBatch stops
