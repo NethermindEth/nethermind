@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -170,6 +171,19 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
+
+    [Test]
+    public void Chiado_discovery_bootnodes_are_correct()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("chiado.json");
+        Assert.That(chainSpec.Bootnodes, Is.Not.Empty);
+
+        foreach (NetworkNode bootnode in chainSpec.Bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+        }
+    }
 
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);

@@ -74,6 +74,53 @@ public class DiscoveryAppTests
     }
 
     [Test]
+    public void Should_use_configured_enr_bootnode()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: null, udpPort: 9001);
+
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enr.ToString())], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes, Has.Count.EqualTo(1));
+            Assert.That(bootNodes[0].Id, Is.EqualTo(TestItem.PrivateKeyA.PublicKey));
+            Assert.That(bootNodes[0].Port, Is.Zero);
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
+            Assert.That(bootNodes[0].Enr?.ToString(), Is.EqualTo(enr.ToString()));
+        }
+    }
+
+    [Test]
+    public void Should_select_listener_family_from_configured_enr_bootnode()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: 30304,
+            configureExtras: record =>
+            {
+                record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                record.SetEntry(new Tcp6Entry(30305));
+                record.SetEntry(new Udp6Entry(30306));
+            });
+
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes(
+            [new NetworkNode(enr.ToString())],
+            LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>(),
+            IPAddress.Parse("2001:db8::5"));
+
+        Assert.That(bootNodes, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes[0].Host, Is.EqualTo("2001:db8::1"));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(30305));
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(30306));
+        }
+    }
+
+    [Test]
     public void Should_restore_persisted_enr_using_listener_address_family()
     {
         NodeRecord record = CreateAsymmetricDualStackRecord();
@@ -91,6 +138,16 @@ public class DiscoveryAppTests
             Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30304));
             Assert.That(restoredNode.Enr.GetHex(), Is.EqualTo(record.GetHex()));
         }
+    }
+
+    [Test]
+    public void Should_ignore_configured_enr_without_udp_endpoint()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: null);
+
+        List<Node> bootNodes = DiscoveryApp.CreateBootNodes([new NetworkNode(enr.ToString())], LimboLogs.Instance.GetClassLogger<DiscoveryAppTests>());
+
+        Assert.That(bootNodes, Is.Empty);
     }
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>

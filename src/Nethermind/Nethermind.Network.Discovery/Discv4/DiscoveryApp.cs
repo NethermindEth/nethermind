@@ -130,23 +130,30 @@ public class DiscoveryApp : KademliaDiscoveryApp
         for (int i = 0; i < configuredBootnodes.Length; i++)
         {
             NetworkNode bootnode = configuredBootnodes[i];
-            if (!bootnode.IsEnode)
+            Node? node;
+            if (bootnode.IsEnr)
             {
-                if (logger.IsTrace) logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
-                continue;
+                bool created = localIp is null
+                    ? Node.TryFromDiscoveryEnr(bootnode.Enr, out node)
+                    : CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                        bootnode.Enr,
+                        localIp,
+                        preferredEndpoint: null,
+                        out node);
+                if (!created || node is null)
+                {
+                    if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode}");
+                    continue;
+                }
             }
-
-            if (bootnode.NodeId is null)
+            else
             {
-                logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
-                continue;
-            }
-
-            Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
-            if (localIp is not null && !CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
-            {
-                if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
-                continue;
+                node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
+                if (localIp is not null && !CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+                {
+                    if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
+                    continue;
+                }
             }
 
             bootNodes.Add(node);
