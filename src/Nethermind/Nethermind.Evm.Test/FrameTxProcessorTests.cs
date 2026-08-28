@@ -2596,7 +2596,24 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
-        processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        // Neither direction the root comparison can see on its own: a transaction that stopped
+        // committing, and a rollback that stopped happening, both leave the two arms matching.
+        Assert.That(result.TransactionExecuted, Is.True, "the scenario must commit, or the two arms match trivially");
+        if (rollback is RipemdRollback.PostTxFailure)
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the touching frame must succeed, or its touch never reaches the POST_TX rollback");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the POST_TX assertion must fail, or nothing is rolled back");
+        }
+        else
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the touching frame must be rolled back, or the touch is never at risk");
+        }
 
         // The processor commits without roots, as it does per transaction in block processing; the
         // block-level commit is what flushes the EIP-158 deletions into the trie.
