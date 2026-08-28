@@ -326,6 +326,11 @@ public class DebugRpcModule(
         for (int i = 0; i < receiptForRpc.Length; i++)
         {
             ReceiptForRpc receipt = receiptForRpc[i];
+            if (receipt is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail($"Receipt at index {i} is null", ErrorCodes.InvalidParams));
+            }
+
             if (receipt.Type == TxType.FrameTx && receipt.FrameReceipts is not { Length: > 0 })
             {
                 return Task.FromResult(ResultWrapper<bool>.Fail(

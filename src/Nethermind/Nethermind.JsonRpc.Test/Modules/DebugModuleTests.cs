@@ -479,6 +479,17 @@ public class DebugModuleTests
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
+    // A null array entry is a caller error too: it otherwise dereferences into an internal error.
+    [Test]
+    public async Task DebugInsertReceipts_NullReceiptEntry_IsRejectedAndNotStored()
+    {
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [null!]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
     // The counterpart: the check must not stand between a well-formed frame receipt and the bridge.
     [Test]
     public async Task DebugInsertReceipts_FrameTxReceiptWithFrames_ReachesTheBridge()
