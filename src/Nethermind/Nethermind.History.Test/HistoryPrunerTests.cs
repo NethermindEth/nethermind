@@ -19,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -302,10 +303,12 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
-    [TestCase(null, false)]
-    [TestCase(5000UL, false)]
-    [TestCase(1UL, true)]
-    public void SetDeletePointerToOldestBlock_holds_until_the_ancient_bodies_feed_reaches_its_barrier(ulong? bodyPointer, bool searches)
+    [TestCase(null, false, false)]
+    [TestCase(5000UL, false, false)]
+    [TestCase(1UL, true, false)]
+    [TestCase(7000UL, false, true)]
+    [TestCase(6800UL, true, true)]
+    public void SetDeletePointerToOldestBlock_holds_until_the_ancient_bodies_feed_reaches_its_barrier(ulong? bodyPointer, bool searches, bool rollingPruning)
     {
         TestMemDb metadataDb = new();
         if (bodyPointer is not null)
@@ -315,7 +318,14 @@ public class HistoryPrunerTests
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
         IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        // With rolling pruning the bodies feed stops at the cutoff (head 10_000 - 100 epochs = 6_800),
+        // so a pointer parked there means the download finished, not that it is still descending.
+        IHistoryConfig historyConfig = rollingPruning
+            ? new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = 0 }
+            : new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 };
 
         HistoryPruner pruner = new(
             blockTree,
@@ -325,7 +335,7 @@ public class HistoryPrunerTests
             chainLevels,
             Substitute.For<IHeaderStore>(),
             dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 },
+            historyConfig,
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true },
             new ProcessExitSource(new()),

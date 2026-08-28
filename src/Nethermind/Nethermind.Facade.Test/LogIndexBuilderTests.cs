@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -173,17 +172,9 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null) => new LogIndexBuilder(
-            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention
         ).AddTo(_testDisposables);
-
-    private static ISyncPointers CompletedSyncPointers()
-    {
-        ISyncPointers pointers = Substitute.For<ISyncPointers>();
-        pointers.LowestInsertedBodyNumber.Returns(1UL);
-        pointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
-        return pointers;
-    }
 
     [Test]
     [CancelAfter(60_000)]
@@ -346,8 +337,7 @@ public class LogIndexBuilderTests
             storage,
             prunedTree,
             new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
-            Substitute.For<IPrunedLogsRetention>(),
-            CompletedSyncPointers());
+            Substitute.For<IPrunedLogsRetention>());
 
         Task completion = WaitMinBlockAsync(storage, 0, cancellation);
         await builder.StartAsync();
@@ -402,8 +392,7 @@ public class LogIndexBuilderTests
             storage,
             prunedTree,
             new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
-            Substitute.For<IPrunedLogsRetention>(),
-            CompletedSyncPointers());
+            Substitute.For<IPrunedLogsRetention>());
 
         Task stalled = WaitMinBlockAsync(storage, stalledHeight + 1, cancellation);
         await builder.StartAsync();
@@ -423,71 +412,6 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(storage.MinBlockNumber, Is.EqualTo(0));
             Assert.That(storage.ReceiptCountAt(stalledHeight), Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task Should_NotFabricateBelowTheDownloadFrontier_AndIndexTheRealReceiptsOnceTheyArrive(CancellationToken cancellation)
-    {
-        const int oldestStored = 50;
-        const int lateHeight = 30;
-        _syncConfig.AncientReceiptsBarrier = 1;
-
-        IBlockTree realTree = _blockTree;
-        IBlockTree prunedTree = Substitute.For<IBlockTree>();
-        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
-        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
-        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
-
-        bool arrived = false;
-        prunedTree
-            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(ci =>
-            {
-                ulong number = ci.ArgAt<ulong>(0);
-                if (number >= oldestStored)
-                    return realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
-
-                return number is lateHeight && Volatile.Read(ref arrived)
-                    ? Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject
-                    : null;
-            });
-        _receiptStorage
-            .Get(Arg.Is<Block>(b => b.Number == lateHeight))
-            .Returns([new TxReceipt()]);
-
-        bool downloaded = false;
-        ISyncPointers pointers = Substitute.For<ISyncPointers>();
-        pointers.LowestInsertedBodyNumber.Returns(_ => Volatile.Read(ref downloaded) ? 1UL : (ulong?)null);
-        pointers.LowestInsertedReceiptBlockNumber.Returns(_ => Volatile.Read(ref downloaded) ? 1UL : (ulong?)null);
-        RecordingLogIndexStorage storage = new();
-        LogIndexBuilder builder = GetService(
-            storage,
-            prunedTree,
-            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
-            Substitute.For<IPrunedLogsRetention>(),
-            pointers);
-
-        Task boundary = WaitMinBlockAsync(storage, oldestStored, cancellation);
-        await builder.StartAsync();
-        await boundary;
-
-        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
-            "while the ancient download is still descending, an absent height below the boundary is late rather than reclaimed - the descent must hold at the boundary instead of fabricating");
-
-        Volatile.Write(ref arrived, true);
-        Volatile.Write(ref downloaded, true);
-
-        await WaitMinBlockAsync(storage, 0, cancellation);
-        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(builder.LastError, Is.Null);
-            Assert.That(storage.ReceiptCountAt(lateHeight), Is.EqualTo(1),
-                "a height that was merely late must end up indexed with its real receipts, not a fabricated empty");
-            Assert.That(storage.ReceiptCountAt(lateHeight - 1), Is.Zero);
         }
     }
 

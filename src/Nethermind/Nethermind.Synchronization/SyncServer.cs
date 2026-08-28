@@ -53,6 +53,7 @@ namespace Nethermind.Synchronization
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly IHistoryPruner _historyPruner;
+        private readonly ISyncPointers? _syncPointers;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -80,8 +81,10 @@ namespace Nethermind.Synchronization
             IGossipPolicy gossipPolicy,
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISyncPointers? syncPointers = null)
         {
+            _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -481,7 +484,9 @@ namespace Nethermind.Synchronization
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
             if (earliest is null || earliest.Number > latestBlock.Number)
             {
-                ulong floor = ulong.Min(_blockTree.GetLowestBlock(), latestBlock.Number);
+                // While the pruner defers its discovery, the body pointer is what is actually on disk.
+                ulong floor = ulong.Max(_blockTree.GetLowestBlock(), _syncPointers?.LowestInsertedBodyNumber ?? 0);
+                floor = ulong.Min(floor, latestBlock.Number);
                 earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
             }
 

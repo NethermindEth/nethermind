@@ -363,8 +363,10 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
+        // The bodies feed stops at max(config barrier, pruning cutoff), not at the config barrier alone.
+        ulong barrier = ulong.Max(_syncConfig.AncientBodiesBarrierCalc, CutoffBlockNumber ?? 0);
         byte[]? pointer = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
-        return pointer is null || new RlpReader(pointer).DecodeULong() > _syncConfig.AncientBodiesBarrierCalc;
+        return pointer is null || new RlpReader(pointer).DecodeULong() > barrier;
     }
 
     /// <summary>
