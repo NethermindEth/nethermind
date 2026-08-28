@@ -150,14 +150,15 @@ public class LightTxDecoderTests
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
 
+        // The exception type is what tells a layout change apart from one corrupt record, so the summary names it.
+        string expectedType = Assert.Catch(() => LightTxDecoder.Decode(EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx))))!.GetType().Name;
+
         List<LightTransaction> loaded = [.. new BlobTxStorage(database, new OneLoggerLogManager(new ILogger(logger))).GetAll()];
 
         Assert.That(loaded, Is.Empty);
-        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString())));
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString()) && text.Contains(expectedType)));
     }
 
-    // GetAllValues does not promise an order, and none is needed: an unskipped decode failure would escape the
-    // enumeration from either position.
     private static readonly byte[] UnreadableRecordKey = [0];
     private static readonly byte[] ReadableRecordKey = [1];
 

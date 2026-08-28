@@ -107,7 +107,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     /// The blob pool is a cache, so a record this build cannot read — one left by another build's record layout —
     /// is skipped rather than allowed to abort the load and with it node startup. A record layout change makes
     /// every record unreadable at once, so the skipped records are reported as a single summary rather than one
-    /// line each; the first failure is quoted so a lone corrupt record is still diagnosable.
+    /// line each; the first failure's type and message are quoted, since the type is what tells a layout change
+    /// apart from a lone corrupt record.
     /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
@@ -125,7 +126,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 catch (Exception e)
                 {
                     skipped++;
-                    firstFailure ??= e.Message;
+                    firstFailure ??= $"{e.GetType().Name}: {e.Message}";
                     continue;
                 }
 
