@@ -358,8 +358,8 @@ Bursts of pushes collapse to the newest (concurrency group `rpc-bench-master-bas
 are kept:
 
 - the staged aggregates (`summary.json`, `resources.json`, `timings.*`, per-class metrics) plus a
-  `baseline.json` (image, date, run) go to the Actions cache under
-  `rpc-corpus-baseline-<arch>-<corpus>-<run id>`; a PR run restores the newest key with that prefix;
+  `baseline.json` (image, date, run, cell fingerprint) go to the Actions cache under
+  `rpc-corpus-baseline-<arch>-<corpus>-<cell>-<run id>`; a PR run restores the newest key with that prefix;
 - the parity responses stay on the runner under `<expb data dir>/rpc-bench/baselines/<corpus>.json.gz`
   (response bytes never leave the box); a PR run compares against them (`corpus_baseline: use`).
 

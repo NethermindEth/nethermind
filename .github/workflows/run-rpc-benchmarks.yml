@@ -171,6 +171,8 @@ jobs:
       arch: ${{ steps.resolve.outputs.arch }}
       baseline_mode: ${{ steps.resolve.outputs.baseline_mode }}
       corpus_key: ${{ steps.resolve.outputs.corpus_key }}
+      cell_key: ${{ steps.resolve.outputs.cell_key }}
+      cell_shape: ${{ steps.resolve.outputs.cell_shape }}
       ref_image_ref: ${{ steps.resolve.outputs.ref_image_ref }}
       db_source: ${{ steps.resolve.outputs.db_source }}
       ref_db_source: ${{ steps.resolve.outputs.ref_db_source }}
@@ -409,6 +411,18 @@ jobs:
           [[ "${cpu_max_freq_khz}" =~ ^[0-9]*$ ]] || fail "node_config.cpu_max_freq_khz must be an integer (kHz), got '${cpu_max_freq_khz}'."
           [[ "${cpu_max_freq_khz}" != "0" ]] || cpu_max_freq_khz=""
 
+          # The cached master baseline is only comparable to a run whose cell has the same shape: everything that sizes,
+          # paces or configures the measurement, plus the node's CPU/memory envelope. Folded into the cache key below, so
+          # a run that changes any of it simply misses and measures master in this job instead of comparing across cells.
+          # `clients` and `corpus_baseline` are excluded on purpose (they differ between a baseline run and a PR run),
+          # and so is `rounds`, which repeats the cell rather than reshaping it.
+          cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
+                      "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","node_env_vars",
+                      "ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes","timings_rps","vus"]'
+          cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}"             --arg freq "${cpu_max_freq_khz}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}"             '{cell: ($t | with_entries(select(.key as $k | $keys | index($k)))),
+              node: {cpu_max_freq_khz: $freq, cpuset: $cpuset, memory: $memory}}')"
+          cell_key="$(printf '%s' "${cell_shape}" | sha256sum | cut -c1-12)"
+
           # These paths reach root-privileged mount/rm on the runner.
           validate_runner_path() {
             [[ "$2" =~ ^/[A-Za-z0-9._/-]+$ && "$2" != *..* ]] || fail "$1 '$2' must be an absolute path of [A-Za-z0-9._/-] without '..'."
@@ -444,6 +458,8 @@ jobs:
             echo "arch=${arch}"
             echo "baseline_mode=${baseline_mode}"
             echo "corpus_key=${corpus_key}"
+            echo "cell_key=${cell_key}"
+            echo "cell_shape=${cell_shape}"
             echo "ref_image_ref=${ref_image_ref}"
             echo "db_source=${db_source}"
             echo "ref_db_source=${ref_db_source}"
@@ -470,6 +486,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
           echo "Resolved: preset=${preset} tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} cpu_max_freq_khz=${cpu_max_freq_khz:-none}"
           echo "tool_config: ${tool_config}"
+          echo "cell ${cell_key}: ${cell_shape}"
 
   benchmark:
     needs: [resolve]
@@ -753,14 +770,15 @@ jobs:
         run: NODE_ENV_FILE="${STATE_DIR}/node-reference.env" ./scripts/rpc-bench/stop-node.sh
 
       # The newest cache under the prefix is the last master push's baseline; the primary key never matches on purpose.
+      # The prefix carries the cell fingerprint, so a run that reshaped the cell misses it and measures master in this job.
       - name: Restore the cached master baseline
         id: baseline-cache
         if: needs.resolve.outputs.baseline_mode == 'cache'
         uses: actions/cache/restore@v4
         with:
           path: rpcbench-corpus-baseline
-          key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-lookup-${{ github.run_id }}
-          restore-keys: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-
+          key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ needs.resolve.outputs.cell_key }}-lookup-${{ github.run_id }}
+          restore-keys: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ needs.resolve.outputs.cell_key }}-
 
       - name: Run RPC sweep
         id: run-sweep
@@ -783,7 +801,7 @@ jobs:
           set -euo pipefail
           get() { echo "${TOOL_CONFIG}" | jq -r "$1 // empty"; }
           if [[ "${BASELINE_MODE}" == "cache" && "${BASELINE_CACHE_HIT}" != "true" ]]; then
-            echo "::warning::no cached master baseline for this arch/corpus yet — running ${BASELINE_FALLBACK_IMAGE} in this job instead"
+            echo "::warning::no cached master baseline for this arch/corpus/cell shape — running ${BASELINE_FALLBACK_IMAGE} in this job instead"
             TOOL_CONFIG="$(echo "${TOOL_CONFIG}" | jq -c --arg m "${BASELINE_FALLBACK_IMAGE}" '.clients = "nethermind@\($m) " + .clients | .corpus_baseline = "none"')"
           fi
           getb() { echo "${TOOL_CONFIG}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
@@ -963,6 +981,8 @@ jobs:
           IMAGE: ${{ needs.resolve.outputs.image_ref }}
           ARCH: ${{ needs.resolve.outputs.arch }}
           CORPUS_KEY: ${{ needs.resolve.outputs.corpus_key }}
+          CELL_KEY: ${{ needs.resolve.outputs.cell_key }}
+          CELL_SHAPE: ${{ needs.resolve.outputs.cell_shape }}
           STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
           BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -971,9 +991,11 @@ jobs:
           source scripts/rpc-bench/lib.sh
           rm -rf "${BASELINE_DIR}"; mkdir -p "${BASELINE_DIR}"
           cp -r "${STAGE_ROOT}/." "${BASELINE_DIR}/"
+          # cell_key is what the cache key carries; cell spells the same fingerprint out, so a later miss can be explained.
           jq -n --arg label "$(arm_label nethermind "${IMAGE}")" --arg image "${IMAGE}" --arg arch "${ARCH}" --arg corpus "${CORPUS_KEY}" \
+            --arg cell_key "${CELL_KEY}" --argjson cell "${CELL_SHAPE}" \
             --arg date "$(date -u +%Y-%m-%dT%H:%MZ)" --arg run "${RUN_URL}" \
-            '{label: $label, image: $image, arch: $arch, corpus_key: $corpus, date: $date, run_url: $run}' > "${BASELINE_DIR}/baseline.json"
+            '{label: $label, image: $image, arch: $arch, corpus_key: $corpus, cell_key: $cell_key, cell: $cell, date: $date, run_url: $run}' > "${BASELINE_DIR}/baseline.json"
           cp "${BASELINE_DIR}/baseline.json" "${STAGE_ROOT}/baseline.json"
           cat "${BASELINE_DIR}/baseline.json"
 
@@ -982,7 +1004,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: rpcbench-corpus-baseline
-          key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ github.run_id }}
+          key: rpc-corpus-baseline-${{ needs.resolve.outputs.arch }}-${{ needs.resolve.outputs.corpus_key }}-${{ needs.resolve.outputs.cell_key }}-${{ github.run_id }}
 
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'

@@ -231,9 +231,12 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 The default preset (`benchmark_tool=corpus-ab`) compares `docker_image` against the **cached master baseline**:
 after every master push that changes `src/Nethermind/**`, `Publish Docker image` completes and a `workflow_run`
 trigger records `nethermind:master-<sha7>` alone on the corpus (`corpus-baseline` preset) — its aggregates go to the
-GitHub Actions cache (`rpc-corpus-baseline-<arch>-<corpus>-<run id>`, newest wins), its parity responses stay on the
-runner under `<expb data dir>/rpc-bench/baselines/`. A PR run therefore executes only the PR image and the comment
-names the master image, date and run the baseline came from; with no cache yet it runs `nethermind:master` itself.
+GitHub Actions cache (`rpc-corpus-baseline-<arch>-<corpus>-<cell>-<run id>`, newest wins), its parity responses stay
+on the runner under `<expb data dir>/rpc-bench/baselines/`. A PR run therefore executes only the PR image and the
+comment names the master image, date and run the baseline came from; with no cache yet it runs `nethermind:master`
+itself. `<cell>` is a hash of every knob that shapes the cell (request count, warm-up, seed, replay passes, rps,
+`node_env_vars`, cpu cap/cpuset/memory, …), so changing any of them misses the cache on purpose and the run measures
+master in-job — never compare a cached baseline across cell shapes.
 `baseline_image=<image>` forces a real two-arm A/B in one job; `rounds=2` (A B B A) adds an in-run A/A control at
 twice the cost — the frequency cap and seeded requests make single rounds land within ~1–1.5%, so 1 is the default.
 More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrides the derived list.
