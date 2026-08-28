@@ -111,7 +111,20 @@ namespace Nethermind.Network
                 if (removed.Node?.Id is not null)
                 {
                     handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
+                    bool hasOtherSyncPeer = false;
+                    foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
+                    {
+                        if (pair.Value.Node?.Id == handlerKey)
+                        {
+                            hasOtherSyncPeer = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasOtherSyncPeer)
+                    {
+                        _txPool.RemovePeer(handlerKey);
+                    }
                 }
             }
 

@@ -201,7 +201,15 @@ namespace Nethermind.Network.Rlpx
             ConnectOutcome outcome = await TryConnect(node, endpoint);
             if (outcome != ConnectOutcome.Connected && node.V6Address is { } alternate && !alternate.Equals(endpoint))
             {
-                if (!ShouldContact(alternate.Address, node.IsStatic || node.IsBootnode))
+                if (!System.Net.Sockets.Socket.OSSupportsIPv6)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - IPv6 not supported");
+                }
+                else if (alternate.Address.IsSpecialUseAddress)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - special use");
+                }
+                else if (!ShouldContact(alternate.Address, node.IsStatic || node.IsBootnode))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipping alternate endpoint {alternate} for {node:s} - filtered");
                 }

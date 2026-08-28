@@ -1198,7 +1198,7 @@ namespace Nethermind.Network
                     bool isStaleSession = activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId;
                     if (isStaleSession)
                     {
-                        if (session.BestStateReached < SessionState.Initialized)
+                        if (session.Direction == ConnectionDirection.Out && session.BestStateReached == SessionState.New)
                         {
                             if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
                             return;

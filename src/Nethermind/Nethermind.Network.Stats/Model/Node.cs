@@ -67,7 +67,7 @@ namespace Nethermind.Stats.Model
         /// next dial can retry the other family.
         /// </summary>
 #nullable enable annotations
-        public IPEndPoint? V6Address { get; private set; }
+        public IPEndPoint? V6Address { get; internal set; }
 #nullable restore
 
         /// <summary>
@@ -386,7 +386,7 @@ namespace Nethermind.Stats.Model
             }
             else if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
-                if (enr.TryGetV4Endpoint(out IPEndPoint v4Endpoint))
+                if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
                 {
                     V6Address = v4Endpoint;
                 }
@@ -427,14 +427,6 @@ namespace Nethermind.Stats.Model
                 {
                     DiscoveryPort = expectedDiscovery.Port;
                 }
-                else
-                {
-                    ClearDiscoveryEndpoint();
-                }
-            }
-            else
-            {
-                ClearDiscoveryEndpoint();
             }
         }
 

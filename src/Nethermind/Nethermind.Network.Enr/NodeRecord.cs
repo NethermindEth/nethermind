@@ -145,7 +145,7 @@ public class NodeRecord
     /// </summary>
     /// <param name="endpoint">The IPv4 TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
     /// <returns><see langword="true"/> when a usable IPv4 TCP endpoint is present; otherwise <see langword="false"/>.</returns>
-    public bool TryGetV4Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+    public bool TryGetTcp4Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
         => TryGetEndpoint(EnrContentKey.Ip, EnrContentKey.Tcp, out endpoint);
 
     /// <summary>
