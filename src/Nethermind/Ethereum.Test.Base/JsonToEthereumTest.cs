@@ -481,7 +481,8 @@ namespace Ethereum.Test.Base
 
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(name);
+            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
@@ -490,7 +491,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

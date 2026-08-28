@@ -113,4 +113,23 @@ public class PayloadAttributesValidateTests
 
         Assert.That(attrs.GetVersion(), Is.EqualTo(expectedVersion));
     }
+
+    [Test]
+    public void Validate_accepts_zero_target_gas_limit()
+    {
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+        attrs.TargetGasLimit = 0;
+
+        PayloadAttributesValidationResult result = attrs.Validate(
+            MakeSpecProvider(isAmsterdam: true),
+            PayloadAttributesVersions.V4,
+            out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
+            Assert.That(error, Is.Null);
+        }
+    }
+
 }

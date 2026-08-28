@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -2146,10 +2145,7 @@ namespace Nethermind.TxPool.Test
         public void SubmitTx_FrameTransactionWithAMisplacedExpiryFrame_IsRejectedOnItsPlacement()
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
-            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-            BinaryPrimitives.WriteUInt64BigEndian(expiryData, 1_000);
-            Transaction frameTx = SelfVerifyFrameTx(
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, expiryData));
+            Transaction frameTx = SelfVerifyFrameTx(FrameTxTestFrames.ExpiryAt(deadline: 1_000));
 
             // The placement verdict, not the one the trailing VERIFY frame would otherwise earn.
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
@@ -2775,10 +2771,8 @@ namespace Nethermind.TxPool.Test
 
             if (deadline is not null)
             {
-                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
                 // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
-                frames.Insert(0, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+                frames.Insert(0, FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 50_000));
             }
 
             Transaction tx = new()

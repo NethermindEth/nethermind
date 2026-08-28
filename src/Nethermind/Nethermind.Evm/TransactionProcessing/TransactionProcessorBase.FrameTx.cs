@@ -851,12 +851,34 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
         stateGasUsed = 0;
-
-        // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
+
+        // create_evm_from_frame: the frame pays its target's access out of its own gas limit before the
+        // balance check and before dispatch, resolving the target's code being what dispatch is. The charge
+        // is therefore uniform across contract code, delegated code and the default code. Precompiles are
+        // checked explicitly because EIP-2929 pre-warms them without the shared tracker holding them.
+        ulong entryExecution = spec.UseHotAndColdStorage
+            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget)
+                ? TGasPolicy.GetColdAccountAccessCost(spec)
+                : Eip8038Constants.WarmAccess)
+            : 0;
+        // Checked before the balance and deadness queries below, which are themselves recorded reads: a frame
+        // that cannot afford its target's access must leave the target untouched, as the CALL path does.
+        if (entryExecution > frame.ExecutionGasLimit)
+        {
+            gasUsed = frame.ExecutionGasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        // The charge prices reading the target's account, so the read is recorded even where the frame
+        // fails before dispatch would have read the code: EIP-7928 does not unwind a reverted frame's reads.
+        WorldState.AddAccountRead(resolvedTarget);
+
+        // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame,
+        // consuming the gas charged so far.
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
         {
-            gasUsed = 0;
+            gasUsed = entryExecution;
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
@@ -866,23 +888,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
-        }
+            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, entryExecution, out gasUsed);
+            // The entry charge warms the target on this path too; a failing default-code frame is a failing
+            // VERIFY frame, which invalidates the transaction, so there is nothing to unwind.
+            if (spec.UseHotAndColdStorage && !defaultCode.IsError && !defaultCode.ShouldRevert)
+            {
+                accessTracker.WarmUp(resolvedTarget);
+            }
 
-        // create_evm_from_frame: the frame pays its target's access, plus the state cost of a value
-        // transfer reviving a dead target, out of its own gas limit. Precompiles are checked explicitly
-        // because EIP-2929 pre-warms them without the shared tracker holding them.
-        ulong entryExecution = spec.UseHotAndColdStorage
-            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget)
-                ? TGasPolicy.GetColdAccountAccessCost(spec)
-                : Eip8038Constants.WarmAccess)
-            : 0;
-        // Checked before the deadness query below, which is itself a recorded read: a frame that cannot
-        // afford its target's access must leave the target untouched, as the CALL path does.
-        if (entryExecution > frame.ExecutionGasLimit)
-        {
-            gasUsed = frame.ExecutionGasLimit;
-            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            return defaultCode;
         }
 
         // The revival charge has no pre-EIP-8037 form here: EIP-8141 is only composed onto specs carrying it.
@@ -1004,13 +1018,18 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     /// <summary>
     /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
-    /// SECP256K1 signature signed by the target, then APPROVE. No gas beyond the EIP-8250 surcharge.
+    /// SECP256K1 signature signed by the target, then APPROVE. The default code draws no execution gas of
+    /// its own beyond the EIP-8250 surcharge; the frame's entry access charge is already accounted for.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// </summary>
-    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, out ulong gasUsed)
+    /// <param name="entryExecution">
+    /// Execution gas the frame already owes for its target's access, charged before dispatch and known to
+    /// fit within <see cref="TxFrame.ExecutionGasLimit"/>.
+    /// </param>
+    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, ulong entryExecution, out ulong gasUsed)
     {
-        gasUsed = 0;
+        gasUsed = entryExecution;
 
         byte allowedScope = frame.AllowedApproveScope;
         if (allowedScope == 0)
@@ -1037,13 +1056,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             && frameContext.NonceKeys is { } nonceKeys)
         {
             ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
-            if (surcharge > frame.ExecutionGasLimit)
+            if (surcharge > frame.ExecutionGasLimit - entryExecution)
             {
                 gasUsed = frame.ExecutionGasLimit;
                 return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
             }
 
-            gasUsed = surcharge;
+            gasUsed = entryExecution + surcharge;
         }
 
         frameContext.ApprovalScopeSignal = allowedScope;
