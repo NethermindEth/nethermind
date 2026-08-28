@@ -709,7 +709,7 @@ public class Eip8141ScenarioTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
             AssertStorage(Sender, 0, approvalLength, "the approval region must become the frame's return data");
             AssertStorage(Sender, 1, (UInt256)marker, "the return data must be the memory the region names");
         }
