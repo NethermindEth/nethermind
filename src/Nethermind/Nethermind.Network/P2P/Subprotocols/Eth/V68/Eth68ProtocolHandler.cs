@@ -282,8 +282,7 @@ public class Eth68ProtocolHandler(ISession session,
         _ => false,
     };
 
-    /// <remarks>Reads the same header as the ingress filter, so the gate opens exactly when the pool
-    /// starts accepting frame transactions.</remarks>
+    /// <remarks>Reads the same head spec as the ingress filter, so the gate opens exactly when the pool starts accepting frame txs.</remarks>
     private bool FrameTxsEnabled() => specProvider.GetCurrentHeadSpec().IsEip8141Enabled;
 
     /// <remarks>Blob-sized for every type-6 while blobs are enabled: tracks NotSupportedTxFilter, since an

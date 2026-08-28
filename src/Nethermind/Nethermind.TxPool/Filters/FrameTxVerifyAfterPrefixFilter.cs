@@ -6,16 +6,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Rejects an EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix.
-/// </summary>
-/// <remarks>
-/// A public-mempool rule, not a validity rule: a block carrying such a transaction stays valid. A VERIFY frame that
-/// reverts invalidates the whole transaction, so one placed past the prefix lets state the pool never validated
-/// invalidate a pooled transaction. Must run after <see cref="MalformedTxFilter"/>, which resolves the sender the
-/// prefix grammar is matched against, and before <see cref="FrameTxSignatureFilter"/>, since a structural verdict
-/// needs no elliptic-curve work.
-/// </remarks>
+/// <summary>Rejects an EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix. A propagation bound, not a validity rule.</summary>
+/// <remarks>A VERIFY revert invalidates the whole transaction, so one past the prefix invalidates on state the pool never validated.</remarks>
 internal sealed class FrameTxVerifyAfterPrefixFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)

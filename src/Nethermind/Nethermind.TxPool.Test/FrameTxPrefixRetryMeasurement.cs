@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,24 +23,19 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// Measures how long a frame transaction that can never be included stays in the pool, and therefore how many
-/// times a block producer re-executes its validation prefix without ever collecting a fee for it.
-/// </summary>
-/// <remarks>
-/// The mempool prices a frame transaction's validation prefix statically, so admission itself is cheap; the
-/// unpaid work is paid by the producer, once per block-production attempt, for as long as the transaction is
-/// pending. That product, not the per-transaction budget, is the exposure <c>MAX_VERIFY_GAS</c> would have to
-/// bound. Results are appended as <c>key=value</c> lines to the path in <c>FRAME_RETRY_OUT</c> (default
-/// <c>frame-prefix-retry.txt</c> under the temp directory), because the test runner swallows console writers.
-/// </remarks>
+/// <summary>Measures how long an unincludable frame transaction stays pending, and therefore how many times a
+/// block producer re-executes its validation prefix without ever collecting a fee for it.</summary>
+/// <remarks>Results go to <c>FRAME_RETRY_OUT</c> (default <c>frame-prefix-retry.txt</c> under the temp
+/// directory), because the test runner swallows console writers.</remarks>
 [Explicit("measurement harness")]
 public class FrameTxPrefixRetryMeasurement
 {
     private const int HeadAdvances = 20;
+    private const ulong SampleFrameGas = 50_000;
     private const ulong FirstHeadNumber = 10_000_000;
     private const ulong SlotSeconds = 12;
     private const ulong GenesisTimestamp = 1_700_000_000;
@@ -71,11 +65,8 @@ public class FrameTxPrefixRetryMeasurement
         _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue);
     }
 
-    /// <summary>
-    /// Positive control: a frame transaction that <em>is</em> included leaves the pool on the very next head.
-    /// Without it, the retention case below cannot distinguish "the pool keeps it" from "the harness never
-    /// advanced the head".
-    /// </summary>
+    /// <summary>Positive control: without it the retention case below cannot tell "the pool keeps it" from
+    /// "the harness never advanced the head".</summary>
     [Test]
     public async Task Control_included_frame_transaction_leaves_the_pool()
     {
@@ -89,9 +80,6 @@ public class FrameTxPrefixRetryMeasurement
         Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "an included frame transaction was not evicted");
     }
 
-    /// <summary>
-    /// A frame transaction no producer can include, and which carries no expiry deadline, survives every head.
-    /// </summary>
     [Test]
     public async Task Unincludable_frame_transaction_survives_every_head()
     {
@@ -113,10 +101,7 @@ public class FrameTxPrefixRetryMeasurement
         Assert.That(survived, Is.EqualTo(HeadAdvances), "the pool dropped an unincludable frame transaction on its own");
     }
 
-    /// <summary>
-    /// The same transaction with an expiry deadline leaves the pool on the first head past that deadline,
-    /// which bounds the same exposure in blocks rather than in gas.
-    /// </summary>
+    /// <summary>An expiry deadline bounds the same exposure in blocks rather than in gas.</summary>
     [Test]
     public async Task Expiry_deadline_bounds_the_number_of_attempts()
     {
@@ -162,27 +147,13 @@ public class FrameTxPrefixRetryMeasurement
             .WithTransactions(transactions)
             .TestObject;
 
-    /// <remarks>
-    /// The prefix approves execution and payment from the sender, which is the layout EIP-8141 recognizes for
-    /// the public mempool, so the sample is priced by the same path a real one would be.
-    /// </remarks>
+    /// <remarks>The prefix approves execution and payment from the sender — the layout EIP-8141 recognizes for
+    /// the public mempool — so the sample is priced by the same path a real one would be.</remarks>
     private Transaction BuildFrameTx(ulong nonce, ulong? deadline)
     {
-        TxFrame[] frames;
-        if (deadline is null)
-        {
-            frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)];
-        }
-        else
-        {
-            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-            frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData),
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default),
-            ];
-        }
+        TxFrame[] frames = deadline is null
+            ? [SelfVerify(SampleFrameGas)]
+            : [ExpiryAt(deadline.Value, SampleFrameGas), SelfVerify(SampleFrameGas)];
 
         Transaction tx = new()
         {

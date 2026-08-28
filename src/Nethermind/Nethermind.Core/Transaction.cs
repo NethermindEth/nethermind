@@ -56,10 +56,8 @@ namespace Nethermind.Core
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public bool SupportsFrames => Type.SupportsFrames();
 
-        /// <summary>
-        /// EIP-8141: whether this transaction carries blobs (a type-3 blob tx or a blob-carrying type-6 frame tx)
-        /// for pool routing and blob-gas accounting; the instance-level counterpart to <see cref="SupportsBlobs"/>.
-        /// </summary>
+        /// <summary>Whether this instance actually carries blobs, unlike <see cref="SupportsBlobs"/>, which is a
+        /// capability of the transaction type: an EIP-8141 frame transaction may carry blobs too.</summary>
         public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
@@ -85,13 +83,8 @@ namespace Nethermind.Core
         public bool IsMessageCall => To is not null;
 
         /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
-        /// <remarks>
-        /// An EIP-8141 frame transaction carries no <c>to</c> field at all, which makes
-        /// <see cref="IsContractCreation"/> true for it, yet it creates nothing at the top level: a
-        /// creation happens inside a deploy frame through <c>CREATE</c>, at an address the frame
-        /// determines. Reporting a top-level contract address for one names an account that was never
-        /// created, and every site that derives it independently invents a different address.
-        /// </remarks>
+        /// <remarks>An EIP-8141 frame transaction has no <c>to</c> field, making <see cref="IsContractCreation"/> true
+        /// for it, yet it creates nothing at the top level — any creation happens inside a deploy frame.</remarks>
         public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
@@ -247,6 +240,16 @@ namespace Nethermind.Core
         /// </summary>
         public Address? PayerAddress { get; set; }
 
+        /// <summary>
+        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
+        /// transaction leaves the pool. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>
+        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
+        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
+        /// </remarks>
+        public UInt256? PayerExposure { get; set; }
+
         /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
         /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
         public virtual ulong? PersistedExpiryDeadline => null;
@@ -267,20 +270,12 @@ namespace Nethermind.Core
         /// signing payload from one carrying an empty reference list.</remarks>
         public RecentRootReference[]? RecentRootReferences { get; set; }
 
-        /// <summary>
-        /// The zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, which EIP-8141
-        /// prices in addition to frame and signature data. In-memory only (not encoded).
-        /// </summary>
-        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
-        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        /// <summary>Zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, priced in addition to
+        /// frame and signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
         public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
-        /// <summary>
-        /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
-        /// frame and signature data — EIP-8250's <c>nonce_calldata</c>. In-memory only (not encoded).
-        /// </summary>
-        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
-        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
+        /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
         public (int ZeroBytes, int NonZeroBytes) FrameCalldataStats { get; set; }
 
         /// <summary>
@@ -408,6 +403,7 @@ namespace Nethermind.Core
                 obj.Frames = default;
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
+                obj.PayerExposure = default;
                 obj.NonceKeys = default;
                 obj.RecentRootReferences = default;
                 obj.ReferenceCalldataStats = default;
@@ -463,6 +459,7 @@ namespace Nethermind.Core
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
+            tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
             tx.RecentRootReferences = RecentRootReferences;
             tx.ReferenceCalldataStats = ReferenceCalldataStats;

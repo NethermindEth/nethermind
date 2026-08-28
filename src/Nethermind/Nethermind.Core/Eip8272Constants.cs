@@ -21,10 +21,7 @@ public static class Eip8272Constants
     public static readonly Address RecentRootAddress = new("0x0000000000000000000000000000000000008272");
 
     /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>
-    /// <remarks>
-    /// Empty: <c>RECENT_ROOT_CODE</c> is TBD in the spec, and the predeploy is only a protocol-managed
-    /// storage namespace — recent-root entries are written natively and no call enters the account — so
-    /// empty code keeps the activation state minimal.
-    /// </remarks>
+    /// <remarks>Empty: <c>RECENT_ROOT_CODE</c> is TBD in the spec, and the predeploy is only a protocol-managed
+    /// storage namespace that no call ever enters.</remarks>
     public static ReadOnlyMemory<byte> RecentRootCode { get; } = ReadOnlyMemory<byte>.Empty;
 }

@@ -136,11 +136,6 @@ env:
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, where the FOCIL archive
   # means Amsterdam plus EIP-7805; nothing inside a fixture separates the two, so the lane names the
   # fork it means through the runner's --forkAlias.
-  # Not in any caller's test_types yet. Execution semantics are settled - the same archive run as
-  # blockTest is 214/214 - but 69 of the engine cases still fail on error identity alone: 64 expect a
-  # TYPE_6_* TransactionException that MapValidationErrorsToEestExceptions has no entry for, and the
-  # rest are rejected under a different exception than the fixture names. Run it with
-  # workflow_dispatch, and add frameTest to the callers once that mapping lands.
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.1.0' }}
   # Cases the pinned release ships under that scope. Asserted so a scope resolving to nothing fails
   # rather than reporting a clean run of no tests.

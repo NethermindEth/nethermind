@@ -334,6 +334,8 @@ namespace Nethermind.Core.Specs
         /// EIP-8272: recent roots for frame transactions.
         /// </summary>
         bool IsEip8272Enabled { get; }
+
+        /// <summary>
         /// EIP-7906: transaction outcome assertions.
         /// </summary>
         bool IsEip7906Enabled { get; }

@@ -6,11 +6,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
@@ -136,13 +136,8 @@ public class FrameTxSimulationFilterTests
         return state;
     }
 
-    private static Transaction SelfVerifyTx(Address sender) => new()
-    {
-        Type = TxType.FrameTx,
-        SenderAddress = sender,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sender, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
-    };
+    private static Transaction SelfVerifyTx(Address sender) =>
+        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {

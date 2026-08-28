@@ -11,23 +11,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-/// <summary>
-/// Decodes the EIP-8141 frame transaction payload
-/// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c> — in its EIP-8250 form <c>nonce</c> is replaced
-/// by <c>nonce_keys, nonce_seq</c> — optionally followed by the EIP-8272 <c>recent_root_references</c> list.
-/// The sender is explicit in the payload — there is no envelope ECDSA signature and no recovery.
-/// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
-/// bytes of canonical-hash (empty msg) entries are elided.
-/// </summary>
-/// <remarks>The wrapper and plain forms are disjoint: a wrapper opens with a list, a plain payload
-/// with the <c>chain_id</c> scalar.</remarks>
+/// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
+/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
+/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
+/// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
+/// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
 {
-    // EIP8141-DEVIATION: the spec does not cap the signature count (calldata cost bounds it in
-    // practice); this guards against pathological allocations before gas is charged. Propose an
-    // explicit MAX_SIGNATURES to the spec.
+    // EIP8141-DEVIATION: the spec does not cap the signature count; guards allocation before gas is charged.
     private const int SignaturesDecodeCap = 1024;
 
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
@@ -124,8 +116,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
-        // Nethermind transaction type (codebase-wide ChainId width).
+        // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
@@ -141,9 +132,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
         transaction.RecentRootReferences = null;
 
-        // A frame transaction has no gas_limit field; expose the sum of frame gas limits as GasLimit
-        // so pre-execution consumers (GasLimitTxFilter, block-production selection, pre-warming) that
-        // read it do not treat the transaction as ~0 gas. The processor derives the real tx_gas_limit.
+        // A frame transaction has no gas_limit field; GasLimit carries the sum of frame gas limits so pre-execution
+        // consumers reading it do not see ~0 gas. The processor derives the real tx_gas_limit.
         ulong gasLimit = 0;
         foreach (TxFrame frame in transaction.Frames)
         {
@@ -271,10 +261,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>'s <c>nonce_calldata</c> —
 /// <c>rlp(nonce_keys) || rlp(nonce_seq)</c>, the key sequence being absent on a plain-nonce transaction.
 /// </summary>
-/// <remarks>
-/// Shared by the payload encoder and the intrinsic-gas path, which prices exactly these bytes: pricing an
-/// independently written copy is what let the charge drift from the wire encoding.
-/// </remarks>
+/// <remarks>Shared by the payload encoder and the intrinsic-gas path, so the charge is priced off exactly the bytes
+/// the wire form carries.</remarks>
 public static class FrameTxNonceCalldata
 {
     private static readonly RlpLimit KeysCountLimit = RlpLimit.For<Transaction>(Eip8250Constants.MaxNonceKeys, nameof(Transaction.NonceKeys));
@@ -302,10 +290,8 @@ public static class FrameTxNonceCalldata
     }
 
     /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
-    /// <remarks>
-    /// Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire
-    /// bytes <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.
-    /// </remarks>
+    /// <remarks>Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire bytes
+    /// <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.</remarks>
     public static UInt256[] DecodeKeys(ref RlpReader decoderContext)
     {
         int contentLength = decoderContext.ReadSequenceLength();
@@ -344,14 +330,16 @@ public static class FrameTxNonceCalldata
         return contentLength;
     }
 
-    /// <summary>The zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, the split EIP-8141
-    /// calldata pricing needs. Measured off the encoded bytes rather than recomputed, so the charge cannot drift
-    /// from the wire encoding.</summary>
+    /// <summary>Zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, measured off the encoded
+    /// bytes so the EIP-8141 calldata charge cannot drift from the wire form.</summary>
     public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
     {
         int length = Length(transaction);
-        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
-        Span<byte> calldata = buffer[..length];
+        // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
+        // public: the keys can reach it from an RPC-built transaction the decoder never bounded.
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
+        Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
         Encode(transaction, ref writer);
         int zeros = calldata.CountZeros();
