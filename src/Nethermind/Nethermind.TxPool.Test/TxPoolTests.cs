@@ -756,7 +756,10 @@ namespace Nethermind.TxPool.Test
 
                 Interlocked.Increment(ref validationAttempts);
                 revalidationStarted.TrySetResult();
-                releaseRevalidation.Wait();
+                Assert.That(
+                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    "Timed out waiting to release fork revalidation.");
                 return new ValidationResult("fork rejection");
             });
 
@@ -884,7 +887,10 @@ namespace Nethermind.TxPool.Test
                     && ReferenceEquals(callInfo.Arg<IReleaseSpec>(), Osaka.Instance))
                 {
                     revalidationStarted.TrySetResult();
-                    releaseRevalidation.Wait();
+                    Assert.That(
+                        releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                        Is.True,
+                        "Timed out waiting to release fork revalidation.");
                 }
 
                 return ValidationResult.Success;
