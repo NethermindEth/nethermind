@@ -17,12 +17,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// The spec <c>validate_signature</c> matrix: every protocol-validated signature must verify before
-/// any frame executes. SECP256K1 recovers and compares against the resolved signer (explicit or
-/// tx.sender); ARBITRARY entries pass pre-flight (their witness is verified by frame code); P256
-/// checks the key-derived signer then verifies through the secp256r1 (P256VERIFY) precompile.
-/// </summary>
+/// <summary>The EIP-8141 <c>validate_signature</c> matrix: every protocol-validated signature must
+/// verify before any frame executes; ARBITRARY entries are left to frame code.</summary>
 [TestFixture]
 public class FrameTxSignatureValidatorTests
 {
@@ -73,7 +69,7 @@ public class FrameTxSignatureValidatorTests
         tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -94,7 +90,7 @@ public class FrameTxSignatureValidatorTests
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -110,8 +106,7 @@ public class FrameTxSignatureValidatorTests
     [Test]
     public void Validate_Secp256k1WithLegacy27RecoveryId_RejectedAsNonCanonical()
     {
-        // EIP8141-GAP: the v encoding is enforced strictly as a 0/1 recovery id so every
-        // signature has exactly one valid byte encoding; the legacy 27/28 form is rejected.
+        // EIP-8141 pins v as a 0/1 recovery id, so the legacy 27/28 form is rejected.
         Transaction tx = CreateFrameTx();
         TxFrameSignature canonical = Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address);
         byte[] legacyIdBytes = canonical.Signature.ToArray();
@@ -167,15 +162,14 @@ public class FrameTxSignatureValidatorTests
         ];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
     public void Validate_NonEmptyMsgShorterThanDigest_RejectedInsteadOfOverReading()
     {
-        // eth_call/estimateGas/simulate reach the validator with an unvalidated FrameTx, so a
-        // non-empty Msg that is not a 32-byte digest must be rejected here — feeding it to
-        // ValueHash256(span), which reads 32 bytes unchecked, would over-read the buffer.
+        // eth_call reaches the validator unvalidated, and ValueHash256(span) reads 32 bytes unchecked,
+        // so a short non-empty Msg would over-read.
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures =
         [
@@ -198,10 +192,35 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
+    public void Validate_SignerMismatchAndFailedVerification_ReportedDistinctly()
+    {
+        // A signer that does not match and a signature that does not verify are different rejections,
+        // and the EIP-8141 fixtures name them differently, so neither may borrow the other's message.
+        Transaction mismatched = CreateFrameTx();
+        mismatched.FrameSignatures = [Secp256k1Entry(mismatched, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
+
+        // Both arms are SECP256K1 so the pair guards the scheme the split changed. r = 5 clears the
+        // canonicality gate but is not a curve x-coordinate, so recovery is impossible and there is no
+        // recovered address to compare a signer against.
+        Transaction unverifiable = CreateFrameTx();
+        byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        raw[32] = 5; // r = 5
+        raw[64] = 1; // s = 1
+        unverifiable.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw)];
+
+        Assert.That(Validate(mismatched, out string? mismatchError), Is.False);
+        Assert.That(Validate(unverifiable, out string? verifyError), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatchError, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+            Assert.That(verifyError, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        }
+    }
+
+    [Test]
     public void Validate_P256SignerMismatchesPublicKey_ReturnsFalse()
     {
-        // The signer address must be keccak256(qx || qy)[12:] — checked even while verification
-        // itself is deferred. r/s are in canonical low-s range so the check reached is the signer one.
+        // The signer must be keccak256(qx || qy)[12:]; r/s are low-s so the signer check is what is reached.
         Transaction tx = CreateFrameTx();
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
         raw[31] = 1; // r = 1
@@ -256,8 +275,7 @@ public class FrameTxSignatureValidatorTests
     [Test]
     public void Validate_P256WithHighS_RejectedAsNonCanonical()
     {
-        // P256VERIFY accepts both s and N - s; the low-s gate must reject the high-s encoding so each
-        // signature has a single valid encoding (no tx-hash malleability).
+        // P256VERIFY accepts both s and N - s, so the low-s gate must reject the high-s encoding.
         using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         ECParameters pub = key.ExportParameters(includePrivateParameters: false);
         byte[] qx = Pad32(pub.Q.X!);
@@ -338,8 +356,8 @@ public class FrameTxSignatureValidatorTests
 
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {
-        // compute_sig_hash covers the signature entries (scheme/signer/msg) and elides only the
-        // raw bytes of canonical-hash entries, so the hash is computed with the entry installed.
+        // compute_sig_hash covers scheme/signer/msg and elides only the raw bytes, so the entry must be
+        // installed before hashing.
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);

@@ -1,37 +1,26 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using DotNetty.Buffers;
+using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
+using Snappier;
 
 namespace Nethermind.Network.Test.Rlpx;
 
 public class SnappyTests
 {
     private readonly string _uncompressedTestFileName = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", "block.rlp");
-
-    public class SnappyDecoderForTest : SnappyDecoder
-    {
-        public SnappyDecoderForTest()
-            : base(LimboTraceLogger.Instance)
-        {
-        }
-
-        public byte[] TestDecode(byte[] input)
-        {
-            List<object> result = [];
-            Decode(null, new Packet(input), result);
-            return ((Packet)result[0]).Data;
-        }
-    }
 
     public class ZeroSnappyEncoderForTest : ZeroSnappyEncoder
     {
@@ -50,17 +39,6 @@ public class SnappyTests
         public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
     }
 
-    [TestCase("block.go.snappy")]
-    [TestCase("block.py.snappy")]
-    public void Can_decompress_compressed_file(string compressedFileName)
-    {
-        SnappyDecoderForTest decoder = new();
-        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
-        byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", compressedFileName)));
-        byte[] uncompressedResult = decoder.TestDecode(compressed);
-        Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
-    }
-
     [Test]
     public void Can_load_block_rlp_test_file()
     {
@@ -76,6 +54,53 @@ public class SnappyTests
         Assert.That(bytes.Length, Is.GreaterThan(70 * MemorySizes.KiB));
     }
 
+    [TestCase("block.go.snappy")]
+    [TestCase("block.py.snappy")]
+    public void Zero_netty_p2p_handler_can_decompress_compressed_file(string compressedFileName)
+    {
+        const byte packetType = 0x05;
+        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));
+        byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", compressedFileName)));
+
+        ISession session = Substitute.For<ISession>();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
+
+        ZeroPacket received = null;
+        session.When(static s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
+            .Do(call =>
+            {
+                received = call.Arg<ZeroPacket>();
+                received.Retain();
+            });
+
+        IByteBuffer content = Unpooled.Buffer(compressed.Length);
+        content.WriteBytes(compressed);
+        ZeroPacket packet = new(content)
+        {
+            PacketType = packetType
+        };
+
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+
+        try
+        {
+            handler.ChannelRead(context, packet);
+
+            Assert.That(received, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(received.PacketType, Is.EqualTo(packetType));
+                Assert.That(received.Content.ReadAllBytesAsArray(), Is.EqualTo(expectedUncompressed));
+            }
+        }
+        finally
+        {
+            received?.Release();
+        }
+    }
+
     [Test]
     [Ignore("Needs further investigation. For now ignoring as it would be requiring too much time.")]
     public void Uses_same_compression_as_py_zero_or_go()
@@ -83,7 +108,7 @@ public class SnappyTests
         string rlpxDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx");
         byte[] bytesPy = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, "block.py.snappy")));
         byte[] bytesGo = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, "block.go.snappy")));
-        byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, _uncompressedTestFileName)));
+        byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));
 
         ZeroSnappyEncoderForTest encoder = new();
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, bytesUncompressed));
@@ -94,11 +119,10 @@ public class SnappyTests
     [Test]
     public void Roundtrip_zero()
     {
-        SnappyDecoderForTest decoder = new();
         ZeroSnappyEncoderForTest encoder = new();
-        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
-        byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());
+        byte[] uncompressedResult = Snappy.DecompressToArray(compressed.Skip(1).ToArray());
         Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
     }
 

@@ -39,4 +39,5 @@ public static class TxPoolErrorMessages
     public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";
     public const string FrameTxVerifyAfterPrefix = "frame transaction has a VERIFY frame after its validation prefix";
     public const string FrameTxMisplacedExpiryFrame = "frame transaction has an expiry verifier frame that does not lead its frame list";
+    public const string NonCanonicalPaymasterLimitReached = "non-canonical paymaster already sponsors the maximum number of pending frame transactions";
 }

@@ -103,6 +103,30 @@ public class FlatWorldStateScopeHistoricalRootTests
     }
 
     [Test]
+    public void WriteBatch_HistoricalScope_AccountDeletionClearsFlatStorage()
+    {
+        Address address = TestItem.AddressA;
+        UInt256 slot = (UInt256)7;
+        Account account = new(nonce: 1, balance: 5, storageRoot: Keccak.EmptyTreeHash, codeHash: Keccak.OfAnEmptyString);
+
+        using FlatWorldStateScope scope = BuildScope(new(100, TestItem.KeccakA), isHistorical: true);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(address, account);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(in slot, [0x12, 0x34]);
+            batch.Set(address, null);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(address), Is.Null);
+            Assert.That(scope.CreateStorageTree(address).Get(in slot), Is.EqualTo(StorageTree.ZeroBytes));
+        }
+    }
+
+    [Test]
     public void WriteBatch_RecentScope_WritesAndHashesTrie()
     {
         // A non-trie-less scope over the empty-tree root must still bulk-write the state/storage tries and recompute

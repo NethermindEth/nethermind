@@ -28,12 +28,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
 
-/// <summary>
-/// The admission bounds <see cref="FrameTxPrefixSimulator"/> applies before any EVM work — the frame-tx
-/// boundary guard and the per-head simulation time budget — and how it attributes failures.
-/// </summary>
-/// <remarks>Attribution matters because a non-accepting verdict is charged to the sending peer's flood
-/// counter, so the simulator must only reject for reasons the transaction is answerable for.</remarks>
+/// <summary>The admission bounds <see cref="FrameTxPrefixSimulator"/> applies before any EVM work, and how
+/// it attributes failures: a non-accepting verdict is charged to the sending peer's flood counter.</summary>
+[TestFixture]
 public class FrameTxPrefixSimulatorTests
 {
     [Test]
@@ -115,7 +112,7 @@ public class FrameTxPrefixSimulatorTests
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(FrameTx(), cts.Token));
+        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(FrameTx(), token: cts.Token));
     }
 
     private static IEnumerable<TestCaseData> NodeFaults()
@@ -218,6 +215,17 @@ public class FrameTxPrefixSimulatorTests
             throw new TestEnvUnavailableException();
         });
         return CreateSimulator(envFactory, blockFinder, budgetPerHeadMs);
+    }
+
+    [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]
+    [TestCase(true, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameSignaturesPreValidated)]
+    public void Simulate_ForwardsTheCallersSignaturePrecondition(bool preValidated, ExecutionOptions expected)
+    {
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
+
+        simulator.Simulate(FrameTx(), signaturesPreValidated: preValidated);
+
+        processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
 
     /// <summary>A simulator over an env that builds, so a test can choose where inside it the failure lands.</summary>

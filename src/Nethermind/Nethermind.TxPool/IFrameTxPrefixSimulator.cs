@@ -6,20 +6,19 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Runs the validation prefix of an EIP-8141 frame transaction whose payer the native resolver could not
-/// decide (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) in a bounded, read-only EVM at chain head.
-/// </summary>
-/// <remarks>Optional in the pool: with no simulator wired, such transactions are admitted with an
-/// unresolved payer and therefore without an exposure reservation.</remarks>
+/// <summary>Runs the validation prefix of an EIP-8141 frame transaction the native resolver could not decide, in a bounded read-only EVM at chain head.</summary>
+/// <remarks>Optional: with no simulator wired, such transactions are admitted unresolved and hold no exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
+    /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
+    /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
+    /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
     /// <param name="token">Honored at entry and polled cooperatively during execution. It does not bound the
     /// wait for the serialized processing env; the implementation's own timeout does, as a rejection.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
     /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
     /// exposed, it is the one admission path with no cumulative bound.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
+    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false);
 }
 
 public enum FrameTxSimulationOutcome

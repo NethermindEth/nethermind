@@ -122,6 +122,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
+        public void Deserialize_RejectsAccountEntryCarryingNoAccount()
+        {
+            // A sequence header declaring one content byte and carrying none. AccountDecoder yields no
+            // account without reading past that header, so the entry's declared length is consumed
+            // exactly and its checkpoint still passes.
+            Rlp accountCarryingNothing = new([0xc1]);
+            Rlp[] entries = [Rlp.Encode(Rlp.Encode(TestItem.KeccakA), accountCarryingNothing)];
+            byte[] serialized = Rlp.Encode(Rlp.Encode(1), Rlp.Encode(entries), Rlp.OfEmptyList).Bytes;
+
+            AccountRangeMessageSerializer serializer = new();
+
+            Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+        }
+
+        [Test]
         public void Roundtrip_EmptyCode()
         {
 

@@ -24,6 +24,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -481,12 +482,38 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue()
+    public void IsWellFormed_BlobTxWithUnknownProofVersion_ReturnFalseWithoutThrowing()
     {
-        Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .TestObject;
+        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Version = (ProofVersion)byte.MaxValue };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        bool? result = null;
+
+        Assert.That(() => result = txValidator.IsWellFormed(tx, Osaka.Instance).AsBool(), Throws.Nothing);
+        Assert.That(result, Is.False);
+    }
+
+    [TestCaseSource(nameof(FrameBlobProofVersionCases))]
+    public bool IsWellFormed_FrameBlobTxProofVersion(ProofVersion proofVersion)
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(proofVersion);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.True);
+        return txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool();
+    }
+
+    private static IEnumerable<TestCaseData> FrameBlobProofVersionCases()
+    {
+        yield return new TestCaseData(Eip8141Prototype.Instance.BlobProofVersion).Returns(true).SetName("IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue");
+        // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
+        yield return new TestCaseData(ProofVersion.V0).Returns(false).SetName("IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse");
     }
 
     [Test]
@@ -495,16 +522,6 @@ public class TxValidatorTests
         Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
-    }
-
-    [Test]
-    public void IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse()
-    {
-        // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
-        Transaction tx = BuildBlobCarryingFrameTx(ProofVersion.V0);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
@@ -519,7 +536,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             MaxFeePerBlobGas = maxFeePerBlobGas,
         };
@@ -545,7 +562,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             MaxFeePerBlobGas = 1,
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
@@ -650,7 +667,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             GasPrice = 1,               // max_priority_fee_per_gas
             DecodedMaxFeePerGas = 100,  // max_fee_per_gas
@@ -831,6 +848,23 @@ public class TxValidatorTests
             {
                 TestName = "A correct shard blob tx",
                 ExpectedResult = true
+            };
+            yield return new TestCaseData(Osaka.Instance, Build.A.Transaction
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithTimestamp(ulong.MaxValue)
+                .WithMaxFeePerGas(1)
+                .WithMaxFeePerBlobGas(1)
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .With(static tx => tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with
+                {
+                    Blobs = [],
+                    CellMask = BlobCellMask.Empty,
+                    Cells = []
+                })
+                .SignedAndResolved().TestObject)
+            {
+                TestName = "Blob tx with commitments but no blobs or cells",
+                ExpectedResult = false
             };
 
             yield return new TestCaseData(Cancun.Instance, MakeTestObject(0)
@@ -1147,7 +1181,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             DecodedMaxFeePerGas = 100_000,
             MaxFeePerBlobGas = 1,
@@ -1175,8 +1209,8 @@ public class FrameTxPostTxModeGateTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModePostTx, 0, TestItem.AddressB, gasLimit: 100_000, UInt256.Zero, default),
+                SelfVerify(PrefixFrameGas),
+                PostTx(PrefixFrameGas),
             ],
         };
 

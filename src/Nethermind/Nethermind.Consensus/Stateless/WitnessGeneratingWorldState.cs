@@ -174,12 +174,6 @@ public class WitnessGeneratingWorldState(
         return base.GetNonce(address);
     }
 
-    public override bool IsStorageEmpty(Address address)
-    {
-        RecordEmptySlots(address);
-        return base.IsStorageEmpty(address);
-    }
-
     public override byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);

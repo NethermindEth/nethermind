@@ -400,6 +400,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
 
+        [TestCase(1)]
+        [TestCase(101)]
+        public void Will_downgrade_without_disconnect_on_invalid_blob_proofs(int reports)
+        {
+            for (int i = 0; i < reports; i++)
+            {
+                _controller.Report(AcceptTxResult.InvalidBlobProofs);
+            }
+
+            Assert.That(_controller.IsDowngraded, Is.True);
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
         private void ReportPooledRequestWindow(int requested, int usefulResponses, int offset = 0)
         {
             Hash256[] hashes = GenerateHashes(Math.Min(requested, 32_768), offset);
