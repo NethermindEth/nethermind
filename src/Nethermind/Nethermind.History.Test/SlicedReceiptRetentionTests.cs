@@ -22,7 +22,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
