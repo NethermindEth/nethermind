@@ -1,12 +1,10 @@
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
 {
     internal sealed class DelegatedAccountFilter(
-        IChainHeadSpecProvider specProvider,
         TxDistinctSortedPool standardPool,
         TxDistinctSortedPool blobPool,
         IReadOnlyStateProvider worldState,
@@ -14,8 +12,7 @@ namespace Nethermind.TxPool.Filters
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            if (!spec.IsEip7702Enabled)
+            if (!state.HeadSpec.IsEip7702Enabled)
                 return AcceptTxResult.Accepted;
 
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
