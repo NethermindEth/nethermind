@@ -159,9 +159,10 @@ public sealed class RpcAdmissionController
                     Enqueue(waiter);
                     Metrics.RpcAdmissionQueued[_costClass] = ++_queued;
                     // Armed inside the lock, after the waiter is linked and counted: a callback that fires synchronously
-                    // here re-enters this lock on the calling thread and unlinks a fully accounted waiter, so the queue
-                    // count balances. The synchronous callback also runs before this setter assigns the registration, so
-                    // its DisposeResources leaves disposal to the setter's _registrationSet/_resourcesDisposed handshake.
+                    // here re-enters this lock on the calling thread and unlinks a fully accounted waiter. Arming before
+                    // the enqueue instead would give that callback nothing to unlink, and the waiter enqueued behind it
+                    // would never be settled. The callback also runs before this setter assigns the registration, so its
+                    // DisposeResources leaves disposal to the setter's _registrationSet/_resourcesDisposed handshake.
                     waiter.CancellationRegistration = cancellationToken.UnsafeRegister(static state => ((Waiter)state!).OnCancellation(), waiter);
                 }
             }

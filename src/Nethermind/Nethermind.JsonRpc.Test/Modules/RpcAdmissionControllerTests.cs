@@ -266,7 +266,9 @@ public class RpcAdmissionControllerTests
 
         Task<RpcAdmissionController.Lease> cancelled = controller.AdmitAsync(ethCall, 0, cancellation.Token).AsTask();
 
-        Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
+        // Bounded: arming the registration before the enqueue leaves the waiter unsettled rather than miscounted, and an
+        // unbounded await would hang instead of failing.
+        Assert.CatchAsync<OperationCanceledException>(async () => await cancelled.WaitAsync(WaitBudget));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0), "the reentrant unlink must balance the enqueue it undoes");
