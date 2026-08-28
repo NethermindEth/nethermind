@@ -799,7 +799,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public void RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash)
+    public BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash)
     {
         if (IsActivePeer(peer)
             && _transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
@@ -808,16 +808,19 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             {
                 if (!IsActivePeer(peer))
                 {
-                    return;
+                    return BlobCellMask.Empty;
                 }
 
                 PublicKey peerId = peer.Id;
-                if (state.Announcements.Remove(peerId))
+                if (state.Announcements.Remove(peerId, out BlobCellMask announcedMask))
                 {
                     ReleaseAnnouncement(peerId, hash.ValueHash256, state.Submitted);
+                    return announcedMask;
                 }
             }
         }
+
+        return BlobCellMask.Empty;
     }
 
     private bool RequestCellsForCustodyChange(

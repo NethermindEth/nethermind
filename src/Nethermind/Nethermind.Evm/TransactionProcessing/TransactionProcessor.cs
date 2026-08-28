@@ -1423,6 +1423,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                     WorldState.Restore(snapshot);
+                    VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
                 }
                 else
                 {
@@ -1479,13 +1480,18 @@ namespace Nethermind.Evm.TransactionProcessing
             EvmExceptionType deployException = CodeDepositHandler.CodeIsInvalid(spec, substate.Output)
                 ? EvmExceptionType.InvalidCode
                 : EvmExceptionType.OutOfGas;
+            bool shouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch;
             substate = new(substate.Output, substate.Refund, substate.DestroyList, substate.Logs,
-                shouldRevert: false, isTracerConnected: false, evmExceptionType: deployException, logger: Logger);
+                shouldRevert: false, isTracerConnected: false, evmExceptionType: deployException, logger: Logger)
+            {
+                ShouldRestoreRipemdTouch = shouldRestoreRipemdTouch,
+            };
             if (spec.ChargeForTopLevelCreate)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
             }
             WorldState.Restore(snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             TGasPolicy intrinsicGasStandard = gas.Standard;
             if (spec.IsEip8037Enabled)
             {
@@ -1744,11 +1750,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool PrepareDeployment(Address contractAddress)
         {
-            if (!WorldState.IsNonZeroAccount(contractAddress, out _))
-                return true;
+            if (WorldState.IsNonZeroAccount(contractAddress, out _))
+            {
+                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
+                return false;
+            }
 
-            if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
-            return false;
+            WorldState.ClearStorage(contractAddress);
+
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
