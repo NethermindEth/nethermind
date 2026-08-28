@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -608,6 +609,34 @@ public class SlicedReceiptRetentionTests
 
         Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
             "the pruner persists cursors from its load path too - a progress report must not extend a record the first pass has not lapse-checked");
+    }
+
+    [Test]
+    public void RetainsLogsFor_ATwoFieldRecordFromAnEarlierBuild_KeepsItsEarnedDepth()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        IDb metadata = new MemDb();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadata);
+        FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
+
+        byte[] legacyKey = [.. "history:sliceLogsFrom:"u8, .. TestItem.AddressA.Bytes];
+        byte[] legacyValue = new byte[16];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(legacyValue, 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(legacyValue.AsSpan(8), 5000);
+        metadata.Set(legacyKey, legacyValue);
+
+        SlicedReceiptRetention retention = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 5000, sliceCleanupThrough: 3000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.True,
+                "a record widened by a newer build keeps the depth it earned - the format change must not read as a lapse");
+            Assert.That(metadata.Get(legacyKey), Has.Length.EqualTo(24),
+                "and the record upgrades in place so the next pass compares all three fields");
+        }
     }
 
     [Test]

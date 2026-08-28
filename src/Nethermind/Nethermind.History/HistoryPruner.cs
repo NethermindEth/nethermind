@@ -264,7 +264,17 @@ public class HistoryPruner : IHistoryPruner
         {
             if (lockTaken)
             {
-                if (!TryLoadDeletePointers() || !ShouldPruneHistory())
+                if (!TryLoadDeletePointers())
+                {
+                    SkipLocalPruning();
+                    return;
+                }
+
+                // Before the interval gate: the read side refuses every sliced address until this has validated
+                // the stamps, and the first interval boundary can be most of an hour away.
+                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
+
+                if (!ShouldPruneHistory())
                 {
                     SkipLocalPruning();
                     return;
@@ -277,7 +287,6 @@ public class HistoryPruner : IHistoryPruner
 
                 ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
-                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
@@ -849,9 +858,10 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    /// <summary>The oldest height whose receipts this node holds: the delete pointer measures bodies, so a
-    /// fast-synced node also consults the receipt backfill's own pointer - absent, no ancient receipt has been
-    /// downloaded yet and the pivot is the floor.</summary>
+    /// <summary>The oldest height whose receipts this node holds: the delete pointer measures bodies, so this
+    /// also consults the receipt backfill's own pointer wherever one was ever persisted - only the absent-pointer
+    /// fallback is fast-sync-specific, where it means no ancient receipt has been downloaded yet and the pivot is
+    /// the floor.</summary>
     private ulong OldestStoredReceipts()
     {
         ulong receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
@@ -922,7 +932,10 @@ public class HistoryPruner : IHistoryPruner
         }
 
         // Ahead of the cursor writes: a stop between the two leaves the proof ahead of the cursor, which a resumed
-        // retention-aware walk re-covers, where the reverse order reads every ungraceful stop as a lapse.
+        // retention-aware walk re-covers, where the reverse order reads every ungraceful stop as a lapse. The
+        // accepted residual is the mirror: a crash between these two adjacent WAL appends, a config change during
+        // the downtime, and a re-walk of the final chunk can miss one lapse - two independent writes cannot close
+        // both directions, only a shared batch could.
         _receiptRetention.OnPruningProgress(_blocksReclaimCursor, _sliceCleanupCursor);
 
         // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no

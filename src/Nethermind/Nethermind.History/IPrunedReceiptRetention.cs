@@ -40,8 +40,9 @@ public interface IPrunedReceiptRetention
     /// it.</summary>
     void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough, ulong sliceCleanupThrough) { }
 
-    /// <summary>Called whenever the pruner persists its cursors, with the heights the two reclaims have actually
-    /// reached, extending the proof exactly that far - per persisted chunk, never per intended pass, so an
-    /// ungraceful stop cannot leave the cursors ahead of the proof. The default ignores it.</summary>
+    /// <summary>Called on every save of the pruner's pointers - including saves that persist nothing - with the
+    /// heights the two reclaims have actually reached, extending the proof exactly that far: per persisted chunk,
+    /// never per intended pass, so an ungraceful stop cannot leave the cursors ahead of the proof. The default
+    /// ignores it.</summary>
     void OnPruningProgress(ulong reclaimedThrough, ulong sliceCleanupThrough) { }
 }

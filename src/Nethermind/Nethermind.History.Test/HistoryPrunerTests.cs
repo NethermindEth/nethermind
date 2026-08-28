@@ -609,6 +609,20 @@ public class HistoryPrunerTests
             "the stamp floor must follow the receipt backfill's own pointer, not the bodies frontier the delete pointer measures");
     }
 
+    [Test]
+    public async Task Stamps_are_validated_on_the_first_call_after_startup_not_the_first_interval_boundary()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 1000 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
+
+        FrontierCapturingRetention retention = new();
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(retention.OldestStoredReceipts, Is.Not.Zero,
+            "the read side refuses every sliced address until the stamps are validated, so waiting for an interval boundary with work would refuse serving for most of an hour after every restart");
+    }
+
     private sealed class FrontierCapturingRetention : IPrunedReceiptRetention
     {
         public ulong OldestStoredReceipts;

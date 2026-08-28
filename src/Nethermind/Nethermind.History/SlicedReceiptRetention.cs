@@ -22,6 +22,7 @@ namespace Nethermind.History;
 public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree, IDbProvider? dbProvider = null, ILogManager? logManager = null) : IPrunedReceiptRetention, IPrunedLogsRetention
 {
     private const int StampValueLength = 3 * sizeof(ulong);
+    private const int LegacyStampValueLength = 2 * sizeof(ulong);
 
     private static ReadOnlySpan<byte> StampKeyPrefix => "history:sliceLogsFrom:"u8;
 
@@ -177,11 +178,17 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             address.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
             byte[]? stored = metadata.Get(key);
             ulong stampFrom;
-            if (stored is { Length: StampValueLength })
+            ulong reclaimedReach = reclaimedThrough;
+            ulong cleanupReach = sliceCleanupThrough;
+            if (stored is { Length: StampValueLength or LegacyStampValueLength })
             {
                 stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
                 ulong storedReclaimed = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
-                ulong storedCleanup = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(2 * sizeof(ulong)));
+                // A two-field record predates cleanup tracking; its writer ran the cleanup retention-aware exactly
+                // as it ran the main reclaim, so the current cleanup reach carries the same trust here.
+                ulong storedCleanup = stored.Length == StampValueLength
+                    ? BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(2 * sizeof(ulong)))
+                    : sliceCleanupThrough;
                 if (reclaimedThrough > storedReclaimed || sliceCleanupThrough > storedCleanup)
                 {
                     stampFrom = oldestStoredReceipts;
@@ -191,7 +198,10 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
                 else
                 {
                     _stampCache[address] = stampFrom;
-                    continue;
+                    if (stored.Length == StampValueLength) continue;
+
+                    reclaimedReach = storedReclaimed;
+                    cleanupReach = storedCleanup;
                 }
             }
             else
@@ -201,8 +211,8 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             }
 
             BinaryPrimitives.WriteUInt64BigEndian(value, stampFrom);
-            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedThrough);
-            BinaryPrimitives.WriteUInt64BigEndian(value[(2 * sizeof(ulong))..], sliceCleanupThrough);
+            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedReach);
+            BinaryPrimitives.WriteUInt64BigEndian(value[(2 * sizeof(ulong))..], cleanupReach);
             metadata.PutSpan(key, value);
             _stampCache[address] = stampFrom;
         }
