@@ -71,10 +71,7 @@ public sealed class IndexedLogFinder(
 
     private (int from, int to)? GetLogIndexRange(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        bool tryUseIndex = filter.UseIndex;
-        filter.UseIndex = false;
-
-        if (!tryUseIndex || filter.AcceptsAnyBlock)
+        if (!filter.UseIndex || filter.AcceptsAnyBlock)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)
@@ -91,7 +88,6 @@ public sealed class IndexedLogFinder(
         if (range.to - range.from + 1 < minBlocksToUseIndex)
             return null;
 
-        filter.UseIndex = true;
         return range;
     }
 }

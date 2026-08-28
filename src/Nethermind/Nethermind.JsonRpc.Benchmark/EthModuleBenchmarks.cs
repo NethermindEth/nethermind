@@ -29,7 +29,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -88,8 +87,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 feeHistoryOracle,
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
-                new LogIndexConfig(),
-                new ReceiptConfig(),
                 new BlocksConfig().SecondsPerSlot,
                 _headBlockSignal,
                 new EthCapabilitiesProvider(
