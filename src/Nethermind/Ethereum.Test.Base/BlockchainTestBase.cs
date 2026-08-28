@@ -460,8 +460,8 @@ public abstract class BlockchainTestBase
             }
             else
             {
-                // Covers both non-error branches: a fixture expecting an errorCode must not see the payload validated.
-                AssertPayloadWasNotExpectedToError(expectedErrorCode, newPayloadVersion);
+                // Covers both non-error branches, so a fixture that demands an error cannot be answered with a status.
+                AssertPayloadWasNotExpectedToError(expectedErrorCode, validationError, newPayloadVersion);
 
                 if (expectWitness)
                 {
@@ -564,19 +564,24 @@ public abstract class BlockchainTestBase
     };
 
     /// <summary>
-    /// Describes why the payload having been accepted for validation contradicts the fixture, or null
-    /// when the fixture expected no JSON-RPC error.
+    /// Describes why the payload having been answered with a status contradicts the fixture, or null
+    /// when a payload status is an acceptable answer.
     /// </summary>
-    internal static string? DescribeMissingRpcError(int? expectedErrorCode, int payloadVersion) =>
-        expectedErrorCode is int expected
+    /// <remarks>
+    /// Fixtures pair an <c>errorCode</c> with the block exception the payload violates, and a client may
+    /// signal such a rejection either way, so the RPC error is only required when no <c>validationError</c>
+    /// is offered to match against instead.
+    /// </remarks>
+    internal static string? DescribeMissingRpcError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
+        expectedErrorCode is int expected && validationError is null
             ? $"engine_newPayloadV{payloadVersion} was expected to fail with JSON-RPC error {expected}, but the payload was accepted for validation."
             : null;
 
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, int? expectedErrorCode, int payloadVersion) =>
         Assert.That(DescribeUnexpectedRpcError(errorCode, errorMessage, expectedErrorCode, payloadVersion), Is.Null);
 
-    private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, int payloadVersion) =>
-        Assert.That(DescribeMissingRpcError(expectedErrorCode, payloadVersion), Is.Null);
+    private static void AssertPayloadWasNotExpectedToError(int? expectedErrorCode, string? validationError, int payloadVersion) =>
+        Assert.That(DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion), Is.Null);
 
     private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
     {

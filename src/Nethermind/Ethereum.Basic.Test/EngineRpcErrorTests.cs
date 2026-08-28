@@ -28,11 +28,14 @@ public class EngineRpcErrorTests
     public bool Rpc_error_is_accepted_only_when_the_fixture_asked_for_it(int errorCode, int? expectedErrorCode) =>
         BlockchainTestBase.DescribeUnexpectedRpcError(errorCode, "some message", expectedErrorCode, payloadVersion: 5) is null;
 
-    // The converse: a payload status only satisfies a fixture that asked for no error.
-    [TestCase(null, ExpectedResult = true, TestName = "Validated where the fixture expects validation")]
-    [TestCase(InvalidParams, ExpectedResult = false, TestName = "Validated where the fixture expects an error")]
-    public bool Validated_payload_is_accepted_only_when_the_fixture_expected_no_error(int? expectedErrorCode) =>
-        BlockchainTestBase.DescribeMissingRpcError(expectedErrorCode, payloadVersion: 5) is null;
+    // The converse. Every errorCode in the corpus is paired with the block exception the payload violates,
+    // and a client may answer either way, so only a bare errorCode makes the RPC error mandatory.
+    [TestCase(null, null, ExpectedResult = true, TestName = "Status where the fixture expects validation")]
+    [TestCase(InvalidParams, null, ExpectedResult = false, TestName = "Status where the fixture demands an error and offers no exception")]
+    [TestCase(InvalidParams, "BlockException.INVALID_BLOCK_ACCESS_LIST", ExpectedResult = true, TestName = "Status where the fixture also names the exception")]
+    [TestCase(null, "BlockException.INVALID_BLOCK_ACCESS_LIST", ExpectedResult = true, TestName = "Status where the fixture expects rejection only")]
+    public bool Payload_status_is_accepted_unless_the_fixture_demands_an_error(int? expectedErrorCode, string validationError) =>
+        BlockchainTestBase.DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion: 5) is null;
 
     // EEST emits errorCode as a quoted string, like newPayloadVersion.
     [TestCase("""{"errorCode": "-32602"}""", ExpectedResult = InvalidParams, TestName = "Expected error code")]
