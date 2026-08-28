@@ -132,14 +132,15 @@ public class TransactionTests
 
     // The compensating invariant for SupportsBlobs being type-3-only: a blob-carrying frame tx must
     // still be recognised as carrying blobs, or it would slip past the node's blob paths.
-    [TestCase(0, false)]
-    [TestCase(2, true)]
-    public void FrameTx_CarriesBlobs_TracksBlobPresenceNotType(int blobCount, bool expected)
+    [TestCase(null, false, TestName = "FrameTx_CarriesBlobs_AbsentHashList")]
+    [TestCase(0, false, TestName = "FrameTx_CarriesBlobs_EmptyHashList")]
+    [TestCase(2, true, TestName = "FrameTx_CarriesBlobs_PopulatedHashList")]
+    public void FrameTx_CarriesBlobs_TracksBlobPresenceNotType(int? blobCount, bool expected)
     {
-        byte[]?[] blobVersionedHashes = new byte[blobCount][];
-        for (int i = 0; i < blobCount; i++)
+        byte[]?[]? blobVersionedHashes = blobCount is null ? null : new byte[blobCount.Value][];
+        for (int i = 0; i < (blobCount ?? 0); i++)
         {
-            blobVersionedHashes[i] = new byte[32];
+            blobVersionedHashes![i] = new byte[32];
         }
 
         Transaction transaction = new()
@@ -152,7 +153,7 @@ public class TransactionTests
         {
             Assert.That(transaction.SupportsBlobs, Is.False);
             Assert.That(transaction.CarriesBlobs, Is.EqualTo(expected));
-            Assert.That(transaction.GetBlobCount(), Is.EqualTo(blobCount));
+            Assert.That(transaction.GetBlobCount(), Is.EqualTo(blobCount ?? 0));
         }
     }
 
