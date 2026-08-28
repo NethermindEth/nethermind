@@ -55,7 +55,7 @@ public class Eip8141CanonicalPaymasterTests
     // Measured pay-frame validation gas under the prototype fork. Higher than the design doc §5a
     // ~2,150 estimate because this fork carries the EIP-8037/8038 state-gas repricing, which raises
     // the single cold SLOAD; still far under the 15,000 pay-frame bound.
-    private const ulong ValidationPathGas = 3_110;
+    private const ulong ValidationPathGas = 5_210;
 
     private static readonly byte[] PaymasterCode = Bytes.FromHexString(PaymasterRuntimeHex);
 
@@ -312,8 +312,8 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(receipt.Payer, Is.EqualTo(Paymaster));
     }
 
-    // 11. The pay-frame validation path is a cold SLOAD plus three SIGPARAM reads, dispatch and APPROVE;
-    // it sits far under the recommended 15,000 gas pay-frame bound.
+    // 11. The pay-frame validation path is the frame-entry account access, a cold SLOAD, three SIGPARAM
+    // reads, dispatch and APPROVE; it sits far under the recommended 15,000 gas pay-frame bound.
     [Test]
     public void ValidationPathGas_MatchesBudget()
     {
@@ -671,8 +671,10 @@ public class Eip8141CanonicalPaymasterTests
         // initiate-withdrawal calldata, reaching the admin path.
         TxFrame sponsorFrame =
             new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
+        // The admin op writes the pending amount and its deadline, so the frame needs a limits.state
+        // budget; the execution-only constructor would leave it at zero and fail before the auth check.
         TxFrame adminFrame =
-            new(TxFrame.ModeSender, 0, Paymaster, gasLimit: 1_000_000, UInt256.Zero, WithdrawalCall(amount));
+            new(TxFrame.ModeSender, 0, Paymaster, executionGasLimit: 1_000_000, stateGasLimit: 200_000, UInt256.Zero, WithdrawalCall(amount));
         return new Transaction
         {
             Type = TxType.FrameTx,
