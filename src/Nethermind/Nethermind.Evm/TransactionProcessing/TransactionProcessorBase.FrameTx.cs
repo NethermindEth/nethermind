@@ -86,11 +86,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
-        // Structural, so it holds even where validation is skipped: the frame list is dereferenced
-        // throughout, and eth_call arrives here without a validator.
-        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+        // eth_call and the other estimation/tracing entry points reach the processor with validation
+        // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
+        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.MissingFrames);
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
 
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
@@ -138,56 +138,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
-        // EIP-8141 forbids approval scope on an atomic-batch frame; enforced here too so unvalidated
-        // entry points (e.g. eth_call) cannot mint ETH.
-        bool prevIsAtomicBatch = false;
-        bool sawPostTx = false;
-        foreach (TxFrame frame in frames)
+        if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
         {
-            if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
-            }
-
-            // An undefined mode would otherwise fall through to DEFAULT semantics and execute.
-            if (frame.Mode > TxFrame.ModePostTx)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.InvalidMode);
-            }
-
-            // The mode is undefined until EIP-7906 defines it, so it must not run with assertion semantics.
-            if (frame.Mode == TxFrame.ModePostTx && !spec.IsEip7906Enabled)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
-            }
-
-            // The assertion opcodes share one diff view per transaction, which is only the finished
-            // transaction's while nothing after the first POST_TX frame can still change state.
-            if (sawPostTx && frame.Mode != TxFrame.ModePostTx)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotTrailing);
-            }
-
-            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.ValueOutsideSenderMode);
-            }
-
-            sawPostTx |= frame.Mode == TxFrame.ModePostTx;
-            prevIsAtomicBatch = frame.IsAtomicBatch;
-        }
-
-        if (tx.RecentRootReferences is { } references)
-        {
-            if (!spec.IsEip8272Enabled)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
-            }
-
-            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
-            }
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
         }
 
         if (tx.NonceKeys is not null)
@@ -195,7 +148,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
-        // Overflow-checked, so the processor does not depend on static validation having run.
+        // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
         tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
@@ -283,6 +236,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         long prefixEndStateGas = 0;
         int prefixEndJournal = 0;
         bool postTxReverted = false;
+        // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
+        // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
+        bool shouldRestoreRipemdTouch = false;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -325,6 +281,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             int frameStartJournal = frameContext.StateGasJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
@@ -399,6 +356,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
+                VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                 refundCounter = prefixEndRefund;
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
@@ -450,6 +408,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Unroll: restore pre-batch state and skip the rest (status 0x2); the failed frame
                     // keeps its failure receipt.
                     WorldState.Restore(batchStartSnapshot);
+                    VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                     batchTracker.Restore();
 
                     // Earlier frames' logs go with their state; status and gas_used stay.
@@ -868,9 +827,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // Read only once the access is paid for. EIP-7702: a precompile must not execute via delegation.
+            // Read only once the access is paid for. EIP-7702: a precompile must not execute via delegation,
+            // asked of the repository because that is what dispatches: a state override can move a precompile.
             WorldState.AddAccountRead(delegation);
-            codeInfo = spec.IsPrecompile(delegation)
+            codeInfo = _codeInfoRepository.GetPrecompile(delegation, spec) is not null
                 ? CodeInfo.Empty
                 : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
         }
@@ -934,7 +894,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             long remainingStateGas = stateReservoirSeed - stateGasUsed;
             if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
             {
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                // The replacement is the substate the caller sees, so it has to carry the RIPEMD touch
+                // the frame recorded; the rollback below and the transaction accumulator both read it.
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
+                {
+                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+                };
                 gasUsed = frame.ExecutionGasLimit;
                 stateGasUsed = 0;
             }
@@ -948,6 +913,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (substate.ShouldRevert || substate.IsError)
         {
             WorldState.Restore(snapshot);
+            // The machine re-applies the EIP-161 RIPEMD touch over its own rollback; this restore
+            // rewinds past that, so it has to be re-applied here too.
+            VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             frameTracker.Restore();
         }
 

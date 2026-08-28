@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -25,6 +26,8 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class FrameTxDecoderTests
 {
+    private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
+
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [TestCaseSource(nameof(RoundtripCases))]
@@ -169,6 +172,37 @@ public class FrameTxDecoderTests
         }
 
         Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("trailing signature"));
+    }
+
+    [Test]
+    public void Decode_PayloadWithEmptySenderField_Throws()
+    {
+        // The sender is mandatory: a frame transaction names its payer outright rather than recovering
+        // it from an envelope signature, so — unlike `to` or a frame target — an empty field has no
+        // "absent" meaning and must not decode to a null sender.
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
+            Rlp.Encode(0L),                          // nonce
+            Rlp.Encode(Array.Empty<byte>()),         // sender, encoded as the empty string 0x80
+            Rlp.Encode(Array.Empty<Rlp>()),          // frames
+            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
+            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
+
+        byte[] payload = new byte[1 + sequence.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        sequence.Bytes.CopyTo(payload, 1);
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        // The generic address-decode message, not a frame-specific one: "Unexpected RLP prefix" is the
+        // FrameExceptionFragments.Decode fragment EF fixture rejects match on.
+        Assert.That(Decode, Throws.InstanceOf<RlpException>()
+            .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
     [Test]
@@ -425,6 +459,41 @@ public class FrameTxDecoderTests
         keyed.NonceKeys = [.. Enumerable.Range(1, Eip8250Constants.MaxNonceKeys + 1).Select(static i => (UInt256)i)];
 
         Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
+    }
+
+    [TestCase(Eip8141Constants.MaxFrames, false)]
+    [TestCase(Eip8141Constants.MaxFrames + 1, true)]
+    public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx(frames: [.. Enumerable.Range(0, frameCount).Select(static _ => Frame())]);
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).Frames!.Length, Is.EqualTo(frameCount));
+        }
+    }
+
+    // Mirrors the blob tx cap, so the two decoders reject an oversized hash list at the same count.
+    [TestCase(BlobVersionedHashesDecodeCap, false)]
+    [TestCase(BlobVersionedHashesDecodeCap + 1, true)]
+    public void Decode_BoundsTheBlobVersionedHashCount(int hashCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 1;
+        tx.BlobVersionedHashes = [.. Enumerable.Range(0, hashCount).Select(static _ => FilledBytes(Hash256.Size, 0x01))];
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).BlobVersionedHashes!.Length, Is.EqualTo(hashCount));
+        }
     }
 
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

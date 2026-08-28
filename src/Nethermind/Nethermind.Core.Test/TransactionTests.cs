@@ -126,7 +126,34 @@ public class TransactionTests
             Assert.That(transaction.Supports1559, Is.True, "frame txs carry EIP-1559 fee fields");
             Assert.That(transaction.SupportsAccessList, Is.False, "frame txs have no access list field");
             Assert.That(transaction.SupportsAuthorizationList, Is.False, "frame txs have no authorization list");
-            Assert.That(transaction.SupportsBlobs, Is.False, "blob sidecars are not supported by the prototype");
+            Assert.That(transaction.SupportsBlobs, Is.False, "frame tx blob handling keys on blob presence, not the type");
+        }
+    }
+
+    // The compensating invariant for SupportsBlobs being type-3-only: a blob-carrying frame tx must
+    // still be recognised as carrying blobs, or it would slip past the node's blob paths.
+    [TestCase(null, false, TestName = "FrameTx_CarriesBlobs_AbsentHashList")]
+    [TestCase(0, false, TestName = "FrameTx_CarriesBlobs_EmptyHashList")]
+    [TestCase(2, true, TestName = "FrameTx_CarriesBlobs_PopulatedHashList")]
+    public void FrameTx_CarriesBlobs_TracksBlobPresenceNotType(int? blobCount, bool expected)
+    {
+        byte[]?[]? blobVersionedHashes = blobCount is null ? null : new byte[blobCount.Value][];
+        for (int i = 0; i < (blobCount ?? 0); i++)
+        {
+            blobVersionedHashes![i] = new byte[32];
+        }
+
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = blobVersionedHashes
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.SupportsBlobs, Is.False);
+            Assert.That(transaction.CarriesBlobs, Is.EqualTo(expected));
+            Assert.That(transaction.GetBlobCount(), Is.EqualTo(blobCount ?? 0));
         }
     }
 

@@ -275,7 +275,7 @@ comeback paths exist, selected by the same flag:
 
 | | Pre-`TIPUpgradePenalty` | Post-`TIPUpgradePenalty` |
 | --- | --- | --- |
-| Penalty window | `LimitPenaltyEpochV2` epochs | `LimitPenaltyEpoch` epochs |
+| Penalty window | `XdcConstants.LimitPenaltyEpochV2` epochs | `LimitPenaltyEpoch` epochs |
 | Comeback scan | last `RangeReturnSigner` blocks | last `EpochLength` blocks |
 | Comeback condition | one signing tx for a block at a `MergeSignRange` multiple | `MinimumSigningTx` such signing txs |
 
@@ -529,7 +529,6 @@ on the block number *and* the consensus round.
 | `XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `tradingStateAddressBinary` | address | DEX/lending contracts with special transaction handling |
 | `MergeSignRange` | blocks | Only blocks at multiples of this height are signed and counted for rewards. `15` |
 | `RangeReturnSigner` | blocks | Comeback scan window before `TIPUpgradePenalty`. `150` |
-| `LimitPenaltyEpoch`, `LimitPenaltyEpochV2` | epochs | Consecutive epochs a node stays penalised (post- / pre-`TIPUpgradePenalty`) |
 | `genesisMasternodes` | address[] | Initial committee; parsed from genesis `extraData` when `switchBlock == 0` |
 | `blackListedAddresses` | address[] | Blocked senders/recipients once `BlackListHFNumber` activates |
 
@@ -563,7 +562,7 @@ either fails to load.
 | `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
 | `MasternodeReward` / `ProtectorReward` / `ObserverReward` | XDC | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`). Stated in XDC, as in the reference client, and scaled to wei on load. `63.42` on Apothem |
 | `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
-| `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty` |
+| `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty`. `5` on Apothem; a chainspec that omits it falls back to `1` |
 | `MinimumSigningTx` | count | Signing transactions needed to leave penalty |
 
 Example — mainnet's current entry:
