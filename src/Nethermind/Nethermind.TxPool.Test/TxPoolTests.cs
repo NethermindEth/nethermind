@@ -39,7 +39,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Children)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public partial class TxPoolTests
     {
@@ -794,7 +794,10 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The assertion depends on the txpool's Task.Run head processor starting promptly.
+        // Parallel test load can starve that worker before the responsiveness check begins.
         [Test]
+        [NonParallelizable]
         public async Task should_keep_submission_and_production_view_responsive_during_revalidation()
         {
             Block head = _blockTree.Head;
