@@ -1099,6 +1099,40 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_OverCapDestruct_ASlotRewrittenAboveItInTheSameWalk_ReadsUnsetBetweenThem()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        int slotCount = HistoryWriter.DestructSlotEnumerationCap + 1;
+        (Address Address, UInt256 Slot, SlotValue? Value)[] rewrites = new (Address, UInt256, SlotValue?)[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(i + 1);
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+            rewrites[i] = (AddrA, slot, HistorySlot(0x0b));
+        }
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        CommitBlock(1, 2, storageChanges: rewrites);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < slotCount; i++)
+            {
+                UInt256 slot = (UInt256)(i + 1);
+                Assert.That(windowedReader.TryGetStorage(1, AddrA, slot, out _), Is.False,
+                    $"slot {slot} was destroyed at block 1 and rewritten at block 2 in the same walk - between them it is unset, not the resurrected pre-destruct value");
+                Assert.That(windowedReader.TryGetStorage(0, AddrA, slot, out SlotValue beforeDestruct), Is.True,
+                    $"slot {slot} held its persisted value below the destruct");
+                Assert.That(beforeDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x01 }));
+            }
+        }
+    }
+
+    [Test]
     public void SeedPivot_InsideTheAlreadyCapturedWindow_Throws_AndWritesNothing()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);

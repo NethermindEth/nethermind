@@ -572,7 +572,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             KeyValuePair<byte[], byte[]?>[] preValues = _persistedStorage[keys];
             for (int i = 0; i < count; i++)
             {
-                _storageHistoryV3!.RecordPreValue(storages[offset + i].Value, keys[i], preValues[i].Value ?? ReadOnlySpan<byte>.Empty, storageBatch);
+                ulong touch = storages[offset + i].Value;
+                ReadOnlySpan<byte> preValue = preValues[i].Value ?? ReadOnlySpan<byte>.Empty;
+
+                if (pending.Destructs.Count != 0
+                    && pending.Destructs.TryGetValue(storages[offset + i].Key.AddrPath, out ulong destructBlock)
+                    && destructBlock < touch)
+                {
+                    _storageHistoryV3!.RecordPreValue(destructBlock, keys[i], preValue, storageBatch);
+                    preValue = ReadOnlySpan<byte>.Empty;
+                }
+
+                _storageHistoryV3!.RecordPreValue(touch, keys[i], preValue, storageBatch);
             }
         }
     }

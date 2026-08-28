@@ -55,7 +55,7 @@ internal sealed class StorageClearStore
     [SkipLocalsInit]
     public bool TryGetPoisonedClearAbove(scoped ReadOnlySpan<byte> accountKey, ulong afterBlockExclusive, out ulong clearBlock)
     {
-        clearBlock = 0;
+        clearBlock = ulong.MaxValue;
         if (afterBlockExclusive == ulong.MaxValue) return false;
 
         Span<byte> lowerBound = stackalloc byte[accountKey.Length + BlockBytes];
