@@ -97,6 +97,16 @@ namespace Nethermind.JsonRpc.Data
                 PostTransactionState = Root,
                 TxType = Type
             };
+
+            // EIP-8141: the per-frame results are the only record of what the frames did, and the
+            // receipt payload carries no top-level status — dropping them here would hand storage a
+            // frames-less frame receipt, which encodes but no longer decodes.
+            if (Type == TxType.FrameTx)
+            {
+                receipt.Payer = Payer;
+                receipt.FrameReceipts = (FrameReceipts ?? []).Select(static f => f.ToFrameReceipt()).ToArray();
+            }
+
             return receipt;
         }
     }

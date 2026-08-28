@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -459,6 +460,52 @@ public class DebugModuleTests
         string response = await SerializedRequest("debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);
     }
+
+    // EIP-8141: a frame transaction always executes at least one frame. A frames-less frame receipt
+    // still encodes (as an empty frames list) but the decoder rejects it, so it must never be stored.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithoutFrames_IsRejectedAndNotStored(
+        [Values(true, false)] bool nullFrames)
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload(nullFrames ? null : []);
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceipt_ForwardsPayerAndFrameReceipts()
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload([
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, GasUsed = 21_000 },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, GasUsed = 30_000 }
+        ]);
+        TxReceipt[]? inserted = null;
+        _debugBridge.WhenForAnyArgs(static b => b.InsertReceipts(default!, default!))
+            .Do(call => inserted = call.Arg<TxReceipt[]>());
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(inserted, Is.Not.Null);
+        Assert.That(inserted![0].Payer, Is.EqualTo(TestItem.AddressA));
+        Assert.That(inserted[0].FrameReceipts, Is.Not.Null);
+        Assert.That(inserted[0].FrameReceipts!.Select(static f => (f.Status, f.GasUsed)),
+            Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }),
+            "the per-frame results are the only record of what the frames did and must reach storage");
+    }
+
+    private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts) => new()
+    {
+        Type = TxType.FrameTx,
+        CumulativeGasUsed = 21_000,
+        Payer = TestItem.AddressA,
+        FrameReceipts = frameReceipts,
+        Logs = []
+    };
 
     [Test]
     public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()

@@ -22,4 +22,6 @@ public class FrameReceiptForRpc
     public byte Status { get; set; }
     public ulong GasUsed { get; set; }
     public LogEntry[] Logs { get; set; } = [];
+
+    public TxFrameReceipt ToFrameReceipt() => new(Status, GasUsed, Logs ?? []);
 }
