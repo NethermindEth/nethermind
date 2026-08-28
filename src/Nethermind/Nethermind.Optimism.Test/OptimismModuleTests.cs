@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -128,6 +129,7 @@ public class OptimismModuleTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.IsIntrinsicGasError, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxSignature));
         }
     }
 }
