@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -10,9 +11,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public abstract class KademliaAdapterBase(
     string protocolName,
+    IIPResolver ipResolver,
     ILogger logger)
 {
     protected ILogger Logger { get; } = logger;
+    protected IPAddress LocalIp { get; } = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
 
     protected abstract ValueTask<NodeRecord?> RequestRemoteRecord(
         Node node,
@@ -24,7 +27,7 @@ public abstract class KademliaAdapterBase(
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
 
     protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
-        => Node.TryFromDiscoveryEnr(record, out refreshedNode);
+        => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
 
     protected async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
     {
@@ -95,8 +98,9 @@ public abstract class KademliaAdapterBase(
 
                 if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record has no usable discovery endpoint.");
-                    if (node.TryClearEnrRequest(requestedSequence))
+                    if (Logger.IsTrace) Logger.Trace($"Caching {protocolName} ENR from {node} without routing it; record has no usable discovery endpoint reachable from this listener.");
+                    node.Enr = record;
+                    if (node.RequestingEnrSequence == 0)
                     {
                         return;
                     }

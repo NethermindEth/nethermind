@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core.Collections;
@@ -12,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -88,6 +90,9 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
     }
 
+    /// <summary>
+    /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
+    /// </summary>
     internal static Socket CreateDatagramSocket(IPAddress localIp)
     {
         Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
@@ -99,12 +104,22 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         return socket;
     }
 
+    /// <summary>
+    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="remoteIp"/>.
+    /// </summary>
     internal static bool SupportsAddress(IPAddress localIp, IPAddress remoteIp)
-        => SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
+        => !(localIp.AddressFamily == AddressFamily.InterNetwork && remoteIp.IsIPv4MappedToIPv6) &&
+           SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
 
+    /// <summary>
+    /// Returns the effective address family, treating IPv4-mapped IPv6 addresses as IPv4.
+    /// </summary>
     internal static AddressFamily GetAddressFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
+    /// <summary>
+    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
+    /// </summary>
     internal static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
         => addressFamily switch
         {
@@ -117,6 +132,54 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
                 !localIp.IsIPv4MappedToIPv6,
             _ => false
         };
+
+    /// <summary>
+    /// Creates a discovery node from an ENR using an address family reachable through the local listener.
+    /// </summary>
+    internal static bool TryCreateReachableDiscoveryNode(
+        NodeRecord record,
+        IPAddress localIp,
+        IPEndPoint? preferredEndpoint,
+        [NotNullWhen(true)] out Node? node)
+    {
+        AddressFamily? preferredFamily = preferredEndpoint is null
+            ? null
+            : GetAddressFamily(preferredEndpoint.Address);
+        if (preferredFamily is { } family && TryCreateDiscoveryNode(record, localIp, family, out node))
+        {
+            return true;
+        }
+
+        if (preferredFamily != AddressFamily.InterNetwork &&
+            TryCreateDiscoveryNode(record, localIp, AddressFamily.InterNetwork, out node))
+        {
+            return true;
+        }
+
+        if (preferredFamily != AddressFamily.InterNetworkV6 &&
+            TryCreateDiscoveryNode(record, localIp, AddressFamily.InterNetworkV6, out node))
+        {
+            return true;
+        }
+
+        node = null;
+        return false;
+    }
+
+    private static bool TryCreateDiscoveryNode(
+        NodeRecord record,
+        IPAddress localIp,
+        AddressFamily addressFamily,
+        [NotNullWhen(true)] out Node? node)
+    {
+        if (SupportsAddressFamily(localIp, addressFamily))
+        {
+            return Node.TryFromDiscoveryEnr(record, addressFamily, out node);
+        }
+
+        node = null;
+        return false;
+    }
 
     public async Task StopAsync()
     {

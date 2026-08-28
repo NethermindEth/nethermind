@@ -65,6 +65,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IMsgSender _msgSender = null!;
         private INodeStatsManager _nodeStatsManager = null!;
         private INodeRecordProvider _nodeRecordProvider = null!;
+        private IIPResolver _ipResolver = null!;
         private Node _testNode = null!;
         private PublicKey _testPublicKey = null!;
 
@@ -130,6 +131,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             _nodeRecordProvider = Substitute.For<INodeRecordProvider>();
             _nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(_selfNodeRecord));
+            _ipResolver = Substitute.For<IIPResolver>();
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+                new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
@@ -148,6 +152,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             },
             _kademliaConfig,
             _nodeRecordProvider,
+            _ipResolver,
             _nodeStatsManager,
             _timestamper,
             Substitute.For<IProcessExitSource>(),
@@ -233,14 +238,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private NodeRecord ConfigureRemoteEnrRefresh(
             ulong? advertisedSequence,
             ulong responseSequence,
-            int? tcpPort = null)
+            int? tcpPort = null,
+            IPAddress? ipAddress = null,
+            Action<NodeRecord>? configureExtras = null)
         {
             NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
                 TestItem.PrivateKeyB,
-                IPAddress.Parse("192.168.1.2"),
+                ipAddress ?? IPAddress.Parse("192.168.1.2"),
                 tcpPort: tcpPort,
                 udpPort: 30303,
-                enrSequence: responseSequence);
+                enrSequence: responseSequence,
+                configureExtras: configureExtras);
 
             _msgSender
                 .SendMsg(Arg.Any<PingMsg>())
@@ -314,6 +322,43 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 Assert.That(peerNode.DiscoveryPort, Is.EqualTo(30303));
                 Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
                 Assert.That(peerNode, Is.Not.SameAs(_receiver));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_publish_ipv6_endpoint_bonded_from_dual_stack_enr(CancellationToken token)
+        {
+            IPAddress ipv4 = IPAddress.Parse("192.168.1.2");
+            IPAddress ipv6 = IPAddress.Parse("2001:db8::2");
+            await _adapter.DisposeAsync();
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+                new IIPResolver.NethermindIp(ipv6, IPAddress.IPv6Loopback)));
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
+            _receiver = new Node(TestItem.PublicKeyB, ipv6.ToString(), 30303);
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: ipv4,
+                configureExtras: record =>
+                {
+                    record.SetEntry(new Ip6Entry(ipv6));
+                    record.SetEntry(new Tcp6Entry(30305));
+                    record.SetEntry(new Udp6Entry(30303));
+                });
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            Node peerNode = await ReadPeerCandidate(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
+                Assert.That(peerNode.Host, Is.EqualTo(ipv6.ToString()));
+                Assert.That(peerNode.Port, Is.EqualTo(30305));
+                Assert.That(peerNode.DiscoveryPort, Is.EqualTo(30303));
+                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
             }
         }
 

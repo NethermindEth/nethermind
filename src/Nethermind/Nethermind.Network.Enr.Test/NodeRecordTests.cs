@@ -120,6 +120,23 @@ public class NodeRecordTests
     }
 
     [Test]
+    public void Cannot_select_ipv4_mapped_address_from_ip6_entry()
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("::ffff:192.0.2.1")));
+        nodeRecord.SetEntry(new Tcp6Entry(30303));
+        nodeRecord.SetEntry(new Udp6Entry(30304));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out _), Is.False);
+            Assert.That(nodeRecord.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out _), Is.False);
+            Assert.That(nodeRecord.TryGetDiscoveryEndpoint(out _), Is.False);
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out _), Is.False);
+        }
+    }
+
+    [Test]
     public void Enr_content_entry_has_hash_code()
     {
         EnrContentEntry a = IdEntry.Instance;

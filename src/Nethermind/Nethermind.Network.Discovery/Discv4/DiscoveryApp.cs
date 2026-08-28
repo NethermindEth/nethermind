@@ -1,6 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using Autofac;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
@@ -18,6 +20,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class DiscoveryApp : KademliaDiscoveryApp
 {
+    private readonly IPAddress _localIp;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv4Adapter;
     private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
@@ -36,7 +39,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv4Services = null)
         : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
-        List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger);
+        _localIp = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
+        List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger, _localIp);
 
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
@@ -57,7 +61,65 @@ public class DiscoveryApp : KademliaDiscoveryApp
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
-    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger)
+    public override void AddNodeToDiscovery(Node node)
+    {
+        if (!TryCreateReachableNode(node, _localIp, out Node? reachableNode))
+        {
+            if (Logger.IsTrace) Logger.Trace($"Skipping discv4 node with no discovery endpoint reachable from the local listener: {node:s}.");
+            return;
+        }
+
+        base.AddNodeToDiscovery(reachableNode);
+    }
+
+    internal static bool TryCreateReachableNode(
+        Node node,
+        IPAddress localIp,
+        [NotNullWhen(true)] out Node? reachableNode)
+    {
+        if (node.Enr is { Signature: not null } record)
+        {
+            IPEndPoint? preferredEndpoint = node.HasDiscoveryEndpoint ? node.DiscoveryAddress : null;
+            return CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                       record,
+                       localIp,
+                       preferredEndpoint,
+                       out reachableNode) &&
+                   reachableNode.IdHash.Equals(node.IdHash);
+        }
+
+        if (node.HasDiscoveryEndpoint &&
+            CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+        {
+            reachableNode = node;
+            return true;
+        }
+
+        reachableNode = null;
+        return false;
+    }
+
+    internal static Node? RestorePersistedNode(NetworkNode networkNode, IPAddress localIp)
+    {
+        if (networkNode.IsEnr)
+        {
+            return CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                networkNode.Enr,
+                localIp,
+                preferredEndpoint: null,
+                out Node? node)
+                ? node
+                : null;
+        }
+
+        Node enode = new(networkNode);
+        return enode.HasDiscoveryEndpoint &&
+               CompositeDiscoveryApp.SupportsAddress(localIp, enode.DiscoveryAddress.Address)
+            ? enode
+            : null;
+    }
+
+    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger, IPAddress? localIp = null)
     {
         List<Node> bootNodes = [];
         if (configuredBootnodes.Length == 0)
@@ -80,7 +142,14 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 continue;
             }
 
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort));
+            Node node = new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
+            if (localIp is not null && !CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+            {
+                if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
+                continue;
+            }
+
+            bootNodes.Add(node);
         }
 
         return bootNodes;
@@ -131,7 +200,9 @@ public class DiscoveryApp : KademliaDiscoveryApp
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
         //Step 1 - read nodes and stats from db
-        await _persistenceManager.LoadPersistedNodes(cancellationToken);
+        await _persistenceManager.LoadPersistedNodes(
+            cancellationToken,
+            node => RestorePersistedNode(node, _localIp));
 
         Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 

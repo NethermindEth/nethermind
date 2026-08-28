@@ -77,18 +77,20 @@ public sealed class NodeRecordProvider(
         LocalNodeRecord current = await currentTask;
         try
         {
-            LocalNodeRecordState state = await CreateState(head, CancellationToken.None);
+            (LocalNodeRecordState state, EndpointIssues endpointIssues) = await CreateState(head, CancellationToken.None);
+            if (current.EndpointIssues != endpointIssues)
+            {
+                LogEndpointIssues(endpointIssues);
+            }
+
             if (current.State == state)
             {
-                return current;
+                return current.EndpointIssues == endpointIssues
+                    ? current
+                    : current with { EndpointIssues = endpointIssues };
             }
 
-            if (current.State.EndpointIssues != state.EndpointIssues)
-            {
-                LogEndpointIssues(state.EndpointIssues);
-            }
-
-            return CreateSignedRecord(state, NextSequence(current.Record.EnrSequence));
+            return CreateSignedRecord(state, endpointIssues, NextSequence(current.Record.EnrSequence));
         }
         catch (Exception e)
         {
@@ -99,12 +101,14 @@ public sealed class NodeRecordProvider(
 
     private async Task<LocalNodeRecord> PrepareNodeRecord(BlockHeader? effectiveHeader, ulong previousSequence, CancellationToken cancellationToken)
     {
-        LocalNodeRecordState state = await CreateState(effectiveHeader, cancellationToken);
-        LogEndpointIssues(state.EndpointIssues);
-        return CreateSignedRecord(state, NextSequence(previousSequence));
+        (LocalNodeRecordState state, EndpointIssues endpointIssues) = await CreateState(effectiveHeader, cancellationToken);
+        LogEndpointIssues(endpointIssues);
+        return CreateSignedRecord(state, endpointIssues, NextSequence(previousSequence));
     }
 
-    private async ValueTask<LocalNodeRecordState> CreateState(BlockHeader? effectiveHeader, CancellationToken cancellationToken)
+    private async ValueTask<(LocalNodeRecordState State, EndpointIssues EndpointIssues)> CreateState(
+        BlockHeader? effectiveHeader,
+        CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
@@ -137,7 +141,8 @@ public sealed class NodeRecordProvider(
             endpointIssues |= EndpointIssues.NoExternalIpAdvertised;
         }
 
-        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId, endpointIssues);
+        LocalNodeRecordState state = new(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        return (state, endpointIssues);
     }
 
     private void LogEndpointIssues(EndpointIssues endpointIssues)
@@ -165,7 +170,7 @@ public sealed class NodeRecordProvider(
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
 
-    private LocalNodeRecord CreateSignedRecord(LocalNodeRecordState state, ulong sequence)
+    private LocalNodeRecord CreateSignedRecord(LocalNodeRecordState state, EndpointIssues endpointIssues, ulong sequence)
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(new EthEntry(state.ForkId.HashBytes, state.ForkId.Next));
@@ -191,7 +196,7 @@ public sealed class NodeRecordProvider(
             throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
         }
 
-        return new LocalNodeRecord(selfNodeRecord, state);
+        return new LocalNodeRecord(selfNodeRecord, state, endpointIssues);
     }
 
     private ulong NextSequence(ulong previous)
@@ -200,15 +205,14 @@ public sealed class NodeRecordProvider(
         return now > previous ? now : previous + 1;
     }
 
-    private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State);
+    private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State, EndpointIssues EndpointIssues);
 
     private readonly record struct LocalNodeRecordState(
         IPAddress? ExternalIpV4,
         IPAddress? ExternalIpV6,
         int TcpPort,
         int UdpPort,
-        NetworkForkId ForkId,
-        EndpointIssues EndpointIssues);
+        NetworkForkId ForkId);
 
     [Flags]
     private enum EndpointIssues

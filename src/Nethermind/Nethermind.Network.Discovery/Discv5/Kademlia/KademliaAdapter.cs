@@ -34,7 +34,7 @@ public sealed class KademliaAdapter(
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
-    ILogManager logManager) : KademliaAdapterBase("discv5", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
+    ILogManager logManager) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;
@@ -46,6 +46,8 @@ public sealed class KademliaAdapter(
     private const int PacketWorkerCount = 4;
     private const long SentChallengeTtlMilliseconds = 60_000;
     private const long EndpointCheckTtlMilliseconds = 60_000;
+    // Self and relayed records are validated independently of the local listener's reachability.
+    private static readonly IPAddress AnyListenerAddress = IPAddress.IPv6Any;
     private static readonly TimeSpan ChallengeRateLimitWindow = TimeSpan.FromMilliseconds(100);
     private const int ChallengeRateLimitBurstPerIp = 16;
     private const int ChallengeRateLimitFilterSize = 8_192;
@@ -53,7 +55,6 @@ public sealed class KademliaAdapter(
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
     private readonly TimeSpan _findNodeTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly IKademliaDistance<Hash256> _distance = distance;
-    private readonly IPAddress _localIp = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
     private readonly int _bucketSize = kademliaConfig.KSize;
     private readonly DisposingLruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions");
@@ -127,7 +128,7 @@ public sealed class KademliaAdapter(
     {
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
-        using NodesResponseHandler responseHandler = new(receiver, distances, _distance, _localIp);
+        using NodesResponseHandler responseHandler = new(receiver, distances, _distance, LocalIp);
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
@@ -641,7 +642,7 @@ public sealed class KademliaAdapter(
         => TryGetAcceptableNode(
             record,
             currentNode.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal,
-            _localIp,
+            LocalIp,
             currentNode.DiscoveryAddress,
             out refreshedNode);
 
@@ -908,7 +909,7 @@ public sealed class KademliaAdapter(
     }
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
-        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, IPAddress.IPv6Any, preferredEndpoint: null, out _) &&
+        => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, AnyListenerAddress, preferredEndpoint: null, out _) &&
             HasExpectedNodeId(record, expectedNodeId);
 
     internal static bool TryGetAcceptableNode(

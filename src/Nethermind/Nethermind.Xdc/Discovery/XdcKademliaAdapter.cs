@@ -29,12 +29,13 @@ public sealed class XdcKademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     INodeRecordProvider nodeRecordProvider,
+    IIPResolver ipResolver,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
     ILogManager logManager)
-    : KademliaAdapter(kademlia, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager)
+    : KademliaAdapter(kademlia, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, ipResolver, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager)
 {
     protected override Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
         => Task.CompletedTask;

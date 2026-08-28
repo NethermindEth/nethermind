@@ -168,7 +168,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
         => TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node)
-            ? AddBootNode(bootNodes, seen, node)
+            ? AddReachableBootNode(bootNodes, seen, node)
             : BootNodeAddResult.Skipped;
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
@@ -179,6 +179,11 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return BootNodeAddResult.Skipped;
         }
 
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddReachableBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
+    {
         if (!seen.Add(node.IdHash))
         {
             if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node:s}.");

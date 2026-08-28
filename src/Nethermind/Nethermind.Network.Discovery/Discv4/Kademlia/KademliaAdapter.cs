@@ -26,12 +26,13 @@ public class KademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     INodeRecordProvider nodeRecordProvider,
+    IIPResolver ipResolver,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
     ILogManager logManager
-) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
+) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
     private const int PeerCandidateChannelCapacity = 64;
@@ -255,7 +256,7 @@ public class KademliaAdapter(
         {
             FindNodeMsg msg = new(receiver.DiscoveryAddress, CalculateExpirationTime(), target.Bytes);
 
-            return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, _findNeighbourTimeout, token);
+            return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize, LocalIp), receiver, session, msg, _findNeighbourTimeout, token);
         }, token);
 
         return response.HasResponse ? response.Value : null;
@@ -389,7 +390,10 @@ public class KademliaAdapter(
         if (record is { Signature: not null } &&
             (advertisedEnrSequence is null || record.EnrSequence >= advertisedEnrSequence) &&
             _nodeRecordSigner.Verify(record) &&
-            Node.TryFromEnr(record, out Node? candidate) &&
+            Node.TryFromEnr(
+                record,
+                CompositeDiscoveryApp.GetAddressFamily(discoveryEndpoint.Address),
+                out Node? candidate) &&
             candidate.Id.Equals(node.Id) &&
             candidate.HasDiscoveryEndpoint &&
             candidate.DiscoveryAddress.Equals(discoveryEndpoint))

@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
         [SetUp]
         public void Setup()
         {
-            _handler = new(K);
+            _handler = new(K, IPAddress.Any);
             _farAddress = new(IPAddress.Parse("192.168.1.1"), 30303);
             _expirationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60; // 60 seconds in the future
         }
@@ -59,6 +59,28 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
             Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.True);
         }
 
+        [Test]
+        public async Task When_ResponseContainsUnsupportedFamilies_ThenTheyDoNotConsumeLimit()
+        {
+            NeighbourMsgHandler handler = new(K, IPAddress.Parse("2001:db8::1"));
+            Node[] mixedNodes =
+            [
+                .. CreateNodes(8),
+                .. CreateNodes(8, "2001:db8::")
+            ];
+            NeighborsMsg mixedMsg = new(_farAddress, _expirationTime, new ArraySegment<Node>(mixedNodes));
+            NeighborsMsg ipv6Msg = new(_farAddress, _expirationTime, CreateNodes(8, "2001:db8:1::"));
+
+            Assert.That(handler.Handle(mixedMsg), Is.True);
+            Assert.That(handler.TaskCompletionSource.Task.IsCompleted, Is.False);
+            Assert.That(handler.Handle(ipv6Msg), Is.True);
+
+            Node[] response = (await handler.TaskCompletionSource.Task).Value;
+            Assert.That(response, Has.Length.EqualTo(K));
+            Assert.That(Array.TrueForAll(response, node =>
+                node.DiscoveryAddress.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6), Is.True);
+        }
+
         private static IEnumerable<TestCaseData> TimeoutCases()
         {
             yield return new TestCaseData(5, new[] { true }).SetName("FewerThanK");
@@ -73,6 +95,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
                 PublicKey publicKey = TestItem.PublicKeys[i];
                 nodes[i] = new(publicKey, $"192.168.1.{i + startIndex + 10}", 30303);
             }
+            return new(nodes);
+        }
+
+        private ArraySegment<Node> CreateNodes(int count, string prefix)
+        {
+            Node[] nodes = new Node[count];
+            for (int i = 0; i < count; i++)
+            {
+                nodes[i] = new Node(TestItem.PublicKeys[i], $"{prefix}{i + 10}", 30303);
+            }
+
             return new(nodes);
         }
     }

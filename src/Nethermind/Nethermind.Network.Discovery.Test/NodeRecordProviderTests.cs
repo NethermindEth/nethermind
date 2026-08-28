@@ -136,6 +136,49 @@ public class NodeRecordProviderTests
     }
 
     [Test]
+    public async Task NewHeadBlock_DoesNotResignWhenOnlyEndpointIssuesChange()
+    {
+        Block initialHead = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        Block newHead = Build.A.Block.WithNumber(2).WithTimestamp(20).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(initialHead);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        NetworkForkId forkId = new(0x01020304, 20);
+        forkInfo.GetForkId(1, 10).Returns(forkId);
+        forkInfo.GetForkId(2, 20).Returns(forkId);
+        IIPResolver.NethermindIp initialIp = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"));
+        IIPResolver.NethermindIp updatedIp = new(
+            IPAddress.Loopback,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        int resolveCalls = 0;
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(_ =>
+            new ValueTask<IIPResolver.NethermindIp>(resolveCalls++ == 0 ? initialIp : updatedIp));
+        ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
+        NodeRecordProvider provider = CreateProvider(
+            blockTree,
+            forkInfo,
+            ipResolver,
+            timestampMilliseconds: 1_000,
+            logManager);
+
+        NodeRecord initialRecord = await provider.GetCurrentAsync();
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(newHead));
+        NodeRecord currentRecord = await provider.GetCurrentAsync();
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(newHead));
+        NodeRecord repeatedRecord = await provider.GetCurrentAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(currentRecord, Is.SameAs(initialRecord));
+            Assert.That(repeatedRecord, Is.SameAs(initialRecord));
+            Assert.That(currentRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence));
+        }
+        underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("External IPv6 address")));
+    }
+
+    [Test]
     public async Task GetCurrentAsync_WarnsWhenIpv4IsNotAdvertised()
     {
         ILogManager logManager = CreateWarningLogManager(out InterfaceLogger underlyingLogger);
@@ -292,6 +335,17 @@ public class NodeRecordProviderTests
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
+
+        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, logManager);
+    }
+
+    private static NodeRecordProvider CreateProvider(
+        IBlockTree blockTree,
+        IForkInfo forkInfo,
+        IIPResolver ipResolver,
+        long timestampMilliseconds,
+        ILogManager? logManager = null)
+    {
 
         INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
         networkConfig.P2PPort.Returns(30303);

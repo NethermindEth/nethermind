@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -319,14 +320,30 @@ public class KademliaAdapterTests
         Assert.That(node, Is.Null);
     }
 
+    [Test]
+    public async Task RefreshRemoteRecord_DoesNotRefetchValidRecordWithoutUsableEndpoint()
+    {
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("2001:db8::1"), enrSequence: 2);
+        RejectingRefreshAdapter adapter = new(record);
+        Node node = CreateNode(TestItem.PublicKeyB, 2);
+
+        await adapter.Refresh(node, record.EnrSequence);
+        await adapter.Refresh(node, record.EnrSequence);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(adapter.RequestCount, Is.EqualTo(1));
+            Assert.That(node.Enr, Is.SameAs(record));
+            Assert.That(node.RequestingEnrSequence, Is.Zero);
+        }
+    }
+
     private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null)
     {
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback)));
-        IIPResolver ipResolver = Substitute.For<IIPResolver>();
-        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
-            new IIPResolver.NethermindIp(localIp ?? IPAddress.IPv6Any, IPAddress.Loopback)));
+        IIPResolver ipResolver = CreateIpResolver(localIp ?? IPAddress.IPv6Any);
         _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
@@ -356,6 +373,14 @@ public class KademliaAdapterTests
             tcpPort: null,
             enrSequence: enrSequence,
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
+
+    private static IIPResolver CreateIpResolver(IPAddress localIp)
+    {
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(localIp, IPAddress.Loopback)));
+        return ipResolver;
+    }
 
     private static IEnumerable<TestCaseData> AcceptableNodeRecordCases()
     {
@@ -387,6 +412,34 @@ public class KademliaAdapterTests
             AllowNonRoutable: false,
             IncludeEth2: true,
             ExpectedResult: true)).SetName("Allows consensus-only routing record");
+    }
+
+    private sealed class RejectingRefreshAdapter(NodeRecord record)
+        : KademliaAdapterBase("test", CreateIpResolver(IPAddress.Any), LimboLogs.Instance.GetClassLogger<RejectingRefreshAdapter>())
+    {
+        public int RequestCount { get; private set; }
+
+        public Task Refresh(Node node, ulong sequence)
+            => RefreshRemoteRecordIfNewer(node, sequence, CancellationToken.None);
+
+        protected override ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
+        {
+            RequestCount++;
+            return new ValueTask<NodeRecord?>(record);
+        }
+
+        protected override bool TryCreateNodeFromEnr(
+            Node currentNode,
+            NodeRecord refreshedRecord,
+            [NotNullWhen(true)] out Node? refreshedNode)
+        {
+            refreshedNode = null;
+            return false;
+        }
+
+        protected override void AddOrRefreshRemoteNode(Node node)
+        {
+        }
     }
 
     public readonly record struct AcceptableNodeRecordCase(

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -65,6 +66,9 @@ public class XdcKademliaAdapterTests
 
         _nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         _nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(new NodeRecord()));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
         _nodeStatsManager = Substitute.For<INodeStatsManager>();
         _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
@@ -80,6 +84,7 @@ public class XdcKademliaAdapterTests
             },
             _kademliaConfig,
             _nodeRecordProvider,
+            ipResolver,
             _nodeStatsManager,
             _timestamper,
             Substitute.For<IProcessExitSource>(),

@@ -183,8 +183,7 @@ public class NodeRecord
         IPAddress? address = GetObj<IPAddress>(addressKey);
         bool hasExpectedFamily = addressFamily == AddressFamily.InterNetwork
             ? address?.AddressFamily == AddressFamily.InterNetwork
-            : addressFamily == AddressFamily.InterNetworkV6 &&
-              address?.AddressFamily == AddressFamily.InterNetworkV6 &&
+            : address?.AddressFamily == AddressFamily.InterNetworkV6 &&
               !address.IsIPv4MappedToIPv6;
         if (!hasExpectedFamily)
         {
