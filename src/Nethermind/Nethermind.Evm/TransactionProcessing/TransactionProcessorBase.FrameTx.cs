@@ -94,6 +94,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
+        // Structural, so it holds even where validation is skipped: the frame list is dereferenced
+        // throughout, and eth_call arrives here without a validator.
+        if (tx.Frames is not { Length: > 0 })
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.MissingFrames);
+        }
+
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
             return SimulateFrameValidationPrefix(tx, tracer, header, spec);

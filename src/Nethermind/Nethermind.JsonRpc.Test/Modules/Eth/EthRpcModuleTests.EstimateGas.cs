@@ -853,4 +853,27 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    /// <remarks>
+    /// A type-6 transaction reaches the frame estimator and the processor on its type alone, and
+    /// eth_estimateGas probes the transaction before estimating it, so an absent frame list must be
+    /// reported to the caller rather than faulting on the probe.
+    /// </remarks>
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6"}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6","frames":[]}""")]
+    public async Task Eth_estimateGas_frame_transaction_without_frames_returns_error(string txJson)
+    {
+        TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(txJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        JToken parsed = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(FrameTxValidation.MissingFrames));
+        }
+    }
 }
