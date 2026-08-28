@@ -191,7 +191,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {
-        if (!CompositeDiscoveryApp.SupportsAddress(_localIp, node.DiscoveryAddress.Address))
+        if (!DiscoveryAddressSupport.Supports(_localIp, node.DiscoveryAddress.Address))
         {
             if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node:s}.");
             return BootNodeAddResult.Skipped;
@@ -244,7 +244,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
 
         Node enode = new(networkNode);
-        return CompositeDiscoveryApp.SupportsAddress(_localIp, enode.DiscoveryAddress.Address) ? enode : null;
+        return DiscoveryAddressSupport.Supports(_localIp, enode.DiscoveryAddress.Address) ? enode : null;
     }
 
     internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)

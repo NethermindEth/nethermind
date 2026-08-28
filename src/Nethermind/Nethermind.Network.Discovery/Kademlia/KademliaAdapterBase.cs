@@ -118,7 +118,7 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                refreshedNode.ShareEnrStateFrom(node);
+                refreshedNode.MergeEnrStateFrom(node);
                 if (!refreshedNode.SetVerifiedEnr(record))
                 {
                     continue;

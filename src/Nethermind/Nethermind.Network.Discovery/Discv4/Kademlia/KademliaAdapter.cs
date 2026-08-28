@@ -55,7 +55,6 @@ public class KademliaAdapter(
     });
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
-    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
 
     public IMsgSender? MsgSender { get; set; }
 
@@ -284,18 +283,9 @@ public class KademliaAdapter(
 
     private void MergeKnownEnrState(Node node)
     {
-        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(_currentNodeHash, node.Id.Hash);
-        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
-        for (int i = 0; i < nodes.Length; i++)
+        if (kademlia.Value.TryGetNode(node, out Node? knownNode) && !ReferenceEquals(knownNode, node))
         {
-            Node knownNode = nodes[i];
-            if (ReferenceEquals(knownNode, node) || !knownNode.Id.Equals(node.Id))
-            {
-                continue;
-            }
-
             node.MergeEnrStateFrom(knownNode);
-            return;
         }
     }
 
@@ -413,7 +403,7 @@ public class KademliaAdapter(
             _nodeRecordSigner.Verify(record) &&
             Node.TryFromEnr(
                 record,
-                CompositeDiscoveryApp.GetAddressFamily(discoveryEndpoint.Address),
+                DiscoveryAddressSupport.GetFamily(discoveryEndpoint.Address),
                 out Node? candidate) &&
             candidate.Id.Equals(node.Id) &&
             candidate.HasDiscoveryEndpoint &&

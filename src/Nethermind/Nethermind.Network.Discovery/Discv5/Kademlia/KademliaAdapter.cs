@@ -595,12 +595,11 @@ public sealed class KademliaAdapter(
     {
         ValueHash256 remoteNodeId = remotePublicKey.Hash.ValueHash256;
         Node remoteNode = Node.FromDiscoveryEndpoint(remotePublicKey, endpoint);
-        TryGetKnownNode(remoteNodeId, out Node? knownNode);
-        if (knownNode is not null)
+        if (kademlia.Value.TryGetNode(remoteNode, out Node? knownNode) && !ReferenceEquals(knownNode, remoteNode))
         {
             // Routing refreshes replace Node objects. Sharing this identity's ENR state keeps
             // concurrent packet workers and an awaiting record refresh on one atomic cache.
-            remoteNode.ShareEnrStateFrom(knownNode);
+            remoteNode.MergeEnrStateFrom(knownNode);
         }
 
         if (observedEnrSequence > remoteNode.HighestObservedEnrSequence)
@@ -988,7 +987,7 @@ public sealed class KademliaAdapter(
         [NotNullWhen(true)] out IPEndPoint? endpoint)
     {
         Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
-        int count = CompositeDiscoveryApp.GetSupportedAddressFamilies(localIp, preferredEndpoint, addressFamilies);
+        int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
         for (int i = 0; i < count; i++)
         {
             if (record.TryGetDiscoveryEndpoint(addressFamilies[i], out endpoint) &&
@@ -1005,7 +1004,7 @@ public sealed class KademliaAdapter(
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
     {
         IPAddress endpointAddress = endpoint.Address;
-        AddressFamily family = CompositeDiscoveryApp.GetAddressFamily(endpointAddress);
+        AddressFamily family = DiscoveryAddressSupport.GetFamily(endpointAddress);
         IPAddress normalizedAddress = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
         return record.TryGetDiscoveryEndpoint(family, out IPEndPoint? discoveryEndpoint) &&
                discoveryEndpoint.Address.Equals(normalizedAddress) &&

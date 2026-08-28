@@ -162,7 +162,7 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
                 return false;
             }
 
-            AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
+            AddressFamily addressFamily = DiscoveryAddressSupport.GetFamily(discoveryNode.DiscoveryAddress.Address);
             if (!Node.TryFromDiscoveryEnr(record, addressFamily, out discoveryCandidate) &&
                 !Node.TryFromDiscoveryEnr(record, out discoveryCandidate))
             {

@@ -117,11 +117,11 @@ public sealed class NodeRecordProvider(
         // RLPx and discovery each bind a single socket to LocalIp, so advertise an address family only
         // when that socket can receive it; otherwise peers would dial an endpoint nothing is listening on.
         IPAddress? resolvedExternalIpV4 = ip.ExternalIpV4;
-        IPAddress? externalIpV4 = CompositeDiscoveryApp.SupportsAddressFamily(ip.LocalIp, AddressFamily.InterNetwork)
+        IPAddress? externalIpV4 = DiscoveryAddressSupport.SupportsFamily(ip.LocalIp, AddressFamily.InterNetwork)
             ? resolvedExternalIpV4
             : null;
         IPAddress? resolvedExternalIpV6 = ip.ExternalIpV6;
-        IPAddress? externalIpV6 = CompositeDiscoveryApp.SupportsAddressFamily(ip.LocalIp, AddressFamily.InterNetworkV6)
+        IPAddress? externalIpV6 = DiscoveryAddressSupport.SupportsFamily(ip.LocalIp, AddressFamily.InterNetworkV6)
             ? resolvedExternalIpV6
             : null;
         EndpointIssues endpointIssues = EndpointIssues.None;

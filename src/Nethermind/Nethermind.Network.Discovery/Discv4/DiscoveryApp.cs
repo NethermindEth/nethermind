@@ -87,7 +87,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         }
 
         if (node.HasDiscoveryEndpoint &&
-            CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+            DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
         {
             reachableNode = node;
             return true;
@@ -136,7 +136,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
         Node enode = new(networkNode);
         return enode.HasDiscoveryEndpoint &&
-               CompositeDiscoveryApp.SupportsAddress(localIp, enode.DiscoveryAddress.Address)
+               DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address)
             ? enode
             : null;
     }
@@ -170,7 +170,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             else
             {
                 node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
-                if (!CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+                if (!DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
                 {
                     if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
                     continue;

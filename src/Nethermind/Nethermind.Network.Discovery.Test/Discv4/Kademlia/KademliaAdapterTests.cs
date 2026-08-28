@@ -192,8 +192,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 enrSequence: 2);
             Node knownNode = new(TestItem.PublicKeyB, _receiver.Address);
             knownNode.SetVerifiedEnr(knownRecord);
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(_testNode.Id.Hash, knownNode.Id.Hash);
-            _kademliaMessageReceiver.GetAllAtDistance(distance).Returns([knownNode]);
+            _kademliaMessageReceiver.TryGetNode(Arg.Any<Node>(), out _).Returns(callInfo =>
+            {
+                callInfo[1] = knownNode;
+                return true;
+            });
             ConfigureBondCallback(pongEnrSequence: knownRecord.EnrSequence);
 
             bool result = await _adapter.Ping(knownNode, token);
@@ -203,6 +206,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 ReferenceEquals(added.Enr, knownRecord) &&
                 added.IsVerifiedEnr(knownRecord) &&
                 added.HighestObservedEnrSequence == knownRecord.EnrSequence));
+            _kademliaMessageReceiver.Received().TryGetNode(Arg.Any<Node>(), out _);
+            _kademliaMessageReceiver.DidNotReceive().GetAllAtDistance(Arg.Any<int>());
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
         }
 

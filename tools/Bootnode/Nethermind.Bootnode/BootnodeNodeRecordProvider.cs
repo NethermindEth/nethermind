@@ -64,11 +64,11 @@ internal sealed class BootnodeNodeRecordProvider(
     private void SetEndpointEntries(NodeRecord selfNodeRecord)
     {
         IPAddress? resolvedExternalIpV4 = resolvedIp.ExternalIpV4;
-        IPAddress? externalIpV4 = CompositeDiscoveryApp.SupportsAddressFamily(resolvedIp.LocalIp, AddressFamily.InterNetwork)
+        IPAddress? externalIpV4 = DiscoveryAddressSupport.SupportsFamily(resolvedIp.LocalIp, AddressFamily.InterNetwork)
             ? resolvedExternalIpV4
             : null;
         IPAddress? resolvedExternalIpV6 = resolvedIp.ExternalIpV6;
-        IPAddress? externalIpV6 = CompositeDiscoveryApp.SupportsAddressFamily(resolvedIp.LocalIp, AddressFamily.InterNetworkV6)
+        IPAddress? externalIpV6 = DiscoveryAddressSupport.SupportsFamily(resolvedIp.LocalIp, AddressFamily.InterNetworkV6)
             ? resolvedExternalIpV6
             : null;
 

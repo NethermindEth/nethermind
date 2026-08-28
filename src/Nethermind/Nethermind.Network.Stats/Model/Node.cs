@@ -18,6 +18,10 @@ namespace Nethermind.Stats.Model
     /// <summary>
     /// Represents a physical network node address and attributes that we assign to it (static, bootnode, trusted, etc.)
     /// </summary>
+    /// <remarks>
+    /// Instances with the same identity can merge into one shared ENR-state group so routing replacements and
+    /// in-flight packet handlers observe the same verified record, sequence high-water, and refresh request.
+    /// </remarks>
     public sealed class Node : IFormattable, IEquatable<Node>
     {
         private string _clientId;
@@ -231,6 +235,7 @@ namespace Nethermind.Stats.Model
                     }
 
                     EnrRecordState current = Volatile.Read(ref state.RecordState);
+                    // An unverified sequence is not authenticated and cannot block a verified record.
                     if (current?.IsVerified == true)
                     {
                         if (ReferenceEquals(current.Record, value))
@@ -252,26 +257,6 @@ namespace Nethermind.Stats.Model
         }
 
         /// <summary>
-        /// Shares ENR cache and request state with another node instance of the same identity.
-        /// </summary>
-        /// <remarks>
-        /// Discovery uses this when replacing a routing entry with a fresh endpoint object so concurrent
-        /// packet handlers cannot publish an older record or lose a newly observed sequence.
-        /// </remarks>
-        public void ShareEnrStateFrom(Node source)
-        {
-            ValidateEnrStateSource(source);
-            EnrCacheState sourceState = source.GetOrCreateEnrState();
-            if (Volatile.Read(ref _enrState) is null &&
-                Interlocked.CompareExchange(ref _enrState, sourceState, null) is null)
-            {
-                return;
-            }
-
-            MergeEnrStateFrom(source);
-        }
-
-        /// <summary>
         /// Merges this node's ENR record, authenticated high-water mark, and request into an existing routing entry's state,
         /// then shares that state, including the highest in-flight request sequence.
         /// </summary>
@@ -280,8 +265,18 @@ namespace Nethermind.Stats.Model
             ValidateEnrStateSource(existingNode);
             while (true)
             {
-                EnrCacheState candidateState = GetOrCreateEnrState();
                 EnrCacheState existingState = existingNode.GetOrCreateEnrState();
+                EnrCacheState candidateState = GetEnrState();
+                if (candidateState is null)
+                {
+                    if (Interlocked.CompareExchange(ref _enrState, existingState, null) is null)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
                 if (ReferenceEquals(candidateState, existingState))
                 {
                     Volatile.Write(ref _enrState, existingState);

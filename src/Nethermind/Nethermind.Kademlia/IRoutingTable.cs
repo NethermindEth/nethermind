@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nethermind.Kademlia;
 
 public interface IRoutingTable<TNode, TKadKey>
@@ -8,6 +10,7 @@ public interface IRoutingTable<TNode, TKadKey>
     where TKadKey : notnull
 {
     BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh);
+    bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node);
     bool Remove(in TKadKey hash);
     TNode[] GetKNearestNeighbour(TKadKey hash, bool excludeSelf = false);
     TNode[] GetKNearestNeighbourExcluding(TKadKey hash, TKadKey exclude, bool excludeSelf = false);

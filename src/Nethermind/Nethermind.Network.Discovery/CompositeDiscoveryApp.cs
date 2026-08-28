@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -112,81 +111,6 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> can send to and receive from <paramref name="remoteIp"/>.
-    /// </summary>
-    /// <remarks>
-    /// A native IPv4 socket cannot use an endpoint that remains in IPv4-mapped IPv6 form; callers must unmap it first.
-    /// </remarks>
-    internal static bool SupportsAddress(IPAddress localIp, IPAddress remoteIp)
-        => !(localIp.AddressFamily == AddressFamily.InterNetwork && remoteIp.IsIPv4MappedToIPv6) &&
-           SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
-
-    /// <summary>
-    /// Returns the effective address family, treating IPv4-mapped IPv6 addresses as IPv4.
-    /// </summary>
-    /// <param name="address">The address whose effective family is required.</param>
-    /// <returns>The effective IPv4 or IPv6 address family.</returns>
-    public static AddressFamily GetAddressFamily(IPAddress address)
-        => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
-
-    /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
-    /// </summary>
-    /// <param name="localIp">The address used to bind the socket.</param>
-    /// <param name="addressFamily">The remote address family to test.</param>
-    /// <returns><see langword="true"/> when the bound socket can serve the address family.</returns>
-    public static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
-        => addressFamily switch
-        {
-            AddressFamily.InterNetwork =>
-                localIp.AddressFamily == AddressFamily.InterNetwork ||
-                localIp.IsIPv4MappedToIPv6 ||
-                localIp.Equals(IPAddress.IPv6Any),
-            AddressFamily.InterNetworkV6 =>
-                localIp.AddressFamily == AddressFamily.InterNetworkV6 &&
-                !localIp.IsIPv4MappedToIPv6,
-            _ => false
-        };
-
-    /// <summary>
-    /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
-    /// </summary>
-    /// <param name="localIp">The address used to bind the local socket.</param>
-    /// <param name="preferredEndpoint">The endpoint whose family should be written first, when supported.</param>
-    /// <param name="addressFamilies">The destination span, which must have room for at least two entries.</param>
-    /// <returns>The number of families written, at most two.</returns>
-    internal static int GetSupportedAddressFamilies(
-        IPAddress localIp,
-        IPEndPoint? preferredEndpoint,
-        Span<AddressFamily> addressFamilies)
-    {
-        Debug.Assert(addressFamilies.Length >= 2);
-
-        int count = 0;
-        AddressFamily? preferredFamily = preferredEndpoint is null
-            ? null
-            : GetAddressFamily(preferredEndpoint.Address);
-        if (preferredFamily is { } family && SupportsAddressFamily(localIp, family))
-        {
-            addressFamilies[count++] = family;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetwork &&
-            SupportsAddressFamily(localIp, AddressFamily.InterNetwork))
-        {
-            addressFamilies[count++] = AddressFamily.InterNetwork;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetworkV6 &&
-            SupportsAddressFamily(localIp, AddressFamily.InterNetworkV6))
-        {
-            addressFamilies[count++] = AddressFamily.InterNetworkV6;
-        }
-
-        return count;
-    }
-
-    /// <summary>
     /// Creates a discovery node from an ENR using an address family reachable through the local listener.
     /// </summary>
     internal static bool TryCreateReachableDiscoveryNode(
@@ -196,7 +120,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         [NotNullWhen(true)] out Node? node)
     {
         Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
-        int count = GetSupportedAddressFamilies(localIp, preferredEndpoint, addressFamilies);
+        int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
         for (int i = 0; i < count; i++)
         {
             if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node))

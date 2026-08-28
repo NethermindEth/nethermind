@@ -319,8 +319,8 @@ namespace Nethermind.Network.Test.Stats
             Node known = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             Node firstReplacement = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
             Node newerReplacement = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
-            firstReplacement.ShareEnrStateFrom(known);
-            newerReplacement.ShareEnrStateFrom(known);
+            firstReplacement.MergeEnrStateFrom(known);
+            newerReplacement.MergeEnrStateFrom(known);
 
             Parallel.Invoke(
                 () => firstReplacement.SetVerifiedEnr(firstRecord),
@@ -343,10 +343,10 @@ namespace Nethermind.Network.Test.Stats
         {
             Node candidate = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             Node candidateAlias = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
-            candidateAlias.ShareEnrStateFrom(candidate);
+            candidateAlias.MergeEnrStateFrom(candidate);
             Node existing = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
             Node existingAlias = new(TestItem.PublicKeyA, "127.0.0.4", 30303);
-            existingAlias.ShareEnrStateFrom(existing);
+            existingAlias.MergeEnrStateFrom(existing);
             NodeRecord record = CreateEnr(
                 TestItem.PrivateKeyA,
                 IPAddress.Parse("8.8.8.8"),
@@ -382,7 +382,7 @@ namespace Nethermind.Network.Test.Stats
             {
                 Node candidate = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
                 Node candidateAlias = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
-                candidateAlias.ShareEnrStateFrom(candidate);
+                candidateAlias.MergeEnrStateFrom(candidate);
                 Node existing = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
                 existing.ObserveEnrSequence(1);
                 using Barrier start = new(2);

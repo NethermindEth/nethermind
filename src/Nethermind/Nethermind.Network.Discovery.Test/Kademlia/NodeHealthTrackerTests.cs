@@ -212,6 +212,8 @@ public class NodeHealthTrackerTests
 
         public int GetByHash(int nodeId) => throw new NotSupportedException();
 
+        public bool TryGet(in int hash, out int node) => throw new NotSupportedException();
+
         public void LogDebugInfo() => throw new NotSupportedException();
 
         public event EventHandler<int>? OnNodeAdded

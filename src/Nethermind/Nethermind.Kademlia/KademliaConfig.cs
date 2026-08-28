@@ -65,7 +65,8 @@ public class KademliaConfig<TNode>
     /// The function returns the value to store and runs while the routing table is locked.
     /// </summary>
     /// <remarks>
-    /// The merge must be bounded, non-blocking, and must not mutate the routing table that invoked it.
+    /// The merge must return promptly, must not perform I/O or mutate the routing table that invoked it, and must not
+    /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
     /// </remarks>
     public Func<TNode, TNode, TNode>? MergeOnRefresh { get; set; }
 }

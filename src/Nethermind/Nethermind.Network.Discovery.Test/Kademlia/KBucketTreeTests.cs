@@ -124,6 +124,9 @@ public class KBucketTreeTests
         tree.TryAddOrRefresh(replacementHash, 2, out _);
         tree.TryAddOrRefresh(replacementHash, 1, out _);
 
+        Assert.That(tree.TryGet(replacementHash, out int replacement), Is.True);
+        Assert.That(replacement, Is.EqualTo(2));
+
         tree.Remove(activeHash);
 
         Assert.That(tree.GetByHash(replacementHash), Is.EqualTo(2));

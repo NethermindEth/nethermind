@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Collections.Pooled;
@@ -136,6 +137,14 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         lock (_lock)
         {
             return GetBucketForHash(hash).GetByHash(hash);
+        }
+    }
+
+    public bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
+    {
+        lock (_lock)
+        {
+            return GetBucketForHash(hash).TryGetStored(hash, out node);
         }
     }
 

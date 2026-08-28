@@ -170,7 +170,7 @@ public sealed class NodeSource(
                 return false;
             }
 
-            AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
+            AddressFamily addressFamily = DiscoveryAddressSupport.GetFamily(discoveryNode.DiscoveryAddress.Address);
             // EIP-778 endpoints are independent: prefer the proven discovery family without
             // discarding a record whose only usable RLPx endpoint belongs to the other family.
             if (!Node.TryFromEnr(record, addressFamily, out peerCandidate) &&

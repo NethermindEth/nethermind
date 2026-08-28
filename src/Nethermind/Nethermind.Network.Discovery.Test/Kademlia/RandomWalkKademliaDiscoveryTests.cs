@@ -240,6 +240,8 @@ public class RandomWalkKademliaDiscoveryTests
 
         public int GetByHash(int nodeId) => throw new NotSupportedException();
 
+        public bool TryGet(in int hash, out int node) => throw new NotSupportedException();
+
         public void LogDebugInfo() => throw new NotSupportedException();
     }
 
@@ -258,6 +260,8 @@ public class RandomWalkKademliaDiscoveryTests
         public Action<int>? OnLookup { get; init; }
 
         public void AddOrRefresh(int node) => throw new NotSupportedException();
+
+        public bool TryGetNode(int node, out int storedNode) => throw new NotSupportedException();
 
         public void Remove(int node) => throw new NotSupportedException();
 

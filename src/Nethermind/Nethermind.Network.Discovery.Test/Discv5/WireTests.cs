@@ -167,13 +167,15 @@ public class WireTests
             node.HighestObservedEnrSequence == peerA.NodeRecordProvider.Current.EnrSequence));
     }
 
-    [TestCase(false, null, false)]
-    [TestCase(true, null, true)]
-    [TestCase(true, "2001:db8::2", false)]
+    [TestCase(false, null, false, false)]
+    [TestCase(true, null, true, false)]
+    [TestCase(true, "2001:db8::2", false, false)]
+    [TestCase(true, "2001:db8::2", false, true)]
     public async Task FindNeighbours_HandshakePreservesVerifiedEnrStateOnKnownNode(
         bool includeEndpointInRecord,
         string? recordIp,
-        bool expectRecordReplacement)
+        bool expectRecordReplacement,
+        bool knownAsReplacement)
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
         IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
@@ -186,7 +188,14 @@ public class WireTests
         Node knownNodeA = new(TestItem.PrivateKeyA.PublicKey, endpointA);
         knownNodeA.SetVerifiedEnr(reachableRecord);
         BoundedDistanceKademlia tableB = new(TestItem.PrivateKeyB.PublicKey.Hash, capacityPerDistance: 16);
-        tableB.AddOrRefresh(knownNodeA);
+        if (knownAsReplacement)
+        {
+            tableB.AddReplacement(knownNodeA);
+        }
+        else
+        {
+            tableB.AddOrRefresh(knownNodeA);
+        }
 
         await using TestPeer peerA = CreatePeer(
             TestItem.PrivateKeyA,
@@ -664,6 +673,24 @@ public class WireTests
             }
         }
 
+        public bool TryGetNode(Node node, out Node storedNode)
+        {
+            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            lock (_lock)
+            {
+                if ((_nodesByDistance.TryGetValue(distance, out List<Node>? nodes) &&
+                     TryGetNode(nodes, node.Id, out storedNode)) ||
+                    (_replacementsByDistance.TryGetValue(distance, out List<Node>? replacements) &&
+                     TryGetNode(replacements, node.Id, out storedNode)))
+                {
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
+        }
+
         public void AddReplacement(Node node)
         {
             int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
@@ -773,6 +800,21 @@ public class WireTests
             }
 
             return nodes;
+        }
+
+        private static bool TryGetNode(List<Node> nodes, PublicKey id, out Node storedNode)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Id.Equals(id))
+                {
+                    storedNode = nodes[i];
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
         }
 
         private List<Node> GetReplacements(int distance)
