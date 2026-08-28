@@ -53,30 +53,30 @@ internal sealed class HistoryStoreV3
         // Ascending suffix, so the answer is the first entry at or after [key | block + 1].
         if (block == ulong.MaxValue) return -1;
 
-        int historyKeyLength = flatKey.Length + BlockBytes;
-        Span<byte> seekKey = stackalloc byte[historyKeyLength];
+        Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
         WriteHistoryKey(seekKey, flatKey, block + 1);
 
-        Span<byte> upperBound = stackalloc byte[historyKeyLength + 1];
+        Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
 
-        Span<byte> foundKey = stackalloc byte[historyKeyLength];
-        if (!_history.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLength, outBuffer, out int valueLength)
-            || foundKeyLength != historyKeyLength
-            || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
-        {
+        using ISortedView view = _history.GetViewBetween(seekKey, upperBound);
+        if (!view.MoveNext()) return -1;
+
+        ReadOnlySpan<byte> foundKey = view.CurrentKey;
+        if (foundKey.Length != flatKey.Length + BlockBytes || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
             return -1;
-        }
 
         nextChangeBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
-        if (valueLength > outBuffer.Length)
+        ReadOnlySpan<byte> value = view.CurrentValue;
+        if (value.Length > outBuffer.Length)
         {
             throw new StateUnavailableException(
-                $"History value of {valueLength} bytes at block {nextChangeBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
+                $"History value of {value.Length} bytes at block {nextChangeBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
         }
 
-        return valueLength;
+        value.CopyTo(outBuffer);
+        return value.Length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

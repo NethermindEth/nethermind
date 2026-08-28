@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.History;
 
@@ -15,9 +20,10 @@ namespace Nethermind.History;
 /// stay queryable where the general history pruner reclaims. A bounded slice retains only heights inside its own
 /// window, measured from the head at sweep time. The bloom is only a first filter; where the
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
-public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree) : IPrunedReceiptRetention, IPrunedLogsRetention
+public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree, IDbProvider? dbProvider = null) : IPrunedReceiptRetention, IPrunedLogsRetention
 {
     private readonly FrozenDictionary<Address, ulong?> _slices = ParseSlices(flatDbConfig.HistorySliceAddresses);
+    private readonly ulong _logsRetainedFrom = StampLogsRetainedFrom(flatDbConfig.HistorySliceAddresses, blockTree, dbProvider);
 
     public bool ShouldRetainReceipts(BlockHeader header)
     {
@@ -130,7 +136,11 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             return false;
         }
 
-        ulong head = HeadNumber;
+        if (blockTree.Head?.Number is not { } head || fromBlock < _logsRetainedFrom)
+        {
+            return false;
+        }
+
         foreach (AddressAsKey address in addresses)
         {
             if (!_slices.TryGetValue(address.Value, out ulong? retention) || !InsideSliceWindow(fromBlock, retention, head))
@@ -142,9 +152,45 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return true;
     }
 
+    /// <summary>The height this slice set's receipt retention has provably been in force from: everything the
+    /// pruner reclaims above it is reclaimed retention-aware. Below it nothing is known - the receipts may
+    /// predate the slice config, or never have been downloaded at all - so log coverage is refused there.
+    /// Stamped at construction, before the pruner can move, at the availability floor of the moment the set is
+    /// first seen; a stored stamp is reused while the set is unchanged and re-stamped when it changes.</summary>
+    private static ulong StampLogsRetainedFrom(string? sliceAddresses, IBlockTree blockTree, IDbProvider? dbProvider)
+    {
+        if (string.IsNullOrEmpty(sliceAddresses) || dbProvider?.MetadataDb is not { } metadata)
+        {
+            return 0;
+        }
+
+        byte[] currentSet = Encoding.UTF8.GetBytes(sliceAddresses);
+        byte[]? storedSet = metadata.Get(MetadataDbKeys.HistorySliceLogsSliceSet);
+        byte[]? storedMark = metadata.Get(MetadataDbKeys.HistorySliceLogsRetainedFrom);
+        if (storedMark is { Length: sizeof(ulong) } && storedSet is not null && Bytes.AreEqual(storedSet, currentSet))
+        {
+            return BinaryPrimitives.ReadUInt64BigEndian(storedMark);
+        }
+
+        ulong deletePointer = metadata.Get(MetadataDbKeys.HistoryPruningDeletePointer) is { } pointer
+            ? new RlpReader(pointer).DecodeULong()
+            : 0;
+        ulong mark = ulong.Max(deletePointer, blockTree.GetLowestBlock());
+
+        Span<byte> markBytes = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(markBytes, mark);
+        metadata.Set(MetadataDbKeys.HistorySliceLogsRetainedFrom, markBytes.ToArray());
+        metadata.Set(MetadataDbKeys.HistorySliceLogsSliceSet, currentSet);
+
+        return mark;
+    }
+
     /// <inheritdoc/>
-    /// <remarks>The maximum floor across bounded slices - the shallowest window - so the cleanup cursor revisits
-    /// every height anything can have expired from; a height a deeper slice still claims is simply re-answered.</remarks>
+    /// <remarks>Deliberately the MINIMUM floor across bounded slices - the deepest window - because the cleanup
+    /// cursor behind it is monotonic: a height must be outside every bounded window before the cursor passes it,
+    /// or a deeper slice's band would be skipped while still retained and never revisited. A shallow slice's
+    /// expired heights are therefore reclaimed late - once the deepest window's floor reaches them - never
+    /// stranded.</remarks>
     public ulong ExpiredRetentionUpperBound()
     {
         ulong upperBound = 0;
@@ -154,7 +200,7 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             if (retention is not { } bound || head <= bound) continue;
 
             ulong sliceFloor = head - bound;
-            if (sliceFloor > upperBound) upperBound = sliceFloor;
+            if (upperBound == 0 || sliceFloor < upperBound) upperBound = sliceFloor;
         }
 
         return upperBound;

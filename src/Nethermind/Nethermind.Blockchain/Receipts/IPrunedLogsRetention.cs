@@ -8,9 +8,11 @@ namespace Nethermind.Blockchain.Receipts;
 
 /// <summary>
 /// Whether logs for a set of addresses are still answerable over a block range the general history pruner has
-/// reclaimed. An implementation may only answer true when it retains the receipts of every block in the range whose
-/// bloom matches any of the addresses - a log scan skips the other blocks without reading them, so that is exactly
-/// the set the scan will ask for.
+/// reclaimed. An implementation may only answer true when it retains the receipts of every block in the range that
+/// has a log for any of the addresses - a bloom-gated scan reads a superset of those blocks, and a read that finds
+/// no receipts for a block with no matching log contributes exactly the empty set it would have contributed. That
+/// includes depths the node never stored at all: receipts that were never downloaded, or reclaimed before the
+/// retention was configured, are not retained by anyone and must refuse.
 /// </summary>
 public interface IPrunedLogsRetention
 {

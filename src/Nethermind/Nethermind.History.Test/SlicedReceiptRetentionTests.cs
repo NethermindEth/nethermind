@@ -22,6 +22,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -448,6 +449,70 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
+    public void RetainsLogsFor_RefusesBelowTheHeightRetentionWasConfiguredAt_AndStampsItOnce()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        blockTree.GetLowestBlock().Returns(0UL);
+        IDb metadata = new MemDb();
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadata);
+
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 4000, 9000), Is.False,
+                "everything below the delete pointer at configuration time was reclaimed - or never stored - without this retention in force");
+            Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.True,
+                "from the stamp up, every reclaim has been retention-aware");
+        }
+
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(8000UL).Bytes);
+        SlicedReceiptRetention restarted = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.True,
+            "the stamp is stored: a later restart under the same slice set must not lose the depth already earned");
+    }
+
+    [Test]
+    public void RetainsLogsFor_ReStampsWhenTheSliceSetChanges()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        blockTree.GetLowestBlock().Returns(0UL);
+        IDb metadata = new MemDb();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadata);
+
+        SlicedReceiptRetention first = new(new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() },
+            Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        Assert.That(first.RetainsLogsFor([TestItem.AddressA], 0, 9000), Is.True);
+
+        metadata.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(6000UL).Bytes);
+        SlicedReceiptRetention widened = new(new FlatDbConfig { HistorySliceAddresses = $"{TestItem.AddressA},{TestItem.AddressB}" },
+            Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(widened.RetainsLogsFor([TestItem.AddressB], 4000, 9000), Is.False,
+                "the new set's coverage starts where the availability floor stood when it appeared");
+            Assert.That(widened.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+        }
+    }
+
+    [Test]
+    public void RetainsLogsFor_RefusesWithoutAHead()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
+
+        Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 100), Is.False,
+            "a bounded window cannot be evaluated before the head exists, and failing open is the one wrong direction");
+    }
+
+    [Test]
     public void RetainsLogsFor_returns_false_when_no_addresses_are_configured()
     {
         SlicedReceiptRetention retention = new(new FlatDbConfig(), Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>());
@@ -614,8 +679,8 @@ public class SlicedReceiptRetentionTests
     [TestCase("", 0ul, TestName = "ExpiredRetentionUpperBound_with_no_slices_is_zero")]
     [TestCase("unbounded", 0ul, TestName = "ExpiredRetentionUpperBound_with_only_unbounded_slices_is_zero")]
     [TestCase("bounded:100", 900ul, TestName = "ExpiredRetentionUpperBound_for_a_bounded_slice_is_head_minus_its_bound")]
-    [TestCase("bounded:100,deeper:300", 900ul, TestName = "ExpiredRetentionUpperBound_across_bounds_is_the_shallowest_window_floor")]
-    public void ExpiredRetentionUpperBound_FollowsTheShallowestBoundedWindow(string shape, ulong expected)
+    [TestCase("bounded:100,deeper:300", 700ul, TestName = "ExpiredRetentionUpperBound_across_bounds_is_the_deepest_window_floor_so_the_monotonic_cursor_strands_nothing")]
+    public void ExpiredRetentionUpperBound_FollowsTheDeepestBoundedWindow(string shape, ulong expected)
     {
         string addresses = shape switch
         {

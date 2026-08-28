@@ -541,6 +541,8 @@ public class HistoryPruner : IHistoryPruner
 
             if (meterRetained) Metrics.SlicedReceiptsRetained += candidates.Count;
 
+            candidates.AsSpan().Sort();
+
             if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
             {
                 levels ??= LoadLevels(fromInclusive, toExclusive);
@@ -572,8 +574,6 @@ public class HistoryPruner : IHistoryPruner
 
             // Sparse: the gaps between retained heights are wide, so one range each beats walking them, and a
             // range is what lets whole files be unlinked instead of waiting for compaction.
-            candidates.AsSpan().Sort();
-
             using ArrayPoolList<(ulong FromInclusive, ulong ToExclusive)> gaps = new(candidates.Count + 1);
             ulong gapStart = fromInclusive;
             for (int i = 0; i < candidates.Count; i++)

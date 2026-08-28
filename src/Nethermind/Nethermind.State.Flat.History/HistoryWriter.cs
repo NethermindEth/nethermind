@@ -549,7 +549,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         int accountCount = pending.Accounts.Count;
         KeyValuePair<ValueHash256, ulong>[] accounts = ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Rent(accountCount);
-        try
         {
             ((ICollection<KeyValuePair<ValueHash256, ulong>>)pending.Accounts).CopyTo(accounts, 0);
             Array.Sort(accounts, 0, accountCount, AccountKeyOrder);
@@ -571,14 +570,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 }
             }
         }
-        finally
-        {
-            ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
-        }
+
+        ArrayPool<KeyValuePair<ValueHash256, ulong>>.Shared.Return(accounts);
 
         int storageCount = pending.Storages.Count;
         KeyValuePair<PendingV3Writes.SlotKey, ulong>[] storages = ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Rent(storageCount);
-        try
         {
             ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)pending.Storages).CopyTo(storages, 0);
             Array.Sort(storages, 0, storageCount, StorageKeyOrder);
@@ -611,10 +607,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 }
             }
         }
-        finally
-        {
-            ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
-        }
+
+        ArrayPool<KeyValuePair<PendingV3Writes.SlotKey, ulong>>.Shared.Return(storages);
     }
 
     // Sorted so each multi-get hands the persisted column keys in key order (grouped per account for storage),
