@@ -33,7 +33,7 @@ if [ -n "$ZONE" ]; then
        --zone="$ZONE" --quiet --delete-disks=all; then
     TERMINATED_BY=deleted-by-action
   else
-    # This job is a sweeper, so it routinely races the sync job's own destroy-self and a
+    # This job can race the per-network teardown job, and a
     # delete already in flight makes the call fail while still reaching the desired state.
     # Confirm against the end state rather than the exit code; only a VM that is still
     # there afterwards is a genuine leak worth failing over.
@@ -80,10 +80,19 @@ else
     PREEMPTED=true
     TERMINATED_BY=preempted
     echo "::warning title=GCP runner::${RUNNER_LABEL} was preempted — infrastructure reclaim, not a sync failure"
+    # Surface it on the run summary too: the matrix boundary reduces this to a plain failed
+    # entry, so without this the distinction is only visible deep in a job log.
+    echo "⚠️ \`${RUNNER_LABEL}\` was preempted — infrastructure reclaim, not a sync failure" >> "$GITHUB_STEP_SUMMARY"
+  elif [ "${EXPECT_INSTANCE:-true}" != "true" ]; then
+    # Creation having failed already explains the absence, whether or not any operations
+    # were recorded. create.sh also cleans up after a VM that briefly existed, so this
+    # only claims the creation did not complete, not that nothing was ever created.
+    TERMINATED_BY=creation-failed
+    echo "${INSTANCE_NAME}: creation did not complete (${ops:-no operations recorded})"
   elif grep -qx 'delete' <<<"$ops"; then
-    # The expected path: the sync job released its own VM via destroy-self.
-    TERMINATED_BY=deleted-by-self
-    echo "${INSTANCE_NAME} was already released by its sync job"
+    # The expected path when another teardown attempt got there first.
+    TERMINATED_BY=already-deleted
+    echo "${INSTANCE_NAME} had already been deleted"
   elif [ -z "$ops" ]; then
     TERMINATED_BY=unknown
     echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"

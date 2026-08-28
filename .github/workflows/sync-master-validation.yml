@@ -135,163 +135,53 @@ jobs:
 
           matrix=$(echo "$matrix" | scripts/sync/select-networks.sh "$CHAIN_FILTER")
 
+          if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
+            echo "chain_filter '$CHAIN_FILTER' matched no networks"
+            exit 1
+          fi
+
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
-  create_a_runner:
+  sync:
     needs: [setup-matrix]
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
+    # A called workflow can never elevate GITHUB_TOKEN above its caller, and
+    # id-token defaults to none, so the runner lifecycle needs it granted here.
     permissions:
       contents: read
       id-token: write
-    # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default (see run 32068506752)
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Create a Runner
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: create
-          runner_label: ${{ matrix.config.runner_label }}
-          github_token: ${{ steps.gh-app.outputs.token }}
-          machine_type: ${{ matrix.config.machine_type }}
-          local_ssd_count: ${{ matrix.config.local_ssd_count }}
-          provisioning_model: ${{ matrix.config.provisioning_model }}
-          max_run_duration: ${{ matrix.config.max_run_duration }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
-
-  sync-chain:
-    needs: [setup-matrix, create_a_runner]
     strategy:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-
     name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
-    runs-on: ${{ matrix.config.runner_label }}
-    timeout-minutes: ${{ matrix.config.timeout }}
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          clean: true
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
-
-      - name: Sync ${{ matrix.config.network }}
-        uses: ./.github/actions/sync-chain
-        with:
-          network: ${{ matrix.config.network }}
-          mode: ${{ matrix.config.mode }}
-          docker_image: ${{ needs.setup-matrix.outputs.docker_image }}
-          node_name_prefix: SyncMasterValidation
-          cl: ${{ matrix.config.cl }}
-          cl_image: ${{ matrix.config.cl_image }}
-          checkpoint_sync_url: ${{ matrix.config.checkpoint-sync-url }}
-          tests_token: ${{ steps.gh-app.outputs.token }}
-          mainnet_consensus_url: ${{ secrets.MAINNET_CONSENSUS_URL }}
-          mainnet_execution_url: ${{ secrets.MAINNET_EXECUTION_URL }}
-          sepolia_consensus_url: ${{ secrets.SEPOLIA_CONSENSUS_URL }}
-          sepolia_execution_url: ${{ secrets.SEPOLIA_EXECUTION_URL }}
-          hoodi_consensus_url: ${{ secrets.HOODI_CONSENSUS_URL }}
-          hoodi_execution_url: ${{ secrets.HOODI_EXECUTION_URL }}
-          loki_url: ${{ secrets.LOKI_URL }}
-          loki_username: ${{ secrets.LOKI_USERNAME }}
-          loki_password: ${{ secrets.LOKI_PASSWORD }}
-          prometheus_url: ${{ secrets.PROMETHEUS_URL }}
-          prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
-          prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
-
-      # Frees each VM as its own sync ends; destroy_runner waits for the whole matrix.
-      - name: Release this runner
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: destroy-self
-          runner_label: ${{ matrix.config.runner_label }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
-
-  destroy_runner:
-    needs: [setup-matrix, create_a_runner, sync-chain]
-    if: always()
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Destroy Runner
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: destroy
-          runner_label: ${{ matrix.config.runner_label }}
-          github_token: ${{ steps.gh-app.outputs.token }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+    uses: ./.github/workflows/sync-one-chain.yml
+    secrets: inherit
+    with:
+      network: ${{ matrix.config.network }}
+      mode: ${{ matrix.config.mode }}
+      runner_label: ${{ matrix.config.runner_label }}
+      machine_type: ${{ matrix.config.machine_type }}
+      local_ssd_count: ${{ matrix.config.local_ssd_count }}
+      provisioning_model: ${{ matrix.config.provisioning_model }}
+      max_run_duration: ${{ matrix.config.max_run_duration }}
+      timeout: ${{ matrix.config.timeout }}
+      docker_image: ${{ needs.setup-matrix.outputs.docker_image }}
+      node_name_prefix: SyncMasterValidation
+      checkout_ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+      cl: ${{ matrix.config.cl }}
+      cl_image: ${{ matrix.config.cl_image }}
+      checkpoint_sync_url: ${{ matrix.config.checkpoint-sync-url }}
 
   notify-on-failure:
-    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
-    # A single create failure skips the whole sync-chain matrix, and 'skipped' does not
-    # satisfy contains(..., 'failure'), so validation would otherwise go silently unrun.
-    # Teardown results are included so a leaked runner is reported too. Requires
-    # setup-matrix to have succeeded, so the workflow_run guard skipping everything is quiet.
+    needs: [setup-matrix, sync]
+    # Each network's create/sync/teardown is one unit now, so a failure anywhere in it
+    # surfaces as a failed matrix entry here. setup-matrix failing must page too — on the
+    # workflow_run path nobody is watching the Actions tab — but a skipped setup-matrix
+    # means the docker-publish guard rejected the run, which should stay quiet.
     if: >-
-      ${{ always() && needs.setup-matrix.result == 'success'
+      ${{ always() && needs.setup-matrix.result != 'skipped'
           && (contains(needs.*.result, 'failure')
-              || contains(needs.*.result, 'cancelled')
-              || needs.sync-chain.result == 'skipped') }}
+              || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect failed jobs
@@ -300,14 +190,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          SYNC_RESULT: ${{ needs.sync-chain.result }}
         run: |
           failed=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
             --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name' \
             | cut -c1-60 | tr '\n' ', ' | sed 's/,$//')
-          if [ "$SYNC_RESULT" = "skipped" ]; then
-            failed="syncs did not run — ${failed:-runner creation failed}"
-          fi
           if [ -z "$failed" ]; then
             failed="(check run for details)"
           fi

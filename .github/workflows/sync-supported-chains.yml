@@ -47,7 +47,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      docker_image: ${{ steps.set-image.outputs.docker_image }}
     steps:
+      - name: Determine docker image
+        id: set-image
+        env:
+          IMAGE_INPUT: ${{ inputs.nethermind_image }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -n "$IMAGE_INPUT" ]; then
+            echo "docker_image=$IMAGE_INPUT" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF_NAME" == release/* ]]; then
+            clean_ref="${REF_NAME//[^a-zA-Z0-9._-]/-}"
+            echo "docker_image=nethermindeth/nethermind:$clean_ref" >> "$GITHUB_OUTPUT"
+          else
+            echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -112,178 +128,47 @@ jobs:
             | map(.value + { batch_index: ((.key / 5) | floor) })
           ')
 
-          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
-
-  create_a_runner:
-    needs: [setup-matrix]
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Stagger runner creation
-        if: ${{ matrix.config.batch_index > 0 }}
-        env:
-          BATCH: ${{ matrix.config.batch_index }}
-        run: |
-          echo "Batch $BATCH — sleeping $(( BATCH * 10 ))s to spread zone capacity pressure"
-          sleep $(( BATCH * 10 ))
-
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref_name || 'master' }}
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Create a Runner
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: create
-          runner_label: ${{ matrix.config.runner_label }}
-          github_token: ${{ steps.gh-app.outputs.token }}
-          machine_type: ${{ matrix.config.machine_type }}
-          local_ssd_count: ${{ matrix.config.local_ssd_count }}
-          provisioning_model: ${{ matrix.config.provisioning_model }}
-          max_run_duration: ${{ matrix.config.max_run_duration }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
-
-  sync-chain:
-    needs: [setup-matrix, create_a_runner]
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-
-    name: "Run sync of ${{ matrix.config.network }} (${{ matrix.config.mode }}) chain"
-    runs-on: ${{ matrix.config.runner_label }}
-    timeout-minutes: ${{ matrix.config.timeout }}
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          clean: true
-          ref: ${{ github.ref_name || 'master' }}
-
-      - name: Resolve Nethermind image
-        id: image
-        env:
-          IMAGE_INPUT: ${{ inputs.nethermind_image }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [ -n "$IMAGE_INPUT" ]; then
-            echo "docker_image=$IMAGE_INPUT" >> "$GITHUB_OUTPUT"
-          elif [[ "$REF_NAME" == release/* ]]; then
-            clean_ref=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
-            echo "docker_image=nethermindeth/nethermind:$clean_ref" >> "$GITHUB_OUTPUT"
-          else
-            echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
+          if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
+            echo "network_filter '$NETWORK_FILTER' matched no networks"
+            exit 1
           fi
 
-      - name: Sync ${{ matrix.config.network }}
-        uses: ./.github/actions/sync-chain
-        with:
-          network: ${{ matrix.config.network }}
-          mode: ${{ matrix.config.mode }}
-          docker_image: ${{ steps.image.outputs.docker_image }}
-          node_name_prefix: SyncSupportedChains
-          cl: ${{ matrix.config.cl }}
-          cl_image: ${{ matrix.config.cl_image }}
-          checkpoint_sync_url: ${{ matrix.config.checkpoint-sync-url }}
-          nethermind_args: ${{ inputs.nethermind_args }}
-          tests_token: ${{ steps.gh-app.outputs.token }}
-          mainnet_consensus_url: ${{ secrets.MAINNET_CONSENSUS_URL }}
-          mainnet_execution_url: ${{ secrets.MAINNET_EXECUTION_URL }}
-          sepolia_consensus_url: ${{ secrets.SEPOLIA_CONSENSUS_URL }}
-          sepolia_execution_url: ${{ secrets.SEPOLIA_EXECUTION_URL }}
-          hoodi_consensus_url: ${{ secrets.HOODI_CONSENSUS_URL }}
-          hoodi_execution_url: ${{ secrets.HOODI_EXECUTION_URL }}
-          loki_url: ${{ secrets.LOKI_URL }}
-          loki_username: ${{ secrets.LOKI_USERNAME }}
-          loki_password: ${{ secrets.LOKI_PASSWORD }}
-          prometheus_url: ${{ secrets.PROMETHEUS_URL }}
-          prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
-          prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
-      # Frees each VM as its own sync ends. destroy_runner cannot: matrix-to-matrix needs
-      # waits for the whole matrix, so without this a 45-minute hoodi VM would bill until
-      # op-mainnet finishes ten hours later.
-      - name: Release this runner
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: destroy-self
-          runner_label: ${{ matrix.config.runner_label }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
-
-  destroy_runner:
-    needs: [setup-matrix, create_a_runner, sync-chain]
-    if: always()
+  sync:
+    needs: [setup-matrix]
+    # A called workflow can never elevate GITHUB_TOKEN above its caller, and
+    # id-token defaults to none, so the runner lifecycle needs it granted here.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref_name || 'master' }}
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Destroy Runner
-        uses: ./.github/actions/gcp-runner
-        with:
-          action: destroy
-          runner_label: ${{ matrix.config.runner_label }}
-          github_token: ${{ steps.gh-app.outputs.token }}
-          zones: ${{ vars.GCP_ZONES }}
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
-          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+    name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
+    uses: ./.github/workflows/sync-one-chain.yml
+    secrets: inherit
+    with:
+      network: ${{ matrix.config.network }}
+      mode: ${{ matrix.config.mode }}
+      runner_label: ${{ matrix.config.runner_label }}
+      machine_type: ${{ matrix.config.machine_type }}
+      local_ssd_count: ${{ matrix.config.local_ssd_count }}
+      provisioning_model: ${{ matrix.config.provisioning_model }}
+      max_run_duration: ${{ matrix.config.max_run_duration }}
+      timeout: ${{ matrix.config.timeout }}
+      batch_index: ${{ matrix.config.batch_index }}
+      docker_image: ${{ needs.setup-matrix.outputs.docker_image }}
+      node_name_prefix: SyncSupportedChains
+      checkout_ref: ${{ github.ref_name || 'master' }}
+      cl: ${{ matrix.config.cl }}
+      cl_image: ${{ matrix.config.cl_image }}
+      checkpoint_sync_url: ${{ matrix.config.checkpoint-sync-url }}
+      nethermind_args: ${{ inputs.nethermind_args }}
 
   trigger_tests:
-    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
+    needs: [setup-matrix, sync]
     if: success()
     runs-on: ubuntu-latest
     steps:
