@@ -4,6 +4,8 @@
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -13,6 +15,21 @@ import corpus_results  # noqa: E402
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "run-rpc-benchmarks.yml"
+LIB = Path(__file__).parent / "lib.sh"
+SWEEP = Path(__file__).parent / "run-rpc-sweep.sh"
+
+
+def _usable_bash():
+    """The shell helpers are exercised for real; a box without a working bash skips those tests."""
+    bash = shutil.which("bash")
+    try:
+        return bash if bash and subprocess.run([bash, "-c", "echo ok"], capture_output=True, text=True,
+                                               timeout=60).stdout.strip() == "ok" else None
+    except OSError:
+        return None
+
+
+BASH = _usable_bash()
 
 # tool_config keys the sweep reads that do not shape what the cell measures, so they stay out of the cell
 # fingerprint: the arms themselves and how they are compared, repeats of the same cell, the json-bench-only
@@ -72,16 +89,14 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         self.assertIn("cell_key: $cell_key", assemble)
         self.assertIn("cell: $cell", assemble)
 
-    def test_arm_reclaim_keep_list_removes_per_arm_image_options(self):
+    def test_arm_reclaim_keep_list_derives_refs_the_way_the_sweep_does(self):
         reclaim_step = self.step("Reclaim root disk before pulling")
 
-        # The sweep parser removes #K=V before Docker sees an image. The disk reclaim list must use the same ref.
-        self.assertRegex(reclaim_step, r"sweep_keep=.*s/\.\*@//; s/#\[\^\[:space:\]\]\*\$//")
-        self.assertRegex(reclaim_step, r"keep_re=.*s/#\[\^\[:space:\]\]\*\$//")
-
-        refs = ["registry.example.net/nethermind:pr#NETHERMIND_FOO=one", "registry.example.net/nethermind:base"]
-        normalized = [re.sub(r"#[^\s]*$", "", ref) for ref in refs]
-        self.assertEqual(normalized, ["registry.example.net/nethermind:pr", "registry.example.net/nethermind:base"])
+        # An open-coded copy of the sweep's split drifted from it once already; both sides call the same helper now,
+        # so SweepShellHelperTests can check the behaviour instead of the spelling of a sed program.
+        self.assertIn("source scripts/rpc-bench/lib.sh", reclaim_step)
+        self.assertIn('sweep_keep+="$(arm_image "${entry}")"', reclaim_step)
+        self.assertNotIn("s/.*@//", reclaim_step)
 
     def test_arm_reclaim_headroom_follows_the_docker_image_store(self):
         reclaim_step = self.step("Reclaim root disk before pulling")
@@ -121,6 +136,43 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         # Cancelling mid-run would starve the refresh: a cell is tens of minutes downstream of the image build.
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertNotIn("cancel-in-progress: true", workflow)
+
+
+@unittest.skipUnless(BASH, "no usable bash to run the shell helpers")
+class SweepShellHelperTests(unittest.TestCase):
+    """lib.sh helpers the sweep and the workflow both depend on, run for real."""
+
+    def arm_image(self, entry):
+        result = subprocess.run([BASH, "-c", f'source "{LIB.as_posix()}"; arm_image "$1"', "bash", entry],
+                                capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+
+    def test_arm_image_reproduces_the_sweeps_own_split(self):
+        self.assertEqual(self.arm_image("nethermind@repo/nm:pr"), "repo/nm:pr")
+        # No image: the sweep falls back to NM_IMAGE, which the reclaim keep-list already holds.
+        self.assertEqual(self.arm_image("nethermind"), "")
+        self.assertEqual(self.arm_image("nethermind#NETHERMIND_FOO=one"), "")
+        # Per-arm options are stripped before the split, so an '@' in an option value keeps the image ...
+        self.assertEqual(self.arm_image("nethermind@repo/nm:pr#NETHERMIND_FOO=a@b"), "repo/nm:pr")
+        # ... and the split is on the first '@', so a digest ref survives whole.
+        self.assertEqual(self.arm_image("nethermind@repo/nm@sha256:abc"), "repo/nm@sha256:abc")
+
+    def test_the_sweep_and_the_workflow_use_the_helper(self):
+        self.assertIn('img="$(arm_image "$entry")"', SWEEP.read_text(encoding="utf-8"))
+        self.assertIn("arm_image", LIB.read_text(encoding="utf-8"))
+
+    def test_the_saved_parity_baseline_is_renamed_into_place(self):
+        sweep = SWEEP.read_text(encoding="utf-8")
+
+        # A cancelled run must not leave a truncated state at the final path: the read side accepts any non-empty
+        # file and would then report "parity not checked" on every later run.
+        self.assertIn('cp "$PARITY_STATE/$clabel.json" "$saved.tmp"', sweep)
+        self.assertIn('mv -f "$saved.tmp" "$saved"', sweep)
+        self.assertNotIn('cp "$PARITY_STATE/$clabel.json" "$saved"', sweep)
+        self.assertIn('> "$CORPUS_BASELINE_DIR/$clabel.label.tmp"', sweep)
+        self.assertIn('mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label"', sweep)
+        # A literal newline inside a single-quoted format reads like the line-continuation damage fixed once before.
+        self.assertNotIn("printf '%s\n", sweep)
 
 
 if __name__ == "__main__":

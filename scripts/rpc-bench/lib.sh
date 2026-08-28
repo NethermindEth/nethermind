@@ -11,6 +11,16 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # workflow's comment step so both sides derive the same label from the same image ref.
 arm_label() { printf '%s_%s' "$1" "$(printf '%s' "${2##*:}" | tr -c 'a-zA-Z0-9' '_')"; }
 
+# Image ref docker is given for a sweep `clients` entry (`ctype[@image][#K=V[,K=V]]`); empty when the entry names no
+# image and the sweep therefore uses NM_IMAGE. The per-arm options are stripped before the split, and the split is on
+# the first '@', so an '@' inside an option value or a digest ref survives. Shared with the ARM runner's disk reclaim,
+# whose keep-list has to hold exactly the refs this sweep will pull.
+arm_image() {
+  local spec="${1%%#*}"
+  [[ "$spec" == *@* ]] || return 0
+  printf '%s\n' "${spec#*@}"
+}
+
 log_system_provenance() {
   log "=== host provenance ==="
   log "  kernel:      $(uname -r 2>/dev/null || echo unknown)"

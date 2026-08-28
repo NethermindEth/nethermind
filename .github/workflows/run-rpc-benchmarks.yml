@@ -564,6 +564,7 @@ jobs:
         # reclaim below has to `docker rmi` explicitly.
         run: |
           set -uo pipefail
+          source scripts/rpc-bench/lib.sh   # arm_image: the sweep's own `clients` entry -> image ref normalisation
           MIN_IMAGE_FREE_GB=6
           MIN_ROOT_FREE_GB=2
           avail_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
@@ -586,8 +587,11 @@ jobs:
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
           if (( $(avail_gb "${image_store}") < MIN_IMAGE_FREE_GB )); then
-            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n' | sed -E 's/.*@//; s/#[^[:space:]]*$//' | grep -v '^$' || true)"
-            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | sed -E 's/#[^[:space:]]*$//' | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
+            sweep_keep=""
+            while IFS= read -r entry; do
+              sweep_keep+="$(arm_image "${entry}")"$'\n'
+            done < <(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null | tr ' ' '\n')
+            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
               (( $(avail_gb "${image_store}") >= MIN_IMAGE_FREE_GB )) && break

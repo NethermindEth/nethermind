@@ -178,7 +178,9 @@ parity_compare() {
   local report_dir="$OUT_DIR/corpus/$1/$2" report status
   mkdir -p "$report_dir"; report="$report_dir/parity.json"
   echo "-- PARITY $1: $2 vs ${6:+saved }baseline $5 --"
-  python3 "$here/corpus_parity.py" compare --corpus "$3" --rpc-url "$RPC" --state "$4"     --report "$report" --baseline-client "$5" --candidate-client "$2"     $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json")
+  python3 "$here/corpus_parity.py" compare --corpus "$3" --rpc-url "$RPC" --state "$4" \
+    --report "$report" --baseline-client "$5" --candidate-client "$2" \
+    $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json")
   status=$?
   if (( status == 0 )); then
     PARITY_ROWS+=("$1|$2|$report")
@@ -220,11 +222,15 @@ run_corpus() {
     if python3 "$here/corpus_parity.py" baseline --corpus "$corpus" --rpc-url "$RPC" --state "$PARITY_STATE/$clabel.json"; then
       PARITY_BASE_STATE[$clabel]="$PARITY_STATE/$clabel.json"; PARITY_BASE_LABEL[$clabel]="$label"; PARITY_BASE_SAVED[$clabel]=""
       if [[ "$CORPUS_BASELINE" == "save" ]]; then
-        if mkdir -p "$CORPUS_BASELINE_DIR" && cp "$PARITY_STATE/$clabel.json" "$saved" && printf '%s
-' "$label" > "$CORPUS_BASELINE_DIR/$clabel.label"; then
+        # Rename into place: a run killed mid-copy must not leave a truncated state behind, since the read side
+        # accepts any non-empty file and would then report "parity not checked" on every later run.
+        if mkdir -p "$CORPUS_BASELINE_DIR" \
+          && cp "$PARITY_STATE/$clabel.json" "$saved.tmp" && printf '%s\n' "$label" > "$CORPUS_BASELINE_DIR/$clabel.label.tmp" \
+          && mv -f "$CORPUS_BASELINE_DIR/$clabel.label.tmp" "$CORPUS_BASELINE_DIR/$clabel.label" && mv -f "$saved.tmp" "$saved"; then
           echo "   saved parity baseline for $clabel -> $saved"
         else
           echo "::warning::could not save the parity baseline for $clabel under $CORPUS_BASELINE_DIR"
+          rm -f "$saved.tmp" "$CORPUS_BASELINE_DIR/$clabel.label.tmp"
         fi
       fi
     else
@@ -309,7 +315,8 @@ for entry in "${schedule[@]}"; do
   arm_env=""; spec="$entry"
   if [[ "$spec" == *#* ]]; then arm_env="${spec#*#}"; spec="${spec%%#*}"; fi
   ctype="${spec%%@*}"
-  if [[ "$spec" == *@* ]]; then img="${spec#*@}"; label="$(arm_label "$ctype" "$img")"
+  img="$(arm_image "$entry")"
+  if [[ -n "$img" ]]; then label="$(arm_label "$ctype" "$img")"
   else img="$NM_IMAGE"; label="$ctype"; fi
   if [[ -n "$arm_env" ]]; then
     label="${label}_$(printf '%s' "$arm_env" | sed -E 's/NETHERMIND_[A-Z]+CONFIG_//g' | tr -c 'a-zA-Z0-9' '_' | tr -s '_' | sed 's/_$//')"
