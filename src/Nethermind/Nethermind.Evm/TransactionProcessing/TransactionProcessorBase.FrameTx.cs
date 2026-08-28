@@ -940,7 +940,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             long remainingStateGas = stateReservoirSeed - stateGasUsed;
             if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
             {
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                // The replacement is the substate the caller sees, so it has to carry the RIPEMD touch
+                // the frame recorded; the rollback below and the transaction accumulator both read it.
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
+                {
+                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+                };
                 gasUsed = frame.ExecutionGasLimit;
                 stateGasUsed = 0;
             }
