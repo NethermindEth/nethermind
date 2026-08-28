@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -275,6 +276,62 @@ public class EthSimulateTestsBlocksAndTransactions
     private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
     {
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Genesis persisted, the block below still queued: a body is readable only through the store that queued
+    /// its deferred write, so eth_simulateV1 must read through that store or silently build on an older parent.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_requested_parent_while_its_body_write_is_pending()
+    {
+        PausedDeferredBlockDataWriter deferredWriter = new();
+        TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new GenesisOnlyRpcBlockchain())
+            .Build((builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddSingleton<IDeferredBlockDataWriter>(deferredWriter));
+
+        deferredWriter.Drain();
+        Block parent = await chain.AddBlock();
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new()] };
+
+        SimulateBlockResult<SimulateCallResult> simulated =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(parent.Number)).Data[0];
+
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
+        Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+    }
+
+    private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
+    {
+        private readonly List<Action> _queued = [];
+
+        public bool Enabled => true;
+
+        public void Enqueue(Action work)
+        {
+            lock (_queued) _queued.Add(work);
+        }
+
+        public void Drain()
+        {
+            Action[] pending;
+            lock (_queued)
+            {
+                pending = [.. _queued];
+                _queued.Clear();
+            }
+
+            foreach (Action work in pending) work();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Drain();
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>

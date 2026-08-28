@@ -10,10 +10,7 @@ using Nethermind.TxPool;
 namespace Nethermind.JsonRpc.Modules.TxPool;
 
 /// <summary>Response model for <c>txpool_contentFrom</c>: the pending and queued transactions of a single address.</summary>
-/// <remarks>
-/// Each map is keyed by the sender's decimal nonce, except an <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>
-/// keyed transaction, which is keyed by its transaction hash because several can share one sequence.
-/// </remarks>
+/// <remarks>Keyed by decimal nonce, except EIP-8250 keyed transactions, which use the tx hash because several share one sequence.</remarks>
 public class TxPoolContentFrom
 {
     public TxPoolContentFrom(TxPoolSenderInfo info, ulong chainId)

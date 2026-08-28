@@ -7,11 +7,11 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
@@ -52,21 +52,24 @@ public class FrameTxSimulationFilterTests
         }
     }
 
-    [Test]
-    public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer()
+    // The pre-validated assertion has to come from what actually ran: a filter chain that has not
+    // verified the signatures must make the simulation verify them rather than trust a stranger's.
+    [TestCase(true, TestName = "Verified signatures are not re-verified by the simulation")]
+    [TestCase(false, TestName = "Unverified signatures are re-verified by the simulation")]
+    public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer(bool signaturesVerified)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
 
-        AcceptTxResult result = Accept(state, simulator, tx);
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            simulator.Received(1).Simulate(tx);
+            simulator.Received(1).Simulate(tx, signaturesPreValidated: signaturesVerified);
         }
     }
 
@@ -76,7 +79,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Reject("banned opcode"));
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -95,7 +98,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -134,13 +137,8 @@ public class FrameTxSimulationFilterTests
         return state;
     }
 
-    private static Transaction SelfVerifyTx(Address sender) => new()
-    {
-        Type = TxType.FrameTx,
-        SenderAddress = sender,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sender, default, new byte[TxFrameSignature.Secp256k1SignatureLength])],
-    };
+    private static Transaction SelfVerifyTx(Address sender) =>
+        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
@@ -156,7 +154,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -171,17 +169,17 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

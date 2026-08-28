@@ -40,7 +40,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false)
     {
         token.ThrowIfCancellationRequested();
 
@@ -87,7 +87,7 @@ public sealed class FrameTxPrefixSimulator(
             long startedAt = Stopwatch.GetTimestamp();
             try
             {
-                return SimulateLocked(tx, head, token);
+                return SimulateLocked(tx, head, signaturesPreValidated, token);
             }
             finally
             {
@@ -100,7 +100,7 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, CancellationToken token)
+    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token)
     {
         FrameTxValidationTracer? tracer = null;
         try
@@ -114,7 +114,9 @@ public sealed class FrameTxPrefixSimulator(
 
             IReleaseSpec spec = specProvider.GetSpec(head);
             tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, token, _timeout);
-            TransactionResult result = processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+            ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
+            if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
+            TransactionResult result = processor.Process(tx, tracer, opts);
             Metrics.FrameTxSimulations++;
 
             // The EVM ran, so any fault episode has ended and the next one warns again.

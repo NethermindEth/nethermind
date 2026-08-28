@@ -24,13 +24,16 @@ public static class Eip8141Constants
     // operator-configurable mirror.
     public const ulong MaxVerifyGas = 300_000;
 
+    /// <summary>
+    /// <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: the public-mempool cap on the pending frame
+    /// transactions one non-canonical paymaster may sponsor.
+    /// </summary>
+    public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
+
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
     public static readonly Address ExpiryVerifierAddress = new("0x0000000000000000000000000000000000008141");
 
-    /// <summary>
-    /// The expiry-verifier predeploy runtime code that clients must install at
-    /// <see cref="ExpiryVerifierAddress"/> when EIP-8141 activates.
-    /// </summary>
+    /// <summary>The expiry-verifier runtime code installed at <see cref="ExpiryVerifierAddress"/> when EIP-8141 activates.</summary>
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
 
     public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);

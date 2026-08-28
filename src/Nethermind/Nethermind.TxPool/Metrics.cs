@@ -77,6 +77,10 @@ namespace Nethermind.TxPool
         public static long FrameTxPayersWithReservedExposure;
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
+        public static long PendingTransactionsFrameTxPaymasterLimitReached;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
         public static long PendingTransactionsFrameTxSimulationFailed;
 

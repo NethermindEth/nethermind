@@ -627,7 +627,29 @@ public abstract class BlockchainTestBase
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        // EIP-7825's per-transaction gas cap, which a frame transaction reports against its own budget.
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
+        // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
+        ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
+        // The decoder names neither the field nor the type, so these widen both labels suite-wide to any
+        // untyped collection-limit rejection, not merely to the other fee field. No narrowing available.
+        ("TransactionException.GASPRICE_OVERFLOW", "Collection count of"),
+        ("TransactionException.PRIORITY_OVERFLOW", "Collection count of"),
+        .. Eip8141Mappings(),
     ];
+
+    // EIP-8141 splits a rejected frame transaction three ways, and the fixtures name each separately.
+    private static IEnumerable<(string, string)> Eip8141Mappings()
+    {
+        foreach (string fragment in FrameExceptionFragments.Format)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.Signature)
+            yield return ("TransactionException.TYPE_6_INVALID_SIGNATURE", fragment);
+        foreach (string fragment in FrameExceptionFragments.Execution)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
+        foreach (string fragment in FrameExceptionFragments.Decode)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+    }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
