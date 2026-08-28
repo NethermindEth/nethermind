@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -369,5 +371,23 @@ public class FrameTxValidationTests
 
         Assert.That(found, Is.False);
         Assert.That(deadline, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void TryCalculateGasBudget_AfterCalldataStatsAreMeasured_RepricesRatherThanReusingTheUnmeasuredMemo()
+    {
+        // A transaction built field by field over eth_sendTransaction carries no calldata statistics, so the
+        // pool prices it from zero; measuring them later must not be answered from that first reading.
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8250Enabled.Returns(true);
+        Transaction tx = CreateValidFrameTx(static t => t.NonceKeys = [UInt256.One]);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasuredIntrinsic, out _, out _), Is.True);
+
+        tx.FrameCalldataStats = (ZeroBytes: 8, NonZeroBytes: 24);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
+
+        Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
+            "the measured calldata must be priced, not served from the memo taken before it was set");
     }
 }

@@ -240,6 +240,16 @@ namespace Nethermind.Core
         /// </summary>
         public Address? PayerAddress { get; set; }
 
+        /// <summary>
+        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
+        /// transaction leaves the pool. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>
+        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
+        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
+        /// </remarks>
+        public UInt256? PayerExposure { get; set; }
+
         /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
         /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
         public virtual ulong? PersistedExpiryDeadline => null;
@@ -393,6 +403,7 @@ namespace Nethermind.Core
                 obj.Frames = default;
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
+                obj.PayerExposure = default;
                 obj.NonceKeys = default;
                 obj.RecentRootReferences = default;
                 obj.ReferenceCalldataStats = default;
@@ -448,6 +459,7 @@ namespace Nethermind.Core
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
+            tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
             tx.RecentRootReferences = RecentRootReferences;
             tx.ReferenceCalldataStats = ReferenceCalldataStats;
