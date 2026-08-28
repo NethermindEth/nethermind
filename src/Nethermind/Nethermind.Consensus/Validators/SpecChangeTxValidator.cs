@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -22,7 +23,10 @@ public sealed class SpecChangeTxValidator(ulong chainId) :
     private static readonly HeadTxValidator LightTxValidator = new();
 
     public string PersistenceFingerprint { get; } =
-        FormattableString.Invariant($"1|{typeof(SpecChangeTxValidator).Module.ModuleVersionId:N}|{chainId}");
+        FormattableString.Invariant($"2|{typeof(SpecChangeTxValidator).Module.ModuleVersionId:N}|{typeof(EthereumGasPolicy).Module.ModuleVersionId:N}|{chainId}");
+
+    public ValidationResult IsWellFormedAfterFullValidation(Transaction transaction, IReleaseSpec releaseSpec) =>
+        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
         LightTxValidator.IsWellFormed(transaction, releaseSpec);

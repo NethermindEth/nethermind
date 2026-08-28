@@ -63,7 +63,9 @@ namespace Nethermind.TxPool.Filters
                     blockGasLimit: 0,
                     TxValidationOptions.SkipBlobProofs);
                 return validationResult
-                    ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                    ? specChangeTxValidator is ISpecChangeTxValidator incrementalValidator
+                        ? incrementalValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
+                        : specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
                     : validationResult;
             }
         }

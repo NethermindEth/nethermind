@@ -55,8 +55,8 @@ namespace Nethermind.Consensus.Producers
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
             bool isRevalidatedForTarget = pending.IsRevalidated;
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
@@ -68,8 +68,16 @@ namespace Nethermind.Consensus.Producers
                 : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, pendingTxFilter, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, BlobFilter, maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(
+                (IDictionary<AddressAsKey, Transaction[]>)pendingTransactions,
+                comparer,
+                pendingTxFilter,
+                gasLimit);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                (IDictionary<AddressAsKey, Transaction[]>)pendingBlobTransactionsEquivalences,
+                comparer,
+                BlobFilter,
+                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -164,8 +172,10 @@ namespace Nethermind.Consensus.Producers
             bool validateForkSensitiveState)
         {
             ulong maxBlobsToConsider = maxBlobs * 5ul;
+            ulong maxRejectedBlobsToConsider = maxBlobsToConsider * 5ul;
             ulong countOfRemainingBlobs = 0UL;
             ulong consideredBlobCount = 0UL;
+            ulong rejectedBlobCount = 0UL;
             Dictionary<Hash256, Transaction>? fullBlobTxs = null;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
@@ -190,15 +200,26 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                // Count before resolving sidecars so an invalid pool cannot make fork-transition validation unbounded.
-                consideredBlobCount += txBlobCount;
-                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
                 if (validateForkSensitiveState)
                 {
+                    if (blobTx is LightTransaction lightTransaction
+                        && _specChangeTxValidator is ILightTxValidator lightTxValidator
+                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    {
+                        rejectedBlobCount += txBlobCount;
+                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                        {
+                            break;
+                        }
+
+                        continue;
+                    }
+
                     if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
                         || !IsForkSensitiveStateValid(fullBlobTx, spec))
                     {
-                        if (reachedConsiderationLimit)
+                        rejectedBlobCount += txBlobCount;
+                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
                         {
                             break;
                         }
@@ -211,6 +232,9 @@ namespace Nethermind.Consensus.Producers
                         (fullBlobTxs ??= [])[hash] = fullBlobTx;
                     }
                 }
+
+                consideredBlobCount += txBlobCount;
+                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
 
                 if (txBlobCount == 1UL && candidates is null)
                 {

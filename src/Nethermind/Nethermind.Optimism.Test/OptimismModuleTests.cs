@@ -66,11 +66,13 @@ public class OptimismModuleTests
         builder.RegisterInstance(specProvider).As<ISpecProvider>();
         using IContainer container = builder.Build();
         ITxValidator validator = container.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey);
+        string ethereumFingerprint = new SpecChangeTxValidator(chainId).PersistenceFingerprint;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(validator, Is.TypeOf<OptimismSpecChangeTxValidator>());
             Assert.That(container.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey), Is.SameAs(validator));
+            Assert.That(((ISpecChangeTxValidator)validator).PersistenceFingerprint, Does.Contain(ethereumFingerprint));
             Assert.That(validator.IsWellFormed(transaction, preBedrock).AsBool(), Is.True);
             Assert.That(validator.IsWellFormed(transaction, postBedrock).AsBool(), Is.False);
         }

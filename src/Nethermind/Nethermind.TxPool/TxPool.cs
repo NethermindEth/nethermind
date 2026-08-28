@@ -409,6 +409,7 @@ namespace Nethermind.TxPool
                             }
                         }
 
+                        // Subscribers can re-enter the pool, so invoke them after releasing _newHeadLock.
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;
@@ -1048,14 +1049,21 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterWriteLock();
             try
             {
-                if (!CanApplyRevalidation(spec, generation))
+                if (!CanApplyRevalidationResults(spec))
                 {
                     RecordAbandonedRevalidation(spec, generation);
                     return false;
                 }
 
-                _transactions.UpdatePool(_accounts, revalidation.UpdateBucket);
-                _blobTransactions.UpdatePoolForRevalidation(_accounts, revalidation.UpdateBlobBucket);
+                UpdateGroupDelegate updateBucket = revalidation.UpdateBucket;
+                _transactions.UpdatePool(_accounts, updateBucket);
+                _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+
+                if (revalidation.RemovedCount != 0)
+                {
+                    Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
+                    if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
+                }
 
                 if (!CanApplyRevalidation(spec, generation))
                 {
@@ -1065,12 +1073,6 @@ namespace Nethermind.TxPool
                 }
 
                 PublishValidatedSpec(spec);
-
-                if (revalidation.RemovedCount != 0)
-                {
-                    Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
-                    if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
-                }
 
                 return true;
             }
@@ -1086,9 +1088,12 @@ namespace Nethermind.TxPool
         private bool CanApplyRevalidation(IReleaseSpec spec, long generation) =>
             IsRevalidationGenerationCurrent(generation) && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
 
+        private bool CanApplyRevalidationResults(IReleaseSpec spec) =>
+            !_cts.IsCancellationRequested && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
+
         private bool CanContinueRevalidation(IReleaseSpec spec, long generation)
         {
-            if (IsRevalidationGenerationCurrent(generation))
+            if (CanApplyRevalidationResults(spec))
             {
                 return true;
             }
@@ -1223,9 +1228,6 @@ namespace Nethermind.TxPool
             public int RemovedCount { get; private set; }
 
             public void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx) =>
-                RemovedCount += _pool.UpdateBucketCore(account, transactions, ref lastElement, updateTx, this);
-
-            public void UpdateBlobBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx) =>
                 RemovedCount += _pool.UpdateBucketCore(account, transactions, ref lastElement, updateTx, this);
 
             public ForkValidationResult Validate(Transaction transaction) =>

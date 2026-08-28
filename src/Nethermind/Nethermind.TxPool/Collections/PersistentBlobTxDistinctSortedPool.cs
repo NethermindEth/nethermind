@@ -765,25 +765,20 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         finally
         {
             _batchStorageDeletes = false;
-            try
+            if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
             {
-                if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
+                batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
+            }
+            else
+            {
+                for (int i = 0; i < _batchedDeletes.Count; i++)
                 {
-                    batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
-                }
-                else
-                {
-                    for (int i = 0; i < _batchedDeletes.Count; i++)
-                    {
-                        TxLookupKey key = _batchedDeletes[i];
-                        _blobTxStorage.Delete(key.Hash, key.Timestamp);
-                    }
+                    TxLookupKey key = _batchedDeletes[i];
+                    _blobTxStorage.Delete(key.Hash, key.Timestamp);
                 }
             }
-            finally
-            {
-                _batchedDeletes.Clear();
-            }
+
+            _batchedDeletes.Clear();
         }
     }
 
