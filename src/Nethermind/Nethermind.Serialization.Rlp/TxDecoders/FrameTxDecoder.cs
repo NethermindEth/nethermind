@@ -134,15 +134,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         // A frame transaction has no gas_limit field; GasLimit carries the sum of frame gas limits so pre-execution
         // consumers reading it do not see ~0 gas. The processor derives the real tx_gas_limit.
-        ulong gasLimit = 0;
-        foreach (TxFrame frame in transaction.Frames)
-        {
-            ulong frameLimit = frame.ExecutionGasLimit > ulong.MaxValue - frame.StateGasLimit
-                ? ulong.MaxValue
-                : frame.ExecutionGasLimit + frame.StateGasLimit;
-            gasLimit = frameLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frameLimit;
-        }
-        transaction.GasLimit = gasLimit;
+        transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
 
         if (transaction.NonceKeys is not null)
         {

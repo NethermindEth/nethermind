@@ -54,21 +54,4 @@ public class FrameForRpc
     /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
     public static bool TryToFrames(FrameForRpc[]? frames, out TxFrame[]? converted) =>
         RpcListConverter.TryConvert(frames, static f => f.ToFrame(), out converted);
-
-    /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
-    /// <remarks>
-    /// This is what an EIP-8141 transaction reserves and spends, and what <see cref="Transaction.GasLimit"/>
-    /// carries for one. Takes the converted frames, which are null-free by construction.
-    /// </remarks>
-    public static ulong TotalGasLimit(TxFrame[]? frames)
-    {
-        ulong total = 0;
-        foreach (TxFrame frame in frames ?? [])
-        {
-            if (frame.GasLimit > ulong.MaxValue - total) return ulong.MaxValue;
-            total += frame.GasLimit;
-        }
-
-        return total;
-    }
 }

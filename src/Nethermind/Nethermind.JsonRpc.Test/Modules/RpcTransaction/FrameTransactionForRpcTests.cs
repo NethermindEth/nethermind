@@ -255,6 +255,25 @@ public class FrameTransactionForRpcTests
         Assert.That(tx.GasLimit, Is.EqualTo(70_000));
     }
 
+    // A frame whose own two limits overflow saturates rather than wrapping, matching FrameTxDecoder,
+    // so the same frame list reports the same GasLimit however the transaction was built.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_SaturatesAFrameWhoseOwnLimitsOverflow()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames =
+            [
+                new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue, StateGasLimit = 1 },
+            ],
+        };
+
+        Transaction tx = rpc.ToTransaction(validateUserInput: true).Data!;
+
+        Assert.That(tx.GasLimit, Is.EqualTo(ulong.MaxValue));
+    }
+
     [Test]
     public void FrameTransactionForRpc_ToTransaction_LeavesTheFrameGasUncappedWithoutAGasCap()
     {

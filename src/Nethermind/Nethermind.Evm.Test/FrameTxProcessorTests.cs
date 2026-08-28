@@ -1309,16 +1309,8 @@ public class FrameTxProcessorTests
         static TxFrameSignature Placeholder() =>
             new(TxFrameSignature.SchemeSecp256k1, Observer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
         tx.FrameSignatures = [Placeholder(), Placeholder()];
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyB, in sigHash);
-        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        vrs[0] = signature.RecoveryId;
-        signature.Bytes.CopyTo(vrs.AsSpan(1));
-        tx.FrameSignatures =
-        [
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, Observer, default, vrs),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, Observer, default, vrs),
-        ];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyB, Observer);
+        SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyB, Observer);
 
         TransactionResult result = CallAndRestore(tx);
 

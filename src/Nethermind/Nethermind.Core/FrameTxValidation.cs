@@ -248,6 +248,22 @@ public static class FrameTxValidation
         _ => 0,
     };
 
+    /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// What <see cref="Transaction.GasLimit"/> carries for a frame transaction, which has no <c>gas_limit</c>
+    /// field. Saturates per frame as well as across them, so every construction path agrees on the value.
+    /// </remarks>
+    public static ulong TotalGasLimit(TxFrame[]? frames)
+    {
+        ulong total = 0;
+        foreach (TxFrame frame in frames ?? [])
+        {
+            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+        }
+
+        return total;
+    }
+
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
     /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at

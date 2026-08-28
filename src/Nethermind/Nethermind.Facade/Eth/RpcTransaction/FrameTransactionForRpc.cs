@@ -67,7 +67,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // The caller's gas field is not what this type spends, so the cap the base applied to
         // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
         ulong effectiveCap = gasCap.EffectiveGasCap();
-        ulong totalFrameGas = FrameForRpc.TotalGasLimit(frames);
+        ulong totalFrameGas = FrameTxValidation.TotalGasLimit(frames);
         if (totalFrameGas > effectiveCap)
             return RpcTransactionErrors.FrameGasAboveCap(totalFrameGas, effectiveCap);
 
