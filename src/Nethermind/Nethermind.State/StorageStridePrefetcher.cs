@@ -175,8 +175,16 @@ internal sealed class StorageStridePrefetcher(
             readers[t] = Task.Factory.StartNew(ReadAhead, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
-        ReadAhead();
-        Task.WaitAll(readers);
+        // finally, so a throw out of this thread's own pass still joins the siblings: the caller treats this
+        // task as standing in for the whole set, and the teardown continuation disposes their shared scope.
+        try
+        {
+            ReadAhead();
+        }
+        finally
+        {
+            Task.WaitAll(readers);
+        }
     }
 
     private void ReadAhead()
@@ -243,6 +251,14 @@ internal sealed class StorageStridePrefetcher(
 
     /// <inheritdoc cref="TryBeginPublish"/>
     internal void EndPublish() => Interlocked.Decrement(ref _publishing);
+
+    /// <summary>True while this prefetcher's readers are running, i.e. it engaged and has not broken.</summary>
+    /// <remarks>
+    /// A detector that never engaged owns no reader threads and no scope, so it must not count against the
+    /// owner's concurrency cap - otherwise the first contracts to touch storage hold every slot for the whole
+    /// block and a later striding contract is refused.
+    /// </remarks>
+    internal bool HoldsReaderSlot => _engaged && !_broken;
 
     /// <summary>True once a sustained off-pattern run has disengaged this prefetcher.</summary>
     /// <remarks>

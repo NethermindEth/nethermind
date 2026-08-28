@@ -94,6 +94,11 @@ public class PrewarmerScopeProvider(
         // bounds _stridePrefetchers, which keeps a broken entry until its readers are joined.
         private const int MaxStridePrefetcherEngagements = 2 * MaxStridePrefetchers;
 
+        // Detectors are cheap - a few fields fed by the consumer's own reads, no threads and no scope - so they
+        // are bounded far above the reader-slot cap. They need their own bound only because the map keeps an
+        // entry per storage-touching contract until block end.
+        private const int MaxStridePrefetcherDetectors = 512;
+
         // Reader threads issue blocking, latency-bound storage reads, so we run more than one per
         // core (2×CPU) to hide individual RocksDB fetch latency, capped at 32. The budget is shared
         // across the concurrently engaged prefetchers rather than granted per prefetcher, so a block
@@ -148,13 +153,19 @@ public class PrewarmerScopeProvider(
             // would only grow the map — and the scan below — for nothing.
             if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetcherEngagements) return null;
 
-            // Only prefetchers still reading count against the cap. A broken one has stopped issuing
-            // reads but stays in the map so its (exited) readers are still joined before the shared
-            // scope is disposed; excluding it here keeps a broken slot from locking out a later
-            // striding contract for the rest of the block. The engagement budget is what bounds the
-            // map (≤ MaxStridePrefetchers live entries plus one per engagement), so this scan stays
-            // small; it only runs once the fast Count check trips.
-            if (_stridePrefetchers.Count >= MaxStridePrefetchers && CountActiveStridePrefetchers() >= MaxStridePrefetchers)
+            // Only prefetchers that actually hold reader threads count against the concurrency cap: a
+            // detector that never engaged owns nothing, and a broken one has stopped reading but stays in
+            // the map so its exited readers are still joined before the shared scope is disposed. Counting
+            // either would let the first contracts to touch storage hold every slot for the whole block and
+            // refuse the striding one. The scan is skipped until enough engagements have happened to fill
+            // the cap, and is bounded by the detector limit.
+            if (_stridePrefetchers.Count >= MaxStridePrefetcherDetectors)
+            {
+                return null;
+            }
+
+            if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetchers
+                && CountReaderSlotHolders() >= MaxStridePrefetchers)
             {
                 return null;
             }
@@ -179,14 +190,14 @@ public class PrewarmerScopeProvider(
         private bool TryReserveStridePrefetcherEngagement() =>
             Interlocked.Increment(ref _stridePrefetcherEngagements) <= MaxStridePrefetcherEngagements;
 
-        private int CountActiveStridePrefetchers()
+        private int CountReaderSlotHolders()
         {
-            int active = 0;
+            int holders = 0;
             foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
             {
-                if (!kv.Value.IsBroken) active++;
+                if (kv.Value.HoldsReaderSlot) holders++;
             }
-            return active;
+            return holders;
         }
 
         /// <summary>Opens the prefetch readers' shared scope on first use and creates a storage tree on it.</summary>

@@ -103,6 +103,39 @@ public class StorageStridePrefetcherTests
     }
 
     [Test]
+    public void A_detector_that_never_engaged_holds_no_reader_slot()
+    {
+        using CancellationTokenSource cts = new();
+        int engagements = 0;
+        StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            new SeqlockCache<StorageCell, byte[]>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 1,
+            tryReserveEngagement: () => { engagements++; return true; });
+
+        // Off-pattern reads: an ordinary contract that touches storage without striding. It never engages,
+        // so it never breaks either - and it must still not count against the owner's concurrency cap,
+        // otherwise the first contracts to touch storage lock every slot for the whole block.
+        UInt256 index = 1;
+        for (int i = 0; i < 32; i++)
+        {
+            prefetcher.OnRead(in index);
+            index += (UInt256)(uint)(i + 1);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engagements, Is.Zero, "an off-pattern run must not engage");
+            Assert.That(prefetcher.IsBroken, Is.False, "a detector that never engaged never breaks");
+            Assert.That(prefetcher.HoldsReaderSlot, Is.False, "so it owns no reader threads and no slot");
+        }
+
+        Assert.DoesNotThrow(() => prefetcher.Dispose());
+    }
+
+    [Test]
     public void StopAndGetReaders_WaitsForAnInFlightPublish()
     {
         using CancellationTokenSource cts = new();
