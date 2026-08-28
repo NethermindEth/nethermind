@@ -68,11 +68,8 @@ public class ReceiptsRecoveryTests
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
 
-    // Recovery re-derives a non-success status from the log count, which holds pre-EIP-8141: a failed
-    // transaction has no logs. A frame transaction breaks it — its status is derived from the frame
-    // statuses, so it can fail while carrying the logs of the frames that succeeded. Without the
-    // exemption a node serving this receipt from the database reports success where the node that
-    // executed the block reports failure.
+    // A frame transaction can fail while carrying the logs of the frames that succeeded, so recovery's
+    // log-count heuristic would otherwise report success where the executing node reported failure.
     [Test]
     public void TryRecover_should_keep_a_failed_frame_transaction_status_with_logs()
     {
@@ -87,16 +84,14 @@ public class ReceiptsRecoveryTests
         Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure));
     }
 
-    // An EIP-8141 frame transaction has no `to` field, which makes it look like a creation, but it
-    // creates nothing at the top level. Recovering an address here would name an account that was
-    // never created, and disagree with the address the executing node reported.
+    // A frame transaction has no `to` field, so it looks like a creation while creating nothing at the
+    // top level; a recovered address would name an account that was never created.
     [Test]
     public void TryRecover_should_not_invent_a_contract_address_for_a_frame_transaction()
     {
         Block block = FrameTxBlock();
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
-        // Recovery only ever assigns these, so a receipt that arrives empty would pass the assertions
-        // below without the exemption doing anything.
+        // Seeded non-null: recovery only ever assigns these, so an empty receipt would pass below regardless.
         receipt.ContractAddress = TestItem.AddressD;
         receipt.Recipient = TestItem.AddressD;
         Assert.That(block.Transactions[0].IsContractCreation, Is.True,

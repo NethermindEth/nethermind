@@ -59,8 +59,9 @@ public static class StaticPool<T> where T : class, IResettable, new()
     /// </returns>
     public static T Rent()
     {
-        // Try to pop from the global pool — this is only hit when a thread
-        // has exhausted its own fast slot or is cross-thread renting.
+        // Every rent reaches the shared queue: there is no per-thread tier here, unlike
+        // Nethermind.Evm's EvmObjectPool, so each rent and return costs a contended atomic. Hosting
+        // this on that pool would extend the same win to StackList and the block-access-list pool.
         if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out T? item))
         {
             // We track count manually with Interlocked ops instead of using queue.Count.

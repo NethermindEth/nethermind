@@ -48,6 +48,10 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
 
+    // Penalty window of the pre-TIPUpgradePenalty rules, in epochs. Unlike the post-upgrade LimitPenaltyEpoch it is
+    // not chainspec configurable.
+    public const ulong LimitPenaltyEpochV2 = 1;
+
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
     public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");

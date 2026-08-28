@@ -22,6 +22,9 @@ public interface IBlockStore
     /// </summary>
     void InsertDeferred(Block block) => Insert(block);
     void Delete(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Drops every block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever their hashes.</summary>
+    void DeleteRange(ulong fromInclusive, ulong toExclusive);
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);

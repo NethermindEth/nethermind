@@ -17,11 +17,15 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -166,6 +170,19 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
+
+    [Test]
+    public void Chiado_discovery_bootnodes_are_correct()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("chiado.json");
+        Assert.That(chainSpec.Bootnodes, Is.Not.Empty);
+
+        foreach (NetworkNode bootnode in chainSpec.Bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+        }
+    }
 
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
@@ -315,6 +332,22 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         Assert.That(archiveConfig.GenesisHash, Is.Not.Null);
         Assert.That(archiveConfig.GenesisHash, Is.EqualTo(regularConfig.GenesisHash));
+    }
+
+    // XDPoS v1 blocks are not supported, so the archive node cannot sync from genesis.
+    [Test]
+    public void Xdc_archive_syncs_from_the_XDPoS_v2_switch_block()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile("xdc.json");
+        ulong switchBlock = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>().SwitchBlock;
+
+        ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(syncConfig.FastSync, Is.True);
+            Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
+        });
     }
 
     [TestCase("*")]

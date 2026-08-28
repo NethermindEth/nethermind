@@ -78,7 +78,8 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         foreach (ReceiptForRpc receipt in receipts)
         {
             if (receipt.Status != StatusCode.Success) continue;
-            foreach (LogEntryForRpc log in receipt.Logs)
+            // An L1 node omits "logs" or sends null for a receipt with no logs.
+            foreach (LogEntryForRpc log in receipt.Logs ?? [])
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;
                 if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;

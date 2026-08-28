@@ -15,18 +15,11 @@ internal enum FrameTxPayerOutcome
     /// <summary>Legible prefix that provably never sets a payer (an invalid transaction).</summary>
     NoPayer,
 
-    /// <summary>
-    /// Reaches deployed code the pool cannot evaluate natively, or names a third-party payer whose
-    /// resolution needs simulation (canonical-paymaster recognition is not yet pinned down); deferred to
-    /// a later simulation layer.
-    /// </summary>
+    /// <summary>Reaches deployed code the pool cannot evaluate natively, or names a third-party payer; deferred to the simulation layer.</summary>
     RequiresSimulation,
 }
 
-/// <summary>
-/// Chain-head state a legible payer resolution depends on, captured so a later layer can revalidate
-/// admission on head changes without re-execution.
-/// </summary>
+/// <summary>Chain-head state a legible payer resolution depends on, captured so admission can be revalidated on head changes without re-execution.</summary>
 internal readonly struct FrameTxDependencySet(
     ValueHash256 senderCodeHash,
     ulong senderNonce,
