@@ -369,27 +369,7 @@ namespace Nethermind.Stats.Model
 
         private void TrySetIpv6Endpoint(NodeRecord enr)
         {
-            IPEndPoint newAlternate = null;
-            IPAddress address = Address.Address;
-            if (!address.IsIPv4MappedToIPv6)
-            {
-                if (address.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
-                        !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
-                    {
-                        newAlternate = ipv6Endpoint;
-                    }
-                }
-                else if (address.AddressFamily == AddressFamily.InterNetworkV6)
-                {
-                    if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
-                    {
-                        newAlternate = v4Endpoint;
-                    }
-                }
-            }
-
+            IPEndPoint newAlternate = ComputeAlternate(enr);
             lock (_alternateLock)
             {
                 V6Address = newAlternate;
@@ -438,12 +418,7 @@ namespace Nethermind.Stats.Model
 
         internal bool TryMergeAlternate(Node other, bool allowOverwrite = false)
         {
-            if (other.V6Address is null && !allowOverwrite)
-            {
-                return false;
-            }
-
-            if (!allowOverwrite && V6Address is not null)
+            if (other.Enr is null)
             {
                 return false;
             }
@@ -455,9 +430,36 @@ namespace Nethermind.Stats.Model
                     return false;
                 }
 
-                V6Address = other.V6Address;
+                V6Address = ComputeAlternate(other.Enr);
                 return true;
             }
+        }
+
+        private IPEndPoint ComputeAlternate(NodeRecord enr)
+        {
+            IPAddress address = Address.Address;
+            if (address.IsIPv4MappedToIPv6)
+            {
+                return null;
+            }
+
+            if (address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
+                    !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+                {
+                    return ipv6Endpoint;
+                }
+            }
+            else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
+                {
+                    return v4Endpoint;
+                }
+            }
+
+            return null;
         }
 
         private static string FormatHost(IPAddress address)
