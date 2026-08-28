@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -62,9 +63,7 @@ public class FrameTxProcessorTests
         _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
     }
 
     [TearDown]
@@ -1882,13 +1881,8 @@ public class FrameTxProcessorTests
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
-        Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
-            .WithBeneficiary(Beneficiary)
-            .WithTransactions(tx)
-            .WithGasLimit(30_000_000).TestObject;
 
-        Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance).TransactionExecuted, Is.True);
+        Assert.That(Process(tracedProcessor, tx).TransactionExecuted, Is.True);
 
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         Assert.That(bal.GetAccountChanges(IdentityPrecompile.Address), Is.Not.Null,
@@ -1910,16 +1904,11 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. movedTo.Bytes]);
 
-        ITransactionProcessor processor = MovedPrecompileProcessor(IdentityPrecompile.Address, movedTo);
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
-        Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
-            .WithBeneficiary(Beneficiary)
-            .WithTransactions(tx)
-            .WithGasLimit(30_000_000).TestObject;
 
-        Assert.That(processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer).TransactionExecuted, Is.True);
+        Assert.That(Process(BuildProcessor(_stateProvider, MovedPrecompile(IdentityPrecompile.Address, movedTo)),
+            tx, tracer: tracer).TransactionExecuted, Is.True);
 
         // The target and the designation are both cold — the latter because a moved precompile is no
         // longer in the spec's EIP-2929 pre-warm set — and nothing beyond those two accesses runs.
@@ -1927,14 +1916,36 @@ public class FrameTxProcessorTests
             "the moved precompile must not execute through the designation");
     }
 
-    /// <summary>A processor whose repository, but not whose spec, has moved a precompile to another address.</summary>
-    private ITransactionProcessor MovedPrecompileProcessor(Address precompile, Address movedTo)
+    /// <summary>
+    /// The address a precompile was moved <em>away</em> from is no longer one, so a designation to it runs
+    /// whatever code the override left there instead of being suppressed to empty.
+    /// </summary>
+    [Test]
+    public void Execute_FrameTargetDesignatesAVacatedPrecompileAddress_RunsTheCodeLeftThere()
     {
-        OverridableCodeInfoRepository codeInfoRepository = new(new EthereumCodeInfoRepository(_stateProvider), _stateProvider);
-        codeInfoRepository.MovePrecompile(Spec, precompile, movedTo);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider,
-            virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. IdentityPrecompile.Address.Bytes]);
+
+        OverridableCodeInfoRepository repository = MovedPrecompile(IdentityPrecompile.Address, TestItem.AddressF);
+        repository.SetCodeOverride(Spec, IdentityPrecompile.Address,
+            new CodeInfo(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(BuildProcessor(_stateProvider, repository), tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        // Empty code cannot revert, so the failure is the override code having run.
+        Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+            "the vacated address must dispatch as code, not as a precompile");
+    }
+
+    /// <summary>A repository whose precompile, unlike the spec's, has been moved to another address.</summary>
+    private OverridableCodeInfoRepository MovedPrecompile(Address precompile, Address movedTo)
+    {
+        OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(_stateProvider), _stateProvider);
+        repository.MovePrecompile(Spec, precompile, movedTo);
+        return repository;
     }
 
     private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
@@ -1963,13 +1974,19 @@ public class FrameTxProcessorTests
     {
         TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        return (new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, tracedState,
-            virtualMachine, codeInfoRepository, LimboLogs.Instance), tracedState);
+        return (BuildProcessor(tracedState, new EthereumCodeInfoRepository(tracedState)), tracedState);
     }
 
-    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null)
+    private EthereumTransactionProcessor BuildProcessor(IWorldState state, ICodeInfoRepository repository) =>
+        new(BlobBaseFeeCalculator.Instance, _specProvider, state,
+            new EthereumVirtualMachine(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance),
+            repository, LimboLogs.Instance);
+
+    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null) =>
+        Process(_transactionProcessor, tx, baseFeePerGas, tracer, slotNumber);
+
+    private TransactionResult Process(ITransactionProcessor processor, Transaction tx, UInt256 baseFeePerGas = default,
+        ITxTracer? tracer = null, ulong? slotNumber = null)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(baseFeePerGas)
@@ -1977,7 +1994,7 @@ public class FrameTxProcessorTests
             .WithTransactions(tx)
             .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
-        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
+        return processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
 
     private TransactionResult CallAndRestore(Transaction tx)
