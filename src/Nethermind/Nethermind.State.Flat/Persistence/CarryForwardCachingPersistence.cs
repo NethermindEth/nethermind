@@ -410,8 +410,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
             catch
             {
-                Abandon();
+                _abandoned = true;
                 throw;
+            }
+            finally
+            {
+                // After the inner commit, matching the commit path's ordering: a reader created between the
+                // abort and the commit still matches the basis, so clearing earlier would let its fills install
+                // pre-commit values that no later write-set refresh corrects.
+                if (_abandoned) parent.Abort();
             }
 
             if (!_abandoned)
@@ -420,11 +427,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         void IAbortableWriteBatch.Abandon() => Abandon();
 
-        private void Abandon()
-        {
-            if (_abandoned) return;
-            _abandoned = true;
-            parent.Abort();
-        }
+        // Flag only; parent.Abort() runs in Dispose once the inner batch has committed or thrown.
+        private void Abandon() => _abandoned = true;
     }
 }

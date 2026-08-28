@@ -554,6 +554,49 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
+    [Test]
+    public void FillFromAReaderCreatedBetweenAbortAndCommit_DoesNotSurvive()
+    {
+        Account persistedAccount = Build.An.Account.WithNonce(1).TestObject;
+        Account preCommitAccount = Build.An.Account.WithNonce(9).TestObject;
+        FakePersistence inner = new()
+        {
+            AccountValue = preCommitAccount,
+            ThrowOnSetStorage = true,
+        };
+        CarryForwardCachingPersistence cache = new(inner);
+        try
+        {
+            cache.Clear();
+
+            using (IPersistence.IWriteBatch abandoned = cache.CreateWriteBatch(Basis0, Basis1))
+            {
+                Assert.Throws<InvalidOperationException>(() => abandoned.SetStorage(Address, 1, null));
+
+                // Still inside the using: the batch is abandoned but the inner batch has not committed yet.
+                // A reader opened here matches the basis, so it is a caching reader and its fill would be
+                // installed - with pre-commit values that no later write-set refresh corrects.
+                ReadAccount(cache, Address);
+            }
+
+            inner.AccountValue = persistedAccount;
+            inner.ReaderState = Basis0;
+
+            Account? read = ReadAccountValue(cache, Address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read?.Nonce, Is.EqualTo(persistedAccount.Nonce),
+                    "a fill from the abort-to-commit window must not be servable afterwards");
+                Assert.That(inner.AccountReads, Is.EqualTo(2), "the entry was dropped, so the read fell through to the database");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
