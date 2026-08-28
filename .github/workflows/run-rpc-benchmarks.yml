@@ -139,10 +139,13 @@ on:
     types: [completed]
     branches: [master]
 
-# Master-baseline refreshes collapse to the newest push; every other run gets its own group (a shared one would cancel queued dispatches).
+# Master-baseline refreshes collapse to the newest *pending* push (GitHub keeps one running plus one queued per group);
+# every other run gets its own group (a shared one would cancel queued dispatches). Cancelling the in-flight baseline
+# would starve the refresh: a cell is tens of minutes downstream of a multi-platform image build, so on a busy master
+# day no run would ever reach the save step and every PR would pay for the two-arm fallback.
 concurrency:
   group: rpc-bench-${{ github.event_name == 'workflow_run' && 'master-baseline' || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
