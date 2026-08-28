@@ -65,6 +65,7 @@ public static class FrameExceptionFragments
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
         FrameTxValidation.TooManyRecentRootReferences,
+        FrameTxValidation.RecentRootReferencesNotEnabled,
         // The fixtures file a signer that does not match as a format failure, and a signature that
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,

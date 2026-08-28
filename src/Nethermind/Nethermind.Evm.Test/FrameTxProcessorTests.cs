@@ -2591,7 +2591,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False);
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
+        Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
     }
 
     /// <remarks>A set built from RPC input reaches the processor uncapped, so rejecting it before
