@@ -31,7 +31,12 @@ public interface IWorldStateScopeProvider
     /// <remarks>
     /// The flat layout supports this (scopes lease pooled snapshot bundles); the trie store does
     /// not — its scope is a global gate (scope/pruning locks, commit-buffer transitions) that must
-    /// not be nested from within an active block.
+    /// not be nested from within an active block. Reporting <c>true</c> also asserts that the
+    /// resulting scopes and the trees they hand out are safe to read from several threads at once.
+    /// <para>
+    /// Decorating providers must forward this from the provider they wrap; the default is a
+    /// conservative <c>false</c>, so a decorator that forgets silently disables the feature.
+    /// </para>
     /// </remarks>
     bool SupportsConcurrentScopes => false;
 

@@ -369,7 +369,13 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        // Over the production decorator chain (see MainProcessingContext): the prefetcher engages only
+        // if every decorator between it and the backend forwards SupportsConcurrentScopes.
+        PrewarmerScopeProvider prewarmer = new(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
 
         using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
@@ -546,6 +552,26 @@ public class ScopeProviderTests(bool useFlat)
                     "Stride prefetcher engaged in a non-first block of a scope.");
                 await Task.Delay(5);
             }
+        }
+    }
+
+    [Test]
+    public void Test_ScopeDecorators_ForwardConcurrentScopeSupport()
+    {
+        using Context ctx = new(useFlat);
+
+        // SupportsConcurrentScopes is a default interface member, so a decorator that does not forward
+        // it silently reports the conservative false and disables every feature gated on it.
+        IWorldStateScopeProvider decorated = new PrewarmerScopeProvider(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(new PreBlockCaches(), isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.ScopeProvider.SupportsConcurrentScopes, Is.EqualTo(useFlat));
+            Assert.That(decorated.SupportsConcurrentScopes, Is.EqualTo(useFlat));
         }
     }
 
