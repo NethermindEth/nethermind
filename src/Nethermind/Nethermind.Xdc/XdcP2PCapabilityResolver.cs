@@ -14,11 +14,6 @@ namespace Nethermind.Xdc;
 /// XDC advertises only the versions <c>XdcModule</c> registers a handler for. The default eth/68 resolver is
 /// dropped at registration (see <c>XdcModule</c>), so this resolver contributes the whole set.
 /// </summary>
-/// <remarks>
-/// Advertising a version without a handler makes <c>ProtocolsManager.InitProtocol</c> throw
-/// <see cref="NotSupportedException"/> on the peer's <c>Hello</c>, because capability agreement picks the highest
-/// common version. eth/62 and eth/63 were advertised that way and broke every peer that offered nothing newer.
-/// </remarks>
 public class XdcP2PCapabilityResolver : IP2PCapabilityResolver
 {
     // XDC's capability set is static, so the cache never needs invalidating.
