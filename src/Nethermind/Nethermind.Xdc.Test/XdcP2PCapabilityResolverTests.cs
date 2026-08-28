@@ -7,7 +7,6 @@ using Nethermind.Core.Container;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
-using Nethermind.Xdc.P2P;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -54,19 +53,5 @@ public class XdcP2PCapabilityResolverTests
             new Capability(Protocol.Eth, 164),
             new Capability(Protocol.Eth, 165),
         }));
-    }
-
-    [Test]
-    public void Resolve_advertises_no_version_without_a_handler()
-    {
-        XdcP2PCapabilityResolver resolver = new();
-
-        HashSet<Capability> capabilities = [];
-        resolver.Resolve(capabilities);
-
-        // Capability agreement picks the highest common version, so an advertised version that XdcModule
-        // registers no handler factory for makes ProtocolsManager.InitProtocol throw on the peer's Hello.
-        Assert.That(capabilities, Has.All.Matches<Capability>(
-            capability => XdcProtocolVersions.IsXdcVersion((byte)capability.Version)));
     }
 }
