@@ -333,7 +333,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(CreateTerminalBlock(4));
+            blockTree.Head.Returns(CreatePostTerminalBlock(5));
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
             int terminalBlockReachedCount = 0;
             poSSwitcher.TerminalBlockReached += (_, _) => terminalBlockReachedCount++;
@@ -363,6 +363,31 @@ namespace Nethermind.Merge.Plugin.Test
 
             blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+        }
+
+        [Test]
+        public void Committed_terminal_head_is_recorded_when_terminal_metadata_is_missing()
+        {
+            using MemDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            Block terminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
+
+            // The head hash is committed before NewHeadBlock is raised, so a crash in that window leaves a
+            // terminal head that no later event announces again.
+            blockTree.SuggestBlock(terminalBlock);
+            blockTree.TryUpdateMainChain(terminalBlock.Header, true, preloadedBlocks: new[] { terminalBlock });
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber), Is.False);
+
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(MatchesTerminalBlock(ReadTerminalMetadata(metadataDb), terminalBlock), Is.True);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock.Number + 1));
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+            }
         }
 
         [Test]
@@ -549,6 +574,10 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static Block CreateTerminalBlock(ulong number) =>
             Build.A.Block.WithNumber(number).WithTotalDifficulty(5000000L).WithDifficulty(1000000L).TestObject;
+
+        // Above TTD with a parent already above TTD, so it is durable TTD evidence without being terminal itself.
+        private static Block CreatePostTerminalBlock(ulong number) =>
+            Build.A.Block.WithNumber(number).WithTotalDifficulty(6000000L).WithDifficulty(1000000L).TestObject;
 
         private static (ulong Number, Hash256? Hash) ReadTerminalMetadata(IDb metadataDb)
         {

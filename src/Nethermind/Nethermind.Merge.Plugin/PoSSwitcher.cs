@@ -86,7 +86,10 @@ namespace Nethermind.Merge.Plugin
             Volatile.Write(ref _hasLocalChainCrossedTerminalTotalDifficulty, HasDurableTerminalTotalDifficultyEvidence());
 
             if (!_terminalBlockExplicitSpecified && Volatile.Read(ref _finalizedBlockHash) == Keccak.Zero)
+            {
+                ReconcileTerminalBlockFromHead();
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
+            }
 
             if (_logger.IsInfo)
                 _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {HasEverReachedTerminalBlock()}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
@@ -139,6 +142,25 @@ namespace Nethermind.Merge.Plugin
 
         private bool HasPostTerminalTotalDifficultyGenesis(UInt256 terminalTotalDifficulty) =>
             _chainSpec?.Genesis is not null && _chainSpec.Genesis.Difficulty >= terminalTotalDifficulty;
+
+        /// <summary>
+        /// Records the current head as the terminal block when it qualifies and no terminal metadata is persisted.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IBlockTree.NewHeadBlock"/> is raised only after the head hash has been written, so a crash in
+        /// that window leaves a committed terminal head without terminal metadata. That head is never announced
+        /// again and its successors are not terminal, so the merge block number would otherwise stay unknown for
+        /// the lifetime of the database.
+        /// </remarks>
+        private void ReconcileTerminalBlockFromHead()
+        {
+            if (_terminalBlockNumber is not null)
+                return;
+
+            BlockHeader? head = _blockTree.Head?.Header;
+            if (head is not null)
+                TryUpdateTerminalBlock(head);
+        }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
