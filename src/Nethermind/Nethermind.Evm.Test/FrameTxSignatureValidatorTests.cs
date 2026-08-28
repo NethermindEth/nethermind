@@ -69,7 +69,7 @@ public class FrameTxSignatureValidatorTests
         tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -90,7 +90,7 @@ public class FrameTxSignatureValidatorTests
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -162,7 +162,7 @@ public class FrameTxSignatureValidatorTests
         ];
 
         Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
     }
 
     [Test]
@@ -189,6 +189,32 @@ public class FrameTxSignatureValidatorTests
 
         Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_SignerMismatchAndFailedVerification_ReportedDistinctly()
+    {
+        // A signer that does not match and a signature that does not verify are different rejections,
+        // and the EIP-8141 fixtures name them differently, so neither may borrow the other's message.
+        Transaction mismatched = CreateFrameTx();
+        mismatched.FrameSignatures = [Secp256k1Entry(mismatched, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
+
+        // Both arms are SECP256K1 so the pair guards the scheme the split changed. r = 5 clears the
+        // canonicality gate but is not a curve x-coordinate, so recovery is impossible and there is no
+        // recovered address to compare a signer against.
+        Transaction unverifiable = CreateFrameTx();
+        byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        raw[32] = 5; // r = 5
+        raw[64] = 1; // s = 1
+        unverifiable.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw)];
+
+        Assert.That(Validate(mismatched, out string? mismatchError), Is.False);
+        Assert.That(Validate(unverifiable, out string? verifyError), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatchError, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+            Assert.That(verifyError, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        }
     }
 
     [Test]

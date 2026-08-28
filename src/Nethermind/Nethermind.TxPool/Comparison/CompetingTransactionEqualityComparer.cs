@@ -31,10 +31,15 @@ namespace Nethermind.TxPool.Comparison
 
         public int GetHashCode(Transaction? obj)
         {
+            ReadOnlySpan<UInt256> keyedDomain = obj is null ? default : KeyedDomain(obj);
+            // Almost every transaction consumes the account nonce; HashCode.Combine of two values runs the
+            // same rounds as two Add calls, so this path is cheaper and hashes identically.
+            if (keyedDomain.IsEmpty) return HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+
             HashCode hash = new();
             hash.Add(obj?.SenderAddress);
             hash.Add(obj?.Nonce);
-            foreach (UInt256 nonceKey in obj is null ? default : KeyedDomain(obj))
+            foreach (UInt256 nonceKey in keyedDomain)
             {
                 hash.Add(nonceKey);
             }

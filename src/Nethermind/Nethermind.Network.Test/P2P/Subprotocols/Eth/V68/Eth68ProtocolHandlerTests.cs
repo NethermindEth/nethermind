@@ -462,15 +462,7 @@ public class Eth68ProtocolHandlerTests
         _handler = BuildHandler(txPoolConfig, frameTxsEnabled: true);
 
         // Between MaxTxSize (128 KiB) and MaxBlobTxSize (1 MiB): admissible only where blobs are supported.
-        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { (int)txPoolConfig.MaxTxSize! + 1 };
-        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
-
-        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        AssertFrameTxAnnouncementRequested((int)txPoolConfig.MaxTxSize! + 1, expectedRequests);
     }
 
     // Without the fork a frame tx is rejected at ingress, so requesting one is always wasted bandwidth.
@@ -481,15 +473,7 @@ public class Eth68ProtocolHandlerTests
         TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
         _handler = BuildHandler(txPoolConfig, frameTxsEnabled);
 
-        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { 100 };
-        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
-
-        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests);
     }
 
     // Best-suggested leads the processed head, so a gate keyed on the latter would decline while the pool already accepts.
@@ -508,15 +492,21 @@ public class Eth68ProtocolHandlerTests
 
         _handler = CreateHandler(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, specProvider);
 
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests: 1);
+    }
+
+    /// <summary>Runs the status handshake, then announces exactly one frame transaction hash of the given size.</summary>
+    private void AssertFrameTxAnnouncementRequested(int announcedSize, int expectedRequests)
+    {
         using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
-        using ArrayPoolList<int> sizes = new(1) { 100 };
+        using ArrayPoolList<int> sizes = new(1) { announcedSize };
         using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
 
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     private Eth68ProtocolHandler BuildHandler(ITxPoolConfig txPoolConfig, bool frameTxsEnabled)
