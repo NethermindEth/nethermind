@@ -567,6 +567,11 @@ internal sealed class XdcMasternodeEthModule(
     /// <remarks>
     /// Voters are read from contract storage rather than through the EVM: the list is unbounded, and this is a
     /// sharable method, so a call per voter would let one request amplify into arbitrarily many.
+    /// <para>
+    /// Each address is counted once. The stored list repeats an address that voted, fully unvoted and voted
+    /// again, while its balance stays single — the reference collapses those duplicates by keying its caps on
+    /// address, and summing per entry here would inflate the staked total and depress the reported return.
+    /// </para>
     /// </remarks>
     private UInt256 GetTotalVoterStake(BlockHeader stateHeader, Address masternode)
     {
@@ -575,9 +580,13 @@ internal sealed class XdcMasternodeEthModule(
         IWorldState worldState = scope.WorldState;
 
         UInt256 totalStake = UInt256.Zero;
+        HashSet<Address> counted = [];
         foreach (Address voter in masternodeVotingContract.GetVoters(worldState, masternode))
         {
-            totalStake += masternodeVotingContract.GetVoterStake(worldState, masternode, voter);
+            if (counted.Add(voter))
+            {
+                totalStake += masternodeVotingContract.GetVoterStake(worldState, masternode, voter);
+            }
         }
 
         return totalStake;

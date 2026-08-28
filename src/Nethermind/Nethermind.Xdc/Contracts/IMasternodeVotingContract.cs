@@ -23,6 +23,11 @@ public interface IMasternodeVotingContract
     /// <remarks>
     /// Read straight from contract storage, as the reference client does. The voter list is unbounded, so an
     /// EVM call per entry would let one request amplify into arbitrarily many.
+    /// <para>
+    /// Not a set. <c>vote</c> appends only when the voter's balance is zero and <c>unvote</c> never removes the
+    /// entry, so an address that voted, fully unvoted and voted again appears more than once while holding a
+    /// single balance. Callers that aggregate over the result must count each address once.
+    /// </para>
     /// </remarks>
     Address[] GetVoters(IWorldState worldState, Address candidate);
 

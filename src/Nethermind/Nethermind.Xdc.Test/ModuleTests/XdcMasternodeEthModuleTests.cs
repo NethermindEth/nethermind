@@ -337,21 +337,28 @@ public class XdcMasternodeEthModuleTests
     public void eth_getStakerROIMasternode_annualizes_the_rewards_paid_out_for_one_masternode()
     {
         SetUpEpochTimeline();
-        XdcBlockHeader current = CheckpointOf(RoiCurrentEpoch);
-        XdcEpochRewards rewards = new()
-        {
-            Rewards = new()
-            {
-                [TestItem.AddressA.ToString()] = new()
-                {
-                    [TestItem.AddressB.ToString()] = ((UInt256)4_500 * Unit.Ether).ToString(),
-                    [TestItem.AddressC.ToString()] = ((UInt256)500 * Unit.Ether).ToString(),
-                },
-            },
-        };
-        _rewardsStore.TryGetEpochRewards(Arg.Any<Hash256>(), out Arg.Any<XdcEpochRewards?>())
-            .Returns(x => { x[1] = rewards; return true; });
+        SetMasternodeRewards(TestItem.AddressA, (TestItem.AddressB, 4_500), (TestItem.AddressC, 500));
         _votingContract.GetVoters(_worldState, TestItem.AddressA).Returns([TestItem.AddressB]);
+        _votingContract.GetVoterStake(_worldState, TestItem.AddressA, TestItem.AddressB)
+            .Returns((UInt256)StakeForOnePercentRoi * Unit.Ether);
+
+        ResultWrapper<double> result = _module.eth_getStakerROIMasternode(TestItem.AddressA);
+
+        Assert.That(result.Data, Is.EqualTo(1.0).Within(1e-9));
+    }
+
+    /// <remarks>
+    /// The contract appends to <c>voters[]</c> on a vote from a zero balance and never removes on unvote, so a
+    /// voter who left and came back is listed twice while holding one balance. Counting the entry twice would
+    /// inflate the staked total and halve the reported return.
+    /// </remarks>
+    [Test]
+    public void eth_getStakerROIMasternode_counts_a_repeated_voter_once()
+    {
+        SetUpEpochTimeline();
+        SetMasternodeRewards(TestItem.AddressA, (TestItem.AddressB, 4_500), (TestItem.AddressC, 500));
+        _votingContract.GetVoters(_worldState, TestItem.AddressA)
+            .Returns([TestItem.AddressB, TestItem.AddressB]);
         _votingContract.GetVoterStake(_worldState, TestItem.AddressA, TestItem.AddressB)
             .Returns((UInt256)StakeForOnePercentRoi * Unit.Ether);
 
@@ -414,6 +421,20 @@ public class XdcMasternodeEthModuleTests
     {
         BlockRoundInfo info = _epochSwitchManager.GetBlockByEpochNumber(epochNumber)!;
         return (XdcBlockHeader)_blockTree.FindHeader(info.Hash, info.BlockNumber)!;
+    }
+
+    /// <summary>Records the holder rewards paid to <paramref name="masternode"/> in the last settled epoch.</summary>
+    private void SetMasternodeRewards(Address masternode, params (Address Holder, ulong Xdc)[] holders)
+    {
+        Dictionary<string, string> holderRewards = [];
+        foreach ((Address holder, ulong xdc) in holders)
+        {
+            holderRewards[holder.ToString()] = ((UInt256)xdc * Unit.Ether).ToString();
+        }
+
+        XdcEpochRewards rewards = new() { Rewards = new() { [masternode.ToString()] = holderRewards } };
+        _rewardsStore.TryGetEpochRewards(Arg.Any<Hash256>(), out Arg.Any<XdcEpochRewards?>())
+            .Returns(x => { x[1] = rewards; return true; });
     }
 
     private void SetOnsetEpoch(ulong onsetEpoch) =>

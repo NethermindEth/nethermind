@@ -63,7 +63,7 @@ public sealed class XdcEpochParameter : IJsonRpcParam
             digits = digits[2..];
         }
 
-        if (!ulong.TryParse(digits, hex ? NumberStyles.HexNumber : NumberStyles.None, CultureInfo.InvariantCulture, out ulong epoch))
+        if (!ulong.TryParse(digits, hex ? NumberStyles.AllowHexSpecifier : NumberStyles.None, CultureInfo.InvariantCulture, out ulong epoch))
         {
             throw new JsonException($"Cannot parse '{value}' as an epoch number.");
         }
