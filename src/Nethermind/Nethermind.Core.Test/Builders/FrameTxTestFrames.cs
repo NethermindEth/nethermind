@@ -10,8 +10,7 @@ namespace Nethermind.Core.Test.Builders;
 /// <remarks>Shared so a change to the frame grammar lands in one place rather than in every fixture.</remarks>
 public static class FrameTxTestFrames
 {
-    /// <summary>A validation-prefix gas limit in the range a real prefix uses, for fixtures whose outcome
-    /// turns on the prefix being priced rather than on the frame layout alone.</summary>
+    /// <summary>A validation-prefix gas limit in the range a real prefix uses.</summary>
     public const ulong PrefixFrameGas = 100_000;
 
     public static Transaction FrameTx(params TxFrame[] frames) => FrameTx(TestItem.AddressA, [], frames);
