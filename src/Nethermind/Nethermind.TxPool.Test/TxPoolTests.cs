@@ -2793,6 +2793,31 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void Frame_transaction_payer_exposure_prices_the_calldata_its_nonce_keys_occupy()
+        {
+            // eth_sendTransaction builds the transaction field by field, so it never reaches the decoder that
+            // measures the EIP-8250 nonce-key calldata the bound is priced on. Left unmeasured the reservation
+            // is systematically below what the transaction costs, which is the bound this gate exists to hold.
+            IReleaseSpec spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+            _txPool = CreatePool(null, new TestSpecProvider(spec));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction tx = SelfPayingFrameTx(nonce: 0, feePerGas: 3, nonceKeys: [(UInt256)0xbeef]);
+            Assert.That(tx.FrameCalldataStats, Is.EqualTo(default((int ZeroBytes, int NonZeroBytes))), "nothing on this path measured it");
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 unmeasuredCost), Is.True);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 measuredCost), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(measuredCost, Is.GreaterThan(unmeasuredCost), "the nonce-key calldata is not free");
+                Assert.That(tx.PayerExposure, Is.EqualTo(measuredCost), "the payer is held to the measured cost, not the unmeasured one");
+            }
+        }
+
+        [Test]
         public void Frame_transaction_payer_exposure_does_not_discount_a_different_keyed_nonce_domain()
         {
             // EIP-8250: a same-nonce transaction in another nonce-key domain does not compete, so both stay

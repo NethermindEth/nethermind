@@ -443,10 +443,14 @@ public static class FrameTxValidation
     /// overflow <see cref="ulong"/>. In every failure case the outputs are 0 and the transaction cannot be priced.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
+        // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
+        (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
+        (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
+
         if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo
             && ReferenceEquals(memo.Spec, spec)
-            && memo.ReferenceCalldata == transaction.ReferenceCalldataStats
-            && memo.FrameCalldata == transaction.FrameCalldataStats)
+            && memo.ReferenceCalldata == referenceCalldata
+            && memo.FrameCalldata == frameCalldata)
         {
             (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
             return memo.Priced;
@@ -454,7 +458,7 @@ public static class FrameTxValidation
 
         bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
         Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(
-            spec, transaction.ReferenceCalldataStats, transaction.FrameCalldataStats, priced, intrinsicGas, floorGas, maxGas));
+            spec, referenceCalldata, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
         return priced;
     }
 

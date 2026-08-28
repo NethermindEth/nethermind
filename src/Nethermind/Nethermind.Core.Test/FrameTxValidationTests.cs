@@ -380,7 +380,7 @@ public class FrameTxValidationTests
     }
 
     [Test]
-    public void TryCalculateGasBudget_AfterCalldataStatsAreMeasured_ReprivesRatherThanReusingTheUnmeasuredMemo()
+    public void TryCalculateGasBudget_AfterCalldataStatsAreMeasured_RepricesRatherThanReusingTheUnmeasuredMemo()
     {
         // A transaction built field by field over eth_sendTransaction carries no calldata statistics, so the
         // pool prices it from zero; measuring them later must not be answered from that first reading.
