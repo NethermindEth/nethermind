@@ -106,6 +106,41 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_CancelledByTheNodesOwnEnv_LeavesTheTransactionUndecided()
+    {
+        // Not the caller's token and not the tracer's abort, so it is this node stopping: a malfunction
+        // rather than a bound it chose to spend, and the peer must not be charged for it.
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out IReadOnlyTxProcessorSource source, out _);
+        source.Build(Arg.Any<BlockHeader?>()).Throws(new OperationCanceledException());
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
+            Assert.That(result.NodeBound, Is.True, "a shutdown is the node's condition, not the prefix's");
+        }
+    }
+
+    [Test]
+    public void Simulate_SenderNotRecovered_Rejects()
+    {
+        // The guard standing between an unrecovered sender and SimulateLocked's tx.SenderAddress!, so it is
+        // the frame-tx type check that must not swallow it: TxType.FrameTx passes SupportsFrames.
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _);
+
+        FrameTxSimulationResult result = simulator.Simulate(new Transaction { Type = TxType.FrameTx });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Indeterminate, Is.False, "an unrecovered sender is a definite rejection");
+            envFactory.DidNotReceive().Create();
+        }
+    }
+
+    [Test]
     public void Simulate_CancelledBeforeEntry_Throws()
     {
         using FrameTxPrefixSimulator simulator = Create(Substitute.For<IReadOnlyTxProcessingEnvFactory>(), out _);
@@ -262,7 +297,7 @@ public class FrameTxPrefixSimulatorTests
         InterfaceLogger? logSink = null) =>
         new(envFactory,
             blockFinder,
-            new TestSpecProvider(Bogota.Instance),
+            new TestSpecProvider(Eip8141Prototype.Instance),
             new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs },
             logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)));
 

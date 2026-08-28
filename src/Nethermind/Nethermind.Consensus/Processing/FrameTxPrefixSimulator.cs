@@ -148,9 +148,9 @@ public sealed class FrameTxPrefixSimulator(
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            // Neither the caller's cancellation nor one the tracer raised, so it came from this node's
-            // env (a cancellable state read during shutdown) and decides nothing about the prefix.
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation cancelled");
+            // Neither the caller's cancellation nor one the tracer raised, so it came from this node's env
+            // (a cancellable state read during shutdown): a malfunction, not a bound, so it decides nothing.
+            return FrameTxSimulationResult.Undecided("validation-prefix simulation cancelled");
         }
         catch (Exception e) when (IsNodeFault(e))
         {
