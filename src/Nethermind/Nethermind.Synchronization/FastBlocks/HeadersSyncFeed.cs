@@ -504,6 +504,15 @@ namespace Nethermind.Synchronization.FastBlocks
                         return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
                     }
                 }
+                catch
+                {
+                    // This method owns the batch once it leaves `_sent`, so on failure
+                    // it must go back on the queue instead of being dropped.
+                    batch.Response?.Dispose();
+                    batch.Response = null;
+                    EnqueueBatch(batch, true);
+                    throw;
+                }
                 finally
                 {
                     batch.MarkHandlingEnd();
@@ -532,16 +541,40 @@ namespace Nethermind.Synchronization.FastBlocks
             return leftFiller;
         }
 
-        private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch, ulong addedLast, ulong addedEarliest)
+        /// <summary>
+        /// Builds the batch to park in the dependency graph from the headers <paramref name="batch"/>
+        /// received. If a header is missing between the first and the last, the whole response is parked.
+        /// </summary>
+        private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch)
         {
-            HeadersSyncBatch dependentBatch = new();
-            dependentBatch.StartNumber = addedEarliest;
-            int count = (int)(addedLast - addedEarliest + 1);
             ReadOnlySpan<BlockHeader?> response = batch.Response!.AsSpan();
-            dependentBatch.RequestSize = count;
-            dependentBatch.Response = response.Slice((int)(addedEarliest - batch.StartNumber), count).ToPooledList();
-            dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
-            return dependentBatch;
+            int firstIndex = -1;
+            int lastIndex = -1;
+            int presentCount = 0;
+            for (int i = 0; i < response.Length; i++)
+            {
+                if (response[i] is null) continue;
+
+                if (firstIndex < 0) firstIndex = i;
+                lastIndex = i;
+                presentCount++;
+            }
+
+            // Fewer headers than the positions they span means a header is missing in the middle.
+            if (firstIndex < 0 || presentCount != lastIndex - firstIndex + 1)
+            {
+                firstIndex = 0;
+                lastIndex = response.Length - 1;
+            }
+
+            int count = lastIndex - firstIndex + 1;
+            return new()
+            {
+                StartNumber = batch.StartNumber + (ulong)firstIndex,
+                RequestSize = count,
+                Response = response.Slice(firstIndex, count).ToPooledList(),
+                ResponseSourcePeer = batch.ResponseSourcePeer
+            };
         }
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
@@ -646,7 +679,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == response.Length - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (!ValidateFirstHeader(header, response)) break;
+                    if (!ValidateFirstHeader(header)) break;
                 }
                 else
                 {
@@ -757,7 +790,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
 
             // Well, its the last in the batch, but first processed.
-            bool ValidateFirstHeader(BlockHeader header, ReadOnlySpan<BlockHeader?> response)
+            bool ValidateFirstHeader(BlockHeader header)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
@@ -824,28 +857,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         return false;
                     }
-                    ulong lastNumber = ulong.MaxValue;
-                    for (int j = 0; j < response.Length; j++)
-                    {
-                        BlockHeader? current = response[j];
-                        if (current is not null)
-                        {
-                            // Detect a gap: if we have a previous number and current is not sequential.
-                            if (lastNumber != ulong.MaxValue && current.Number > lastNumber + 1)
-                            {
-                                //There is a gap in this response,
-                                //so we save the whole batch for now,
-                                //and let the next PrepareRequest() handle the disconnect
-                                addedEarliest = batch.StartNumber;
-                                addedLast = batch.EndNumber;
-                                break;
-                            }
-                            if (current.Number < addedEarliest) addedEarliest = current.Number;
-                            if (current.Number > addedLast) addedLast = current.Number;
-                            lastNumber = current.Number;
-                        }
-                    }
-                    HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
+                    HeadersSyncBatch dependentBatch = BuildDependentBatch(batch);
+                    addedEarliest = dependentBatch.StartNumber;
+                    addedLast = dependentBatch.EndNumber;
                     _dependencies[header.Number] = dependentBatch;
                     MarkDirty();
                     if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");

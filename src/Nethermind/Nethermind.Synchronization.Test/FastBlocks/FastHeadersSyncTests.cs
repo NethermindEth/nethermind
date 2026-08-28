@@ -614,6 +614,107 @@ public class FastHeadersSyncTests
         syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
+    // A parked batch is sliced before its header numbers are checked, so those numbers must not
+    // decide the slice. Cases list header numbers as offsets from the batch start; the last is
+    // always positionally correct, which is what reaches the dependency path.
+    [TestCase("-1,1,2", TestName = "Number below the batch start")]
+    [TestCase("3,1,2", TestName = "Number past the end of the response")]
+    [TestCase("0,2,2", TestName = "Short response with a number gap")]
+    [TestCase("0,0,2", TestName = "Duplicated number")]
+    [TestCase("0,1,2,2,4", TestName = "Duplicate followed by a number gap")]
+    [TestCase("x,1,1,3", TestName = "Duplicate behind a missing header")]
+    [TestCase("x,x,x", TestName = "No headers at all")]
+    public async Task Will_never_lose_batch_on_bad_header_numbers(string offsets)
+    {
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(998)!;
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+        localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
+        localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, new NullSyncReport(), Substitute.For<IPoSSwitcher>(), LimboLogs.Instance,
+            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>());
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
+        using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
+        dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        string[] tokens = offsets.Split(',');
+        ArrayPoolList<BlockHeader?> response = new(tokens.Length);
+        foreach (string token in tokens)
+        {
+            response.Add(token == "x"
+                ? null
+                : Build.A.BlockHeader.WithNumber((ulong)((long)dependentBatch.StartNumber + long.Parse(token))).TestObject);
+        }
+        dependentBatch.Response = response;
+
+        ulong startNumber = dependentBatch.StartNumber;
+        ulong endNumber = dependentBatch.EndNumber;
+        Assert.DoesNotThrow(() => feed.HandleResponse(dependentBatch));
+
+        // Only the headers present were parked, so the rest must come back as a filler batch.
+        using HeadersSyncBatch? filler = await feed.PrepareRequest();
+        Assert.That(filler, Is.Not.Null);
+        Assert.That(filler!.StartNumber, Is.GreaterThanOrEqualTo(startNumber));
+        Assert.That(filler.EndNumber, Is.LessThanOrEqualTo(endNumber));
+    }
+
+    // Full length response: highest header positionally correct so the batch is parked, but
+    // carrying a number above the request. Full length means the dependency actually drains.
+    [Test]
+    public async Task Reports_peer_and_retries_after_dependency_drains()
+    {
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(998)!;
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+
+        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
+        localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
+        localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, new NullSyncReport(), Substitute.For<IPoSSwitcher>(), LimboLogs.Instance,
+            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>());
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
+        using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
+        dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        // Every header claims EndNumber, so the highest is positionally correct and no upward jump
+        // trips the old gap check, while the first pushes the upper bound past the response.
+        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        for (int i = 0; i < dependentBatch.RequestSize; i++)
+        {
+            ulong number = i == 0 ? dependentBatch.EndNumber + 1 : dependentBatch.EndNumber;
+            response.Add(Build.A.BlockHeader.WithNumber(number).TestObject);
+        }
+        dependentBatch.Response = response;
+
+        Assert.DoesNotThrow(() => feed.HandleResponse(dependentBatch));
+
+        // Connecting the batch above drains the parked one, where the numbers get checked.
+        ArrayPoolList<BlockHeader?> good = new(firstBatch!.RequestSize);
+        for (ulong number = firstBatch.StartNumber; number <= firstBatch.EndNumber; number++)
+        {
+            good.Add(peerChain.FindBlock(number, BlockTreeLookupOptions.None)!.Header);
+        }
+        firstBatch.Response = good;
+        feed.HandleResponse(firstBatch);
+
+        using HeadersSyncBatch? retry = await feed.PrepareRequest();
+
+        syncPeerPool.Received().ReportBreachOfProtocol(
+            dependentBatch.ResponseSourcePeer, Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Assert.That(retry, Is.Not.Null);
+        Assert.That(retry!.EndNumber, Is.LessThanOrEqualTo(dependentBatch.EndNumber));
+    }
+
     [Test]
     public async Task Does_not_download_persisted_header()
     {
@@ -912,6 +1013,37 @@ public class FastHeadersSyncTests
         Assert.That(batches.Count, Is.EqualTo(totalBatchCount));
     }
 
+    [Test]
+    public async Task Will_never_lose_batch_when_insert_throws()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
+        blockTree.SyncPivot = (1000, Keccak.Zero);
+        using ThrowingHeadersSyncFeed feed = new(
+            blockTree,
+            Substitute.For<ISyncPeerPool>(),
+            new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 1000,
+                PivotHash = Keccak.Zero.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            new NullSyncReport(),
+            LimboLogs.Instance);
+        feed.InitializeFeed();
+
+        HeadersSyncBatch sent = (await feed.PrepareRequest())!;
+        sent.Response = new ArrayPoolList<BlockHeader?>(1) { Build.A.BlockHeader.WithNumber(999).TestObject };
+
+        Assert.Throws<InvalidOperationException>(() => feed.HandleResponse(sent));
+
+        using HeadersSyncBatch? retried = await feed.PrepareRequest();
+        Assert.That(retried, Is.Not.Null);
+        Assert.That(retried!.StartNumber, Is.EqualTo(sent.StartNumber));
+        Assert.That(retried.RequestSize, Is.EqualTo(sent.RequestSize));
+    }
+
 
     [Test]
     public void IsFinished_returns_false_when_headers_not_downloaded()
@@ -1076,6 +1208,18 @@ public class FastHeadersSyncTests
                 }
             }
         }
+    }
+
+    private class ThrowingHeadersSyncFeed(
+        IBlockTree? blockTree,
+        ISyncPeerPool? syncPeerPool,
+        ISyncConfig? syncConfig,
+        ISyncReport? syncReport,
+        ILogManager? logManager
+        ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
+            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
+    {
+        protected override int InsertHeaders(HeadersSyncBatch batch) => throw new InvalidOperationException("insert failed");
     }
 
     private class DestinationHeaderSyncFeed(
