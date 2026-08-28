@@ -266,8 +266,8 @@ public class TxPoolSourceTests
     }
 
     [TestCase(1, true)]
-    [TestCase(25, true)]
-    [TestCase(26, false)]
+    [TestCase(10, true)]
+    [TestCase(11, false)]
     public void GetTransactions_should_bound_resolved_rejections(int invalidBlobCount, bool expectValidBlob)
     {
         TestSpecProvider specProvider = new(Osaka.Instance)

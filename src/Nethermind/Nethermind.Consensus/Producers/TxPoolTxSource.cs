@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Producers
         : ITxSource
     {
         private const ulong BlobConsiderationMultiplier = 5;
-        private const ulong RejectedBlobReadMultiplier = 25;
+        private const ulong RejectedBlobReadMultiplier = 10;
 
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
@@ -71,9 +71,8 @@ namespace Nethermind.Consensus.Producers
                 : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            // PendingTransactionsView preserves an IDictionary-compatible backing instance for this virtual API.
             IEnumerable<Transaction> transactions = GetOrderedTransactions(
-                (IDictionary<AddressAsKey, Transaction[]>)pendingTransactions,
+                pendingTransactions,
                 comparer,
                 pendingTxFilter,
                 gasLimit);
@@ -487,21 +486,20 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
-            OrderCore(pendingTransactions, pendingTransactions.Count, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
+            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            OrderCore(pendingTransactions, pendingTransactions.Count, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
+        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
-            IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTransactions,
-            int pendingTransactionsCount,
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,
@@ -511,7 +509,7 @@ namespace Nethermind.Consensus.Producers
             using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
                 .Select(static g => g.GetEnumerator())
-                .ToPooledList(pendingTransactionsCount);
+                .ToPooledList(pendingTransactions.Count);
 
             try
             {

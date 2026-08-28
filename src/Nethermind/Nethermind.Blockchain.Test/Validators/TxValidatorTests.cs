@@ -511,7 +511,7 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_release_activation_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_release_activation_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Cancun.Instance,
@@ -522,7 +522,7 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_blob_count_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_blob_count_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Osaka.Instance,
@@ -531,7 +531,7 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_gas_limit_cap_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_gas_limit_cap_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Osaka.Instance,
@@ -542,7 +542,7 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_proof_version_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_proof_version_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Shanghai.Instance,
@@ -552,14 +552,14 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_contract_size_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_contract_size_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Prague.Instance,
                 Build.A.Transaction
                     .WithChainId(TestBlockchainIds.ChainId)
                     .TestObject)
-            .SetName("Spec_change_signature_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_signature_is_covered_by_full_validation");
 
         yield return new TestCaseData(
                 Prague.Instance,
@@ -569,30 +569,25 @@ public class TxValidatorTests
                     .WithChainId(TestBlockchainIds.ChainId)
                     .SignedAndResolved()
                     .TestObject)
-            .SetName("Spec_change_intrinsic_gas_is_covered_by_full_and_delta_validation");
+            .SetName("Spec_change_intrinsic_gas_is_covered_by_full_validation");
     }
 
     [TestCaseSource(nameof(SpecChangeValidationCases))]
-    public void Full_and_delta_validation_cover_spec_change_validation(IReleaseSpec spec, Transaction transaction)
+    public void Full_validation_covers_spec_change_validation(IReleaseSpec spec, Transaction transaction)
     {
         TxValidator fullValidator = new(TestBlockchainIds.ChainId);
         SpecChangeTxValidator specChangeValidator = new(TestBlockchainIds.ChainId);
         ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
-        ValidationResult admissionResult = fullValidator.IsWellFormed(
+        ValidationResult fullValidationResult = fullValidator.IsWellFormed(
             transaction,
             spec,
             blockGasLimit: 0,
             TxValidationOptions.SkipBlobProofs);
 
-        if (admissionResult)
-        {
-            admissionResult = specChangeValidator.IsWellFormedAfterFullValidation(transaction, spec);
-        }
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
-            Assert.That(admissionResult.AsBool, Is.False);
+            Assert.That(fullValidationResult.AsBool, Is.False);
         }
     }
 

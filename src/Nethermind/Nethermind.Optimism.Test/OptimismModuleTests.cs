@@ -79,19 +79,29 @@ public class OptimismModuleTests
         }
     }
 
-    [TestCase(TxType.Legacy)]
-    [TestCase(TxType.DepositTx)]
-    public void Full_and_delta_validation_cover_optimism_gas_limit_cap(TxType transactionType)
+    [TestCase(TxType.Legacy, true, true, 1ul, false)]
+    [TestCase(TxType.DepositTx, true, true, 1ul, false)]
+    [TestCase(TxType.Legacy, true, true, 0ul, true)]
+    [TestCase(TxType.DepositTx, true, true, 0ul, true)]
+    [TestCase(TxType.Legacy, true, false, 1ul, true)]
+    [TestCase(TxType.DepositTx, true, false, 1ul, true)]
+    [TestCase(TxType.Legacy, false, true, 1ul, true)]
+    public void Full_and_delta_validation_respect_optimism_gas_limit_cap(
+        TxType transactionType,
+        bool isEip1559Enabled,
+        bool isEip7825Enabled,
+        ulong gasLimitAboveCap,
+        bool expected)
     {
         const ulong chainId = 10;
         OptimismReleaseSpec spec = new()
         {
-            IsEip1559Enabled = true,
-            IsEip7825Enabled = true
+            IsEip1559Enabled = isEip1559Enabled,
+            IsEip7825Enabled = isEip7825Enabled
         };
         TransactionBuilder<Transaction> transactionBuilder = Build.A.Transaction
             .WithType(transactionType)
-            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + gasLimitAboveCap)
             .WithSenderAddress(TestItem.AddressA);
         Transaction transaction = transactionType == TxType.Legacy
             ? transactionBuilder.SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA).TestObject
@@ -110,8 +120,8 @@ public class OptimismModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
-            Assert.That(admissionResult.AsBool, Is.False);
+            Assert.That(specChangeResult.AsBool, Is.EqualTo(expected));
+            Assert.That(admissionResult.AsBool, Is.EqualTo(expected));
         }
     }
 

@@ -23,9 +23,25 @@ public interface ITxStorage
 
 internal interface IBatchDeleteTxStorage
 {
+    /// <summary>
+    /// Removes the timestamped full-body record and the hash-keyed light and elided records for each key.
+    /// </summary>
     void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys);
 
+    /// <summary>
+    /// Removes only the timestamped full-body record for each key, leaving the hash-keyed light and elided
+    /// records intact.
+    /// </summary>
+    /// <remarks>
+    /// Used to drop an obsolete body when the same hash is live under a different <see cref="TxLookupKey.Timestamp"/>;
+    /// use <see cref="DeleteMany"/> when no current transaction owns the hash-keyed records.
+    /// </remarks>
     void DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys);
+
+    /// <summary>
+    /// Removes timestamped full-body records that are not referenced by their hash-keyed light record.
+    /// </summary>
+    void DeleteObsoleteFullBlobTransactions();
 }
 
 internal interface ISpecChangeValidationStorage

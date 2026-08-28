@@ -278,6 +278,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
@@ -318,6 +319,7 @@ namespace Nethermind.TxPool.Test
             storage.DeletePersistedTransaction(transaction);
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             bool found = _txPool.TryGetPendingBlobTransaction(transaction.Hash!, out Transaction pendingTransaction);
             BlobCellMask pendingMask = found
@@ -552,6 +554,7 @@ namespace Nethermind.TxPool.Test
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
 
@@ -587,23 +590,29 @@ namespace Nethermind.TxPool.Test
                 BlobsSupport = BlobsSupportMode.Storage,
                 PersistentBlobStorageSize = 1
             };
-            FailingBatchDeleteBlobTxStorage storage = new();
+            FailingBatchDeleteBlobTxStorage storage = new() { DeleteManyFailuresRemaining = 2 };
             _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            await AddEmptyBlock();
+            Assert.That(() => storage.DeleteBatchSizes.Count, Is.EqualTo(1).After(Timeout, 10));
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
 
-            await _txPool.DisposeAsync();
-            _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            await AddEmptyBlock();
+            Assert.That(() => storage.DeleteBatchSizes.Count, Is.EqualTo(2).After(Timeout, 10));
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+
+            await AddEmptyBlock();
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 1 }));
                 Assert.That(storage.GetAll(), Is.Empty);
-                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Not.Null);
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
             }
         }
@@ -675,6 +684,68 @@ namespace Nethermind.TxPool.Test
                 Assert.That(storage.FullTransactionDeleteBatchSizes, Is.EqualTo(changeTimestamp ? new[] { 1 } : Array.Empty<int>()));
                 Assert.That(persisted, Is.True);
                 Assert.That(obsoleteTransactionPersisted, Is.EqualTo(!changeTimestamp));
+                Assert.That(elidedTransactionPersisted, Is.True);
+                Assert.That(storage.GetAll(), Is.Not.Empty);
+            }
+        }
+
+        [Test]
+        public async Task should_remove_obsolete_full_transaction_after_failed_delete_and_restart()
+        {
+            TestSpecProvider specProvider = new(Cancun.Instance);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            UInt256 originalTimestamp = transaction.Timestamp;
+            FailingBatchDeleteBlobTxStorage storage = new();
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer();
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+
+            using (PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance))
+            {
+                Assert.That(
+                    () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                    Throws.TypeOf<InvalidOperationException>());
+
+                transaction.Timestamp += UInt256.One;
+                Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
+                storage.FailNextFullTransactionDelete = true;
+                Assert.That(
+                    () => blobPool.UpdatePoolForRevalidation(accounts, KeepAllTransactions),
+                    Throws.TypeOf<InvalidOperationException>());
+            }
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage);
+            await AddEmptyBlock();
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+
+            bool currentTransactionPersisted = storage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _);
+            bool obsoleteTransactionPersisted = storage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                originalTimestamp,
+                out _);
+            bool elidedTransactionPersisted = storage.TryGetWithoutBlobs(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(currentTransactionPersisted, Is.True);
+                Assert.That(obsoleteTransactionPersisted, Is.False);
                 Assert.That(elidedTransactionPersisted, Is.True);
                 Assert.That(storage.GetAll(), Is.Not.Empty);
             }
@@ -1692,6 +1763,9 @@ namespace Nethermind.TxPool.Test
                         break;
                     case TestAction.Fork:
                         await AddEmptyBlock();
+                        Assert.That(
+                            () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
+                            Is.True.After(Timeout, 10));
                         break;
                     case TestAction.ResetNonce:
                         nonce = 0;
@@ -1786,6 +1860,10 @@ namespace Nethermind.TxPool.Test
 
             public List<int> FullTransactionDeleteBatchSizes { get; } = [];
 
+            public int DeleteManyFailuresRemaining { get; set; } = 1;
+
+            public bool FailNextFullTransactionDelete { get; set; }
+
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
 
@@ -1819,8 +1897,9 @@ namespace Nethermind.TxPool.Test
             void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
             {
                 DeleteBatchSizes.Add(keys.Length);
-                if (DeleteBatchSizes.Count == 1)
+                if (DeleteManyFailuresRemaining > 0)
                 {
+                    DeleteManyFailuresRemaining--;
                     throw new InvalidOperationException();
                 }
 
@@ -1830,8 +1909,17 @@ namespace Nethermind.TxPool.Test
             void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys)
             {
                 FullTransactionDeleteBatchSizes.Add(keys.Length);
+                if (FailNextFullTransactionDelete)
+                {
+                    FailNextFullTransactionDelete = false;
+                    throw new InvalidOperationException();
+                }
+
                 ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
+
+            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions() =>
+                ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions();
         }
 
         private static void RemoveAllTransactions(
@@ -1896,6 +1984,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
@@ -1930,6 +2019,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }

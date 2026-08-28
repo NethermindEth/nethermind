@@ -28,12 +28,11 @@ public sealed class SpecChangeTxValidator(ulong chainId) :
     /// <inheritdoc/>
     /// <remarks>
     /// This follows a successful <see cref="TxValidator"/> pass with blob proofs skipped. That pass already covers
-    /// release activation, gas caps, proof version, contract size, signatures, and intrinsic gas. The inexpensive
-    /// blob-count check is retained as the explicit fork-dependent admission guard. Any new rule added to this
-    /// validator must also be added here unless the full validator applies it for every affected transaction type.
+    /// every rule in this validator, including blob count. Chain-specific validators only need to override this
+    /// when a registered transaction type bypasses part of the full validator.
     /// </remarks>
     public ValidationResult IsWellFormedAfterFullValidation(Transaction transaction, IReleaseSpec releaseSpec) =>
-        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(transaction, releaseSpec);
+        ValidationResult.Success;
 
     public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
         LightTxValidator.IsWellFormed(transaction, releaseSpec);

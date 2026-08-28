@@ -196,7 +196,35 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
         DeleteMany(keys, deleteSharedEntries: false);
 
-    private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
+    {
+        using ArrayPoolList<TxLookupKey> candidates = new(MaxPooledKeys);
+        foreach (byte[] key in _fullBlobTxsDb.GetAllKeys())
+        {
+            if (key.Length != 64)
+            {
+                continue;
+            }
+
+            candidates.Add(new TxLookupKey(
+                new ValueHash256(key.AsSpan(32)),
+                Address.Zero,
+                new UInt256(key.AsSpan(0, 32), isBigEndian: true)));
+
+            if (candidates.Count == MaxPooledKeys)
+            {
+                DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
+                candidates.Clear();
+            }
+        }
+
+        DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
+    }
+
+    private void DeleteMany(
+        scoped ReadOnlySpan<TxLookupKey> keys,
+        bool deleteSharedEntries,
+        bool deleteOnlyIfObsolete = false)
     {
         if (keys.IsEmpty)
         {
@@ -232,6 +260,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             for (int i = 0; i < keys.Length; i++)
             {
                 ref readonly TxLookupKey key = ref keys[i];
+                if (deleteOnlyIfObsolete
+                    && TryDecodeLightTx(_lightBlobTxsDb.Get(key.Hash.BytesAsSpan), out LightTransaction? currentTransaction)
+                    && currentTransaction is not null
+                    && currentTransaction.Timestamp == key.Timestamp)
+                {
+                    continue;
+                }
+
                 GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
                 fullBlobTxsBatch.Remove(txHashPrefixed);
                 if (deleteSharedEntries)

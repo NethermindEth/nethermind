@@ -67,15 +67,25 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
 
         private readonly Channel<HeadChange> _headBlocksChannel = Channel.CreateUnbounded<HeadChange>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly Channel<long> _revalidationChannel = Channel.CreateBounded<long>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
         private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
+        private readonly Lock _headSpecGenerationLock = new();
         private readonly Lock _forkStateLock = new();
+        private IReleaseSpec? _observedHeadSpec;
         private long _headGeneration;
+        private long _headSpecGeneration;
         private long _forkStateVersion;
         private int _consecutiveRevalidationAbandonments;
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
         private readonly Task _headProcessing;
+        private readonly Task _revalidationProcessing;
         private readonly CancellationTokenSource _cts;
 
         public event EventHandler<Block>? TxPoolHeadChanged;
@@ -147,6 +157,7 @@ namespace Nethermind.TxPool
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            ObserveHeadSpec(_specProvider.GetCurrentHeadSpec());
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
             _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
@@ -221,6 +232,8 @@ namespace Nethermind.TxPool
                 _timer.Start();
             }
 
+            _revalidationProcessing = ProcessRevalidations();
+            RequestRevalidation(Volatile.Read(ref _headGeneration));
             _headProcessing = ProcessNewHeads();
         }
 
@@ -313,6 +326,7 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
+            ObserveHeadSpec(_specProvider.GetSpec(e.Block.Header));
             if (_headInfo.IsSyncing)
             {
                 DisposeBlockAccountChanges(e.Block);
@@ -332,6 +346,26 @@ namespace Nethermind.TxPool
             }
         }
 
+        private long ObserveHeadSpec(IReleaseSpec spec)
+        {
+            if (ReferenceEquals(Volatile.Read(ref _observedHeadSpec), spec))
+            {
+                return Volatile.Read(ref _headSpecGeneration);
+            }
+
+            lock (_headSpecGenerationLock)
+            {
+                if (!ReferenceEquals(_observedHeadSpec, spec))
+                {
+                    long generation = Interlocked.Increment(ref _headSpecGeneration);
+                    Volatile.Write(ref _observedHeadSpec, spec);
+                    return generation;
+                }
+
+                return Volatile.Read(ref _headSpecGeneration);
+            }
+        }
+
         private async Task ProcessNewHeads()
         {
             try
@@ -347,8 +381,6 @@ namespace Nethermind.TxPool
 
         private async Task ProcessNewHeadLoop()
         {
-            TryRevalidateCurrentSpec(Volatile.Read(ref _headGeneration));
-
             while (await _headBlocksChannel.Reader.WaitToReadAsync(_cts.Token))
             {
                 while (_headBlocksChannel.Reader.TryRead(out HeadChange headChange))
@@ -396,17 +428,9 @@ namespace Nethermind.TxPool
                             _newHeadLock.ExitWriteLock();
                         }
 
-                        if (!TryRevalidateCurrentSpec(headChange.Generation) && !bucketsUpdated)
+                        if (!bucketsUpdated)
                         {
-                            _newHeadLock.EnterWriteLock();
-                            try
-                            {
-                                UpdateBucketsWithoutRevalidation();
-                            }
-                            finally
-                            {
-                                _newHeadLock.ExitWriteLock();
-                            }
+                            RequestRevalidation(headChange.Generation);
                         }
 
                         // Subscribers can re-enter the pool, so invoke them after releasing _newHeadLock.
@@ -422,6 +446,56 @@ namespace Nethermind.TxPool
             }
 
             bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges) => accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+        }
+
+        private void RequestRevalidation(long generation) => _revalidationChannel.Writer.TryWrite(generation);
+
+        private async Task ProcessRevalidations()
+        {
+            try
+            {
+                await Task.Run(ProcessRevalidationLoop);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("Transaction pool revalidation failed.", ex);
+            }
+        }
+
+        private async Task ProcessRevalidationLoop()
+        {
+            while (await _revalidationChannel.Reader.WaitToReadAsync(_cts.Token))
+            {
+                long generation = 0;
+                while (_revalidationChannel.Reader.TryRead(out long requestedGeneration))
+                {
+                    generation = requestedGeneration;
+                }
+
+                try
+                {
+                    if (!TryRevalidateCurrentSpec(generation))
+                    {
+                        _newHeadLock.EnterWriteLock();
+                        try
+                        {
+                            if (IsRevalidationGenerationCurrent(generation))
+                            {
+                                UpdateBucketsWithoutRevalidation();
+                            }
+                        }
+                        finally
+                        {
+                            _newHeadLock.ExitWriteLock();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Transaction pool failed to update after an unsuccessful revalidation with exception {ex}");
+                }
+            }
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -674,7 +748,9 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterReadLock();
             try
             {
-                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+                ObserveHeadSpec(headSpec);
+                TxFilteringState state = new(tx, _accounts, headSpec);
                 accepted = FilterTransactions(tx, handlingOptions, ref state);
                 if (accepted)
                 {
@@ -987,7 +1063,7 @@ namespace Nethermind.TxPool
 
             if (isEmpty || markerMatches)
             {
-                PublishValidatedSpec(headSpec);
+                PublishValidatedSpec(headSpec, PrepareSpecChangeValidationMarker(headSpec));
             }
             else
             {
@@ -1011,6 +1087,8 @@ namespace Nethermind.TxPool
         private bool TryRevalidateCurrentSpecCore(long generation)
         {
             IReleaseSpec spec;
+            long headSpecGeneration;
+            bool isEmpty;
 
             _newHeadLock.EnterWriteLock();
             try
@@ -1021,6 +1099,7 @@ namespace Nethermind.TxPool
                 }
 
                 spec = _specProvider.GetCurrentHeadSpec();
+                headSpecGeneration = ObserveHeadSpec(spec);
                 if (ReferenceEquals(Volatile.Read(ref _validatedSpec), spec))
                 {
                     return true;
@@ -1028,51 +1107,53 @@ namespace Nethermind.TxPool
 
                 ReleaseForkInvalidatedHashesFor(spec);
                 InvalidateValidatedSpec();
-
-                if (_transactions.Count == 0 && _blobTransactions.Count == 0)
-                {
-                    PublishValidatedSpec(spec);
-                    return true;
-                }
+                isEmpty = _transactions.Count == 0 && _blobTransactions.Count == 0;
             }
             finally
             {
                 _newHeadLock.ExitWriteLock();
             }
 
-            ForkRevalidation revalidation = new(this, spec, generation);
-            if (!revalidation.IsComplete)
+            ForkRevalidation? revalidation = isEmpty
+                ? null
+                : new ForkRevalidation(this, spec, generation, headSpecGeneration);
+            if (revalidation is { IsComplete: false })
             {
                 return false;
             }
 
+            string marker = PrepareSpecChangeValidationMarker(spec);
+
             _newHeadLock.EnterWriteLock();
             try
             {
-                if (!CanApplyRevalidationResults(spec))
+                if (!CanApplyRevalidationResults(spec, headSpecGeneration))
                 {
                     RecordAbandonedRevalidation(spec, generation);
                     return false;
                 }
 
-                UpdateGroupDelegate updateBucket = revalidation.UpdateBucket;
-                _transactions.UpdatePool(_accounts, updateBucket);
-                _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
-
-                if (revalidation.RemovedCount != 0)
+                if (revalidation is not null)
                 {
-                    Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
-                    if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
+                    UpdateGroupDelegate updateBucket = revalidation.UpdateBucket;
+                    _transactions.UpdatePool(_accounts, updateBucket);
+                    _blobTransactions.UpdatePoolForRevalidation(_accounts, updateBucket);
+
+                    if (revalidation.RemovedCount != 0)
+                    {
+                        Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
+                        if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {spec.Name} after the protocol change.");
+                    }
                 }
 
-                if (!CanApplyRevalidationResults(spec))
+                if (!CanApplyRevalidationResults(spec, headSpecGeneration))
                 {
                     InvalidateValidatedSpec();
                     RecordAbandonedRevalidation(spec, generation);
                     return true;
                 }
 
-                PublishValidatedSpec(spec);
+                PublishValidatedSpec(spec, marker);
 
                 return true;
             }
@@ -1085,12 +1166,14 @@ namespace Nethermind.TxPool
         private bool IsRevalidationGenerationCurrent(long generation) =>
             !_cts.IsCancellationRequested && generation == Volatile.Read(ref _headGeneration);
 
-        private bool CanApplyRevalidationResults(IReleaseSpec spec) =>
-            !_cts.IsCancellationRequested && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
+        private bool CanApplyRevalidationResults(IReleaseSpec spec, long headSpecGeneration) =>
+            !_cts.IsCancellationRequested
+            && headSpecGeneration == Volatile.Read(ref _headSpecGeneration)
+            && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
 
-        private bool CanContinueRevalidation(IReleaseSpec spec, long generation)
+        private bool CanContinueRevalidation(IReleaseSpec spec, long generation, long headSpecGeneration)
         {
-            if (CanApplyRevalidationResults(spec))
+            if (CanApplyRevalidationResults(spec, headSpecGeneration))
             {
                 return true;
             }
@@ -1150,7 +1233,19 @@ namespace Nethermind.TxPool
             _forkInvalidatedHashes.Add(hash);
         }
 
-        private void PublishValidatedSpec(IReleaseSpec spec)
+        private string PrepareSpecChangeValidationMarker(IReleaseSpec spec)
+        {
+            string marker = GetSpecChangeValidationMarker(spec);
+            if (_specChangeValidationStorage is not null
+                && _specChangeValidationStorage.GetSpecChangeValidationMarker() != marker)
+            {
+                (_blobTxStorage as IBatchDeleteTxStorage)?.DeleteObsoleteFullBlobTransactions();
+            }
+
+            return marker;
+        }
+
+        private void PublishValidatedSpec(IReleaseSpec spec, string marker)
         {
             _blobTransactions.FlushPendingRevalidationDeletes();
 
@@ -1159,7 +1254,7 @@ namespace Nethermind.TxPool
                 Interlocked.Increment(ref _forkStateVersion);
                 try
                 {
-                    _specChangeValidationStorage?.SetSpecChangeValidationMarker(GetSpecChangeValidationMarker(spec));
+                    _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
                     Volatile.Write(ref _validatedSpec, spec);
                     Interlocked.Exchange(ref _consecutiveRevalidationAbandonments, 0);
                 }
@@ -1221,11 +1316,11 @@ namespace Nethermind.TxPool
             private readonly IReleaseSpec _spec;
             private readonly Dictionary<Hash256, ForkValidationResult> _invalidTransactions = [];
 
-            public ForkRevalidation(TxPool pool, IReleaseSpec spec, long generation)
+            public ForkRevalidation(TxPool pool, IReleaseSpec spec, long generation, long headSpecGeneration)
             {
                 _pool = pool;
                 _spec = spec;
-                IsComplete = FindInvalidTransactions(generation);
+                IsComplete = FindInvalidTransactions(generation, headSpecGeneration);
             }
 
             public bool IsComplete { get; }
@@ -1254,12 +1349,12 @@ namespace Nethermind.TxPool
                 return false;
             }
 
-            private bool FindInvalidTransactions(long generation)
+            private bool FindInvalidTransactions(long generation, long headSpecGeneration)
             {
                 Transaction[] transactions = _pool._transactions.GetSnapshot();
                 for (int i = 0; i < transactions.Length; i++)
                 {
-                    if (!_pool.CanContinueRevalidation(_spec, generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation, headSpecGeneration))
                     {
                         return false;
                     }
@@ -1275,7 +1370,7 @@ namespace Nethermind.TxPool
 
                 for (int i = 0; i < blobTransactions.Length; i++)
                 {
-                    if (!_pool.CanContinueRevalidation(_spec, generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation, headSpecGeneration))
                     {
                         return false;
                     }
@@ -1304,7 +1399,7 @@ namespace Nethermind.TxPool
 
                     if (batchCount == BlobReadBatchSize)
                     {
-                        if (!ProcessBlobBatch(batchCount, generation, keys, hashes, fullTransactions))
+                        if (!ProcessBlobBatch(batchCount, generation, headSpecGeneration, keys, hashes, fullTransactions))
                         {
                             return false;
                         }
@@ -1313,12 +1408,13 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                return batchCount == 0 || ProcessBlobBatch(batchCount, generation, keys, hashes, fullTransactions);
+                return batchCount == 0 || ProcessBlobBatch(batchCount, generation, headSpecGeneration, keys, hashes, fullTransactions);
             }
 
             private bool ProcessBlobBatch(
                 int count,
                 long generation,
+                long headSpecGeneration,
                 TxLookupKey[] keys,
                 Hash256[] hashes,
                 Transaction?[] fullTransactions)
@@ -1328,7 +1424,7 @@ namespace Nethermind.TxPool
 
                 for (int i = 0; i < count; i++)
                 {
-                    if (!_pool.CanContinueRevalidation(_spec, generation))
+                    if (!_pool.CanContinueRevalidation(_spec, generation, headSpecGeneration))
                     {
                         return false;
                     }
@@ -1603,15 +1699,17 @@ namespace Nethermind.TxPool
             _timer?.Dispose();
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
-            _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
+            _revalidationChannel.Writer.Complete();
             _transactions.Inserted -= OnInsertedTx;
             _transactions.Removed -= OnRemovedTx;
-            (_blobTransactions as IDisposable)?.Dispose();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;
+            await _revalidationProcessing;
+            _broadcaster.Dispose();
+            (_blobTransactions as IDisposable)?.Dispose();
         }
 
         private void TimerOnElapsed(object? sender, EventArgs e)
