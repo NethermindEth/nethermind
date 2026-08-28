@@ -361,8 +361,8 @@ Votes and timeouts are ignored entirely while the node is syncing (unless it is 
 re-broadcast is deduplicated so a message is forwarded to a peer at most once.
 
 [`XdcP2PCapabilityResolver`](XdcP2PCapabilityResolver.cs) replaces the default resolver so the node advertises
-exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A peer that offers nothing from that set
-is disconnected as having no capability in common.
+exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A peer that shares no capability at all
+(an old `tomo` node offering nothing above `eth/63`, for example) is disconnected with `NoCapabilityMatched`.
 
 ### Discovery
 

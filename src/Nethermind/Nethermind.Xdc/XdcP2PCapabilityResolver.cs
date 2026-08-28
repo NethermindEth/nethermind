@@ -11,8 +11,8 @@ using Nethermind.Xdc.P2P;
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// XDC advertises only the versions <c>XdcModule</c> registers a handler for. The default eth/68 resolver is
-/// dropped at registration (see <c>XdcModule</c>), so this resolver contributes the whole set.
+/// Contributes every <c>eth</c> version <c>XdcModule</c> registers a handler for. The default eth/68 resolver is
+/// dropped at registration (see <c>XdcModule</c>), so no other <c>eth</c> version is advertised.
 /// </summary>
 public class XdcP2PCapabilityResolver : IP2PCapabilityResolver
 {
