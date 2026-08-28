@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -38,28 +43,39 @@ public class HistoryPruner : IHistoryPruner
     private readonly IReceiptStorage _receiptStorage;
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+    private readonly IHeaderStore _headerStore;
     private readonly IDb _metadataDb;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
+    private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _ancientBarrier;
+    private readonly ulong _ancientReceiptsBarrier;
+    private readonly bool _fastSync;
+    private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
     private ulong _blocksDeletePointer = 1;
     private ulong _blocksReclaimCursor = 1;
     private byte[]? _txIndexSweepCursor;
     private bool _txIndexSweepCursorLoaded;
+    private readonly Dictionary<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> _sweepBuckets = [];
+    private readonly Dictionary<ulong, bool> _sweepBloomDecisions = [];
+    private Func<ulong, bool>? _sweepRetentionLookup;
     private ulong _balsDeletePointer = 1;
     private ulong _lastSavedBlocksDeletePointer = 1;
     private ulong _lastSavedBlocksReclaimCursor = 1;
+    private ulong _sliceCleanupCursor = 1;
+    private ulong _lastSavedSliceCleanupCursor = 1;
     private ulong _lastSavedBalsDeletePointer = 1;
     // Read by JSON-RPC and the sync server while the pruner writes them under a lock it can hold for a whole reclaim.
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
+    private volatile bool _stampsValidated;
     private int _currentlyPruning;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
@@ -72,6 +88,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockAccessListStore blockAccessListStore,
         ISpecProvider specProvider,
         IChainLevelInfoRepository chainLevelInfoRepository,
+        IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
         IBlocksConfig blocksConfig,
@@ -79,6 +96,7 @@ public class HistoryPruner : IHistoryPruner
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         IBlockProcessingQueue blockProcessingQueue,
+        IPrunedReceiptRetention receiptRetention,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
@@ -86,14 +104,19 @@ public class HistoryPruner : IHistoryPruner
         _receiptStorage = receiptStorage;
         _blockAccessListStore = blockAccessListStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
+        _headerStore = headerStore;
         _metadataDb = dbProvider.MetadataDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
+        _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
+        _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
+        _fastSync = syncConfig.FastSync;
+        _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
         CheckConfig();
@@ -230,7 +253,7 @@ public class HistoryPruner : IHistoryPruner
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            (_hasLoadedDeletePointers && !ShouldPruneHistory()))
+            (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory()))
         {
             SkipLocalPruning();
             return;
@@ -242,7 +265,19 @@ public class HistoryPruner : IHistoryPruner
         {
             if (lockTaken)
             {
-                if (!TryLoadDeletePointers() || !ShouldPruneHistory())
+                if (!TryLoadDeletePointers())
+                {
+                    SkipLocalPruning();
+                    return;
+                }
+
+                // Before the interval gate: the read side refuses every sliced address until this has validated
+                // the stamps, and the first interval boundary can be most of an hour away. The flag keeps the
+                // uncontended fast path honest - another caller loading the pointers must not skip this tick.
+                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
+                _stampsValidated = true;
+
+                if (!ShouldPruneHistory())
                 {
                     SkipLocalPruning();
                     return;
@@ -257,7 +292,8 @@ public class HistoryPruner : IHistoryPruner
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
-                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
+                // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
+                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksReclaimCursor);
                 ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
                 // Silent when only the sweep has work, which is most passes once a cycle is running: announcing two
                 // estimates of zero reads as "nothing to do" on the pass that does have some.
@@ -267,6 +303,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
+                CleanupExpiredSliceRetention(cancellationToken);
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
                 // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
@@ -364,7 +401,8 @@ public class HistoryPruner : IHistoryPruner
             // other pass happens to be due, which is not a property either of them promises the other. Note this
             // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
             // still started incidentally by the access-list clause above, which is rolling in every mode.
-            || _txIndexSweepCursor is not null;
+            || _txIndexSweepCursor is not null
+            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
     }
 
     private bool PruningIntervalHasElapsed()
@@ -373,6 +411,14 @@ public class HistoryPruner : IHistoryPruner
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
     private const ulong MinimumReclaimChunkBlocks = 100_000;
+
+    /// <summary>Density above which the gaps are too narrow for a range to pay for itself, so the heights go one
+    /// at a time instead. Below it a range covers many heights at once and lets whole files be unlinked.</summary>
+    private const int DenseRetentionDivisor = 8;
+
+    /// <summary>How far the receipt walk goes before it looks at the deadline again. A chunk is sized for range
+    /// operations; deciding retention can cost a header read per height, so it needs its own, narrower step.</summary>
+    private const ulong ReceiptRetentionSlice = 10_000;
 
     /// <summary>
     /// Heights the next chunk covers, reduced when the token is already spent so progress cannot reach zero without
@@ -413,8 +459,10 @@ public class HistoryPruner : IHistoryPruner
             for (ulong from = start; from < limit;)
             {
                 ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
-                _blockTree.DeleteOldBlockRange(from, to);
-                _receiptStorage.RemoveReceiptsRange(from, to);
+
+                // It can stop short, and the rest of the chunk stops with it rather than stranding undecided heights.
+                to = RetainSlicedAndReclaimTheRest(from, to, cancellationToken);
+
                 _blockAccessListStore.DeleteRange(from, to);
 
                 _blocksReclaimCursor = to;
@@ -453,6 +501,196 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
+    /// <summary>Reclaims <c>[from, to)</c> except the heights still answered for, and returns the
+    /// height it reached - <paramref name="to"/> unless the budget ran out between two slices.</summary>
+    private ulong RetainSlicedAndReclaimTheRest(ulong from, ulong to, CancellationToken cancellationToken, bool meterRetained = true)
+    {
+        IReadOnlySet<ulong> answered = _receiptRetention.RetainedHeights(from, to, out ulong answeredFrom, out ulong answeredTo);
+
+        // Sorted once, so each slice takes its own segment by binary search instead of filtering the whole set.
+        using ArrayPoolList<ulong> sortedAnswered = new(answered.Count);
+        foreach (ulong answeredHeight in answered) sortedAnswered.Add(answeredHeight);
+        sortedAnswered.AsSpan().Sort();
+
+        // A single wide range beats a hundred narrow ones, which unlink fewer whole files between them.
+        if (answeredFrom <= from && answeredTo >= to && (ulong)answered.Count <= ReceiptRetentionSlice)
+        {
+            ReclaimSlice(from, to, sortedAnswered, meterRetained);
+            return to;
+        }
+
+        for (ulong cursor = from; cursor < to;)
+        {
+            ulong sliceEnd = ulong.Min(cursor + ReceiptRetentionSlice, to);
+
+            // A slice cannot straddle the edge of what was answered: one side is known, the other needs headers.
+            if (cursor < answeredFrom) sliceEnd = ulong.Min(sliceEnd, answeredFrom);
+            else if (cursor < answeredTo) sliceEnd = ulong.Min(sliceEnd, answeredTo);
+
+            bool alreadyAnswered = cursor >= answeredFrom && cursor < answeredTo;
+            ReclaimSlice(cursor, sliceEnd, alreadyAnswered ? sortedAnswered : null, meterRetained);
+            cursor = sliceEnd;
+
+            // Slices decide where a pass may stop, not how early. ChunkStep already narrowed the chunk to the
+            // drain floor for a pass that arrived spent, so stopping at the first slice boundary would cut that
+            // floor by another order of magnitude and leave a backlog draining ten times slower than promised.
+            if (cursor < to
+                && cursor - from >= MinimumReclaimChunkBlocks
+                && cancellationToken.IsCancellationRequested) return cursor;
+        }
+
+        return to;
+    }
+
+    /// <summary><paramref name="sortedAnswered"/> is null where the headers have to be read instead.</summary>
+    private void ReclaimSlice(ulong fromInclusive, ulong toExclusive, ArrayPoolList<ulong>? sortedAnswered, bool meterRetained = true)
+    {
+        IOwnedReadOnlyList<ChainLevelInfo?>? levels = null;
+        try
+        {
+            using ArrayPoolList<ulong> candidates = sortedAnswered is null
+                ? CandidatesFromLevels(fromInclusive, toExclusive, levels = LoadLevels(fromInclusive, toExclusive))
+                : CandidatesFromAnswer(sortedAnswered.AsSpan(), fromInclusive, toExclusive);
+
+            if (candidates.Count == 0)
+            {
+                ReclaimBoth(fromInclusive, toExclusive);
+                return;
+            }
+
+            if (meterRetained) Metrics.SlicedReceiptsRetained += candidates.Count;
+
+            candidates.AsSpan().Sort();
+
+            if (candidates.Count * DenseRetentionDivisor >= (long)(toExclusive - fromInclusive))
+            {
+                levels ??= LoadLevels(fromInclusive, toExclusive);
+                using ArrayPoolList<(ulong FromInclusive, ulong ToExclusive)> unreachable = new(4);
+                for (ulong number = fromInclusive; number < toExclusive; number++)
+                {
+                    if (candidates.AsSpan().BinarySearch(number) >= 0) continue;
+
+                    int index = (int)(number - fromInclusive);
+                    ChainLevelInfo? level = index < levels.Count ? levels[index] : null;
+
+                    // A height whose level will not load has to lose both whatever its hashes are.
+                    if (!RemoveBothAt(number, level))
+                    {
+                        int last = unreachable.Count - 1;
+                        if (last >= 0 && unreachable[last].ToExclusive == number) unreachable[last] = (unreachable[last].FromInclusive, number + 1);
+                        else unreachable.Add((number, number + 1));
+                    }
+                }
+
+                if (unreachable.Count != 0)
+                {
+                    _receiptStorage.RemoveReceiptsRanges(unreachable);
+                    _blockTree.DeleteOldBlockRanges(unreachable);
+                }
+
+                return;
+            }
+
+            // Sparse: the gaps between retained heights are wide, so one range each beats walking them, and a
+            // range is what lets whole files be unlinked instead of waiting for compaction.
+            using ArrayPoolList<(ulong FromInclusive, ulong ToExclusive)> gaps = new(candidates.Count + 1);
+            ulong gapStart = fromInclusive;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                ulong height = candidates[i];
+                if (height > gapStart) gaps.Add((gapStart, height));
+                gapStart = height + 1;
+            }
+
+            if (gapStart < toExclusive) gaps.Add((gapStart, toExclusive));
+            if (gaps.Count == 0) return;
+
+            _receiptStorage.RemoveReceiptsRanges(gaps);
+            _blockTree.DeleteOldBlockRanges(gaps);
+        }
+        finally
+        {
+            levels?.Dispose();
+        }
+    }
+
+    private void ReclaimBoth(ulong fromInclusive, ulong toExclusive)
+    {
+        _receiptStorage.RemoveReceiptsRange(fromInclusive, toExclusive);
+        _blockTree.DeleteOldBlockRange(fromInclusive, toExclusive);
+    }
+
+    /// <summary>False when the level names nothing, so the caller ranges the height instead. A present level is
+    /// trusted to name every stored block at its height, as every canonical read does - a body stored outside its
+    /// level survives here, where the range form would drop it.</summary>
+    private bool RemoveBothAt(ulong number, ChainLevelInfo? level)
+    {
+        if (level is null || level.BlockInfos.Length == 0) return false;
+
+        foreach (BlockInfo info in level.BlockInfos)
+        {
+            _receiptStorage.RemoveReceipts(number, info.BlockHash);
+            _blockTree.DeleteOldBlock(number, info.BlockHash);
+        }
+
+        return true;
+    }
+
+    private IOwnedReadOnlyList<ChainLevelInfo?> LoadLevels(ulong fromInclusive, ulong toExclusive)
+    {
+        using ArrayPoolListRef<ulong> numbers = new((int)(toExclusive - fromInclusive));
+        for (ulong number = fromInclusive; number < toExclusive; number++) numbers.Add(number);
+
+        return _chainLevelInfoRepository.MultiLoadLevel(numbers);
+    }
+
+    private static ArrayPoolList<ulong> CandidatesFromAnswer(ReadOnlySpan<ulong> sortedAnswered, ulong fromInclusive, ulong toExclusive)
+    {
+        int lower = LowerBound(sortedAnswered, fromInclusive);
+        int upper = LowerBound(sortedAnswered, toExclusive);
+
+        ArrayPoolList<ulong> candidates = new(upper - lower);
+        candidates.AddRange(sortedAnswered[lower..upper]);
+        return candidates;
+    }
+
+    private static int LowerBound(ReadOnlySpan<ulong> sorted, ulong value)
+    {
+        int index = sorted.BinarySearch(value);
+        return index < 0 ? ~index : index;
+    }
+
+    /// <summary>Heights whose bloom says their receipts might be worth keeping, over the levels already read in bulk
+    /// and one sequential header pass rather than two random reads a height. A false positive only over-retains.</summary>
+    private ArrayPoolList<ulong> CandidatesFromLevels(ulong fromInclusive, ulong toExclusive, IOwnedReadOnlyList<ChainLevelInfo?> levels)
+    {
+        ArrayPoolList<ulong> candidates = new(64);
+        Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange(fromInclusive, toExclusive);
+
+        for (int i = 0; i < levels.Count; i++)
+        {
+            ChainLevelInfo? level = levels[i];
+            if (level is null) continue;
+
+            ulong number = fromInclusive + (ulong)i;
+            foreach (BlockInfo info in level.BlockInfos)
+            {
+                if (!prefetched.TryGetValue(info.BlockHash.ValueHash256, out BlockHeader? header))
+                    header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, number);
+
+                if (header is null) continue;
+
+                if (_receiptRetention.ShouldRetainReceipts(header))
+                {
+                    candidates.Add(number);
+                    break;
+                }
+            }
+        }
+
+        return candidates;
+    }
+
     /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
     /// Found out after the boundary is published, it would mean announcing a floor nothing can reclaim behind.</summary>
     private void VerifyReclaimSupported()
@@ -461,6 +699,33 @@ public class HistoryPruner : IHistoryPruner
         _receiptStorage.RemoveReceiptsRange(0, 0);
         _blockAccessListStore.DeleteRange(0, 0);
     }
+
+    /// <summary>Heights a bounded slice retained while they were inside its window fall out of it as the head
+    /// advances, and the main reclaim cursor never returns to them - this cursor does, re-asking the retention over
+    /// the expired band so what no entry still claims is reclaimed after all.</summary>
+    private void CleanupExpiredSliceRetention(CancellationToken cancellationToken)
+    {
+        ulong target = SliceCleanupTarget();
+        ulong start = ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
+        if (start >= target) return;
+
+        // One minimum chunk, not a full one: this runs inside a pass whose budget the main reclaim already spent,
+        // so it adds at most the same uninterruptible floor every other consumer of the pass accepts.
+        ulong to = ulong.Min(target, start + MinimumReclaimChunkBlocks);
+        ulong reached = RetainSlicedAndReclaimTheRest(start, to, cancellationToken, meterRetained: false);
+        if (reached > _sliceCleanupCursor)
+        {
+            _sliceCleanupCursor = reached;
+            SaveDeletePointers();
+        }
+
+        if (_logger.IsInfo) _logger.Info(
+            $"Expired slice retention cleanup reached #{reached}; {target.SaturatingSub(reached)} heights of expired band remain.");
+    }
+
+    /// <summary>Only ground the main reclaim has already covered can be cleaned, or the two cursors would race.</summary>
+    private ulong SliceCleanupTarget() =>
+        ulong.Min(_receiptRetention.ExpiredRetentionUpperBound(), ulong.Min(_blocksReclaimCursor, _blocksDeletePointer));
 
     private void SweepTransactionIndex(CancellationToken cancellationToken)
     {
@@ -475,7 +740,7 @@ public class HistoryPruner : IHistoryPruner
         try
         {
             next = _receiptStorage.SweepTransactionIndex(
-                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, cancellationToken, out removed);
+                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, SweepRetentionLookup(), cancellationToken, out removed);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -492,6 +757,58 @@ public class HistoryPruner : IHistoryPruner
         // Empty value, not a removal: it reads back the same way a missing key would.
         _txIndexSweepCursor = next;
         _metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, next ?? []);
+    }
+
+    /// <summary>Memoized per pass: the sweep walks in hash order, so its blocks land in random buckets and each
+    /// bucket's span query is paid once, kept as a bitmap rather than the answer set - a busy contract's set holds
+    /// thousands of heights per bucket where the bitmap holds 1.25 KB. A height the index cannot answer for falls
+    /// back to its header's bloom, exactly as candidate discovery does, so a node without the log index still
+    /// sweeps; a header that no longer resolves is not retained, since nothing can answer for it anyway.</summary>
+    internal Func<ulong, bool> SweepRetentionLookup()
+    {
+        foreach (KeyValuePair<ulong, (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo)> entry in _sweepBuckets)
+        {
+            ArrayPool<ulong>.Shared.Return(entry.Value.Bitmap);
+        }
+
+        _sweepBuckets.Clear();
+        _sweepBloomDecisions.Clear();
+        return _sweepRetentionLookup ??= height =>
+        {
+            ulong bucketStart = height / ReceiptRetentionSlice * ReceiptRetentionSlice;
+            if (!_sweepBuckets.TryGetValue(bucketStart, out (ulong[] Bitmap, ulong AnsweredFrom, ulong AnsweredTo) bucket))
+            {
+                IReadOnlySet<ulong> retained = _receiptRetention.RetainedHeights(
+                    bucketStart, bucketStart + ReceiptRetentionSlice, out ulong answeredFrom, out ulong answeredTo);
+
+                const int bitmapLength = (int)((ReceiptRetentionSlice + 63) / 64);
+                ulong[] bitmap = ArrayPool<ulong>.Shared.Rent(bitmapLength);
+                Array.Clear(bitmap, 0, bitmapLength);
+                foreach (ulong retainedHeight in retained)
+                {
+                    if (retainedHeight < bucketStart || retainedHeight >= bucketStart + ReceiptRetentionSlice) continue;
+
+                    ulong offset = retainedHeight - bucketStart;
+                    bitmap[offset / 64] |= 1UL << (int)(offset % 64);
+                }
+
+                _sweepBuckets[bucketStart] = bucket = (bitmap, answeredFrom, answeredTo);
+            }
+
+            if (height >= bucket.AnsweredFrom && height < bucket.AnsweredTo)
+            {
+                ulong offset = height - bucketStart;
+                return (bucket.Bitmap[offset / 64] & (1UL << (int)(offset % 64))) != 0;
+            }
+
+            if (_sweepBloomDecisions.TryGetValue(height, out bool decided)) return decided;
+
+            BlockHeader? header = _blockTree.FindHeader(height,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            bool retainedByBloom = header is not null && _receiptRetention.ShouldRetainReceipts(header);
+            _sweepBloomDecisions[height] = retainedByBloom;
+            return retainedByBloom;
+        };
     }
 
     private void LoadTxIndexSweepCursor()
@@ -544,6 +861,19 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
+    /// <summary>The oldest height whose receipts this node holds: the delete pointer measures bodies, so this
+    /// also consults the receipt backfill's own pointer wherever one was ever persisted - only the absent-pointer
+    /// fallback is fast-sync-specific, where it means no ancient receipt has been downloaded yet and the pivot is
+    /// the floor.</summary>
+    private ulong OldestStoredReceipts()
+    {
+        ulong receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
+            ? new RlpReader(lowestInserted).DecodeULong()
+            : _fastSync ? _blockTree.SyncPivot.BlockNumber : 0;
+
+        return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
+    }
+
     private bool TryLoadDeletePointers()
     {
         if (_hasLoadedDeletePointers)
@@ -582,6 +912,12 @@ public class HistoryPruner : IHistoryPruner
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
 
+        byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
+        _sliceCleanupCursor = cleanupVal is null
+            ? _minDeletableBlockNumber
+            : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
+        _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
+
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
         LoadTxIndexSweepCursor();
@@ -598,6 +934,13 @@ public class HistoryPruner : IHistoryPruner
             return;
         }
 
+        // Ahead of the cursor writes: a stop between the two leaves the proof ahead of the cursor, which a resumed
+        // retention-aware walk re-covers, where the reverse order reads every ungraceful stop as a lapse. The
+        // accepted residual is the mirror: a crash between these two adjacent WAL appends, a config change during
+        // the downtime, and a re-walk of the final chunk can miss one lapse - two independent writes cannot close
+        // both directions, only a shared batch could.
+        _receiptRetention.OnPruningProgress(_blocksReclaimCursor, _sliceCleanupCursor);
+
         // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no
         // cursor reads it as "already level" and treats an unreclaimed backlog as finished, forever.
         if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
@@ -611,6 +954,12 @@ public class HistoryPruner : IHistoryPruner
             _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
+        }
+
+        if (_sliceCleanupCursor != _lastSavedSliceCleanupCursor)
+        {
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
+            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
         }
 
         if (_balsDeletePointer != _lastSavedBalsDeletePointer)
