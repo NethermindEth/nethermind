@@ -185,7 +185,9 @@ parity_compare() {
   if (( status == 0 )); then
     PARITY_ROWS+=("$1|$2|$report")
   elif (( status == 2 )) && [[ -n "$6" ]]; then
-    echo "::warning::saved baseline for corpus $1 is unusable (different snapshot head or unreadable) — parity not checked for $2; rerun the master baseline"
+    # Exit 2 is "the comparison could not run": unreadable saved state, a moved snapshot head/hash, an unreadable
+    # corpus, or a node that did not answer. Only the snapshot case calls for re-recording, so do not advise it here.
+    echo "::error::parity not checked for $2 on corpus $1 — compare could not run against the saved baseline $5 (see its error above); re-record the master baseline only if the snapshot moved"
     parity_skipped=$((parity_skipped + 1))
   else
     echo "::warning::parity defects for $2 vs $5 on corpus $1"; parity_fail=$((parity_fail + 1))
@@ -401,7 +403,7 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
         "$rfile" 2>/dev/null || echo "| $clabel | $plabel | report unreadable | - |"
     done
     [[ "$parity_fail" -gt 0 ]] && { echo; echo "> **⚠️ ${parity_fail} parity failure(s)** — see counters above; the job will fail."; }
-    [[ "$parity_skipped" -gt 0 ]] && { echo; echo "> **⚠️ parity not checked for ${parity_skipped} arm/corpus pair(s)** — the saved master baseline is unusable; rerun the master baseline job."; }
+    [[ "$parity_skipped" -gt 0 ]] && { echo; echo "> **⚠️ parity not checked for ${parity_skipped} arm/corpus pair(s)** — the comparison against the saved master baseline could not run; the job will fail."; }
   } >> "$sink"
 fi
 
@@ -422,5 +424,7 @@ fail=0
 [[ "$cell_fail" -eq 0 ]] || { echo "::error::${cell_fail} load-test cell(s) failed — the matrix is incomplete"; fail=1; }
 [[ "$stop_fail" -eq 0 ]] || { echo "::error::stop-node reported a DB-integrity/teardown failure"; fail=1; }
 [[ "$parity_fail" -eq 0 ]] || { echo "::error::${parity_fail} corpus parity failure(s) — responses diverged from the baseline or a replay failed"; fail=1; }
+# Only reachable with a saved baseline (CORPUS_BASELINE=use), where parity is the run's only correctness gate.
+[[ "$parity_skipped" -eq 0 ]] || { echo "::error::${parity_skipped} arm/corpus pair(s) went unchecked against the saved master baseline — the correctness gate did not run"; fail=1; }
 [[ "$baseline_fail" -eq 0 ]] || { echo "::error::the configured parity baseline failed to start — parity was measured against a substitute arm"; fail=1; }
 exit "$fail"

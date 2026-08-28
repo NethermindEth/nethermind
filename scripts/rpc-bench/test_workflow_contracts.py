@@ -161,6 +161,19 @@ class SweepShellHelperTests(unittest.TestCase):
         self.assertIn('img="$(arm_image "$entry")"', SWEEP.read_text(encoding="utf-8"))
         self.assertIn("arm_image", LIB.read_text(encoding="utf-8"))
 
+    def test_an_unchecked_saved_baseline_fails_the_run(self):
+        sweep = SWEEP.read_text(encoding="utf-8")
+
+        # With a saved baseline the run has one arm, so parity is its only correctness gate: skipping it silently
+        # let a PR merge with a green job and the check never executed.
+        gate = next(line for line in sweep.splitlines() if line.startswith('[[ "$parity_skipped" -eq 0 ]]'))
+        self.assertIn("::error::", gate)
+        self.assertIn("fail=1", gate)
+        skip_branch = sweep[sweep.index("elif (( status == 2 ))"):sweep.index("parity_skipped=$((parity_skipped + 1))")]
+        self.assertIn("::error::", skip_branch)
+        # Exit 2 also covers an unreachable node and an unreadable corpus, which no re-recording fixes.
+        self.assertNotIn("rerun the master baseline", sweep)
+
     def test_the_saved_parity_baseline_is_renamed_into_place(self):
         sweep = SWEEP.read_text(encoding="utf-8")
 

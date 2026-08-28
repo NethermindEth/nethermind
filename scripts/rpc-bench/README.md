@@ -365,9 +365,11 @@ are kept:
 
 The comment then names the master image, date and run the baseline came from. When no cache exists
 yet (new arch, new corpus, changed cell shape, cache evicted after 7 idle days) the run falls back to
-executing `nethermindeth/nethermind:master` itself; when the saved responses do not match the snapshot
-head (snapshot rebuilt) parity is reported as "not checked" with a warning and the master baseline
-needs re-recording. Caches made from a feature branch are visible to that branch only — production
+executing `nethermindeth/nethermind:master` itself; when the comparison against the saved responses
+cannot run (snapshot head moved, unreadable state, node unreachable) the run **fails** with parity
+"not checked" — with a saved baseline that check is the run's only correctness gate, so it is never a
+warning — and the master baseline needs re-recording if the snapshot moved. Caches made from a feature
+branch are visible to that branch only — production
 baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is what the presets set.
 
 `Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
