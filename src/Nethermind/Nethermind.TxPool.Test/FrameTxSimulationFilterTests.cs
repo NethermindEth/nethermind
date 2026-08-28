@@ -142,7 +142,7 @@ public class FrameTxSimulationFilterTests
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
-        FrameTxPayerFilter filter = new(state, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
+        FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
         TxFilteringState filteringState = new(tx, state);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
@@ -200,7 +200,7 @@ public class FrameTxSimulationFilterTests
         bool signaturesVerified = false,
         TxHandlingOptions options = TxHandlingOptions.None)
     {
-        FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
         TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, options);
     }

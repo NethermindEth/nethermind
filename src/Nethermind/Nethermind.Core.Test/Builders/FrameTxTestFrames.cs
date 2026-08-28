@@ -35,7 +35,8 @@ public static class FrameTxTestFrames
 
     public static TxFrame Pay(ulong gasLimit = 1_000) => Pay(TestItem.AddressC, gasLimit);
 
-    public static TxFrame Pay(Address target, ulong gasLimit = 1_000) =>
+    /// <remarks>A null <paramref name="target"/> is the omitted-target encoding, not a missing argument.</remarks>
+    public static TxFrame Pay(Address? target, ulong gasLimit = 1_000) =>
         new(TxFrame.ModeVerify, TxFrame.ApprovePayment, target, gasLimit, UInt256.Zero, default);
 
     public static TxFrame Deploy(ulong gasLimit = 1_000) =>
