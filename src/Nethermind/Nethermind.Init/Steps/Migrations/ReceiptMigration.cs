@@ -171,19 +171,16 @@ namespace Nethermind.Init.Steps.Migrations
                     .AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
                     (ulong blockNum, Hash256 blockHash) = item;
-                    Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
-                    bool usingEmptyBlock = block is null;
-                    if (usingEmptyBlock)
-                    {
-                        block = GetMissingBlock(blockNum, blockHash);
-                    }
+                    Block? storedBlock = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                    bool usingEmptyBlock = storedBlock is null;
+                    Block block = storedBlock ?? GetMissingBlock(blockNum, blockHash);
 
                     _progressLogger.Update(Interlocked.Increment(ref synced));
-                    bool migrationCompleted = MigrateBlock(block!);
+                    bool migrationCompleted = MigrateBlock(block);
 
                     if (usingEmptyBlock)
                     {
-                        ReturnMissingBlock(block!);
+                        ReturnMissingBlock(block);
                     }
 
                     if (migrationCompleted)
@@ -218,7 +215,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        Block GetMissingBlock(ulong i, Hash256? blockHash)
+        Block GetMissingBlock(ulong i, Hash256 blockHash)
         {
             if (_logger.IsDebug) _logger.Debug($"Block {i} not found. Logs will not be searchable for this block.");
             Block emptyBlock = EmptyBlock.Get();
@@ -288,7 +285,7 @@ namespace Nethermind.Init.Steps.Migrations
             Hash256 blockHash = block.Hash
                 ?? throw new InvalidDataException($"Cannot migrate receipts for block {block.Number} without a block hash.");
             TxReceipt?[] receipts = _migrationStore.GetForMigration(block.Number, blockHash);
-            if (block.Transactions.Length > 0 && receipts.Length != block.Transactions.Length)
+            if (receipts.Length != block.Transactions.Length)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} has {receipts.Length} receipts for {block.Transactions.Length} transactions; leaving its legacy receipt data unchanged.");
@@ -304,7 +301,13 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (completeReceipts.Length == 0) return true;
 
-            _recovery.TryRecover(block, completeReceipts, forceRecoverSender: false);
+            if (_recovery.TryRecover(block, completeReceipts, forceRecoverSender: false) == ReceiptsRecoveryResult.Fail)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Could not recover receipt metadata for block {block.ToString(Block.Format.FullHashAndNumber)}; leaving its legacy receipt data unchanged.");
+                return false;
+            }
+
             Hash256[] transactionHashes = new Hash256[completeReceipts.Length];
             for (int i = 0; i < completeReceipts.Length; i++)
             {

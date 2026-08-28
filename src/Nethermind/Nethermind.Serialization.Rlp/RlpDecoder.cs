@@ -133,6 +133,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return DecodeComplete(ref context, rlpBehaviors);
     }
 
+    [return: NotNull]
     public virtual T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T? value = Decode(ref context, rlpBehaviors);
@@ -145,6 +146,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
+    [return: NotNull]
     public virtual T DecodeCompleteNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T value = DecodeGuardNotNull(ref context, rlpBehaviors);
@@ -153,6 +155,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
+    [return: NotNull]
     public virtual T DecodeCompleteNotNull(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpReader context = new(bytes);

@@ -69,8 +69,7 @@ namespace Nethermind.Serialization.Rlp
             int blockCheck = decoderContext.Position + sequenceLength;
 
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck)
-                ?? throw new RlpException("Block body decoding returned null.");
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
 
             Block block = new(header, body)
             {

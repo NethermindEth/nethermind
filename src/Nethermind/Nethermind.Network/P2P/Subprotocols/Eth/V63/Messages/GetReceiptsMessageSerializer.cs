@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public static GetReceiptsMessage Deserialize(byte[] bytes)
         {
             RlpReader ctx = new(bytes);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakNonNull(), limit: RlpLimit);
+            ArrayPoolList<Hash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: RlpLimit);
             return new GetReceiptsMessage(hashes);
         }
 

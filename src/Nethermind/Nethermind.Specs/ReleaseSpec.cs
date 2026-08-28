@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
@@ -105,7 +104,6 @@ public class ReleaseSpec : IReleaseSpec
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
     public ulong BlobBaseFeeUpdateFraction { get; set; }
-    [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
     public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }

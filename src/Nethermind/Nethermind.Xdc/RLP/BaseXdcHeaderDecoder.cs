@@ -71,11 +71,11 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         ulong gasLimit = decoderContext.DecodeULong();
         ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
-        byte[]? extraData = decoderContext.DecodeByteArray();
+        byte[] extraData = decoderContext.DecodeByteArray();
 
         TH header = CreateHeader(
             parentHash, unclesHash, beneficiary,
-            difficulty, number, gasLimit, timestamp, extraData ?? []);
+            difficulty, number, gasLimit, timestamp, extraData);
 
         header.StateRoot = stateRoot;
         header.TxRoot = transactionsRoot;
@@ -84,7 +84,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         header.GasUsed = gasUsed;
         header.Hash = Keccak.Compute(headerRlp);
 
-        header.MixHash = decoderContext.DecodeKeccakNonNull();
+        header.MixHash = decoderContext.DecodeKeccak();
         header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
 
         DecodeHeaderSpecificFields(ref decoderContext, header, rlpBehaviors, headerCheck);

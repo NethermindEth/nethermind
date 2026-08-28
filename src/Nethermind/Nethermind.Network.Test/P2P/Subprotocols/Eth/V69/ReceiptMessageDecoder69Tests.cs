@@ -53,6 +53,28 @@ public class ReceiptMessageDecoder69Tests
         }
     }
 
+    [TestCase("length")]
+    [TestCase("encode")]
+    public void Encoding_throws_on_null_logs(string operation)
+    {
+        TxReceipt receipt = new() { Logs = null };
+        ReceiptMessageDecoder69 decoder = new();
+
+        Assert.That(Execute, Throws.TypeOf<RlpException>());
+
+        void Execute()
+        {
+            if (operation == "length")
+            {
+                decoder.GetLength(receipt);
+                return;
+            }
+
+            RlpWriter writer = new(new byte[64]);
+            decoder.Encode(ref writer, receipt);
+        }
+    }
+
     private static byte[] EncodeReceiptWithNullLogEntry()
     {
         int logsLength = Rlp.OfEmptyList.Length;

@@ -50,8 +50,9 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                LogEntry logEntry = CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)
-                    ?? throw new RlpException("Receipt log decoding returned null.");
+                LogEntry logEntry = CompactLogEntryDecoder.Instance.DecodeGuardNotNull(
+                    ref decoderContext,
+                    RlpBehaviors.AllowExtraBytes);
                 logEntries.Add(logEntry);
             }
 

@@ -138,7 +138,7 @@ public class GetBlockAccessListsMessageSerializerTests
         GetBlockAccessListsMessageSerializer serializer = new();
         using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc1, 0x80]).AsDisposable();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
     }
 
     private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()

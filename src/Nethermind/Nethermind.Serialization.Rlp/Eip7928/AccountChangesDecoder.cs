@@ -39,7 +39,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        Address address = ctx.DecodeAddressNonNull();
+        Address address = ctx.DecodeAddress();
 
         ReadOnlySlotChanges[] slotChanges = ctx.DecodeNonNullArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;

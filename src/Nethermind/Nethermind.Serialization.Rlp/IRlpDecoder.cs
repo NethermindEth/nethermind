@@ -77,6 +77,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     [return: MaybeNull]
     T DecodeComplete(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
+    [return: NotNull]
     T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
@@ -84,6 +85,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// and verifies that the end of the stream has been reached.
     /// Throws if decoded value is <c>null</c>.
     /// </summary>
+    [return: NotNull]
     T DecodeCompleteNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
@@ -91,5 +93,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// and verifies that the end of the stream has been reached.
     /// Throws if decoded value is <c>null</c>.
     /// </summary>
+    [return: NotNull]
     T DecodeCompleteNotNull(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 }

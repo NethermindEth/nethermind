@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (!skipBloom)
-                txReceipt.Bloom = ctx.DecodeBloom();
+                txReceipt.Bloom = ctx.DecodeBloomWithLegacySupport();
             // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
@@ -62,8 +62,7 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
-                entries[i] = LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes)
-                    ?? throw new RlpException("Receipt log decoding returned null.");
+                entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
             txReceipt.Logs = entries;
 

@@ -59,15 +59,16 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddressOrNull();
             if (isStorage) txReceipt.GasUsed = decoderContext.DecodeULong();
             txReceipt.GasUsedTotal = decoderContext.DecodeULong();
-            txReceipt.Bloom = decoderContext.DecodeBloom();
+            txReceipt.Bloom = decoderContext.DecodeBloomWithLegacySupport();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             List<LogEntry> logEntries = [];
 
             while (decoderContext.Position < lastCheck)
             {
-                LogEntry logEntry = Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes)
-                    ?? throw new RlpException("Unexpected RLP null while decoding receipt log entry.");
+                LogEntry logEntry = LogEntryDecoder.Instance.DecodeGuardNotNull(
+                    ref decoderContext,
+                    RlpBehaviors.AllowExtraBytes);
                 logEntries.Add(logEntry);
             }
 

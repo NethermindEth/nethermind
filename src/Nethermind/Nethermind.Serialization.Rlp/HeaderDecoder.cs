@@ -42,10 +42,10 @@ namespace Nethermind.Serialization.Rlp
             ulong gasLimit = decoderContext.DecodeULong();
             ulong gasUsed = decoderContext.DecodeULong();
             ulong timestamp = decoderContext.DecodeULong();
-            byte[]? extraData = decoderContext.DecodeByteArray();
+            byte[] extraData = decoderContext.DecodeByteArray();
 
             BlockHeader blockHeader = DecodeSealAndCreateHeader(
-                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData ?? []);
+                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
             blockHeader.StateRoot = stateRoot;
             blockHeader.TxRoot = transactionsRoot;
             blockHeader.ReceiptsRoot = receiptsRoot;
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.Hash = Keccak.Compute(headerRlp);
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccakNonNull();
+            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
             if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
             if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakOrNull();

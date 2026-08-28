@@ -15,8 +15,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     {
         public string? Name { get; set; }
         public string? DataDir { get; set; }
-        public EngineJson Engine { get; set; } = null!;
-        public ChainSpecParamsJson Params { get; set; } = null!;
+        public EngineJson? Engine { get; set; }
+        public ChainSpecParamsJson? Params { get; set; }
         public ChainSpecGenesisJson? Genesis { get; set; }
         public string[]? Nodes { get; set; }
         public Dictionary<string, AllocationJson>? Accounts { get; set; }

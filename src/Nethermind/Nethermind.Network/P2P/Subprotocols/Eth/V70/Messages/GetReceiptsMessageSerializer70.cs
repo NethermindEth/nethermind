@@ -38,7 +38,7 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
         }
 
         ArrayPoolList<Hash256> hashes =
-            ctx.DecodeNonNullArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccakNonNull(), limit: RlpLimit);
+            ctx.DecodeNonNullArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
 
         return new GetReceiptsMessage70(requestId, firstIndex, hashes);
     }

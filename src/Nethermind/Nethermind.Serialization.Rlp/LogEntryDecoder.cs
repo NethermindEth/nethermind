@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Rlp
             Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = decoderContext.DecodeKeccakNonNull();
+                topics[i] = decoderContext.DecodeKeccak();
             }
             decoderContext.Check(topicsCheck);
 

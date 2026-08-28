@@ -23,7 +23,7 @@ internal static class XdcRlpHelpers
         int index = 0;
         while (length > 0)
         {
-            addresses[index++] = reader.DecodeAddressNonNull();
+            addresses[index++] = reader.DecodeAddress();
             length -= Rlp.LengthOfAddressRlp;
         }
 

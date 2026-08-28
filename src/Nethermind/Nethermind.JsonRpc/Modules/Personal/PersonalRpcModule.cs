@@ -23,7 +23,17 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+        public ResultWrapper<Address[]> personal_listAccounts()
+        {
+            try
+            {
+                return ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+            }
+            catch (Exception)
+            {
+                return ResultWrapper<Address[]>.Fail("Error while getting key addresses from wallet.");
+            }
+        }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {

@@ -43,22 +43,24 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
-        ArgumentNullException.ThrowIfNull(chainSpecJson.Params);
-        ArgumentNullException.ThrowIfNull(chainSpecJson.Engine);
+        ChainSpecParamsJson parameters = chainSpecJson.Params
+            ?? throw new ArgumentNullException(nameof(chainSpecJson.Params));
+        ChainSpecJson.EngineJson engine = chainSpecJson.Engine
+            ?? throw new ArgumentNullException(nameof(chainSpecJson.Engine));
 
-        ulong networkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+        ulong networkId = parameters.NetworkId ?? parameters.ChainId ?? 1;
         ChainSpec chainSpec = new()
         {
             NetworkId = networkId,
-            ChainId = chainSpecJson.Params.ChainId ?? networkId,
+            ChainId = parameters.ChainId ?? networkId,
             Name = chainSpecJson.Name,
             DataDir = chainSpecJson.DataDir
         };
 
         // LoadGenesis reads chainSpec.Parameters, which LoadParameters populates and label-expands.
-        LoadParameters(chainSpecJson, chainSpec);
+        LoadParameters(chainSpecJson, parameters, chainSpec);
         LoadGenesis(chainSpecJson, chainSpec);
-        LoadEngine(chainSpecJson, chainSpec);
+        LoadEngine(engine, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
         LoadBootnodes(chainSpecJson, chainSpec);
         LoadTransitions(chainSpecJson, chainSpec);
@@ -66,7 +68,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         return chainSpec;
     }
 
-    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpecParamsJson parameters, ChainSpec chainSpec)
     {
         ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
@@ -108,136 +110,136 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         chainSpec.Parameters = new ChainParameters
         {
-            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400UL,
-            MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
-            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000UL,
-            MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
-            MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
-            MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
-            MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
-            Registrar = chainSpecJson.Params.Registrar,
-            ForkBlock = chainSpecJson.Params.ForkBlock,
-            ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
-            Eip7Transition = chainSpecJson.Params.Eip7Transition,
-            Eip150Transition = chainSpecJson.Params.Eip150Transition,
-            Eip152Transition = chainSpecJson.Params.Eip152Transition,
-            Eip160Transition = chainSpecJson.Params.Eip160Transition,
-            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition,
-            Eip161dTransition = chainSpecJson.Params.Eip161dTransition,
-            Eip155Transition = chainSpecJson.Params.Eip155Transition,
-            Eip140Transition = chainSpecJson.Params.Eip140Transition,
-            Eip211Transition = chainSpecJson.Params.Eip211Transition,
-            Eip214Transition = chainSpecJson.Params.Eip214Transition,
-            Eip658Transition = chainSpecJson.Params.Eip658Transition,
-            Eip145Transition = chainSpecJson.Params.Eip145Transition,
-            Eip1014Transition = chainSpecJson.Params.Eip1014Transition,
-            Eip1052Transition = chainSpecJson.Params.Eip1052Transition,
-            Eip1108Transition = chainSpecJson.Params.Eip1108Transition,
-            Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
-            Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition,
-            Eip1283ReenableTransition = chainSpecJson.Params.Eip1283ReenableTransition,
-            Eip1344Transition = chainSpecJson.Params.Eip1344Transition,
-            Eip1706Transition = chainSpecJson.Params.Eip1706Transition,
-            Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
-            Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
-            Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
-            Eip1559Transition = chainSpecJson.Params.Eip1559Transition,
-            Eip2315Transition = chainSpecJson.Params.Eip2315Transition,
-            Eip2537Transition = chainSpecJson.Params.Eip2537Transition,
-            Eip2565Transition = chainSpecJson.Params.Eip2565Transition,
-            Eip2929Transition = chainSpecJson.Params.Eip2929Transition,
-            Eip2930Transition = chainSpecJson.Params.Eip2930Transition,
-            Eip3198Transition = chainSpecJson.Params.Eip3198Transition,
-            Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
-            Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
-            Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
-            BeaconChainGenesisTimestamp = chainSpecJson.Params.BeaconChainGenesisTimestamp,
-            Eip1153Transition = chainSpecJson.Params.Eip1153Transition,
-            Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
-            Eip3651Transition = chainSpecJson.Params.Eip3651Transition,
-            Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
-            Eip3855Transition = chainSpecJson.Params.Eip3855Transition,
-            Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
-            Eip3860Transition = chainSpecJson.Params.Eip3860Transition,
-            Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
-            Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
-            Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
-            Eip4844Transition = chainSpecJson.Params.Eip4844Transition,
-            Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
-            Eip5656Transition = chainSpecJson.Params.Eip5656Transition,
-            Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
-            Eip6780Transition = chainSpecJson.Params.Eip6780Transition,
-            Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
-            Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
-            Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
-            Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
-            Eip7702Transition = chainSpecJson.Params.Eip7702Transition,
-            Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
-            Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
-            Eip7823TransitionTimestamp = chainSpecJson.Params.Eip7823TransitionTimestamp,
-            Eip7825TransitionTimestamp = chainSpecJson.Params.Eip7825TransitionTimestamp,
-            Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
-            Eip2935Transition = chainSpecJson.Params.Eip2935Transition,
-            Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
-            Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
-            Eip2935RingBufferSize = chainSpecJson.Params.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
-            TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
-            TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
-            ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
-            ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
-            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
-            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
-            Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
+            GasLimitBoundDivisor = parameters.GasLimitBoundDivisor ?? 0x0400UL,
+            MaximumExtraDataSize = parameters.MaximumExtraDataSize ?? 32,
+            MinGasLimit = parameters.MinGasLimit ?? 5000UL,
+            MinHistoryRetentionEpochs = parameters.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
+            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MaxCodeSize = parameters.MaxCodeSize,
+            MaxCodeSizeTransition = parameters.MaxCodeSizeTransition,
+            MaxCodeSizeTransitionTimestamp = parameters.MaxCodeSizeTransitionTimestamp,
+            Registrar = parameters.Registrar,
+            ForkBlock = parameters.ForkBlock,
+            ForkCanonHash = parameters.ForkCanonHash,
+            Eip7Transition = parameters.Eip7Transition,
+            Eip150Transition = parameters.Eip150Transition,
+            Eip152Transition = parameters.Eip152Transition,
+            Eip160Transition = parameters.Eip160Transition,
+            Eip161abcTransition = parameters.Eip161abcTransition,
+            Eip161dTransition = parameters.Eip161dTransition,
+            Eip155Transition = parameters.Eip155Transition,
+            Eip140Transition = parameters.Eip140Transition,
+            Eip211Transition = parameters.Eip211Transition,
+            Eip214Transition = parameters.Eip214Transition,
+            Eip658Transition = parameters.Eip658Transition,
+            Eip145Transition = parameters.Eip145Transition,
+            Eip1014Transition = parameters.Eip1014Transition,
+            Eip1052Transition = parameters.Eip1052Transition,
+            Eip1108Transition = parameters.Eip1108Transition,
+            Eip1283Transition = parameters.Eip1283Transition,
+            Eip1283DisableTransition = parameters.Eip1283DisableTransition,
+            Eip1283ReenableTransition = parameters.Eip1283ReenableTransition,
+            Eip1344Transition = parameters.Eip1344Transition,
+            Eip1706Transition = parameters.Eip1706Transition,
+            Eip1884Transition = parameters.Eip1884Transition,
+            Eip2028Transition = parameters.Eip2028Transition,
+            Eip2200Transition = parameters.Eip2200Transition,
+            Eip1559Transition = parameters.Eip1559Transition,
+            Eip2315Transition = parameters.Eip2315Transition,
+            Eip2537Transition = parameters.Eip2537Transition,
+            Eip2565Transition = parameters.Eip2565Transition,
+            Eip2929Transition = parameters.Eip2929Transition,
+            Eip2930Transition = parameters.Eip2930Transition,
+            Eip3198Transition = parameters.Eip3198Transition,
+            Eip3541Transition = parameters.Eip3541Transition,
+            Eip3529Transition = parameters.Eip3529Transition,
+            Eip3607Transition = parameters.Eip3607Transition,
+            BeaconChainGenesisTimestamp = parameters.BeaconChainGenesisTimestamp,
+            Eip1153Transition = parameters.Eip1153Transition,
+            Eip1153TransitionTimestamp = parameters.Eip1153TransitionTimestamp,
+            Eip3651Transition = parameters.Eip3651Transition,
+            Eip3651TransitionTimestamp = parameters.Eip3651TransitionTimestamp,
+            Eip3855Transition = parameters.Eip3855Transition,
+            Eip3855TransitionTimestamp = parameters.Eip3855TransitionTimestamp,
+            Eip3860Transition = parameters.Eip3860Transition,
+            Eip3860TransitionTimestamp = parameters.Eip3860TransitionTimestamp,
+            Eip4895TransitionTimestamp = parameters.Eip4895TransitionTimestamp,
+            Eip4844TransitionTimestamp = parameters.Eip4844TransitionTimestamp,
+            Eip4844Transition = parameters.Eip4844Transition,
+            Eip2537TransitionTimestamp = parameters.Eip2537TransitionTimestamp,
+            Eip5656Transition = parameters.Eip5656Transition,
+            Eip5656TransitionTimestamp = parameters.Eip5656TransitionTimestamp,
+            Eip6780Transition = parameters.Eip6780Transition,
+            Eip6780TransitionTimestamp = parameters.Eip6780TransitionTimestamp,
+            Eip7951TransitionTimestamp = parameters.Eip7951TransitionTimestamp,
+            Rip7212TransitionTimestamp = parameters.Rip7212TransitionTimestamp,
+            Eip4788TransitionTimestamp = parameters.Eip4788TransitionTimestamp,
+            Eip7702Transition = parameters.Eip7702Transition,
+            Eip7702TransitionTimestamp = parameters.Eip7702TransitionTimestamp,
+            Eip7918TransitionTimestamp = parameters.Eip7918TransitionTimestamp,
+            Eip7823TransitionTimestamp = parameters.Eip7823TransitionTimestamp,
+            Eip7825TransitionTimestamp = parameters.Eip7825TransitionTimestamp,
+            Eip4788ContractAddress = parameters.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
+            Eip2935Transition = parameters.Eip2935Transition,
+            Eip2935TransitionTimestamp = parameters.Eip2935TransitionTimestamp,
+            Eip2935ContractAddress = parameters.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            Eip2935RingBufferSize = parameters.Eip2935RingBufferSize ?? Eip2935Constants.RingBufferSize,
+            TransactionPermissionContract = parameters.TransactionPermissionContract,
+            TransactionPermissionContractTransition = parameters.TransactionPermissionContractTransition,
+            ValidateChainIdTransition = parameters.ValidateChainIdTransition,
+            ValidateReceiptsTransition = parameters.ValidateReceiptsTransition,
+            Eip1559ElasticityMultiplier = parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
+            Eip1559BaseFeeInitialValue = parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
+            Eip1559BaseFeeMaxChangeDenominator = parameters.Eip1559BaseFeeMaxChangeDenominator ??
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
 
-            Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
-            DepositContractAddress = LoadDependentParam(chainSpecJson.Params.Eip6110TransitionTimestamp, chainSpecJson.Params.DepositContractAddress,
-                () => chainSpecJson.Params.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
-            Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
-            Eip7623Transition = chainSpecJson.Params.Eip7623Transition,
-            Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
-            Eip7976TransitionTimestamp = chainSpecJson.Params.Eip7976TransitionTimestamp,
-            Eip7981TransitionTimestamp = chainSpecJson.Params.Eip7981TransitionTimestamp,
-            Eip7883TransitionTimestamp = chainSpecJson.Params.Eip7883TransitionTimestamp,
-            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
-            Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
-            Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
-            FeeCollector = chainSpecJson.Params.FeeCollector,
-            Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
-            Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
-            Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
-            Eip4844BlobGasPriceUpdateFraction = chainSpecJson.Params.Eip4844BlobGasPriceUpdateFraction,
-            Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
-            Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
-            MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
-            TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
-            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-            BlobSchedule = chainSpecJson.Params.BlobSchedule,
+            Eip6110TransitionTimestamp = parameters.Eip6110TransitionTimestamp,
+            DepositContractAddress = LoadDependentParam(parameters.Eip6110TransitionTimestamp, parameters.DepositContractAddress,
+                () => parameters.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
+            Eip7002TransitionTimestamp = parameters.Eip7002TransitionTimestamp,
+            Eip7623Transition = parameters.Eip7623Transition,
+            Eip7623TransitionTimestamp = parameters.Eip7623TransitionTimestamp,
+            Eip7976TransitionTimestamp = parameters.Eip7976TransitionTimestamp,
+            Eip7981TransitionTimestamp = parameters.Eip7981TransitionTimestamp,
+            Eip7883TransitionTimestamp = parameters.Eip7883TransitionTimestamp,
+            Eip7002ContractAddress = parameters.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251TransitionTimestamp = parameters.Eip7251TransitionTimestamp,
+            Eip7251ContractAddress = parameters.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
+            FeeCollector = parameters.FeeCollector,
+            Eip1559FeeCollectorTransition = parameters.Eip1559FeeCollectorTransition,
+            Eip1559BaseFeeMinValueTransition = parameters.Eip1559BaseFeeMinValueTransition,
+            Eip1559BaseFeeMinValue = parameters.Eip1559BaseFeeMinValue,
+            Eip4844BlobGasPriceUpdateFraction = parameters.Eip4844BlobGasPriceUpdateFraction,
+            Eip4844MinBlobGasPrice = parameters.Eip4844MinBlobGasPrice,
+            Eip4844FeeCollectorTransitionTimestamp = parameters.Eip4844FeeCollectorTransitionTimestamp,
+            MergeForkIdTransition = parameters.MergeForkIdTransition,
+            TerminalTotalDifficulty = parameters.TerminalTotalDifficulty,
+            TerminalPoWBlockNumber = parameters.TerminalPoWBlockNumber,
+            BlobSchedule = parameters.BlobSchedule,
 
-            Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
-            Eip7939TransitionTimestamp = chainSpecJson.Params.Eip7939TransitionTimestamp,
+            Eip7594TransitionTimestamp = parameters.Eip7594TransitionTimestamp,
+            Eip7939TransitionTimestamp = parameters.Eip7939TransitionTimestamp,
 
-            Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
-            Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
+            Eip7934TransitionTimestamp = parameters.Eip7934TransitionTimestamp,
+            Eip7934MaxRlpBlockSize = parameters.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
-            Eip7778TransitionTimestamp = chainSpecJson.Params.Eip7778TransitionTimestamp,
-            Eip8037TransitionTimestamp = chainSpecJson.Params.Eip8037TransitionTimestamp,
+            Eip7778TransitionTimestamp = parameters.Eip7778TransitionTimestamp,
+            Eip8037TransitionTimestamp = parameters.Eip8037TransitionTimestamp,
 
-            Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
-            Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
+            Eip7928TransitionTimestamp = parameters.Eip7928TransitionTimestamp,
+            Eip7708TransitionTimestamp = parameters.Eip7708TransitionTimestamp,
 
-            Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
-            Eip8246TransitionTimestamp = chainSpecJson.Params.Eip8246TransitionTimestamp,
-            Eip8038TransitionTimestamp = chainSpecJson.Params.Eip8038TransitionTimestamp,
-            Eip8282TransitionTimestamp = chainSpecJson.Params.Eip8282TransitionTimestamp,
-            Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
-            Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
-            Eip2780TransitionTimestamp = chainSpecJson.Params.Eip2780TransitionTimestamp,
-            Eip7805TransitionTimestamp = chainSpecJson.Params.Eip7805TransitionTimestamp,
+            Eip8024TransitionTimestamp = parameters.Eip8024TransitionTimestamp,
+            Eip8246TransitionTimestamp = parameters.Eip8246TransitionTimestamp,
+            Eip8038TransitionTimestamp = parameters.Eip8038TransitionTimestamp,
+            Eip8282TransitionTimestamp = parameters.Eip8282TransitionTimestamp,
+            Eip7843TransitionTimestamp = parameters.Eip7843TransitionTimestamp,
+            Eip7954TransitionTimestamp = parameters.Eip7954TransitionTimestamp,
+            Eip2780TransitionTimestamp = parameters.Eip2780TransitionTimestamp,
+            Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
         };
 
-        chainSpec.Parameters.ExpandAll(chainSpecJson.Params);
+        chainSpec.Parameters.ExpandAll(parameters);
         ValidateParams(chainSpec.Parameters);
 
         // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit
@@ -323,9 +325,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         }
     }
 
-    private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadEngine(ChainSpecJson.EngineJson engine, ChainSpec chainSpec)
     {
-        Dictionary<string, JsonElement> engineParameters = chainSpecJson.Engine.CustomEngineData.ToDictionary(
+        Dictionary<string, JsonElement> engineParameters = engine.CustomEngineData.ToDictionary(
             engine => engine.Key,
             engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 

@@ -63,5 +63,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
+
+        [Test]
+        public void Deserialize_Throws_On_Empty_List_Block_Hash()
+        {
+            byte[] serialized = Rlp.Encode(
+                Rlp.Encode(1L),
+                Rlp.Encode([Rlp.OfEmptyList]),
+                Rlp.Encode(10L)).Bytes;
+            GetBlockAccessListsMessageSerializer serializer = new();
+
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
+        }
     }
 }

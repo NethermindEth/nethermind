@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using System;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -32,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             }
             else
             {
-                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
+                System.ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
                 writer.StartSequence(pwasLength);
                 for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
@@ -100,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             int pwasLength = 0;
             if (message.PathsWithAccounts is not null && message.PathsWithAccounts.Count > 0)
             {
-                ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
+                System.ReadOnlySpan<PathWithAccount> pathsWithAccounts = message.PathsWithAccounts.AsSpan();
                 for (int i = 0; i < pathsWithAccounts.Length; i++)
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];

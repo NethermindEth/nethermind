@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -69,17 +70,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
         [Test]
         public async Task Incomplete_legacy_receipts_leave_migration_pointer_gap()
         {
-            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(3);
+            InMemoryReceiptStorage source = new();
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
+                .WithTransactions(source)
+                .OfChainLength(3);
             IBlockTree blockTree = blockTreeBuilder.TestObject;
             Block incompleteBlock = blockTree.FindBlock(1);
             Block completeBlock = blockTree.FindBlock(2);
 
-            InMemoryReceiptStorage source = new();
             TxReceipt receipt = Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.KeccakA).TestObject;
             source.Insert(incompleteBlock, new TxReceipt[] { receipt, null }, ensureCanonical: false);
-            source.Insert(completeBlock,
-                [Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.KeccakB).TestObject],
-                ensureCanonical: false);
 
             InMemoryReceiptStorage destination = new() { MigratedBlockNumber = ulong.MaxValue };
             TestReceiptStorage receiptStorage = new(source, destination);
@@ -101,9 +101,57 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(destination.Count, Is.EqualTo(1));
+                Assert.That(destination.Count, Is.EqualTo(completeBlock.Transactions.Length));
                 Assert.That(destination.MigratedBlockNumber, Is.EqualTo(2));
                 Assert.That(source.Get(incompleteBlock)[1], Is.Null);
+            }
+        }
+
+        [TestCase(true, false, TestName = "Missing_block_body_with_receipts_leaves_migration_pointer_gap")]
+        [TestCase(false, true, TestName = "Failed_receipt_recovery_leaves_migration_pointer_gap")]
+        public async Task Unmigratable_complete_receipts_leave_migration_pointer_gap(bool missingBlockBody, bool recoveryFails)
+        {
+            InMemoryReceiptStorage source = new();
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
+                .WithTransactions(source)
+                .OfChainLength(2);
+            IBlockTree populatedBlockTree = blockTreeBuilder.TestObject;
+            Block block = populatedBlockTree.FindBlock(1);
+            Assert.That(source.Get(block), Is.Not.Empty);
+
+            IBlockTree migrationBlockTree = populatedBlockTree;
+            if (missingBlockBody)
+            {
+                migrationBlockTree = Substitute.For<IBlockTree>();
+                migrationBlockTree.Head.Returns(populatedBlockTree.Head);
+                migrationBlockTree.FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.None).Returns((Block)null);
+            }
+
+            IReceiptsRecovery recovery = Substitute.For<IReceiptsRecovery>();
+            recovery.TryRecover(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), false)
+                .Returns(recoveryFails ? ReceiptsRecoveryResult.Fail : ReceiptsRecoveryResult.Success);
+            InMemoryReceiptStorage destination = new() { MigratedBlockNumber = ulong.MaxValue };
+            TestReceiptStorage receiptStorage = new(source, destination);
+            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+            syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+
+            ReceiptMigration migration = new(
+                receiptStorage,
+                migrationBlockTree,
+                syncModeSelector,
+                blockTreeBuilder.ChainLevelInfoRepository,
+                new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
+                new TestMemColumnsDb<ReceiptsColumns>(),
+                recovery,
+                LimboLogs.Instance);
+
+            await migration.Run(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(destination.Count, Is.Zero);
+                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(source.Get(block), Is.Not.Empty);
             }
         }
 
@@ -126,28 +174,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 CompactReceiptStore = useCompactEncoding
             };
 
-            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
+            InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
+                .WithTransactions(inMemoryReceiptStorage)
+                .OfChainLength(chainLength);
             IBlockTree blockTree = blockTreeBuilder.TestObject;
             IChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
 
-            InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
             InMemoryReceiptStorage outMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
             TestReceiptStorage receiptStorage = new(inMemoryReceiptStorage, outMemoryReceiptStorage);
             ReceiptArrayStorageDecoder receiptArrayStorageDecoder = new(receiptIsCompact);
 
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
-
-            // Insert the blocks
-            int txIndex = 0;
-            for (ulong i = 1; i < (ulong)chainLength; i++)
-            {
-                Block block = blockTree.FindBlock(i);
-                inMemoryReceiptStorage.Insert(block, new[] {
-                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
-                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
-                });
-            }
 
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
             TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
@@ -187,9 +226,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             if (wasMigrated)
             {
                 int blockNum = commandStartBlockNumber.HasValue ? (int)commandStartBlockNumber.Value : (chainLength - 1);
-                int txCount = blockNum * 2;
+                Block[] migratedBlocks = Enumerable.Range(1, blockNum)
+                    .Select(blockNumber => blockTree.FindBlock((ulong)blockNumber))
+                    .ToArray();
+                int txCount = migratedBlocks.Sum(block => block.Transactions.Length);
+                int receiptBlockCount = migratedBlocks.Count(block => block.Transactions.Length > 0);
                 defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
-                ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
+                ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), receiptBlockCount);
                 Assert.That(outMemoryReceiptStorage.Count, Is.EqualTo(txCount));
             }
             else

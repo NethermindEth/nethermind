@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             {
                 types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
                 sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
-                hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakNonNull(), limit: HashesRlpLimit);
+                hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
                 return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
             }
             catch

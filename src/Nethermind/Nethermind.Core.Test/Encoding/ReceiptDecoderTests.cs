@@ -277,6 +277,28 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Receipt_message_decoding_accepts_legacy_sequence_form_bloom()
+        {
+            TxReceipt receipt = Build.A.Receipt.WithBloom(Bloom.Empty).TestObject;
+            Bloom bloom = receipt.Bloom ?? throw new InvalidOperationException("Test receipt should have a bloom.");
+            ReceiptMessageDecoder decoder = new();
+            byte[] validRlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes;
+            byte[] legacyBloom = new byte[5 + Bloom.ByteLength];
+            legacyBloom[0] = 0xf9;
+            legacyBloom[1] = 0x01;
+            legacyBloom[2] = 0x02;
+            legacyBloom[3] = 0x81;
+            legacyBloom[4] = 0x7f;
+            bloom.Bytes.CopyTo(legacyBloom.AsSpan(5));
+            byte[] encoded = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, 2, legacyBloom);
+            RlpReader reader = new(encoded);
+
+            TxReceipt decoded = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
+
+            Assert.That(decoded.Bloom, Is.EqualTo(bloom));
+        }
+
+        [Test]
         public void Receipt_storage_decoding_rejects_null_bloom()
         {
             byte[] encoded = EncodeStorageReceiptWithNullBloom();

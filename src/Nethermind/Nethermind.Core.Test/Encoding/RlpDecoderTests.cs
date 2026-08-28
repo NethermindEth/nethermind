@@ -147,7 +147,7 @@ public class RlpDecoderTests
         static void Decode()
         {
             RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
-            context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccakNonNull(), c.DecodeULong()));
+            context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccak(), c.DecodeULong()));
         }
 
         Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
@@ -195,7 +195,7 @@ public class RlpDecoderTests
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
 
-        Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccak());
+        Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccakOrNull());
 
         Assert.That(result, Has.Length.EqualTo(1));
         Assert.That(result[0], Is.Null);
@@ -241,7 +241,7 @@ public class RlpDecoderTests
     {
         RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
 
-        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak());
+        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull());
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0], Is.Null);

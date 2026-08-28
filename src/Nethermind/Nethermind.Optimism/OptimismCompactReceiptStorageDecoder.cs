@@ -16,13 +16,13 @@ public class OptimismCompactReceiptStorageDecoder :
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 
-    protected override OptimismTxReceipt DecodeInternal(ref RlpReader decoderContext,
+    protected override OptimismTxReceipt? DecodeInternal(ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-            return null!;
+            return null;
         }
 
         OptimismTxReceipt txReceipt = new();
@@ -48,8 +48,9 @@ public class OptimismCompactReceiptStorageDecoder :
         using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
-            LogEntry logEntry = LogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)
-                ?? throw new RlpException("Unexpected RLP null while decoding receipt log entry.");
+            LogEntry logEntry = LogEntryDecoder.DecodeGuardNotNull(
+                ref decoderContext,
+                RlpBehaviors.AllowExtraBytes);
             logEntries.Add(logEntry);
         }
 

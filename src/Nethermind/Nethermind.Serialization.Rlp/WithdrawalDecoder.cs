@@ -24,7 +24,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         {
             Index = decoderContext.DecodeULong(),
             ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddressNonNull(),
+            Address = decoderContext.DecodeAddress(),
             AmountInGwei = decoderContext.DecodeULong()
         };
 

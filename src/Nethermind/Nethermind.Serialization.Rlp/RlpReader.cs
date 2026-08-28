@@ -240,8 +240,6 @@ public ref struct RlpReader
         return new Hash256(keccakSpan);
     }
 
-    public Hash256 DecodeKeccakNonNull() => DecodeKeccak() ?? ThrowNullDecodedValue<Hash256>();
-
     public ValueHash256? DecodeValueKeccak()
     {
         if (!ReadKeccakPrefix(allowNull: true))
@@ -379,8 +377,6 @@ public ref struct RlpReader
         return new Address(Read(Address.Size));
     }
 
-    public Address DecodeAddressNonNull() => DecodeAddress() ?? ThrowNullDecodedValue<Address>();
-
     public void DecodeAddressStructRef(out AddressStructRef address)
     {
         if (!ReadAddressPrefix(allowNull: true))
@@ -500,6 +496,9 @@ public ref struct RlpReader
         return CreateBloom(bloomBytes);
     }
 
+    public Bloom DecodeBloomWithLegacySupport() =>
+        DecodeBloomOrNull() ?? ThrowNullDecodedValue<Bloom>();
+
     private static Bloom CreateBloom(ReadOnlySpan<byte> bloomBytes)
     {
         if (bloomBytes.Length != Bloom.ByteLength)
@@ -509,8 +508,6 @@ public ref struct RlpReader
 
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
     }
-
-    public Bloom DecodeBloomNonNull() => DecodeBloom() ?? ThrowNullDecodedValue<Bloom>();
 
     public void DecodeBloomStructRef(out BloomStructRef bloom)
     {

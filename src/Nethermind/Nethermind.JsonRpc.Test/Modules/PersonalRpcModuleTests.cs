@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Security;
 using System.Threading.Tasks;
@@ -39,6 +40,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
             string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(static a => $"\"{a}\""));
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}],\"id\":67}}"));
+        }
+
+        [Test]
+        public async Task Personal_list_accounts_reports_wallet_failure()
+        {
+            IWallet wallet = Substitute.For<IWallet>();
+            wallet.GetAccounts().Returns(_ => throw new InvalidOperationException());
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, _keyStore);
+
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
+
+            Assert.That(serialized, Does.Contain("\"error\""));
         }
 
         [Test]

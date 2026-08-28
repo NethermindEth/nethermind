@@ -51,7 +51,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
-        txReceipt.Bloom = ctx.DecodeBloom();
+        txReceipt.Bloom = ctx.DecodeBloomWithLegacySupport();
 
         int logEntriesCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -60,8 +60,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes)
-                ?? throw new RlpException("Log entry decoding returned null.");
+            entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
         }
         txReceipt.Logs = entries;
 
