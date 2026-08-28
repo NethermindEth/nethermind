@@ -436,6 +436,7 @@ public partial class EngineModuleTests
         Assert.That(() => improvementContextFactory.SnapshotCreatedContexts().All(static i => i.Disposed), Is.True.After(5000, 10));
     }
 
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
     [Test]
     public async Task WaitForImprovedBlock_with_minTransactions_ignores_the_empty_first_improvement()
     {

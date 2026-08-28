@@ -8,6 +8,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -1111,7 +1112,15 @@ public partial class EngineModuleTests
         await rpcModule.engine_newPayloadV5(payload.ExecutionPayload, Array.ConvertAll(payload.BlobsBundle.Blobs, static h => (Hash256?)new Hash256(h)), TestItem.KeccakE, []);
 
         ForkchoiceStateV1 newForkchoiceState = new(payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash, payload.ExecutionPayload.BlockHash);
+
+        // Tx pool head processing is asynchronous; without waiting for it, the next call's transactions
+        // are still unselectable when the one improvement scheduled for their pool bump runs.
+        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
+            h => chain.TxPool.TxPoolHeadChanged += h,
+            h => chain.TxPool.TxPoolHeadChanged -= h,
+            b => b.Hash == payload.ExecutionPayload.BlockHash);
         await rpcModule.engine_forkchoiceUpdatedV4(newForkchoiceState, null);
+        await txPoolHeadWait;
 
         return payload.ExecutionPayload;
     }

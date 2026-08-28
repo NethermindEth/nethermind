@@ -707,6 +707,8 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
 
@@ -721,6 +723,8 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
         Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
