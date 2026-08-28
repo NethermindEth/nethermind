@@ -128,6 +128,28 @@ public static unsafe partial class EvmInstructions
         {
             lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash<TGasPolicy, TTracingInst>;
         }
+        if (spec.IsEip8141Enabled)
+        {
+            lookup[(int)Instruction.APPROVE] = &InstructionApprove;
+            lookup[(int)Instruction.TXPARAM] = (spec.IsEip8250Enabled, spec.IsEip8272Enabled) switch
+            {
+                (true, true) => &InstructionTxParam<TGasPolicy, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionTxParam<TGasPolicy, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionTxParam<TGasPolicy, TTracingInst, OffFlag, OnFlag>,
+                _ => &InstructionTxParam<TGasPolicy, TTracingInst, OffFlag, OffFlag>,
+            };
+            lookup[(int)Instruction.FRAMEDATALOAD] = &InstructionFrameDataLoad<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.FRAMEDATACOPY] = &InstructionFrameDataCopy<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.FRAMEPARAM] = &InstructionFrameParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SIGPARAM] = &InstructionSigParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SIGDATACOPY] = &InstructionSigDataCopy<TGasPolicy, TTracingInst>;
+        }
+        if (spec.IsEip7906Enabled)
+        {
+            lookup[(int)Instruction.TXTRACE] = &InstructionTxTrace<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.TXDIFF] = &InstructionTxDiff<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.EVENTDATACOPY] = &InstructionEventDataCopy<TGasPolicy, TTracingInst>;
+        }
         if (spec.BlobBaseFeeEnabled)
         {
             lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee<TGasPolicy, TTracingInst>;
@@ -135,6 +157,10 @@ public static unsafe partial class EvmInstructions
         if (spec.IsEip7843Enabled)
         {
             lookup[(int)Instruction.SLOTNUM] = &InstructionSlotNum<TGasPolicy, TTracingInst>;
+        }
+        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
+        {
+            lookup[(int)Instruction.RECENTROOTREFLOAD] = &InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>;
         }
 
         // Gap: opcodes 0x4c to 0x4f are unassigned.

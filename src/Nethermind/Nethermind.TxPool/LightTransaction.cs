@@ -20,7 +20,8 @@ public class LightTransaction : Transaction
 
     public LightTransaction(Transaction fullTx)
     {
-        Type = TxType.Blob;
+        // Preserve the real type, or the delivered tx fails the announced-type check on the peer.
+        Type = fullTx.Type;
         Hash = fullTx.Hash;
         SenderAddress = fullTx.SenderAddress;
         Nonce = fullTx.Nonce;
@@ -34,11 +35,21 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        // The pool holds this record, not the full tx, so its Removed event is what releases the payer's reservation.
+        PayerAddress = fullTx.PayerAddress;
+        PayerExposure = fullTx.PayerExposure;
+        // Without the keys the pool reads Nonce as an account nonce, and EIP-8250 nonce_seq is not one.
+        NonceKeys = fullTx.NonceKeys;
+        PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
+        // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
+        // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
+        PersistedPaymaster = FrameTxValidation.GetPrefixPaymaster(fullTx);
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
         _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
         _size = fullTx.GetLength();
     }
 
+    /// <summary>Pre-EIP-8141 signature, kept so an out-of-tree <see cref="IBlobTxStorage"/> still binds.</summary>
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
@@ -53,25 +64,12 @@ public class LightTransaction : Transaction
         ulong poolIndex,
         int size,
         ProofVersion proofVersion)
-        : this(
-            timestamp,
-            sender,
-            nonce,
-            hash,
-            value,
-            gasLimit,
-            gasPrice,
-            maxFeePerGas,
-            maxFeePerBlobGas,
-            blobVersionHashes,
-            poolIndex,
-            size,
-            proofVersion,
-            default,
-            0)
+        : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
+            blobVersionHashes, poolIndex, size, proofVersion, default, 0, TxType.Blob)
     {
     }
 
+    // Declared in the order LightTxDecoder reads them: the optional trailing fields come last.
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
@@ -86,10 +84,13 @@ public class LightTransaction : Transaction
         ulong poolIndex,
         int size,
         ProofVersion proofVersion,
-        BlobCellMask blobCellMask = default,
-        int sparseBlobNetworkSize = 0)
+        BlobCellMask blobCellMask,
+        int sparseBlobNetworkSize,
+        TxType type,
+        ulong? expiryDeadline = null,
+        UInt256[]? nonceKeys = null)
     {
-        Type = TxType.Blob;
+        Type = type;
         Hash = hash;
         SenderAddress = sender;
         Nonce = nonce;
@@ -104,10 +105,18 @@ public class LightTransaction : Transaction
         ProofVersion = proofVersion;
         BlobCellMask = blobCellMask;
         _consensusEncodingSize = sparseBlobNetworkSize;
+        PersistedExpiryDeadline = expiryDeadline;
+        NonceKeys = nonceKeys;
         _size = size;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+
+    /// <inheritdoc/>
+    public override ulong? PersistedExpiryDeadline { get; }
+
+    /// <inheritdoc/>
+    public override Address? PersistedPaymaster { get; }
 
     /// <summary>
     /// Cell availability mask of the pooled sparse blob transaction.

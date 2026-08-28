@@ -61,6 +61,15 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
+            // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
+            // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
+            if (decoderContext.Position < receiptEnd)
+            {
+                txReceipt.TxType = TxType.FrameTx;
+                txReceipt.Payer = decoderContext.DecodeAddress();
+                txReceipt.FrameReceipts = DecodeFrameReceipts(ref decoderContext);
+            }
+
             // Handle any remaining extra bytes
             if (decoderContext.Position < receiptEnd && allowExtraBytes)
             {
@@ -108,10 +117,10 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // Handle any remaining extra bytes
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
+            if (decoderContext.Position < receiptEnd)
             {
+                item.TxType = TxType.FrameTx;
                 decoderContext.Position = receiptEnd;
             }
         }
@@ -157,6 +166,80 @@ namespace Nethermind.Serialization.Rlp
             {
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
             }
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                writer.Encode(item.Payer);
+                EncodeFrameReceipts(ref writer, item.FrameReceipts ?? []);
+            }
+        }
+
+        private static TxFrameReceipt[] DecodeFrameReceipts(ref RlpReader decoderContext)
+        {
+            int framesEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            using ArrayPoolListRef<TxFrameReceipt> frameReceipts = new(Eip8141Constants.MaxFrames);
+            while (decoderContext.Position < framesEnd)
+            {
+                int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                byte status = decoderContext.DecodeByte();
+                FrameReceiptGasRlp.DecodeGasUsed(ref decoderContext, out ulong executionGasUsed, out ulong stateGasUsed);
+
+                int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                using ArrayPoolListRef<LogEntry> frameLogs = new(4);
+                while (decoderContext.Position < logsEnd)
+                {
+                    frameLogs.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                }
+
+                frameReceipts.Add(new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray()));
+                decoderContext.Check(frameEnd);
+            }
+
+            return frameReceipts.ToArray();
+        }
+
+        private static void EncodeFrameReceipts<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        {
+            int framesLength = 0;
+            for (int i = 0; i < frameReceipts.Length; i++)
+            {
+                framesLength += Rlp.LengthOfSequence(GetFrameReceiptContentLength(frameReceipts[i]));
+            }
+
+            writer.StartSequence(framesLength);
+            for (int i = 0; i < frameReceipts.Length; i++)
+            {
+                TxFrameReceipt frameReceipt = frameReceipts[i];
+                int logsLength = GetFrameLogsLength(frameReceipt);
+                int gasUsedLength = Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
+                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
+                writer.Encode((ulong)frameReceipt.Status);
+                writer.StartSequence(gasUsedLength);
+                writer.Encode(frameReceipt.ExecutionGasUsed);
+                writer.Encode(frameReceipt.StateGasUsed);
+                writer.StartSequence(logsLength);
+                for (int j = 0; j < frameReceipt.Logs.Length; j++)
+                {
+                    CompactLogEntryDecoder.Instance.Encode(ref writer, frameReceipt.Logs[j]);
+                }
+            }
+        }
+
+        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
+            Rlp.LengthOf((ulong)frameReceipt.Status)
+            + Rlp.LengthOfSequence(Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed))
+            + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
+
+        private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)
+        {
+            int logsLength = 0;
+            for (int i = 0; i < frameReceipt.Logs.Length; i++)
+            {
+                logsLength += CompactLogEntryDecoder.Instance.GetLength(frameReceipt.Logs[i]);
+            }
+
+            return logsLength;
         }
 
         private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -182,6 +265,19 @@ namespace Nethermind.Serialization.Rlp
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                contentLength += Rlp.LengthOf(item.Payer);
+                TxFrameReceipt[] frameReceipts = item.FrameReceipts ?? [];
+                int framesLength = 0;
+                for (int i = 0; i < frameReceipts.Length; i++)
+                {
+                    framesLength += Rlp.LengthOfSequence(GetFrameReceiptContentLength(frameReceipts[i]));
+                }
+
+                contentLength += Rlp.LengthOfSequence(framesLength);
+            }
 
             return (contentLength, logsLength);
         }

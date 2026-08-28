@@ -67,4 +67,55 @@ public class ReceiptsRecoveryTests
         Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
+
+    // A frame transaction can fail while carrying the logs of the frames that succeeded, so recovery's
+    // log-count heuristic would otherwise report success where the executing node reported failure.
+    [Test]
+    public void TryRecover_should_keep_a_failed_frame_transaction_status_with_logs()
+    {
+        Block block = FrameTxBlock();
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+        receipt.TxType = TxType.FrameTx;
+        receipt.StatusCode = TxFrameReceipt.StatusFailure;
+        receipt.Logs = [new LogEntry(TestItem.AddressB, [1], [])];
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure));
+    }
+
+    // A frame transaction has no `to` field, so it looks like a creation while creating nothing at the
+    // top level; a recovered address would name an account that was never created.
+    [Test]
+    public void TryRecover_should_not_invent_a_contract_address_for_a_frame_transaction()
+    {
+        Block block = FrameTxBlock();
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+        // Seeded non-null: recovery only ever assigns these, so an empty receipt would pass below regardless.
+        receipt.ContractAddress = TestItem.AddressD;
+        receipt.Recipient = TestItem.AddressD;
+        Assert.That(block.Transactions[0].IsContractCreation, Is.True,
+            "the transaction must look like a creation, or the exemption is not the reason for the null");
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.ContractAddress, Is.Null);
+            Assert.That(receipt.Recipient, Is.Null, "a frame transaction has no top-level recipient either");
+        }
+    }
+
+    private static Block FrameTxBlock()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        return Build.A.Block.WithTransactions(tx).TestObject;
+    }
 }

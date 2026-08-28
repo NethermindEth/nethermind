@@ -27,6 +27,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -58,7 +59,7 @@ public class Eth72ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private ITxPoolConfig _txPoolConfig = null!;
     private Block _genesisBlock = null!;
     private Eth72ProtocolHandler _handler = null!;
@@ -72,7 +73,7 @@ public class Eth72ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _svc = Build.A.SerializationService().WithEth72(_specProvider).TestObject;
 
         _disposables = [];
@@ -304,7 +305,8 @@ public class Eth72ProtocolHandlerTests
             size: tx.GetLength(),
             proofVersion: ProofVersion.V1,
             blobCellMask: BlobCellMask.Full,
-            sparseBlobNetworkSize: 0);
+            sparseBlobNetworkSize: 0,
+            type: TxType.Blob);
 
         _handler.SendNewTransactions([legacyLightTx], sendFullTx: false);
 
@@ -494,6 +496,51 @@ public class Eth72ProtocolHandlerTests
             m.EthMessage.Hashes.Count == 1 &&
             m.EthMessage.Hashes[0] == hash));
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+    }
+
+    // The frame-transaction gate reads the head spec, and an announcement carries up to MaxCount entries.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_announcement()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        Hash256[] hashes = [HashFromInt(1), HashFromInt(2), HashFromInt(3)];
+        using NewPooledTransactionHashesMessage72 message = new(
+            [.. Enumerable.Repeat((byte)TxType.FrameTx, hashes.Length)],
+            [.. Enumerable.Repeat(1024, hashes.Length)],
+            [.. hashes],
+            BlobCellMask.Empty.ToBytes());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+            m.EthMessage.Hashes.Count == hashes.Length));
+    }
+
+    // Delivery validates every transaction in the packet, so the same gate has to be resolved once there too.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_delivered_packet()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+
+        Transaction[] transactions = [FrameTx(TestItem.PrivateKeyA), FrameTx(TestItem.PrivateKeyB), FrameTx(TestItem.PrivateKeyC)];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
@@ -5012,6 +5059,15 @@ public class Eth72ProtocolHandlerTests
         return new Hash256(bytes);
     }
 
+    private static Transaction FrameTx(PrivateKey signer) => Build.A.Transaction
+        .WithType(TxType.FrameTx)
+        .WithNonce(0)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithGasLimit(100_000)
+        .WithTo(TestItem.AddressB)
+        .SignedAndResolved(signer).TestObject;
+
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,
         Hash256 expectedHash,
@@ -5218,7 +5274,7 @@ public class Eth72ProtocolHandlerTests
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
-        ISpecProvider specProvider,
+        IChainHeadSpecProvider specProvider,
         IBlobCustodyTracker blobCustodyTracker,
         ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
         ITxGossipPolicy? transactionsGossipPolicy)

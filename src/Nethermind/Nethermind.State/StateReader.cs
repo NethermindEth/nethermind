@@ -22,7 +22,7 @@ namespace Nethermind.State
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => TryGetState(baseBlock, address, out account);
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, scoped in UInt256 index)
         {
             if (!TryGetAccount(baseBlock, address, out AccountStruct account)) return [];
 

@@ -32,11 +32,24 @@ namespace Nethermind.Consensus.Processing
 
             protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
 
-            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
+            public virtual AddingTxEventArgs CanAddTransaction(
+                Block block,
+                Transaction currentTx,
+                IReadOnlySet<Transaction> transactionsInBlock,
+                IReadOnlyStateProvider stateProvider) =>
+                CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, block.GasUsed, 0);
+
+            public virtual AddingTxEventArgs CanAddTransaction(
+                Block block,
+                Transaction currentTx,
+                IReadOnlySet<Transaction> transactionsInBlock,
+                IReadOnlyStateProvider stateProvider,
+                ulong cumulativeBlockExecutionGas,
+                ulong cumulativeBlockStateGas)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -58,23 +71,37 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.GasLimit > gasRemaining)
-                {
-                    return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
-                }
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
+                if (!TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
+                {
+                    return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
+                }
+
+                if (executionReservation > gasRemaining)
+                {
+                    return args.Set(TxAction.Skip, $"Not enough execution gas in block, gas limit {executionReservation} > {gasRemaining}");
+                }
+
+                if (stateReservation > stateGasRemaining)
+                {
+                    return args.Set(TxAction.Skip, $"Not enough state gas in block, gas limit {stateReservation} > {stateGasRemaining}");
+                }
+
                 if (currentTx.IsAboveInitCode(spec))
                 {
                     return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                if (!ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                // EIP-8141 exempts frame transactions from EIP-3607, so the pool admits one from a
+                // contract sender; without the same exemption here it could never be built into a block.
+                if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
@@ -85,14 +112,33 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
-                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                // A frame transaction's fees are paid by the frame that approves payment, which need not
+                // be the sender, so a sender-balance gate here would skip transactions that do pay.
+                if (!currentTx.SupportsFrames)
                 {
-                    return args;
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
                 }
 
                 OnAddingTransaction(args);
                 return args;
+            }
+
+            private static bool TryGetBlockGasReservations(Transaction currentTx, IReleaseSpec spec, out ulong executionReservation, out ulong stateReservation)
+            {
+                if (currentTx.SupportsFrames)
+                {
+                    return FrameTxValidation.TryCalculateBlockGasReservations(currentTx, spec, out executionReservation, out stateReservation);
+                }
+
+                executionReservation = spec.IsEip8037Enabled
+                    ? Math.Min(Eip7825Constants.DefaultTxGasLimitCap, currentTx.GasLimit)
+                    : currentTx.GasLimit;
+                stateReservation = spec.IsEip8037Enabled ? currentTx.GasLimit : 0;
+                return true;
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
@@ -116,7 +162,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.SupportsBlobs && (
+                    if (transaction.CarriesBlobs && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {

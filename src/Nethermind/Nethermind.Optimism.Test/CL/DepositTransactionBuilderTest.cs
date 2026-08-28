@@ -46,6 +46,24 @@ public class DepositTransactionBuilderTest
     }
 
     [Test]
+    public void DeriveUserDeposits_NullLogs()
+    {
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.EIP1559,
+                Status = 1,
+                Logs = null,
+                BlockHash = SomeHash,
+            },
+        ];
+        Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
+
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
+    }
+
+    [Test]
     public void DeriveUserDeposits_OtherLog()
     {
         ReceiptForRpc[] receipts =

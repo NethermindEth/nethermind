@@ -95,7 +95,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
-    public abstract class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
+    public abstract partial class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         protected EthereumEcdsa Ecdsa { get; }
@@ -201,6 +201,24 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
+            if (tx.Type == TxType.FrameTx)
+            {
+                IBlockAccessListSource? diffRecorder = BeginPostTxDiffRecording(tx, opts, spec);
+                try
+                {
+                    return ExecuteFrameTx(tx, tracer, opts, header, spec);
+                }
+                finally
+                {
+                    diffRecorder?.SetGeneratingBlockAccessList(null);
+                    // The VM holds its last TxExecutionContext, and RPC processors are pooled, so the
+                    // view's diff and log payload would stay rooted while the processor sits idle.
+                    if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
+                    {
+                        frameContext.PostTxDiffView = null;
+                    }
+                }
+            }
             RecoverSenderBeforeIntrinsicGas(tx, spec);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -37,6 +39,77 @@ public class BlobTxStorageTests
 
         Action act = () => blobTxStorage.Add(tx);
         Assert.That(act, Throws.TypeOf<ArgumentNullException>());
+    }
+
+    // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
+    [Test]
+    public void should_roundtrip_blob_carrying_frame_tx_with_sidecar()
+    {
+        const ProofVersion version = ProofVersion.V1;
+        BlobTxStorage blobTxStorage = new();
+        Transaction tx = BuildBlobCarryingFrameTx(blobCount: 2, version);
+        blobTxStorage.Add(tx);
+
+        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction full), Is.True);
+        ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)full!.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(actual.Version, Is.EqualTo(version));
+            Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
+            Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
+            Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
+
+            LightTransaction light = blobTxStorage.GetAll().Single();
+            Assert.That(light.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(light.GetProofVersion(), Is.EqualTo(version));
+            Assert.That(light.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
+        }
+    }
+
+    private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
+    {
+        // The count only has to satisfy the RLP round-trip; nothing here verifies KZG.
+        int proofsCount = version is ProofVersion.V1 ? blobCount * Ckzg.CellsPerExtBlob : blobCount;
+        byte[][] versionedHashes = new byte[blobCount][];
+        byte[][] blobs = new byte[blobCount][];
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[proofsCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            hash[1] = (byte)i;
+            versionedHashes[i] = hash;
+            blobs[i] = [(byte)i];
+            commitments[i] = [(byte)(i + 1)];
+        }
+        for (int i = 0; i < proofsCount; i++)
+        {
+            proofs[i] = [(byte)(i + 2)];
+        }
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            GasLimit = 1_000_000,
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+            MaxFeePerBlobGas = 1,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            BlobVersionedHashes = versionedHashes,
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version),
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
     }
 
     [Test]

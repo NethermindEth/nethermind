@@ -452,6 +452,73 @@ public class Eth68ProtocolHandlerTests
         _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == NewPooledTransactionHashesMessage68.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
     }
 
+    [TestCase(BlobsSupportMode.InMemory, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_when_blob_frame_txs_are_admissible")]
+    [TestCase(BlobsSupportMode.Disabled, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_when_blobs_are_disabled")]
+    [TestCase(BlobsSupportMode.Storage, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_under_persistent_storage")]
+    [TestCase(BlobsSupportMode.StorageWithReorgs, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_under_the_default_mode")]
+    public void Frame_tx_announcement_budget_follows_blob_support(BlobsSupportMode blobsSupport, int expectedRequests)
+    {
+        TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
+        _handler = BuildHandler(txPoolConfig, frameTxsEnabled: true);
+
+        // Between MaxTxSize (128 KiB) and MaxBlobTxSize (1 MiB): admissible only where blobs are supported.
+        AssertFrameTxAnnouncementRequested((int)txPoolConfig.MaxTxSize! + 1, expectedRequests);
+    }
+
+    // Without the fork a frame tx is rejected at ingress, so requesting one is always wasted bandwidth.
+    [TestCase(true, 1, TestName = "Frame_tx_announcement_is_requested_once_the_fork_is_active")]
+    [TestCase(false, 0, TestName = "Frame_tx_announcement_is_not_requested_before_the_fork")]
+    public void Frame_tx_announcement_request_follows_fork_activation(bool frameTxsEnabled, int expectedRequests)
+    {
+        TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+        _handler = BuildHandler(txPoolConfig, frameTxsEnabled);
+
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests);
+    }
+
+    // Best-suggested leads the processed head, so a gate keyed on the latter would decline while the pool already accepts.
+    [Test]
+    public void Frame_tx_announcement_is_requested_as_soon_as_the_ingress_filter_would_accept()
+    {
+        IReleaseSpec preFork = Substitute.For<IReleaseSpec>();
+        preFork.IsEip8141Enabled.Returns(false);
+        IReleaseSpec atFork = Substitute.For<IReleaseSpec>();
+        atFork.IsEip8141Enabled.Returns(true);
+
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        // Best-suggested has crossed activation; the processed head has not.
+        specProvider.GetCurrentHeadSpec().Returns(atFork);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(preFork);
+
+        _handler = CreateHandler(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, specProvider);
+
+        AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests: 1);
+    }
+
+    /// <summary>Runs the status handshake, then announces exactly one frame transaction hash of the given size.</summary>
+    private void AssertFrameTxAnnouncementRequested(int announcedSize, int expectedRequests)
+    {
+        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
+        using ArrayPoolList<int> sizes = new(1) { announcedSize };
+        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+    }
+
+    private Eth68ProtocolHandler BuildHandler(ITxPoolConfig txPoolConfig, bool frameTxsEnabled)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(frameTxsEnabled);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(spec);
+
+        return CreateHandler(txPoolConfig, specProvider);
+    }
+
     [Test]
     public void should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 10_000)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize)] int sizeOfOneTx)
     {
@@ -798,6 +865,21 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
+    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>
+        new(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            specProvider ?? Substitute.For<IChainHeadSpecProvider>(),
+            _txGossipPolicy);
+
     private static Transaction BuildFullBlobTransaction() => Build.A.Transaction
         .WithNonce(0UL)
         .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -851,21 +933,6 @@ public class Eth68ProtocolHandlerTests
         _handler = CreateHandler(txPoolConfig);
         _handler.Init();
     }
-
-    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig) =>
-        new(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            txPoolConfig,
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {

@@ -15,7 +15,9 @@ namespace Nethermind.TxPool
         public virtual bool TrySeal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool allowChangeExistingSignature = (txHandlingOptions & TxHandlingOptions.AllowReplacingSignature) == TxHandlingOptions.AllowReplacingSignature;
-            if (tx.Signature is null || allowChangeExistingSignature)
+            // An EIP-8141 frame tx has no top-level ECDSA signature by design, so signing it would only
+            // turn an already-signed eth_sendRawTransaction submission into SignFailed.
+            if (!tx.SupportsFrames && (tx.Signature is null || allowChangeExistingSignature))
             {
                 if (!_txSigner.TrySign(tx)) return false;
             }

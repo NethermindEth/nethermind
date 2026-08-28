@@ -349,7 +349,7 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!transaction.SupportsBlobs)
+            if (!transaction.CarriesBlobs)
             {
                 continue;
             }

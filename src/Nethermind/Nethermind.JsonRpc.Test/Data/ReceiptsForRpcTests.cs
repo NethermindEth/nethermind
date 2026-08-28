@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             UInt256 effectiveGasPrice = new(5526);
             ReceiptForRpc receiptForRpc = new(txHash, receipt1, 0, new(effectiveGasPrice));
-            long?[] indexes = receiptForRpc.Logs.Select(static log => log.LogIndex).ToArray();
+            long?[] indexes = receiptForRpc.Logs!.Select(static log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
@@ -92,6 +92,18 @@ namespace Nethermind.JsonRpc.Test.Data
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
+        }
+
+        [Test]
+        public void Receipt_with_no_logs_survives_the_converter_round_trip()
+        {
+            // Write emits "logs": null for an empty log set, and the deserializer honours it.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+            Assert.That(roundTripped!.Logs, Is.Empty);
         }
 
         [Test]

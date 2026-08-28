@@ -52,6 +52,9 @@ public class GethGenesisLoaderTests
         "MergeNetsplitBlock", // fork ID transition, not a fork class
     ];
 
+    // Fork classes that are not real Geth fork names and therefore have no genesis config property
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
+
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
     private static ChainSpec LoadChainSpec(string path) =>
@@ -296,6 +299,50 @@ public class GethGenesisLoaderTests
             Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(1710338135));
             Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1800000000));
             Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Can_load_genesis_with_bogota_time()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 15");
+
+        // bogotaTime carries inclusion lists alone. Frame transactions keep their own transition, so a
+        // genesis scheduling Bogota does not silently pull in the predeploy that shifts the fixtures.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(15));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+        }
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip7805Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.False);
+        }
+    }
+
+    // The other half of the split: frame transactions must stay activatable from the format the devnet
+    // genesis files are generated in, without dragging inclusion lists along.
+    [Test]
+    public void Can_load_genesis_with_eip8141_prototype_time()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8141PrototypeTime\": 15");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+        }
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7805Enabled, Is.False);
         }
     }
 
@@ -724,7 +771,7 @@ public class GethGenesisLoaderTests
         // Every fork class that introduces EIPs must have a *Time or *Block property
         foreach ((Type type, NamedReleaseSpec instance) in allForks)
         {
-            if (instance.Parent is not null && GetNewlyEnabledEips(instance, instance.Parent).Any())
+            if (instance.Parent is not null && !ForkClassesWithoutConfigProp.Contains(type.Name) && GetNewlyEnabledEips(instance, instance.Parent).Any())
             {
                 forkClassesChecked++;
                 bool hasBlockProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Block", StringComparison.OrdinalIgnoreCase));

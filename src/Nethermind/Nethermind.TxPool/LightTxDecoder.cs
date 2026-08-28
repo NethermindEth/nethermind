@@ -29,7 +29,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
                + Rlp.LengthOf(GetConsensusEncodingSize(tx))
-               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion);
+               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion)
+               + Rlp.LengthOf((byte)tx.Type)
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
+               + (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -52,6 +55,13 @@ public class LightTxDecoder : TxDecoder<Transaction>
         EncodeAvailableCellMask(tx, ref writer);
         writer.Encode(GetConsensusEncodingSize(tx));
         writer.Encode(ConsensusEncodingSizeFormatVersion);
+        // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
+        writer.Encode((byte)tx.Type);
+        // Expiry needs the deadline after a reload, where the frames that carried it are gone.
+        if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
+        // A sequence, so the decoder tells it apart from the expiry deadline that only sometimes precedes it.
+        // Any further optional trailing field must also be a list: a second optional scalar would be ambiguous.
+        if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
 
         return bytes;
     }
@@ -72,8 +82,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         ulong poolIndex = ctx.DecodeULong();
         int size = ctx.DecodePositiveInt();
 
-        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 5);
-        if (optionalFieldCount > 4)
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 8);
+        if (optionalFieldCount > 7)
         {
             throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
         }
@@ -88,6 +98,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
             ? persistedEncodingSize
             : 0;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
+        // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
+        ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
+        UInt256[]? nonceKeys = ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
+            ? FrameTxNonceCalldata.DecodeKeys(ref ctx)
+            : null;
         ctx.Check(data.Length);
 
         return new LightTransaction(
@@ -105,7 +121,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size,
             proofVersion,
             blobCellMask,
-            consensusEncodingSize);
+            consensusEncodingSize,
+            type,
+            expiryDeadline,
+            nonceKeys);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)

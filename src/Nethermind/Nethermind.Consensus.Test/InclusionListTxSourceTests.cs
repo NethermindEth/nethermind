@@ -134,6 +134,39 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
+    // A blob-carrying EIP-8141 frame transaction is type 6, so the type-3-only SupportsBlobs does not see it,
+    // yet it reaches production without a sidecar just the same. The blob-free frame transaction is the
+    // negative control: the filter must drop entries for carrying blobs, not for being frame transactions.
+    [Test]
+    public void Blob_carrying_frame_transactions_are_filtered_out()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
+        Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
+        byte[][] il = [Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EquivalentTo([1ul, 3ul]));
+    }
+
+    private static Transaction FrameTx(ulong nonce, byte[][] blobVersionedHashes) => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = MainnetSpecProvider.Instance.ChainId,
+        Nonce = nonce,
+        SenderAddress = TestItem.AddressC,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasPrice = 1.GWei,
+        DecodedMaxFeePerGas = 30.GWei,
+        MaxFeePerBlobGas = blobVersionedHashes is null ? null : 1,
+        BlobVersionedHashes = blobVersionedHashes,
+    };
+
     // The producer offers each IL tx once, so a shuffled list must still come out in ascending nonce order.
     [Test]
     public void Sender_nonces_are_ordered_ascending()

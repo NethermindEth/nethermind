@@ -39,7 +39,7 @@ public class Eth68ProtocolHandler(ISession session,
     IForkInfo forkInfo,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
-    ISpecProvider specProvider,
+    IChainHeadSpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null
     )
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
@@ -265,14 +265,26 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private protected bool CanRequestPooledTransaction(TxType txType) =>
-        CanDecodeTransactionType(txType) && (txType is not TxType.Blob || _blobSupportEnabled);
+    private protected bool CanRequestPooledTransaction(TxType txType, ref bool? frameTxsEnabled) =>
+        CanDecodeTransactionType(txType)
+        && (txType is not TxType.Blob || _blobSupportEnabled)
+        && (txType is not TxType.FrameTx || (frameTxsEnabled ??= FrameTxsEnabled()));
 
     private static bool CanDecodeTransactionType(TxType txType) => txType switch
     {
-        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode => true,
+        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode or TxType.FrameTx => true,
         _ => false,
     };
+
+    /// <remarks>Reads the same head spec as the ingress filter, so the gate opens exactly when the pool starts accepting frame txs.</remarks>
+    private bool FrameTxsEnabled() => specProvider.GetCurrentHeadSpec().IsEip8141Enabled;
+
+    /// <remarks>Blob-sized for every type-6 while blobs are enabled: tracks NotSupportedTxFilter, since an
+    /// announcement cannot tell a blob carrier from a blobless one that SizeTxFilter caps lower.</remarks>
+    private protected long MaxAnnouncedSize(TxType txType) =>
+        txType.SupportsBlobs() || (txType is TxType.FrameTx && _blobSupportEnabled)
+            ? _configuredMaxBlobTxSize
+            : _configuredMaxTxSize;
 
     private static bool ShouldSendCurrentRequest(
         int txSize,
@@ -297,6 +309,9 @@ public class Eth68ProtocolHandler(ISession session,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
+        // Resolved on the first type-6 byte, so a batch without one does no head lookup.
+        bool? frameTxsEnabled = null;
+
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -316,8 +331,8 @@ public class Eth68ProtocolHandler(ISession session,
                     retainedShape = txShape;
                 }
 
-                if (!CanRequestPooledTransaction(retainedShape.Type)
-                    || retainedShape.Size > (retainedShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                if (!CanRequestPooledTransaction(retainedShape.Type, ref frameTxsEnabled)
+                    || retainedShape.Size > MaxAnnouncedSize(retainedShape.Type))
                 {
                     // Keep the valid shape for delivery validation, but make shaped retries a no-op for transactions this node cannot process.
                     continue;
