@@ -512,52 +512,52 @@ public class PersistenceManager(
                     batch.SetStorage(addr, slot, kv.Value);
                 }
 
-            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
-            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
-            long stateNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
-            {
-                TreePath path = kvp.Key.Key;
-                TrieNode node = kvp.Value;
-
-                if (node.FullRlp.Length == 0)
+                // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
+                // faster; the rare non-compacted persist enumerates unordered, which is still correct.
+                long stateNodesSize = 0;
+                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
+                    TreePath path = kvp.Key.Key;
+                    TrieNode node = kvp.Value;
+
+                    if (node.FullRlp.Length == 0)
                     {
-                        continue;
+                        // TODO: Need to double check this case. Does it need a rewrite or not?
+                        if (node.NodeType == NodeType.Unknown)
+                        {
+                            continue;
+                        }
                     }
+
+                    stateNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
                 }
 
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
-
-            long storageNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
-            {
-                (Hash256 address, TreePath path) = kvp.Key.Key;
-                TrieNode node = kvp.Value;
-
-                if (node.FullRlp.Length == 0)
+                long storageNodesSize = 0;
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                    (Hash256 address, TreePath path) = kvp.Key.Key;
+                    TrieNode node = kvp.Value;
 
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
+                    if (node.FullRlp.Length == 0)
+                    {
+                        // TODO: Need to double check this case. Does it need a rewrite or not?
+                        if (node.NodeType == NodeType.Unknown)
+                        {
+                            continue;
+                        }
+                    }
+
+                    storageNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
 
                 Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
                 Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));

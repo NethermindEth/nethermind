@@ -22,9 +22,9 @@ internal interface IAbortableWriteBatch
 /// Generation-gated: a reader behind the cache basis bypasses it rather than serving stale data.
 /// </summary>
 /// <remarks>
-/// There is no per-entry account eviction. Account residency grows until the entry cap forces a wholesale
-/// wipe, so the account-count gauge and wipe counter form a sawtooth under sustained churn. Refreshing on
-/// commit removed the churn that used to bound residency; the wipe counter is the signal to revisit that.
+/// There is no per-entry account eviction: residency grows until the entry cap forces a wholesale wipe, so
+/// the account-count gauge and the account wipe counter form a sawtooth under sustained churn. A rising
+/// wipe rate is the signal that the cap is binding and a warm working set is being discarded.
 /// </remarks>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
