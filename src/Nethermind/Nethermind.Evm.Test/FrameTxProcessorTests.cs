@@ -854,6 +854,51 @@ public class FrameTxProcessorTests
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
+    /// <remarks>
+    /// A type-6 transaction reaches the frame estimator on its type alone, so a frame count EIP-8141 never
+    /// admits must be reported as such: an absent list is not the gas-limit overflow the estimator blamed,
+    /// and an empty or oversized one prices into a budget no block can ever spend.
+    /// </remarks>
+    [TestCase(null)]
+    [TestCase(0)]
+    [TestCase(Eip8141Constants.MaxFrames + 1)]
+    public void EstimateGas_FrameTxWithAFrameCountOutsideTheAdmittedRange_ReportsTheFrameCount(int? frameCount)
+    {
+        Transaction tx = FrameTx(nonce: 0);
+        tx.Frames = frameCount is { } count ? RepeatedFrames(count) : null;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.EqualTo(FrameTxValidation.MissingFrames));
+    }
+
+    /// <remarks>
+    /// The processor dereferences the frame list, and eth_call reaches it without a validator, so it must
+    /// refuse the same counts the estimator refuses rather than faulting on the absent list or running an
+    /// oversized one frame by frame.
+    /// </remarks>
+    [TestCase(null)]
+    [TestCase(0)]
+    [TestCase(Eip8141Constants.MaxFrames + 1)]
+    public void Execute_FrameTxWithAFrameCountOutsideTheAdmittedRange_IsRejectedAsMalformed(int? frameCount)
+    {
+        Transaction tx = FrameTx(nonce: 0);
+        tx.Frames = frameCount is { } count ? RepeatedFrames(count) : null;
+
+        TransactionResult result = CallAndRestore(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.MissingFrames));
+        }
+    }
+
     /// <summary>A reverting POST_TX frame fails the probe's status but keeps the transaction valid and
     /// its frame budget well-defined, so the estimate is returned rather than reported as a failure.</summary>
     [Test]
@@ -2475,6 +2520,13 @@ public class FrameTxProcessorTests
 
     private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null, ulong stateGasLimit = DefaultFrameStateGasLimit) =>
         new(mode, flags, target, executionGasLimit: 200_000, stateGasLimit, value, data ?? Array.Empty<byte>());
+
+    private static TxFrame[] RepeatedFrames(int count)
+    {
+        TxFrame[] frames = new TxFrame[count];
+        Array.Fill(frames, Frame(TxFrame.ModeSender, target: Recipient));
+        return frames;
+    }
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

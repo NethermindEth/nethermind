@@ -104,6 +104,11 @@ public class GasEstimator(
     /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.</remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
+        // The budget below is computable from an empty or oversized frame list, so a count no valid
+        // transaction can carry is reported rather than priced.
+        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+            return EstimationResult.Failure(FrameTxValidation.MissingFrames);
+
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
