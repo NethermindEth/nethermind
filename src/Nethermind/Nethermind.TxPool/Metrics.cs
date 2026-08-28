@@ -86,7 +86,7 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations run at mempool admission.")]
-        public static long FrameTxSimulations { get; set; }
+        public static long FrameTxSimulations;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions revalidated because a new head touched their tracked dependencies.")]
@@ -102,15 +102,19 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations aborted by the per-simulation wall-clock bound.")]
-        public static long FrameTxSimulationsTimedOut { get; set; }
+        public static long FrameTxSimulationsTimedOut;
 
         [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the validation-prefix simulator was busy.")]
-        public static long FrameTxSimulationsBusy { get; set; }
+        public static long FrameTxSimulationsBusy;
 
         [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
-        public static long FrameTxSimulationsBudgetExhausted { get; set; }
+        public static long FrameTxSimulationsBudgetExhausted;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]
+        public static long PendingTransactionsFrameTxSimulationDeferred;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]

@@ -176,10 +176,32 @@ public class FrameTxSimulationFilterTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
+    // The budget exemption is granted by this mapping alone, so it is pinned rather than left to the
+    // stubs, which match a bare `local: false` by value and so would pass either way.
+    [TestCase(TxHandlingOptions.PersistentBroadcast, true, TestName = "A locally submitted transaction is exempt from the per-head budget")]
+    [TestCase(TxHandlingOptions.None, false, TestName = "A gossiped transaction competes for the per-head budget")]
+    public void Accept_MapsPersistentBroadcastToALocalSimulation(TxHandlingOptions options, bool expected)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        Accept(state, simulator, tx, options: options);
+
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), local: expected);
+    }
+
+    private static AcceptTxResult Accept(
+        TestReadOnlyStateProvider state,
+        IFrameTxPrefixSimulator? simulator,
+        Transaction tx,
+        bool signaturesVerified = false,
+        TxHandlingOptions options = TxHandlingOptions.None)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
         TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
-        return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+        return filter.Accept(tx, ref filteringState, options);
     }
 }
