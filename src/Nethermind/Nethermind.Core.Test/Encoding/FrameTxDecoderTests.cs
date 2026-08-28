@@ -155,7 +155,7 @@ public class FrameTxDecoderTests
         // The sender is mandatory: a frame transaction names its payer outright rather than recovering
         // it from an envelope signature, so — unlike `to` or a frame target — an empty field has no
         // "absent" meaning and must not decode to a null sender.
-        byte[] payload = TypedPayload(FrameTxBody(sender: Rlp.Encode(Array.Empty<byte>())));
+        byte[] payload = TypedPayload(FrameTxBody(sender: Rlp.Encode(Array.Empty<byte>()))); // the empty string 0x80
 
         void Decode()
         {
