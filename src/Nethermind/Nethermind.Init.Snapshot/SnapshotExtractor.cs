@@ -21,7 +21,29 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     /// are stripped (equivalent to <c>tar --strip-components</c>).
     /// </summary>
     public Task ExtractAsync(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken) =>
-        Task.Run(() => Extract(archivePath, destinationPath, stripComponents, cancellationToken), cancellationToken);
+        Task.Factory.StartNew(
+            () => Extract(archivePath, destinationPath, stripComponents, cancellationToken),
+            cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    public Task ExtractTarStreamAsync(Stream archiveStream, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken) =>
+        Task.Factory.StartNew(() =>
+        {
+            if (_logger.IsInfo)
+                _logger.Info($"Extracting streamed snapshot to {destinationPath}. Do not interrupt!");
+
+            Stream decompressedStream = OpenDecompressedStream(archiveStream, extension, leaveOpen: true);
+            try
+            {
+                ExtractTarEntries(decompressedStream, destinationPath, stripComponents, cancellationToken);
+            }
+            finally
+            {
+                if (!ReferenceEquals(decompressedStream, archiveStream))
+                    decompressedStream.Dispose();
+            }
+
+            EnsureNotEmpty(destinationPath);
+        }, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
@@ -31,19 +53,22 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         string extension = Path.GetExtension(archivePath).ToLowerInvariant();
         string innerExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(archivePath)).ToLowerInvariant();
 
-        if (IsZip(extension))
+        if (SnapshotArchiveFormat.IsZip(extension))
             ExtractZip(archivePath, destinationPath, cancellationToken);
-        else if (IsTarArchive(extension, innerExtension))
+        else if (SnapshotArchiveFormat.IsTarBased(extension, innerExtension))
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
             throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
+
+        EnsureNotEmpty(destinationPath);
     }
 
-    private static bool IsZip(string extension) =>
-        extension is ".zip";
-
-    private static bool IsTarArchive(string extension, string innerExtension) =>
-        extension is ".tar" or ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || innerExtension == ".tar";
+    private static void EnsureNotEmpty(string destinationPath)
+    {
+        if (!SnapshotDatabase.Exists(destinationPath))
+            throw new InvalidOperationException(
+                $"The archive produced no files under '{destinationPath}'. Check Snapshot.StripComponents against the archive layout.");
+    }
 
     private static void ExtractZip(string archivePath, string destinationPath, CancellationToken cancellationToken)
     {
@@ -55,11 +80,16 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
     private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
     {
+        using FileStream fileStream = File.OpenRead(archivePath);
+        using Stream decompressedStream = OpenDecompressedStream(fileStream, extension, leaveOpen: false);
+        ExtractTarEntries(decompressedStream, destinationPath, stripComponents, cancellationToken);
+    }
+
+    private static void ExtractTarEntries(Stream decompressedStream, string destinationPath, int stripComponents, CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(destinationPath);
 
-        using FileStream fileStream = File.OpenRead(archivePath);
-        using Stream decompressedStream = OpenDecompressedStream(fileStream, extension);
-        using TarReader tarReader = new(decompressedStream);
+        using TarReader tarReader = new(decompressedStream, leaveOpen: true);
 
         string destinationRoot = destinationPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
@@ -67,6 +97,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         while ((entry = tarReader.GetNextEntry()) is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (entry.EntryType is TarEntryType.GlobalExtendedAttributes)
+                continue;
 
             string? strippedPath = StripLeadingComponents(entry.Name, stripComponents);
             if (strippedPath is null)
@@ -79,19 +112,21 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
             if (entry.EntryType is TarEntryType.Directory)
                 Directory.CreateDirectory(destinationEntryPath);
-            else
+            else if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
                 entry.ExtractToFile(destinationEntryPath, overwrite: true);
+            else
+                throw new IOException($"Tar entry '{entry.Name}' has unsupported type {entry.EntryType}.");
         }
     }
 
-    private static Stream OpenDecompressedStream(Stream fileStream, string extension) =>
+    private static Stream OpenDecompressedStream(Stream archiveStream, string extension, bool leaveOpen) =>
         extension switch
         {
-            ".zst" or ".zstd" => new DecompressionStream(fileStream),
-            ".gz" => new GZipStream(fileStream, CompressionMode.Decompress),
+            ".zst" or ".zstd" => new DecompressionStream(archiveStream, leaveOpen: leaveOpen),
+            ".gz" => new GZipStream(archiveStream, CompressionMode.Decompress, leaveOpen),
             // .bz2 and .xz are matched by IsTarArchive but have no decompression support in .NET BCL.
             ".bz2" or ".xz" => throw new NotSupportedException($"Tar compression format '{extension}' is not supported. Use .gz or .zst instead."),
-            _ => fileStream
+            _ => archiveStream
         };
 
     /// <summary>

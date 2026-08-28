@@ -108,6 +108,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, TxPoolErrorMessages.DelegationAuthorityHasPendingTx);
 
         /// <summary>
+        /// Blob or cell proofs failed cryptographic validation after cheaper admission checks passed.
+        /// </summary>
+        public static readonly AcceptTxResult InvalidBlobProofs = new(20, TxErrorMessages.InvalidBlobProofs);
+
+        /// <summary>
+        /// The blob transaction sidecar does not contain full blobs or any sparse cells.
+        /// </summary>
+        public static readonly AcceptTxResult IncompleteBlobData = new(21, TxErrorMessages.IncompleteBlobData);
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, TxPoolErrorMessages.NodeIsSyncing);
@@ -119,39 +129,50 @@ namespace Nethermind.TxPool
         // Message field with ErrorCodes.AccountLocked (-32020), so the Code string never reaches RPC callers.
         public static readonly AcceptTxResult SignFailed = new(19, nameof(SignFailed), "authentication needed: password or unlock");
 
+        // Ids 22-31 belong to the results below; 0-21 and 503 are the pre-existing ones. Equality is by id
+        // alone, so a new result must take a free id; AcceptTxResultTests guards that they stay unique.
+
         /// <summary>
         /// An EIP-8141 frame transaction whose expiry-verifier deadline is already behind the current head; it can
         /// never be included, so it must not enter the pool or be broadcast.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxExpired = new(20, TxPoolErrorMessages.FrameTxExpired);
+        public static readonly AcceptTxResult FrameTxExpired = new(30, TxPoolErrorMessages.FrameTxExpired);
 
         /// <summary>
         /// An EIP-8141 frame transaction whose validation prefix plus signature verification would cost a node more
         /// than <c>MAX_VERIFY_GAS</c> to check. It stays consensus-valid; only public mempool propagation is refused.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
+        public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(31, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
-        /// <summary>
-        /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
-        /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose validation prefix budgets more state gas than <c>MAX_VERIFY_STATE_GAS</c>. A propagation bound separate from <see cref="FrameTxVerifyGasTooHigh"/>, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxVerifyStateGasTooHigh = new(29, TxPoolErrorMessages.FrameTxVerifyStateGasTooHigh);
+
+        /// <summary>An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c>: an exact match, so neither old nor future.</summary>
         public static readonly AcceptTxResult KeyedNonceUnmet = new(24, TxPoolErrorMessages.KeyedNonceUnmet);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
-        /// </summary>
+        /// <summary>An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.</summary>
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(22, TxPoolErrorMessages.FrameTxPayerExposureExceeded);
 
-        /// <summary>
-        /// An EIP-8141 frame transaction whose validation prefix can never approve a payer.
-        /// </summary>
-        /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
+        /// <summary>An EIP-8141 frame transaction whose validation prefix can never approve a payer: unincludable rather than malformed, so the relaying peer is not disconnected.</summary>
         public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
 
+        /// <summary>An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.</summary>
+        // Equality is by id alone, and KeyedNonceUnmet holds 24.
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
+        /// <summary>An EIP-8141 frame transaction with a <c>VERIFY</c> frame behind its validation prefix. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(25, TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
+
+        /// <summary>An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(26, TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
+
+        /// <summary>An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.</summary>
+        public static readonly AcceptTxResult FrameSimulationFailed = new(28, TxPoolErrorMessages.FrameSimulationFailed);
+
         /// <summary>
-        /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
+        /// An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxMissingSidecar = new(24, TxPoolErrorMessages.FrameTxMissingSidecar);
+        public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(32, TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
         private int Id { get; } = id;
         private string Code { get; } = code;

@@ -120,9 +120,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        {
+            NoBaseFee = !call.ShouldSetBaseFee()
+        };
+
         if (CanStreamStructLogs(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
@@ -134,7 +138,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace;
         try
         {
-            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
         }
         catch (InsufficientBalanceException ex)
         {

@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// Transaction-scoped context for an in-flight EIP-8141 frame transaction. Holds the read-only
-/// transaction shape (frames, signatures, sender, canonical hash, max cost) plus the mutable
-/// approval state driven by the <c>APPROVE</c> opcode. One instance per frame transaction; the
-/// outer frame-execution loop (the transaction processor) advances <see cref="CurrentFrameIndex"/>
-/// and consumes <see cref="ApprovalScopeSignal"/> after each frame.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </summary>
+/// <summary>Transaction-scoped context for an in-flight EIP-8141 frame transaction: the read-only envelope
+/// plus the approval state the outer loop advances and the <c>APPROVE</c> opcode writes.</summary>
 public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
@@ -37,21 +33,12 @@ public sealed class FrameTxContext(
     /// <remarks>When set, <see cref="Nonce"/> is the shared <c>nonce_seq</c> every key currently sits at.</remarks>
     public UInt256[]? NonceKeys { get; } = nonceKeys;
 
-    /// <summary>The sender's account nonce as it stood before any frame executed.</summary>
-    /// <remarks>
-    /// Fixed for the whole transaction: payment approval, account deployment and <c>CREATE</c> all move the
-    /// live nonce, and code reading the value the transaction was admitted against must not see those moves.
-    /// </remarks>
+    /// <summary>The sender's account nonce before any frame executed.</summary>
+    /// <remarks>Fixed for the whole transaction: approval, deployment and <c>CREATE</c> all move the live nonce.</remarks>
     public UInt256 LegacyNonce { get; } = legacyNonce;
 
-    /// <summary>
-    /// <c>keccak256(bytes32(len(nonce_keys)) || concat(bytes32(k) for k in nonce_keys))</c>, the canonical
-    /// commitment to the selected key set.
-    /// </summary>
-    /// <remarks>
-    /// Valid key sets are strictly increasing, so each set has exactly one encoding and one hash. The
-    /// EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its single account nonce occupies.
-    /// </remarks>
+    /// <summary><c>keccak256(bytes32(len(nonce_keys)) || concat(bytes32(k) for k in nonce_keys))</c>.</summary>
+    /// <remarks>The EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its account nonce occupies.</remarks>
     public ValueHash256 NonceKeysHash =>
         NonceKeys is { } keys ? _nonceKeysHash ??= ComputeNonceKeysHash(keys) : AccountNonceKeySetHash;
 
@@ -68,13 +55,13 @@ public sealed class FrameTxContext(
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
 
     /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
-    /// <remarks>The absent and the empty list are different envelopes but indistinguishable to executing code.</remarks>
+    /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
     public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
 
-    /// <summary>Per-frame success bits (MAX_FRAMES is 64), populated as frames finish.</summary>
+    // MAX_FRAMES is 64, so one word holds every frame's bit.
     private ulong _frameSucceededBits;
     private ulong _frameSkippedBits;
 
@@ -93,17 +80,141 @@ public sealed class FrameTxContext(
     public bool SenderApproved { get; set; }
     public Address? Payer { get; set; }
 
-    /// <summary>
-    /// Scope deposited by a successful <c>APPROVE</c> in the current frame; 0 means no signal.
-    /// The outer loop reads and clears it after the frame terminates.
-    /// </summary>
+    /// <summary>Scope deposited by a successful <c>APPROVE</c> in the current frame; 0 means no signal.
+    /// The outer loop reads and clears it after the frame terminates.</summary>
     public byte ApprovalScopeSignal { get; set; }
 
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
+    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
+    internal TransactionDiffView? PostTxDiffView { get; set; }
+
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
 
     public Address ResolvedSigner(int signatureIndex) => Signatures[signatureIndex].Signer ?? Sender;
+
+    private const int NoOwner = -1;
+
+    private readonly Dictionary<StorageCell, int> _stateChargeOwner = [];
+    private readonly long[] _frameStateGasCorrection = new long[frames.Length];
+    private readonly ulong[] _frameExecutionGasUsed = new ulong[frames.Length];
+    private readonly ulong[] _frameStateGasUsed = new ulong[frames.Length];
+    private readonly List<StateGasJournalEntry> _stateGasJournal = [];
+
+    /// <summary>
+    /// Records a completed frame's attributed <c>gas_used</c> so a later frame can read it through
+    /// <c>FRAMEPARAM</c> (spec: <c>frame_receipts[frame_index].gas_used</c>). The state component is
+    /// the charge before any later refill; <see cref="StateGasUsedFor"/> nets off refill corrections.
+    /// </summary>
+    public void RecordFrameReceipt(int frame, ulong executionGasUsed, ulong stateGasUsed)
+    {
+        _frameExecutionGasUsed[frame] = executionGasUsed;
+        _frameStateGasUsed[frame] = stateGasUsed;
+    }
+
+    /// <summary>Drops a completed frame's attributed state gas when an atomic-batch unroll clears its receipt.</summary>
+    public void ClearFrameStateGasUsed(int frame) => _frameStateGasUsed[frame] = 0;
+
+    /// <summary>A completed frame's attributed <c>gas_used.execution</c> (execution gas is never refilled).</summary>
+    public ulong ExecutionGasUsedFor(int frame) => _frameExecutionGasUsed[frame];
+
+    /// <summary>A completed frame's attributed <c>gas_used.state</c>, net of refills a later frame applied to it.</summary>
+    public ulong StateGasUsedFor(int frame)
+    {
+        long net = (long)_frameStateGasUsed[frame] - _frameStateGasCorrection[frame];
+        return net > 0 ? (ulong)net : 0;
+    }
+
+    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
+    public int StateGasJournalCheckpoint => _stateGasJournal.Count;
+
+    /// <summary>
+    /// Records the frame that paid an <c>SSTORE</c> state charge as the outstanding-charge owner
+    /// of <paramref name="slot"/>, so a later refill reduces that frame's receipt (spec: journal
+    /// the charging frame's index as the outstanding charge owner).
+    /// </summary>
+    public void RecordStateChargeOwner(in StorageCell slot, int frame)
+    {
+        ref int owner = ref CollectionsMarshal.GetValueRefOrAddDefault(_stateChargeOwner, slot, out bool existed);
+        int previousOwner = existed ? owner : NoOwner;
+        owner = frame;
+        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerSet, slot, previousOwner, 0));
+    }
+
+    /// <summary>
+    /// Resolves and clears the outstanding-charge owner of <paramref name="slot"/> when a refill
+    /// fires, journaling the cleared owner so a revert restores it (spec: clear the slot's ownership
+    /// entry). Returns <c>false</c> when no frame owns an outstanding charge there.
+    /// </summary>
+    public bool TryResolveStateChargeOwner(in StorageCell slot, out int owner)
+    {
+        if (!_stateChargeOwner.Remove(slot, out owner))
+        {
+            return false;
+        }
+
+        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerCleared, slot, owner, 0));
+        return true;
+    }
+
+    /// <summary>
+    /// Subtracts a refilled state-gas charge from the receipt of the frame that paid it
+    /// (spec: <c>frame_receipts[owner].gas_used.state -= amount</c>), journaled so a revert undoes it.
+    /// </summary>
+    public void ReduceFrameStateGas(int owner, long amount)
+    {
+        _frameStateGasCorrection[owner] += amount;
+        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.ReceiptReduced, default, owner, amount));
+    }
+
+    /// <summary>
+    /// Undoes ownership and receipt-correction journal entries recorded after
+    /// <paramref name="checkpoint"/>, at the same boundary that restores world state.
+    /// </summary>
+    public void RestoreStateGasJournal(int checkpoint)
+    {
+        int count = _stateGasJournal.Count;
+        if (count == checkpoint) return;
+
+        Span<StateGasJournalEntry> entries = CollectionsMarshal.AsSpan(_stateGasJournal);
+        for (int k = count - 1; k >= checkpoint; k--)
+        {
+            ref StateGasJournalEntry entry = ref entries[k];
+            switch (entry.Kind)
+            {
+                case StateGasJournalKind.OwnerSet:
+                    if (entry.Owner == NoOwner)
+                    {
+                        _stateChargeOwner.Remove(entry.Slot);
+                    }
+                    else
+                    {
+                        _stateChargeOwner[entry.Slot] = entry.Owner;
+                    }
+                    break;
+                case StateGasJournalKind.OwnerCleared:
+                    _stateChargeOwner[entry.Slot] = entry.Owner;
+                    break;
+                case StateGasJournalKind.ReceiptReduced:
+                    _frameStateGasCorrection[entry.Owner] -= entry.Amount;
+                    break;
+            }
+        }
+
+        _stateGasJournal.RemoveRange(checkpoint, count - checkpoint);
+    }
+
+    /// <summary>The refill-driven reduction of <paramref name="frame"/>'s <c>gas_used.state</c>.</summary>
+    public long StateGasCorrectionFor(int frame) => _frameStateGasCorrection[frame];
+
+    private enum StateGasJournalKind : byte
+    {
+        OwnerSet,
+        OwnerCleared,
+        ReceiptReduced,
+    }
+
+    private readonly record struct StateGasJournalEntry(StateGasJournalKind Kind, StorageCell Slot, int Owner, long Amount);
 
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {

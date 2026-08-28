@@ -72,4 +72,19 @@ public class ForkTests
             Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
         }
     }
+
+    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
+    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
+    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
+    [Test]
+    public void Bogota_enables_inclusion_lists_without_frame_transactions()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
+        }
+    }
 }

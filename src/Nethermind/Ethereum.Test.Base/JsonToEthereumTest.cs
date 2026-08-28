@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -99,7 +100,9 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
+            // so index 4 there is the inclusion list rather than the error.
+            int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
                 return null;
@@ -364,6 +367,7 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
         private static readonly ConcurrentDictionary<SpecOverrideCacheKey, IReleaseSpec> _overriddenSpecs = new();
+        private const string NeitherShapeMessage = "Fixture matches neither the standard nor the trimmed blockchain test shape.";
 
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json) =>
             ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
@@ -417,16 +421,29 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
-        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
-        {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
-        }
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json) =>
+            ConvertToBlockchainTests(Encoding.UTF8.GetBytes(json));
 
+        /// <remarks>Only deserialization falls back between shapes, so a conversion failure surfaces as itself.</remarks>
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
+            Dictionary<string, BlockchainTestJson> tests;
+            try
+            {
+                tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
+            }
+            catch (Exception standardShapeException)
+            {
+                try
+                {
+                    tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json));
+                }
+                catch (Exception trimmedShapeException)
+                {
+                    throw new AggregateException(NeitherShapeMessage, standardShapeException, trimmedShapeException);
+                }
+            }
+            return ConvertToBlockchainTests(tests);
         }
 
         // Some BAL fixtures use the trimmed HalfBlockchainTestJson shape; coerce on demand.
@@ -464,7 +481,8 @@ namespace Ethereum.Test.Base
 
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(name);
+            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
                 return spec;
@@ -473,7 +491,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),

@@ -4,17 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// One case per assert of the EIP-8141 "Constraints" block (plus the expiry verifier frame
-/// static rules), so every spec constraint is pinned by name. Checks that are Nethermind
-/// interpretations rather than literal spec text carry an EIP8141- note on their case.
-/// </summary>
+/// <summary>One case per assert of EIP-8141 §Constraints plus the expiry-verifier frame rules, so every spec
+/// constraint is pinned by name. A case resting on a rule stated outside §Constraints cites where it comes from.</summary>
 public class FrameTxValidationTests
 {
     [TestCaseSource(nameof(ConstraintCases))]
@@ -94,7 +93,7 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
             null);
 
-        // ethereum/EIPs#11955: atomic batches contain only non-VERIFY frames.
+        // EIP-8141: atomic batches contain only non-VERIFY frames.
         yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
             static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
             FrameTxValidation.AtomicBatchOnVerifyFrame);
@@ -152,9 +151,8 @@ public class FrameTxValidationTests
             static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, NonZeroDigest(), new byte[65])],
             null);
 
-        // Spec-backed via the max_fee_per_blob_gas field description ("must be 0 when
-        // blob_versioned_hashes is empty") — the rule just is not in the Constraints block.
-        // EIP8141-ISSUE: propose moving it into Constraints upstream.
+        // Spec-backed by the max_fee_per_blob_gas field description ("must be 0 when blob_versioned_hashes is
+        // empty"), though the rule is not in the Constraints block.
         yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
             static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
 
@@ -173,6 +171,9 @@ public class FrameTxValidationTests
             FrameTxValidation.InvalidExpiryFrame);
         yield return Case("ExpiryFrameWithShortData_InvalidExpiryFrame",
             static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength - 1])],
+            FrameTxValidation.InvalidExpiryFrame);
+        yield return Case("ExpiryFrameWithStateGas_InvalidExpiryFrame",
+            static tx => tx.Frames = [new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, 30_000, 1, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength])],
             FrameTxValidation.InvalidExpiryFrame);
         yield return Case("TwoExpiryFrames_MultipleExpiryFrames",
             static tx => tx.Frames = [SelfVerifyFrame(), ExpiryFrame(), ExpiryFrame()],
@@ -261,10 +262,8 @@ public class FrameTxValidationTests
             [DefaultModeFrame(), Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
             [], ulong.MaxValue);
 
-        // Approving flags on a DEFAULT frame do not end a prefix: whether the target approves at all
-        // depends on code the sender controls, so the frames behind it may still run unpaid and the
-        // whole list is charged. Estimating this layout at its first frame is what let a sender on a
-        // delegation walk past the ceiling.
+        // Approving flags on a DEFAULT frame do not end a prefix: whether the target approves depends on code the
+        // sender controls, so the frames behind it may still run unpaid and the whole list is charged.
         yield return Work("DefaultFrameWithApprovingFlags_ChargesTheWholeList",
             [Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000), Frame(gasLimit: 3_000_000)],
             [], 3_001_000);
@@ -308,8 +307,8 @@ public class FrameTxValidationTests
         byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         Transaction tx = CreateValidFrameTx(t => t.Frames =
         [
-            SelfVerifyFrame(),
             new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+            SelfVerifyFrame(),
         ]);
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
@@ -317,6 +316,40 @@ public class FrameTxValidationTests
         Assert.That(found, Is.True);
         Assert.That(deadline, Is.EqualTo(expected));
     }
+
+    // The deadline is read from the leading frame alone, so a frame the placement rule bars carries none.
+    [Test]
+    public void TryGetExpiryDeadline_ExpiryFrameBehindTheLeadingFrame_ReturnsFalse()
+    {
+        byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        Transaction tx = CreateValidFrameTx(t => t.Frames =
+        [
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+        ]);
+
+        bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
+
+        Assert.That(found, Is.False);
+        Assert.That(deadline, Is.EqualTo(0UL));
+    }
+
+    [TestCase(0, false, TestName = "a leading expiry frame is correctly placed")]
+    [TestCase(1, true, TestName = "an expiry frame behind the leading frame is misplaced")]
+    [TestCase(2, true, TestName = "an expiry frame at the tail is misplaced")]
+    public void HasMisplacedExpiryFrame_TracksTheExpiryFramePosition(int expiryIndex, bool expected)
+    {
+        List<TxFrame> frames = [SelfVerifyFrame(), DefaultModeFrame()];
+        frames.Insert(expiryIndex, ExpiryFrame());
+
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [.. frames]);
+
+        Assert.That(FrameTxValidation.HasMisplacedExpiryFrame(tx), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void HasMisplacedExpiryFrame_WithoutAnExpiryFrame_IsFalse() =>
+        Assert.That(FrameTxValidation.HasMisplacedExpiryFrame(CreateValidFrameTx(static _ => { })), Is.False);
 
     [Test]
     public void TryGetExpiryDeadline_WithoutExpiryFrame_ReturnsFalse()
@@ -338,5 +371,23 @@ public class FrameTxValidationTests
 
         Assert.That(found, Is.False);
         Assert.That(deadline, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void TryCalculateGasBudget_AfterCalldataStatsAreMeasured_RepricesRatherThanReusingTheUnmeasuredMemo()
+    {
+        // A transaction built field by field over eth_sendTransaction carries no calldata statistics, so the
+        // pool prices it from zero; measuring them later must not be answered from that first reading.
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8250Enabled.Returns(true);
+        Transaction tx = CreateValidFrameTx(static t => t.NonceKeys = [UInt256.One]);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasuredIntrinsic, out _, out _), Is.True);
+
+        tx.FrameCalldataStats = (ZeroBytes: 8, NonZeroBytes: 24);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measuredIntrinsic, out _, out _), Is.True);
+
+        Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
+            "the measured calldata must be priced, not served from the memo taken before it was set");
     }
 }

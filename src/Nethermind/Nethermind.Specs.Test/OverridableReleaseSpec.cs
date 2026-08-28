@@ -132,15 +132,12 @@ namespace Nethermind.Specs.Test
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
 
         private FrozenSet<AddressAsKey>? _precompiles;
 
-        /// <remarks>
-        /// Memoized like the production spec: <c>IsPrecompile</c> reads it per code fetch, per
-        /// <c>CALL</c> and per cold account access, and the two flags that decide the set drop the
-        /// cache when they are overridden.
-        /// </remarks>
+        /// <remarks>Memoized like the production spec; the two flags that decide the set invalidate the cache when overridden.</remarks>
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompiles();
 
         private FrozenSet<AddressAsKey> BuildPrecompiles()

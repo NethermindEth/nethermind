@@ -453,12 +453,15 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsResponse()
+    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsBridgeResult()
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        string response = await SerializedRequest("debug_migrateReceipts", 100);
-        Assert.That(response, Is.Not.Null);
+        // Both arguments are required. Hex-string quantities stay valid when a parallel fixture enables StrictHexFormat.
+        string response = await SerializedRequest("debug_migrateReceipts", "0x64", "0xc8");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        await _debugBridge.Received().MigrateReceipts(100, 200);
     }
 
     // EIP-8141: a frame transaction always executes at least one frame. A frames-less frame receipt
@@ -476,12 +479,13 @@ public class DebugModuleTests
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
+    // The counterpart: the check must not stand between a well-formed frame receipt and the bridge.
     [Test]
-    public async Task DebugInsertReceipts_FrameTxReceipt_ForwardsPayerAndFrameReceipts()
+    public async Task DebugInsertReceipts_FrameTxReceiptWithFrames_ReachesTheBridge()
     {
         ReceiptForRpc receipt = FrameReceiptPayload([
-            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, GasUsed = 21_000 },
-            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, GasUsed = 30_000 }
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, ExecutionGasUsed = 21_000 },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, ExecutionGasUsed = 30_000 }
         ]);
         TxReceipt[]? inserted = null;
         _debugBridge.WhenForAnyArgs(static b => b.InsertReceipts(default!, default!))
@@ -491,11 +495,8 @@ public class DebugModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(inserted, Is.Not.Null);
-        Assert.That(inserted![0].Payer, Is.EqualTo(TestItem.AddressA));
-        Assert.That(inserted[0].FrameReceipts, Is.Not.Null);
-        Assert.That(inserted[0].FrameReceipts!.Select(static f => (f.Status, f.GasUsed)),
-            Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }),
-            "the per-frame results are the only record of what the frames did and must reach storage");
+        Assert.That(inserted![0].FrameReceipts!.Select(static f => (f.Status, f.ExecutionGasUsed)),
+            Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }));
     }
 
     private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts) => new()
@@ -510,9 +511,9 @@ public class DebugModuleTests
     [Test]
     public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
     {
-        _debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        await SerializedRequest("debug_resetHead", TestItem.KeccakA);
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 

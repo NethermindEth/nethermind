@@ -91,7 +91,11 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
-            if (Peers.TryGetValue(node.Id, out Peer? existing)) return existing;
+            if (Peers.TryGetValue(node.Id, out Peer? existing))
+            {
+                PromoteFlags(node, existing.Node);
+                return existing;
+            }
 
             // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
             // actually inserted (reference-equal) fires PeerAdded.
@@ -102,6 +106,11 @@ namespace Nethermind.Network
                 if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
+            else
+            {
+                PromoteFlags(node, peer.Node);
+            }
+
             return peer;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -109,9 +118,47 @@ namespace Nethermind.Network
                 => _logger.Debug($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
         }
 
+        // A node id can reach the pool through several sources (the persisted peers db, discovery, the
+        // static/trusted config) and the first arrival wins the dictionary slot. Elevated flags from a later
+        // arrival must land on the pooled instance, otherwise a static peer that is also in the persisted
+        // peers db loses its static status for the whole session and is never redialed as one.
+        private void PromoteFlags(Node incoming, Node pooled)
+        {
+            if (incoming.IsStatic && !pooled.IsStatic)
+            {
+                pooled.IsStatic = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "static");
+            }
+
+            if (incoming.IsTrusted && !pooled.IsTrusted)
+            {
+                pooled.IsTrusted = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "trusted");
+            }
+
+            if (incoming.IsBootnode && !pooled.IsBootnode)
+            {
+                pooled.IsBootnode = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DebugPromoted(Node node, string role)
+            => _logger.Debug($"Promoting already pooled peer {node:s} to {role}");
+
         public Peer GetOrAdd(NetworkNode networkNode)
         {
-            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing)) return existing;
+            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing))
+            {
+                if (!existing.Node.IsTrusted && networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode))
+                {
+                    existing.Node.IsTrusted = true;
+                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
+                }
+
+                return existing;
+            }
 
             Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
             Peer created = new(node, _stats.GetOrAdd(node));

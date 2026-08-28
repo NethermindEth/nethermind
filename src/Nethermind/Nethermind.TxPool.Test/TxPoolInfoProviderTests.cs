@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -228,11 +228,8 @@ public class TxPoolInfoProviderTests
         Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
     }
 
-    /// <summary>
-    /// A sender's <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> transactions consume unrelated
-    /// keyed sequences, so all of them are includable and none is queued. Keying the map by sequence would collapse
-    /// them into one entry and make <c>txpool_content</c> disagree with <c>txpool_status</c>.
-    /// </summary>
+    /// <summary>EIP-8250 keyed sequences are unrelated, so all such transactions are includable; keying the map by
+    /// sequence would collapse them and make <c>txpool_content</c> disagree with <c>txpool_status</c>.</summary>
     [Test]
     public void Keyed_transactions_of_one_sender_are_all_pending_and_listed_separately()
     {
@@ -284,6 +281,13 @@ public class TxPoolInfoProviderTests
         for (int i = 0; i < nonces.Length; i++) keys[i] = Key(nonces[i]);
         return keys;
     }
+
+    private Transaction GetBlobTransaction(ulong nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithNonce(nonce)
+            .WithSenderAddress(_address)
+            .TestObject;
 
     public record SenderScenario(uint AccountNonce, ulong[] TxNonces, ulong[] ExpectedPending, ulong[] ExpectedQueued);
 }
