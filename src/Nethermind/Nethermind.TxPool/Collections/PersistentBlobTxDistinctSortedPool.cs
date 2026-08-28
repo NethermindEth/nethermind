@@ -812,6 +812,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
+            // No timestamp-only fallback exists; Delete also removes hash-keyed records owned by a reinserted transaction.
             for (int i = 0; i < deletes.Count; i++)
             {
                 TxLookupKey key = deletes[i];

@@ -113,4 +113,21 @@ public class OptimismModuleTests
             Assert.That(admissionResult.AsBool, Is.False);
         }
     }
+
+    [Test]
+    public void Full_validation_prioritizes_sender_independent_errors_over_intrinsic_gas()
+    {
+        OptimismReleaseSpec spec = new() { IsEip1559Enabled = true };
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(0)
+            .TestObject;
+
+        ValidationResult result = new OptimismLegacyTxValidator(10).IsWellFormed(transaction, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.IsIntrinsicGasError, Is.False);
+        }
+    }
 }

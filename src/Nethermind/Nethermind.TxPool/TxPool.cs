@@ -1113,7 +1113,7 @@ namespace Nethermind.TxPool
                 IReleaseSpec currentSpec = _specProvider.GetCurrentHeadSpec();
                 reason = !ReferenceEquals(spec, currentSpec)
                     ? $"the head specification changed from {spec.Name} to {currentSpec.Name}"
-                    : $"head generation advanced from {generation} to {currentGeneration}";
+                    : $"the head changed during the pass (generation {generation}, now {currentGeneration})";
             }
 
             if (_logger.IsDebug) _logger.Debug($"Abandoned transaction pool revalidation for {spec.Name} because {reason}.");

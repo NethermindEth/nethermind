@@ -28,12 +28,12 @@ public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
 public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
 {
     private readonly ITxValidator _postBedrockValidator = new CompositeTxValidator([
-        GasLimitCapTxValidator.Instance,
-        IntrinsicGasTxValidator.Instance,
         new LegacySignatureTxValidator(chainId),
         ContractSizeTxValidator.Instance,
         NonBlobFieldsTxValidator.Instance,
-        NonSetCodeFieldsTxValidator.Instance
+        NonSetCodeFieldsTxValidator.Instance,
+        GasLimitCapTxValidator.Instance,
+        IntrinsicGasTxValidator.Instance
     ]);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
