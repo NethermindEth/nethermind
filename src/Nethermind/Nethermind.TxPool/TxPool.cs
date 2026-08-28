@@ -972,7 +972,7 @@ namespace Nethermind.TxPool
             if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
 
             Address? payer;
-            FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state, senderAccount);
+            FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, senderAccount);
             switch (resolution.Outcome)
             {
                 case FrameTxPayerOutcome.NoPayer:
