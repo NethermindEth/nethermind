@@ -877,6 +877,30 @@ esac
             env=environment,
         )
 
+    def test_every_rpc_bench_script_with_a_shebang_is_committed_executable(self) -> None:
+        # The workflow, run-rpc-sweep.sh and run_jsonbench above all run these by path rather than
+        # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
+        # checkout's mode bits are honoured. The index mode is the only platform-independent record
+        # of the bit — a Windows working tree reports nothing useful about it.
+        listing = subprocess.run(
+            ["git", "ls-files", "-s", "--", "scripts/rpc-bench"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if listing.returncode != 0:
+            self.skipTest(f"git is unavailable: {listing.stderr.strip()}")
+        not_executable = []
+        for line in listing.stdout.splitlines():
+            metadata, _, path = line.partition("\t")
+            if not path.endswith(".sh") or not (ROOT / path).read_bytes().startswith(b"#!"):
+                continue
+            mode = metadata.split(" ", 1)[0]
+            if mode != "100755":
+                not_executable.append(f"{path} ({mode})")
+        self.assertEqual(not_executable, [], "a script with a shebang must be committed executable")
+
     def test_run_jsonbench_reuses_the_preparation_only_when_asked_and_unchanged(self) -> None:
         fake_bin = self.directory / "bin"
         fake_bin.mkdir()
