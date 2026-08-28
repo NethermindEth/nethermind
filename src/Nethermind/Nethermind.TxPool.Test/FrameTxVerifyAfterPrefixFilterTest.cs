@@ -8,7 +8,7 @@ using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.TxPool.Test.FrameTxTestFrames;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 

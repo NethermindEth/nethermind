@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -3719,25 +3718,25 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
-        // blob tx must route unchanged.
-        [Test]
-        public void blob_carrying_frame_tx_is_routed_to_blob_pool()
+        // EIP-8141: a frame tx (type 6) routes by whether it carries versioned hashes — to the blob pool
+        // when it does, mirroring type-3 routing and inheriting blob-pool rules, and to the normal pool otherwise.
+        [TestCase(1, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
+        [TestCase(0, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
+        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, int expectedBlobPool, int expectedNormalPool)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: blobCount > 0);
 
-            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedBlobPool));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedNormalPool));
             }
         }
 
@@ -3758,25 +3757,6 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
-            }
-        }
-
-        [Test]
-        public void non_blob_frame_tx_is_routed_to_normal_pool()
-        {
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 0);
-
-            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
             }
         }
@@ -4149,14 +4129,12 @@ namespace Nethermind.TxPool.Test
             List<TxFrame> frames = [];
             if (deadline is not null)
             {
-                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 40_000, UInt256.Zero, expiryData));
+                frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
             }
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
             // signature verification gas join it.
-            frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
+            frames.Add(FrameTxTestFrames.SelfVerify(gasLimit: 40_000));
 
             Transaction tx = new()
             {
