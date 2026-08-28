@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
@@ -81,21 +82,27 @@ public class IndexedLogFinderTests
     {
         IPrunedLogsRetention retention = Substitute.For<IPrunedLogsRetention>();
         retention.RetainsLogsFor(Arg.Any<IReadOnlyCollection<AddressAsKey>>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(false);
-        _blockFinder.FindHeader(Arg.Any<ulong>()).Returns(ci =>
-            Build.A.BlockHeader.WithNumber(ci.ArgAt<ulong>(0)).WithReceiptsRoot(TestItem.KeccakC).TestObject);
 
         Assert.Throws<ResourceNotFoundException>(() =>
             GetFinder(retention).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray());
     }
 
     [Test]
-    public void Should_FailClosedBelowTheOldestStoredBlock_WhenNoRetentionIsConfigured()
-    {
-        _blockFinder.FindHeader(Arg.Any<ulong>()).Returns(ci =>
-            Build.A.BlockHeader.WithNumber(ci.ArgAt<ulong>(0)).WithReceiptsRoot(TestItem.KeccakC).TestObject);
-
+    public void Should_FailClosedBelowTheOldestStoredBlock_WhenNoRetentionIsConfigured() =>
         Assert.Throws<ResourceNotFoundException>(() =>
             GetFinder(prunedLogsRetention: null).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray());
+
+    [Test]
+    public void Should_FailClosedBelowTheOldestStoredBlock_EvenWhenBothEndpointsCarryNoReceipts()
+    {
+        BlockHeader emptyFrom = Build.A.BlockHeader.WithNumber(From).TestObject;
+        BlockHeader emptyTo = Build.A.BlockHeader.WithNumber(To).TestObject;
+
+        Assert.That(emptyFrom.ReceiptsRoot, Is.EqualTo(Keccak.EmptyTreeHash),
+            "the scenario needs endpoints the endpoint probe cannot see, so their receipt roots must be empty");
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            GetFinder(prunedLogsRetention: null).FindLogs(CreateFilter(), emptyFrom, emptyTo, CancellationToken.None).ToArray());
     }
 
     [Test]

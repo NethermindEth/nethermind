@@ -385,7 +385,7 @@ public class LogIndexBuilderTests
         bool reclaimed = false;
         _receiptStorage
             .Get(Arg.Is<Block>(b => b.Number == stalledHeight))
-            .Returns(_ => reclaimed ? [new TxReceipt()] : []);
+            .Returns(_ => Volatile.Read(ref reclaimed) ? [new TxReceipt()] : []);
 
         RecordingLogIndexStorage storage = new();
         LogIndexBuilder builder = GetService(
@@ -401,7 +401,7 @@ public class LogIndexBuilderTests
         Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
             "a below-boundary height with a body but no readable receipts is either mid-reclaim or a retained height that lost its data - the descent must wait, not complete and not fabricate an empty entry");
 
-        reclaimed = true;
+        Volatile.Write(ref reclaimed, true);
 
         Task completion = WaitMinBlockAsync(storage, 0, cancellation);
         await completion;

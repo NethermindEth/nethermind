@@ -88,12 +88,19 @@ public class IndexedLogFinder(
 
         // Below the oldest stored block the index can only answer short: on a pruning node its entries point at
         // receipts that are gone, and on a sliced node it holds just the receipt islands the retention kept - and
-        // an index entry does not say which it is, so this cannot be gated on today's config. Any filter the
-        // retention does not vouch for starts at the boundary instead, and its below-boundary prefix falls back to
-        // the endpoint probe and fails closed rather than answering short.
+        // an index entry does not say which it is, so this cannot be gated on today's config. A filter the
+        // retention does not vouch for is rejected outright rather than handed to the endpoint probe, which only
+        // inspects the two endpoint headers - endpoints with empty receipt roots would let interior blocks whose
+        // receipts were reclaimed answer short. The one prefix with nothing to lose is genesis, which carries no
+        // receipts on any chain.
         ulong lowestStored = _blockFinder.GetLowestBlock();
         if ((ulong)range.from < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+        {
+            if (fromBlock.Number != 0 || lowestStored != 1)
+                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
+
             range.from = (int)lowestStored;
+        }
 
         if (range.from > range.to)
             return null;
