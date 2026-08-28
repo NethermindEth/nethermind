@@ -25,13 +25,16 @@ public class BlockBodyDecoderTests
     }
 
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
-    [TestCase(60_000, 0, null, TestName = "transactions")]
+    // Tx bound at the default 1 GGas MaxBlockGas:
+    // 1,000,000,000 / GasCostOf.TransactionEip2780 (12,000) + 1 == 83,334 entries.
+    [TestCase(83_335, 0, null, TestName = "transactions")]
     [TestCase(0, 3, null, TestName = "uncles")]
     [TestCase(0, 0, 64_001, TestName = "withdrawals")]
     public void Decode_count_over_limit_throws(int txCount, int uncleCount, int? withdrawalCount) =>
         Assert.Throws<RlpLimitException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
 
     // array of 0xC0's (interpreted as null) within the count limit
+    [TestCase(83_334, 0, null, TestName = "transaction at count limit")]
     [TestCase(10, 0, null, TestName = "transaction")]
     [TestCase(0, 1, null, TestName = "uncle")]
     [TestCase(0, 0, 6, TestName = "withdrawal")]

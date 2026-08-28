@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             UInt256 effectiveGasPrice = new(5526);
             ReceiptForRpc receiptForRpc = new(txHash, receipt1, 0, new(effectiveGasPrice));
-            long?[] indexes = receiptForRpc.Logs.Select(static log => log.LogIndex).ToArray();
+            long?[] indexes = receiptForRpc.Logs!.Select(static log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
@@ -82,17 +82,28 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
         [TestCase(LeadingZeroByteRootHex, LeadingZeroByteRootHex)]
-        [TestCase(null, "0x0000000000000000000000000000000000000000000000000000000000000000")]
-        public void Serializes_root_as_full_width_data(string? rootHex, string expectedRoot)
+        public void Serializes_root_as_full_width_data(string rootHex, string expectedRoot)
         {
-            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits. A null root becomes the full-width zero hash.
+            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits.
             TxReceipt receipt = CreateDiagnosticReceipt();
-            receipt.PostTransactionState = rootHex is null ? null : new Hash256(rootHex);
+            receipt.PostTransactionState = new Hash256(rootHex);
 
             string serialized = SerializeReceipt(receipt);
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
+        }
+
+        [Test]
+        public void Receipt_with_no_logs_survives_the_converter_round_trip()
+        {
+            // Write emits "logs": null for an empty log set, and the deserializer honours it.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+            Assert.That(roundTripped!.Logs, Is.Empty);
         }
 
         [Test]
@@ -148,6 +159,56 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Assert.That(receiptForRpc, Is.Not.Null);
             Assert.That(receiptForRpc!.ToReceipt().Error, Is.Null);
+        }
+
+        [Test]
+        public void Post_byzantium_receipt_serializes_status_without_root()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                StatusCode = 1,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("root", out _), Is.False);
+            Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+        }
+
+        [Test]
+        public void Pre_byzantium_receipt_serializes_root_without_status()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                PostTransactionState = TestItem.KeccakB,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("status", out _), Is.False);
+            Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
         }
 
         private static TxReceipt CreateDiagnosticReceipt()
