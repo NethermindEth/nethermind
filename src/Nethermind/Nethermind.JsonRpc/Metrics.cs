@@ -40,6 +40,11 @@ namespace Nethermind.JsonRpc
         [KeyIsLabel("cost_class")]
         public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionWaitTimeoutRejections { get; } = new();
 
+        [CounterMetric]
+        [Description("Number of gated JSON RPC requests whose caller went away while they waited for an execution slot, per cost class. The only exit from the queue that is not a rejection: a rate approaching the served rate means clients are hanging up faster than the class can serve them, and is the signal to lower the class's wait budget.")]
+        [KeyIsLabel("cost_class")]
+        public static ConcurrentDictionary<RpcMethodCostClass, long> RpcAdmissionCancellations { get; } = new();
+
         [GaugeMetric]
         [Description("Number of gated JSON RPC requests currently waiting for an execution slot, per cost class.")]
         [KeyIsLabel("cost_class")]

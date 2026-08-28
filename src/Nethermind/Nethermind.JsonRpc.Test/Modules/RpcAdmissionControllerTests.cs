@@ -248,6 +248,38 @@ public class RpcAdmissionControllerTests
         Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
     }
 
+    // The gate creates the timer inside its lock immediately before registering the cancellation callback, so a token
+    // cancelled from CreateTimer makes UnsafeRegister run the callback synchronously in that window: reentrant on the
+    // calling thread, with the waiter already linked and counted.
+    [Test]
+    [NonParallelizable]
+    public async Task Cancellation_landing_inside_the_gate_lock_unlinks_a_counted_waiter()
+    {
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
+        using CancellationTokenSource cancellation = new();
+        RpcAdmissionController controller = new(
+            new JsonRpcConfig { EvmExecutionConcurrency = 1, MaxQueueWaitMs = MaxQueueWaitMs },
+            LimboLogs.Instance,
+            new CancelOnTimerCreationTimeProvider(cancellation));
+        ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
+        RpcAdmissionController.Lease held = await controller.AdmitAsync(ethCall, 0);
+
+        Task<RpcAdmissionController.Lease> cancelled = controller.AdmitAsync(ethCall, 0, cancellation.Token).AsTask();
+
+        Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0), "the reentrant unlink must balance the enqueue it undoes");
+            Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(1));
+            Assert.That(Metrics.RpcAdmissionCancellations.GetValueOrDefault(RpcMethodCostClass.EvmExecution), Is.EqualTo(cancellationsBefore + 1));
+        }
+
+        held.Dispose();
+        ValueTask<RpcAdmissionController.Lease> fresh = controller.AdmitAsync(ethCall, 0);
+        Assert.That(fresh.IsCompletedSuccessfully, Is.True, "the cancelled waiter must not have taken the freed permit");
+        fresh.Result.Dispose();
+    }
+
     [Test]
     public async Task Rejects_immediately_when_predicted_wait_exceeds_budget()
     {
@@ -694,4 +726,21 @@ public class RpcAdmissionControllerTests
 
     private static ResolvedMethodInfo Resolve<TModule>(string methodName) where TModule : IRpcModule =>
         new(typeof(TModule).Name, typeof(TModule).GetMethod(methodName)!, readOnly: true, RpcEndpoint.All);
+
+    // Cancels from CreateTimer, the last thing the gate does before it registers the cancellation callback.
+    private sealed class CancelOnTimerCreationTimeProvider(CancellationTokenSource cancellation) : TimeProvider
+    {
+        private sealed class NoopTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => default;
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            cancellation.Cancel();
+            return new NoopTimer();
+        }
+    }
 }

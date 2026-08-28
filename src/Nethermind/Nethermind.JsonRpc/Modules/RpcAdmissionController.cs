@@ -60,6 +60,9 @@ public sealed class RpcAdmissionController
     /// <exception cref="LimitExceededException">
     /// The predicted wait exceeds the budget, or no permit became available within it.
     /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was cancelled before a permit was granted, so no response is produced at all.
+    /// </exception>
     internal ValueTask<Lease> AdmitAsync(ResolvedMethodInfo method, int paramsUtf8Length, CancellationToken cancellationToken = default)
     {
         Gate? gate = _gates[(int)method.CostClass];
@@ -155,6 +158,10 @@ public sealed class RpcAdmissionController
                     waiter.Timer = _timeProvider.CreateTimer(static state => ((Waiter)state!).OnTimeout(), waiter, TimeSpan.FromMilliseconds(_maxQueueWaitMs), Timeout.InfiniteTimeSpan);
                     Enqueue(waiter);
                     Metrics.RpcAdmissionQueued[_costClass] = ++_queued;
+                    // Armed inside the lock, after the waiter is linked and counted: a callback that fires synchronously
+                    // here re-enters this lock on the calling thread and unlinks a fully accounted waiter, so the queue
+                    // count balances. The synchronous callback also runs before this setter assigns the registration, so
+                    // its DisposeResources leaves disposal to the setter's _registrationSet/_resourcesDisposed handshake.
                     waiter.CancellationRegistration = cancellationToken.UnsafeRegister(static state => ((Waiter)state!).OnCancellation(), waiter);
                 }
             }
@@ -279,6 +286,7 @@ public sealed class RpcAdmissionController
                 Metrics.RpcAdmissionQueued[_costClass] = --_queued;
             }
 
+            Metrics.RpcAdmissionCancellations.AddOrUpdate(_costClass, 1, static (_, count) => count + 1);
             waiter.DisposeResources();
             waiter.TrySetCanceled(waiter.CancellationToken);
         }
