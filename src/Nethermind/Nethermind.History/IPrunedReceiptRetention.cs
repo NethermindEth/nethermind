@@ -33,13 +33,15 @@ public interface IPrunedReceiptRetention
     ulong ExpiredRetentionUpperBound() => 0;
 
     /// <summary>Called at the start of every pruning pass, after the pruner has loaded its pointers: the oldest
-    /// height whose receipts this node actually holds, and how far retention-aware reclaims have provably reached
-    /// so far. Lets an implementation record from which height its retention has been in force - anything
-    /// reclaimed before its first call predates it, and reclaims that ran past an entry's recorded reach while it
-    /// was unconfigured lapse it. The default ignores it.</summary>
-    void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough) { }
+    /// height whose receipts this node actually holds, and how far each of the two reclaiming cursors - the main
+    /// reclaim and the expired-slice cleanup - has provably reached. Lets an implementation record from which
+    /// height its retention has been in force: anything reclaimed before its first call predates it, and either
+    /// cursor having run past an entry's recorded reach while it was unconfigured lapses it. The default ignores
+    /// it.</summary>
+    void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough, ulong sliceCleanupThrough) { }
 
-    /// <summary>Called after a pass's reclaims with the height they actually reached, extending the proof exactly
-    /// that far - never over ground a pass only intended to cover. The default ignores it.</summary>
-    void OnPruningPassCompleted(ulong reclaimedThrough) { }
+    /// <summary>Called whenever the pruner persists its cursors, with the heights the two reclaims have actually
+    /// reached, extending the proof exactly that far - per persisted chunk, never per intended pass, so an
+    /// ungraceful stop cannot leave the cursors ahead of the proof. The default ignores it.</summary>
+    void OnPruningProgress(ulong reclaimedThrough, ulong sliceCleanupThrough) { }
 }

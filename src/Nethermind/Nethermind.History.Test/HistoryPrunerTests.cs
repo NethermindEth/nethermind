@@ -592,6 +592,40 @@ public class HistoryPrunerTests
         }
     }
 
+    [Test]
+    public async Task Pruning_hands_the_retention_the_receipts_frontier_not_the_bodies_one()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
+
+        IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+
+        FrontierCapturingRetention retention = new();
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(retention.OldestStoredReceipts, Is.EqualTo(60UL),
+            "the stamp floor must follow the receipt backfill's own pointer, not the bodies frontier the delete pointer measures");
+    }
+
+    private sealed class FrontierCapturingRetention : IPrunedReceiptRetention
+    {
+        public ulong OldestStoredReceipts;
+
+        public bool ShouldRetainReceipts(BlockHeader header) => false;
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = toExclusive;
+            return new HashSet<ulong>();
+        }
+
+        public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough, ulong sliceCleanupThrough)
+            => OldestStoredReceipts = oldestStoredReceipts;
+    }
+
     private sealed class MutableRetention : IPrunedReceiptRetention
     {
         public readonly HashSet<ulong> Retained = [];

@@ -277,7 +277,7 @@ public class HistoryPruner : IHistoryPruner
 
                 ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
-                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor);
+                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
@@ -291,7 +291,6 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
-                _receiptRetention.OnPruningPassCompleted(_blocksReclaimCursor);
                 CleanupExpiredSliceRetention(cancellationToken);
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
@@ -855,13 +854,9 @@ public class HistoryPruner : IHistoryPruner
     /// downloaded yet and the pivot is the floor.</summary>
     private ulong OldestStoredReceipts()
     {
-        ulong receiptsFloor = 0;
-        if (_fastSync)
-        {
-            receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
-                ? new RlpReader(lowestInserted).DecodeULong()
-                : _blockTree.SyncPivot.BlockNumber;
-        }
+        ulong receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
+            ? new RlpReader(lowestInserted).DecodeULong()
+            : _fastSync ? _blockTree.SyncPivot.BlockNumber : 0;
 
         return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
     }
@@ -925,6 +920,10 @@ public class HistoryPruner : IHistoryPruner
         {
             return;
         }
+
+        // Ahead of the cursor writes: a stop between the two leaves the proof ahead of the cursor, which a resumed
+        // retention-aware walk re-covers, where the reverse order reads every ungraceful stop as a lapse.
+        _receiptRetention.OnPruningProgress(_blocksReclaimCursor, _sliceCleanupCursor);
 
         // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no
         // cursor reads it as "already level" and treats an unreclaimed backlog as finished, forever.

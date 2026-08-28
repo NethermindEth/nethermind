@@ -431,7 +431,7 @@ public class SlicedReceiptRetentionTests
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new MemDb());
         SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        retention.OnPruningPassStarting(oldestStoredReceipts: 0, reclaimedThrough: 0);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 0, reclaimedThrough: 0, sliceCleanupThrough: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -464,8 +464,8 @@ public class SlicedReceiptRetentionTests
         Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.False,
             "no pruning pass has stamped this address, so no depth is proven and the gate fails closed");
 
-        retention.OnPruningPassStarting(oldestStoredReceipts: 5000, reclaimedThrough: 4000);
-        retention.OnPruningPassCompleted(reclaimedThrough: 6000);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 5000, reclaimedThrough: 4000, sliceCleanupThrough: 0);
+        retention.OnPruningProgress(reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -476,7 +476,7 @@ public class SlicedReceiptRetentionTests
         }
 
         SlicedReceiptRetention restarted = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        restarted.OnPruningPassStarting(oldestStoredReceipts: 5500, reclaimedThrough: 6000);
+        restarted.OnPruningPassStarting(oldestStoredReceipts: 5500, reclaimedThrough: 6000, sliceCleanupThrough: 0);
         Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 5000, 9000), Is.True,
             "the stamp is stored: continuous passes must not lose the depth already earned as the pointer advances");
     }
@@ -491,12 +491,12 @@ public class SlicedReceiptRetentionTests
 
         SlicedReceiptRetention first = new(new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() },
             Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        first.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0);
-        first.OnPruningPassCompleted(reclaimedThrough: 6000);
+        first.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0, sliceCleanupThrough: 0);
+        first.OnPruningProgress(reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
         SlicedReceiptRetention widened = new(new FlatDbConfig { HistorySliceAddresses = $"{TestItem.AddressA},{TestItem.AddressB}" },
             Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        widened.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000);
+        widened.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -518,11 +518,11 @@ public class SlicedReceiptRetentionTests
         FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
 
         SlicedReceiptRetention before = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0);
-        before.OnPruningPassCompleted(reclaimedThrough: 3000);
+        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0, sliceCleanupThrough: 0);
+        before.OnPruningProgress(reclaimedThrough: 3000, sliceCleanupThrough: 0);
 
         SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000);
+        reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
         Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
             "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
@@ -539,11 +539,11 @@ public class SlicedReceiptRetentionTests
         FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
 
         SlicedReceiptRetention before = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0);
-        before.OnPruningPassCompleted(reclaimedThrough: 2_000_000);
+        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0, sliceCleanupThrough: 0);
+        before.OnPruningProgress(reclaimedThrough: 2_000_000, sliceCleanupThrough: 0);
 
         SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
-        reAdded.OnPruningPassStarting(oldestStoredReceipts: 22_000_000, reclaimedThrough: 22_000_000);
+        reAdded.OnPruningPassStarting(oldestStoredReceipts: 22_000_000, reclaimedThrough: 22_000_000, sliceCleanupThrough: 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -554,13 +554,70 @@ public class SlicedReceiptRetentionTests
     }
 
     [Test]
+    public void RetainsLogsFor_ALapseThroughTheSliceCleanupCursor_IsAlsoDetected()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
+
+        SlicedReceiptRetention before = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 5000, sliceCleanupThrough: 2000);
+
+        SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 5000, sliceCleanupThrough: 4000);
+
+        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+            "the cleanup cursor reclaims retained heights the moment their address leaves the config, so its advance while unconfigured lapses the depth even when the main cursor stood still");
+    }
+
+    [Test]
+    public void RetainsLogsFor_DoesNotTrustAStoredStampThisProcessNeverValidated()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
+
+        SlicedReceiptRetention stamped = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        stamped.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0, sliceCleanupThrough: 0);
+        Assert.That(stamped.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.True);
+
+        SlicedReceiptRetention restarted = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+            "a record on disk may predate a config change only the next pruning pass can lapse - until that pass runs, the stamp is unvalidated and refuses");
+    }
+
+    [Test]
+    public void RetainsLogsFor_AProgressReportBeforeTheFirstPass_CannotMaskALapse()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9000).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new MemDb());
+        FlatDbConfig sliced = new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
+
+        SlicedReceiptRetention before = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        before.OnPruningPassStarting(oldestStoredReceipts: 1, reclaimedThrough: 0, sliceCleanupThrough: 0);
+
+        SlicedReceiptRetention restarted = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
+        restarted.OnPruningProgress(reclaimedThrough: 5000, sliceCleanupThrough: 0);
+        restarted.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 5000, sliceCleanupThrough: 0);
+
+        Assert.That(restarted.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+            "the pruner persists cursors from its load path too - a progress report must not extend a record the first pass has not lapse-checked");
+    }
+
+    [Test]
     public void RetainsLogsFor_RefusesWithoutAHead()
     {
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new MemDb());
         SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>(), Substitute.For<IBlockTree>(), dbProvider);
-        retention.OnPruningPassStarting(oldestStoredReceipts: 0, reclaimedThrough: 0);
+        retention.OnPruningPassStarting(oldestStoredReceipts: 0, reclaimedThrough: 0, sliceCleanupThrough: 0);
 
         Assert.That(retention.RetainsLogsFor([TestItem.AddressA], 0, 100), Is.False,
             "a bounded window cannot be evaluated before the head exists, and failing open is the one wrong direction");

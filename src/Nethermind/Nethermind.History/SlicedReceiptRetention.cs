@@ -21,7 +21,7 @@ namespace Nethermind.History;
 /// log index covers the block it confirms the hit, since a bloom match on a busy contract is near-certain.</summary>
 public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage, IBlockTree blockTree, IDbProvider? dbProvider = null, ILogManager? logManager = null) : IPrunedReceiptRetention, IPrunedLogsRetention
 {
-    private const int StampValueLength = 2 * sizeof(ulong);
+    private const int StampValueLength = 3 * sizeof(ulong);
 
     private static ReadOnlySpan<byte> StampKeyPrefix => "history:sliceLogsFrom:"u8;
 
@@ -160,11 +160,11 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
 
     /// <summary>Records, per configured address, the height its receipt retention has provably been in force
     /// from. An address first seen here is stamped at <paramref name="oldestStoredReceipts"/> - anything below
-    /// was reclaimed before this retention existed, or never stored at all. An address whose record trails
-    /// <paramref name="reclaimedThrough"/> missed retention-aware reclaims while unconfigured, so its earned depth
-    /// lapsed and it restarts. The stamp never lowers itself: receipts backfilled below it stay refused rather
-    /// than guessed at.</summary>
-    public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough)
+    /// was reclaimed before this retention existed, or never stored at all. An address whose record trails either
+    /// reclaiming cursor missed retention-aware reclaims while unconfigured, so its earned depth lapsed and it
+    /// restarts. The stamp never lowers itself: receipts backfilled below it stay refused rather than guessed
+    /// at.</summary>
+    public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough, ulong sliceCleanupThrough)
     {
         if (_slices.Count == 0 || dbProvider?.MetadataDb is not { } metadata) return;
 
@@ -180,8 +180,9 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             if (stored is { Length: StampValueLength })
             {
                 stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
-                ulong storedThrough = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
-                if (reclaimedThrough > storedThrough)
+                ulong storedReclaimed = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
+                ulong storedCleanup = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(2 * sizeof(ulong)));
+                if (reclaimedThrough > storedReclaimed || sliceCleanupThrough > storedCleanup)
                 {
                     stampFrom = oldestStoredReceipts;
                     if (_logger.IsInfo) _logger.Info(
@@ -201,13 +202,14 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
 
             BinaryPrimitives.WriteUInt64BigEndian(value, stampFrom);
             BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedThrough);
+            BinaryPrimitives.WriteUInt64BigEndian(value[(2 * sizeof(ulong))..], sliceCleanupThrough);
             metadata.PutSpan(key, value);
             _stampCache[address] = stampFrom;
         }
     }
 
     /// <inheritdoc/>
-    public void OnPruningPassCompleted(ulong reclaimedThrough)
+    public void OnPruningProgress(ulong reclaimedThrough, ulong sliceCleanupThrough)
     {
         if (_slices.Count == 0 || dbProvider?.MetadataDb is not { } metadata) return;
 
@@ -217,34 +219,29 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
 
         foreach (Address address in _slices.Keys)
         {
+            // Only a record this process has validated is extended: the pruner also persists cursors from its
+            // load path, before any pass has run the lapse check a fresh record must still face.
+            if (!_stampCache.ContainsKey(address)) continue;
+
             address.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
             if (metadata.Get(key) is not { Length: StampValueLength } stored) continue;
 
-            ulong storedThrough = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
-            if (storedThrough >= reclaimedThrough) continue;
+            ulong storedReclaimed = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
+            ulong storedCleanup = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(2 * sizeof(ulong)));
+            if (storedReclaimed >= reclaimedThrough && storedCleanup >= sliceCleanupThrough) continue;
 
             stored.AsSpan(0, sizeof(ulong)).CopyTo(value);
-            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedThrough);
+            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], ulong.Max(storedReclaimed, reclaimedThrough));
+            BinaryPrimitives.WriteUInt64BigEndian(value[(2 * sizeof(ulong))..], ulong.Max(storedCleanup, sliceCleanupThrough));
             metadata.PutSpan(key, value);
         }
     }
 
-    /// <summary>Missing means refuse: an address no pruning pass has ever stamped has no proven depth - the
-    /// pruner may simply not have run yet, and failing closed until it does costs minutes, not correctness.</summary>
-    private ulong StampedRetainedFrom(AddressAsKey address)
-    {
-        if (_stampCache.TryGetValue(address, out ulong cached)) return cached;
-        if (dbProvider?.MetadataDb is not { } metadata) return ulong.MaxValue;
-
-        Span<byte> key = stackalloc byte[StampKeyPrefix.Length + Address.Size];
-        StampKeyPrefix.CopyTo(key);
-        address.Value.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
-        if (metadata.Get(key) is not { Length: StampValueLength } stored) return ulong.MaxValue;
-
-        ulong stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
-        _stampCache[address] = stampFrom;
-        return stampFrom;
-    }
+    /// <summary>Only a stamp this process has validated counts: a record on disk may predate a config change
+    /// whose lapse only the next pruning pass can detect, so until <see cref="OnPruningPassStarting"/> has run,
+    /// every address refuses - that costs minutes, not correctness.</summary>
+    private ulong StampedRetainedFrom(AddressAsKey address) =>
+        _stampCache.TryGetValue(address, out ulong cached) ? cached : ulong.MaxValue;
 
     /// <inheritdoc/>
     /// <remarks>Deliberately the MINIMUM floor across bounded slices - the deepest window - because the cleanup
