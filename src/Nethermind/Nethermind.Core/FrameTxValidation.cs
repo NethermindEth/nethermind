@@ -43,6 +43,7 @@ public static class FrameTxValidation
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
+    public const string RecentRootReferencesNotEnabled = "recent root references are not enabled";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {

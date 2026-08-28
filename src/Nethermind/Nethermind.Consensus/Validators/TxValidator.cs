@@ -286,26 +286,18 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 
 /// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
 /// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
-/// The reference cap is re-checked because callers can construct a transaction without the decoder.</remarks>
+/// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> precedes this validator in the
+/// frame-transaction composite and enforces the cap through <see cref="FrameTxValidation.IsWellFormed"/>, which
+/// applies it to decoder-built and caller-built transactions alike.</remarks>
 public sealed class FrameTxEnvelopeTxValidator : ITxValidator
 {
     public static readonly FrameTxEnvelopeTxValidator Instance = new();
     private FrameTxEnvelopeTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        RecentRootReference[]? references = transaction.RecentRootReferences;
-        if (references is null)
-        {
-            return ValidationResult.Success;
-        }
-
-        return releaseSpec.IsEip8272Enabled
-            ? references.Length <= Eip8272Constants.MaxRecentRootReferences
-                ? ValidationResult.Success
-                : "too many recent root references"
-            : "recent root references are not enabled";
-    }
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.RecentRootReferences is null || releaseSpec.IsEip8272Enabled
+            ? ValidationResult.Success
+            : FrameTxValidation.RecentRootReferencesNotEnabled;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

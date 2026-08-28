@@ -174,12 +174,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             if (!spec.IsEip8272Enabled)
             {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.RecentRootReferencesNotEnabled);
             }
 
             if (references.Length > Eip8272Constants.MaxRecentRootReferences)
             {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.TooManyRecentRootReferences);
             }
         }
 

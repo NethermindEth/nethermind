@@ -1085,7 +1085,8 @@ public class TxValidatorTests
         yield return new TestCaseData(Array.Empty<RecentRootReference>(), false, false).SetName("IsWellFormed_FrameTxEmptyReferences_BeforeEip8272_ReturnFalse");
         yield return new TestCaseData(Array.Empty<RecentRootReference>(), true, true).SetName("IsWellFormed_FrameTxEmptyReferences_AfterEip8272_ReturnTrue");
         yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences], true, true).SetName("IsWellFormed_FrameTxFullReferences_AfterEip8272_ReturnTrue");
-        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, false).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_ReturnFalse");
+        // The cap belongs to FrameTxValidation, which FrameTxFieldsTxValidator applies earlier in the composite.
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, true).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_NotCappedHere");
     }
 
     [TestCaseSource(nameof(RecentRootReferenceEnvelopeCases))]
