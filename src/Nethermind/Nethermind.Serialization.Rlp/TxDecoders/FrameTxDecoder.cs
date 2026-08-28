@@ -130,7 +130,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
-        transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
+        transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeArray(TxFrameSignatureDecoder.Instance, limit: SignaturesCountLimit);
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
@@ -277,9 +277,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         return buffer[..count].ToArray();
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
 }
 
 /// <summary>

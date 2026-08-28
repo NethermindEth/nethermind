@@ -177,6 +177,38 @@ public class FrameTxDecoderTests
     }
 
     [Test]
+    public void Decode_PayloadWithEmptySenderField_Throws()
+    {
+        // The sender is mandatory: a frame transaction names its payer outright rather than recovering
+        // it from an envelope signature, so — unlike `to` or a frame target — an empty field has no
+        // "absent" meaning and must not decode to a null sender.
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
+            Rlp.Encode(0L),                          // nonce
+            Rlp.Encode(Array.Empty<byte>()),         // sender, encoded as the empty string 0x80
+            Rlp.Encode(Array.Empty<Rlp>()),          // frames
+            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
+            Rlp.Encode(0L),                          // max_priority_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_blob_gas
+            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
+
+        byte[] payload = new byte[1 + sequence.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        sequence.Bytes.CopyTo(payload, 1);
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        // The generic address-decode message, not a frame-specific one: it carries the "RLP" fragment
+        // that TransactionTestBase matches EF fixture rejects on.
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("decoding Address"));
+    }
+
+    [Test]
     public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
     {
         // Empty msg means the entry signs compute_sig_hash itself, so its raw bytes are elided
