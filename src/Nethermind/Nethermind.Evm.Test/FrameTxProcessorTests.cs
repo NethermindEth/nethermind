@@ -2548,6 +2548,64 @@ public class FrameTxProcessorTests
         Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
+    // EIP-161 keeps the RIPEMD-160 touch alive for the rest of the transaction, so the empty account is
+    // still deleted at commit when the frame that touched it reverts. Both arms must reach the same root.
+    [TestCase(false, TestName = "Execute_FrameRevertsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    [TestCase(true, TestName = "Execute_BatchUnrollsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    public void Execute_FrameTouchingRipemdThenRollingBack_MatchesTheAbsentAccountRoot(bool unrollBatch)
+    {
+        Hash256 touched = RunRipemdTouchScenario(createRipemd: true, unrollBatch);
+        Hash256 absent = RunRipemdTouchScenario(createRipemd: false, unrollBatch);
+
+        Assert.That(touched, Is.EqualTo(absent),
+            "the rolled-back RIPEMD-160 touch must still delete the empty account");
+    }
+
+    /// <summary>
+    /// Runs a frame that makes a zero-value call to RIPEMD-160 and then reverts, and returns the
+    /// committed state root. With <paramref name="createRipemd"/> the account starts present and empty.
+    /// </summary>
+    private Hash256 RunRipemdTouchScenario(bool createRipemd, bool unrollBatch)
+    {
+        Address ripemd = Address.FromNumber(3);
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable closer = state.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(state);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance, _specProvider, state, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        state.CreateAccount(Sender, 1.Ether);
+        state.InsertCode(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), Spec);
+        // Zero-value call to RIPEMD-160, then discard the frame that made it.
+        state.CreateAccount(Observer, UInt256.Zero);
+        state.InsertCode(Observer, Prepare.EvmCode.Call(ripemd, 50_000).Revert(0, 0).Done, Spec);
+        if (createRipemd)
+        {
+            state.CreateAccount(ripemd, UInt256.Zero);
+        }
+
+        // Committed under a pre-EIP-158 spec so the empty account reaches the trie rather than being
+        // cleared by the very rule under test.
+        state.Commit(Frontier.Instance);
+
+        TxFrame body = unrollBatch
+            ? Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer)
+            : Frame(TxFrame.ModeDefault, target: Observer);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), body);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        // The processor commits without roots, as it does per transaction in block processing; the
+        // block-level commit is what flushes the EIP-158 deletions into the trie.
+        state.Commit(Spec);
+        state.CommitTree(1);
+        return state.StateRoot;
+    }
+
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
