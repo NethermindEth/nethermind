@@ -326,7 +326,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 using (dependentBatch)
                 {
                     MarkDirty();
-                    InsertHeaders(dependentBatch);
+                    try
+                    {
+                        InsertHeaders(dependentBatch);
+                    }
+                    catch
+                    {
+                        RequeueAsNewBatch(dependentBatch);
+                        throw;
+                    }
+
                     lowest = LowestInsertedBlockHeader?.Number;
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -481,17 +490,16 @@ namespace Nethermind.Synchronization.FastBlocks
                     return SyncResponseHandlingResult.Ignored;
                 }
 
-                if ((batch.Response?.Count ?? 0) == 0)
-                {
-                    batch.MarkHandlingStart();
-                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    EnqueueBatch(batch);
-                    batch.MarkHandlingEnd();
-                    return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
-                }
-
                 try
                 {
+                    if ((batch.Response?.Count ?? 0) == 0)
+                    {
+                        batch.MarkHandlingStart();
+                        if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                        EnqueueBatch(batch);
+                        return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                    }
+
                     if (batch.RequestSize == 0)
                     {
                         return SyncResponseHandlingResult.OK; // 1
@@ -506,11 +514,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 catch
                 {
-                    // This method owns the batch once it leaves `_sent`, so on failure
-                    // it must go back on the queue instead of being dropped.
-                    batch.Response?.Dispose();
-                    batch.Response = null;
-                    EnqueueBatch(batch, true);
+                    RequeueAsNewBatch(batch);
                     throw;
                 }
                 finally
@@ -561,7 +565,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             // Fewer headers than the positions they span means a header is missing in the middle.
-            if (firstIndex < 0 || presentCount != lastIndex - firstIndex + 1)
+            if (presentCount != lastIndex - firstIndex + 1)
             {
                 firstIndex = 0;
                 lastIndex = response.Length - 1;
@@ -576,6 +580,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 ResponseSourcePeer = batch.ResponseSourcePeer
             };
         }
+
+        /// <summary>
+        /// Queues <paramref name="batch"/>'s range again as a new batch. The original cannot be
+        /// reused: the caller disposes it, and <c>InsertHeaders</c> may have queued it already.
+        /// </summary>
+        private void RequeueAsNewBatch(HeadersSyncBatch batch) => EnqueueBatch(new HeadersSyncBatch
+        {
+            StartNumber = batch.StartNumber,
+            RequestSize = batch.RequestSize
+        }, skipPersisted: true);
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
         {
