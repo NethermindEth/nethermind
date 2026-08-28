@@ -1,0 +1,202 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm.TransactionProcessing;
+
+/// <summary>State helper for <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed nonces: NONCE_MANAGER slot derivation and per-key nonce reads/consumption.</summary>
+public static class KeyedNonceManager
+{
+    private const int SlotPreimageLength = 2 * 32;
+    /// <summary>Batch width of <see cref="KeccakHash.ComputeHash64Bytes8Avx512"/>.</summary>
+    private const int HashBatchSize = 8;
+
+    public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
+    {
+        Span<byte> preimage = stackalloc byte[SlotPreimageLength];
+        preimage.Clear();
+        sender.Bytes.CopyTo(preimage.Slice(32 - Address.Size, Address.Size));
+        nonceKey.ToBigEndian(preimage.Slice(32));
+        UInt256 index = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
+        return new StorageCell(Eip8250Constants.NonceManagerAddress, index);
+    }
+
+    public static ulong CurrentNonceSeq(IWorldState state, Address sender, in UInt256 nonceKey)
+    {
+        if (nonceKey.IsZero)
+        {
+            return state.GetNonce(sender);
+        }
+
+        return CurrentNonceSeq(state, StorageSlot(sender, nonceKey));
+    }
+
+    private static ulong CurrentNonceSeq(IWorldState state, in StorageCell slot)
+    {
+        UInt256 stored = new(state.Get(slot), isBigEndian: true);
+        // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
+        return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
+    }
+
+    public static bool IsFirstUse(IWorldState state, Address sender, in UInt256 nonceKey) =>
+        !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
+
+    public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    {
+        if (nonceKeys.Length == 1 && nonceKeys[0].IsZero)
+        {
+            state.IncrementNonce(sender);
+            return;
+        }
+
+        Span<byte> buffer = stackalloc byte[32];
+        ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
+        byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
+
+        if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        {
+            Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+            StorageIndices(sender, nonceKeys, indices);
+            for (int i = 0; i < nonceKeys.Length; i++)
+            {
+                Debug.Assert(!nonceKeys[i].IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
+                state.Set(new StorageCell(Eip8250Constants.NonceManagerAddress, indices[i]), nextSeq);
+            }
+            return;
+        }
+
+        foreach (UInt256 nonceKey in nonceKeys)
+        {
+            // EIP-8250 rejects key 0 in a non-[0] set; the decode-time validity check owns that, this guards the primitive.
+            Debug.Assert(!nonceKey.IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
+            state.Set(StorageSlot(sender, nonceKey), nextSeq);
+        }
+    }
+
+    /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
+    /// <remarks>
+    /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
+    /// singleton set <c>[0]</c>; and any multi-key set is strictly increasing, which also excludes a later 0.
+    /// </remarks>
+    public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
+    {
+        if (nonceKeys.Length < 1 || nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
+        {
+            return false;
+        }
+
+        // Key 0 is valid only as the singleton [0].
+        if (nonceKeys[0].IsZero)
+        {
+            return nonceKeys.Length == 1;
+        }
+
+        // Strictly increasing; as the first key is non-zero this also rejects any later 0.
+        for (int i = 1; i < nonceKeys.Length; i++)
+        {
+            if (nonceKeys[i] <= nonceKeys[i - 1])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Checks whether <paramref name="nonceKeys"/>/<paramref name="nonceSeq"/> is a valid set to consume against <paramref name="sender"/>'s current state.</summary>
+    /// <remarks>
+    /// Requires all of: <paramref name="nonceKeys"/> is well-formed (see <see cref="AreNonceKeysWellFormed"/>),
+    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
+    /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
+    /// </remarks>
+    public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    {
+        if (!AreNonceKeysWellFormed(nonceKeys))
+        {
+            return false;
+        }
+
+        if (nonceSeq >= Eip8250Constants.MaxNonceSeq)
+        {
+            return false;
+        }
+
+        // A well-formed multi-key set is bounded and cannot contain key 0, so every key uses a storage slot.
+        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        {
+            Debug.Assert(!nonceKeys[0].IsZero, "key 0 cannot appear in a well-formed multi-key set");
+            Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+            StorageIndices(sender, nonceKeys, indices);
+            for (int i = 0; i < nonceKeys.Length; i++)
+            {
+                StorageCell slot = new(Eip8250Constants.NonceManagerAddress, indices[i]);
+                if (CurrentNonceSeq(state, slot) != nonceSeq)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        foreach (ref readonly UInt256 nonceKey in nonceKeys)
+        {
+            if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Computes the NONCE_MANAGER storage index for each key in <paramref name="nonceKeys"/>, batching the Keccak hashes with AVX-512 where possible.</summary>
+    [SkipLocalsInit]
+    internal static void StorageIndices(Address sender, ReadOnlySpan<UInt256> nonceKeys, Span<UInt256> indices)
+    {
+        Debug.Assert(indices.Length >= nonceKeys.Length);
+
+        int keyIndex = 0;
+        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        {
+            Span<byte> preimages = stackalloc byte[SlotPreimageLength * HashBatchSize];
+            Span<byte> hashes = stackalloc byte[Keccak.Size * HashBatchSize];
+
+            for (int i = 0; i < HashBatchSize; i++)
+            {
+                Span<byte> senderBlock = preimages.Slice(i * SlotPreimageLength, 32);
+                senderBlock[..(32 - Address.Size)].Clear();
+                sender.Bytes.CopyTo(senderBlock[(32 - Address.Size)..]);
+            }
+
+            do
+            {
+                for (int i = 0; i < HashBatchSize; i++)
+                {
+                    nonceKeys[keyIndex + i].ToBigEndian(preimages.Slice(i * SlotPreimageLength + 32, 32));
+                }
+
+                KeccakHash.ComputeHash64Bytes8Avx512(ref preimages[0], ref hashes[0]);
+                for (int i = 0; i < HashBatchSize; i++)
+                {
+                    indices[keyIndex + i] = new UInt256(hashes.Slice(i * Keccak.Size, Keccak.Size), isBigEndian: true);
+                }
+
+                keyIndex += HashBatchSize;
+            } while (keyIndex <= nonceKeys.Length - HashBatchSize);
+        }
+
+        for (; keyIndex < nonceKeys.Length; keyIndex++)
+        {
+            indices[keyIndex] = StorageSlot(sender, nonceKeys[keyIndex]).Index;
+        }
+    }
+}

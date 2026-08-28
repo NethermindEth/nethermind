@@ -3,14 +3,23 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
+/// <param name="GetBlock">
+/// Reconstructs the block. Deferred because it parses attacker-controlled transaction RLP and can
+/// throw, so callers must publish <see cref="StatelessExecutor.FailureOutput"/> before invoking it.
+/// </param>
 internal readonly record struct StatelessPayload
 (
-    Block Block,
+    Func<Block> GetBlock,
     ExecutionWitness Witness,
-    ChainConfig ChainConfig,
-    Hash256 NewPayloadRequestRoot
+    ulong ChainId,
+    ushort SchemaId,
+    ReadOnlyMemory<SszPublicKeys> PublicKeys,
+    ReadOnlyMemory<Hash256> VersionedHashes,
+    Hash256 NewPayloadRequestRoot,
+    ISpecProvider SpecProvider
 );

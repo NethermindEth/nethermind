@@ -7,9 +7,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockCommitSet(long blockNumber) : IComparable<BlockCommitSet>
+    public class BlockCommitSet(ulong blockNumber) : IComparable<BlockCommitSet>
     {
-        public long BlockNumber { get; } = blockNumber;
+        public ulong BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
         public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;
@@ -44,7 +44,7 @@ namespace Nethermind.Trie.Pruning
             // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
             // may make this call unnecessary.
             Root?.PrunePersistedRecursively(2);
-            Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            Metrics.DeepPruningTimeMs = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
 
         public int CompareTo(BlockCommitSet? other)

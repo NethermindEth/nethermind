@@ -34,6 +34,9 @@ public class SyncDispatcherTests
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            // Mirrors SyncPeerPool.Allocate: a cancelled token reports a failed allocation, it does not throw.
+            if (cancellationToken.IsCancellationRequested) return SyncPeerAllocation.FailedAllocation;
+
             await Task.Yield();
             await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
@@ -46,6 +49,8 @@ public class SyncDispatcherTests
             public override string ClientId => clientId;
             public override UInt256? TotalDifficulty => totalDifficulty;
         }
+
+        public int AvailablePeers => _peerSemaphore.CurrentCount;
 
         public void Free(SyncPeerAllocation syncPeerAllocation) =>
             _peerSemaphore.Release();
@@ -138,7 +143,7 @@ public class SyncDispatcherTests
         }
     }
 
-    private class TestSyncFeed(bool isMultiFeed = true, int max = 64) : SyncFeed<TestBatch>
+    private class TestSyncFeed(bool isMultiFeed = true, int max = 64, Action? onPrepareRequest = null) : SyncFeed<TestBatch>
     {
         public int Max { get; } = max;
         public int HighestRequested { get; private set; }
@@ -157,8 +162,12 @@ public class SyncDispatcherTests
         public void UnlockResponse() =>
             _responseLock.Set();
 
+        public int HandleResponseCallCount => Volatile.Read(ref _handleResponseCallCount);
+        private int _handleResponseCallCount;
+
         public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
+            Interlocked.Increment(ref _handleResponseCallCount);
             _handleResponseCalled.TrySetResult();
             _responseLock.WaitOne();
             if (response.Result is null)
@@ -196,6 +205,8 @@ public class SyncDispatcherTests
 
         public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
         {
+            onPrepareRequest?.Invoke();
+
             TestBatch testBatch;
             if (_returned.TryDequeue(out TestBatch? returned))
             {
@@ -308,6 +319,74 @@ public class SyncDispatcherTests
         await executorTask.WaitAsync(cancellationToken);
     }
 
+    [Test, CancelAfter(30_000)]
+    public async Task Cancelled_in_flight_dispatch_skips_its_response_and_frees_its_allocation(CancellationToken cancellationToken)
+    {
+        // The dispatch loop cancels its token on every exit, including the routine feed-finish exit
+        // on a live node. The cancelled dispatch must not handle its response into a finishing feed,
+        // and it must still free its allocation - a leaked slot retires the peer for the lifetime
+        // of the connection.
+        TestSyncPeerPool pool = new(peerCount: 2);
+        TestSyncFeed syncFeed = new(max: 16);
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig { MaxProcessingThreads = 1 },
+            syncFeed,
+            new TestDownloader(),
+            pool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        // The first dispatch takes the single processing permit and blocks inside HandleResponse;
+        // the second finishes downloading and waits for the permit, holding its peer allocation.
+        syncFeed.LockResponse();
+        syncFeed.Activate();
+        Task dispatcherTask = dispatcher.Start(cancellationToken);
+        await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
+
+        // The permit holder has already freed its own slot, so exactly one slot outstanding
+        // means the second dispatch holds its allocation and the cancelled-wait path is real.
+        Assert.That(() => pool.AvailablePeers, Is.EqualTo(1).After(10_000, 10),
+            "guard: the second dispatch must hold an allocation before the feed finishes");
+
+        syncFeed.Finish();
+        await dispatcherTask.WaitAsync(cancellationToken);
+
+        syncFeed.UnlockResponse();
+        await dispatcher.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.AvailablePeers, Is.EqualTo(2), "every allocation must return to the pool");
+            Assert.That(syncFeed.HandleResponseCallCount, Is.EqualTo(1), "the cancelled dispatch must not handle its response");
+        }
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Feed_is_finished_when_the_loop_exits_without_an_await_throwing(CancellationToken cancellationToken)
+    {
+        // Shutdown waits on ISyncFeed.FeedTask (Synchronizer.DisposeAsync), and the dispatch loop is the
+        // feed's only consumer - a loop that returns without finishing the feed turns that wait into a
+        // guaranteed timeout. Cancelling from inside PrepareRequest reproduces the exit where nothing
+        // throws: the peer pool reports a failed allocation for a cancelled token, so the iteration runs
+        // to completion and it is the `while` condition, not a cancelled await, that ends the loop.
+        using CancellationTokenSource cts = new();
+        TestSyncFeed syncFeed = new(onPrepareRequest: cts.Cancel);
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        syncFeed.Activate();
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.False, "an activated feed must have a pending FeedTask");
+
+        await dispatcher.Start(cts.Token).WaitAsync(cancellationToken);
+
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.True, "the dispatch loop must finish the feed on every exit path");
+    }
+
     [Test]
     public async Task DisposeAsync_unsubscribes_StateChanged_handler()
     {
@@ -364,6 +443,7 @@ public class SyncDispatcherTests
     [TestCase(true, 1, 1, 24)]
     [TestCase(true, 2, 1, 32)]
     [TestCase(true, 1, 2, 32)]
+    [NonParallelizable]
     public async Task Test_release_before_processing_complete(bool isMultiSync, int processingThread, int peerCount, int expectedHighestRequest)
     {
         TestSyncFeed syncFeed = new(isMultiSync, 999999);

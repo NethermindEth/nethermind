@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -158,6 +159,34 @@ public class EvmStackTests
         for (int i = used; i < 32; i++) Assert.That(word[i], Is.EqualTo(0), $"byte {i} zero-pad tail");
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(17)]
+    [TestCase(31)]
+    [TestCase(32)]
+    public void PushRightPaddedBytes_traces_the_completed_word(int length)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        byte[] source = new byte[EvmPooledMemory.WordSize];
+        for (int i = 0; i < source.Length; i++) source[i] = (byte)(i + 1);
+        byte[] expected = new byte[EvmPooledMemory.WordSize];
+        source.AsSpan(0, length).CopyTo(expected);
+
+        EvmExceptionType result = stack.PushRightPaddedBytes<OnFlag>(
+            ref MemoryMarshal.GetArrayDataReference(source),
+            (uint)length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(tracer.StackItem, Is.EqualTo(expected));
+            Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
+            Assert.That(word.ToArray(), Is.EqualTo(expected));
+        }
+    }
+
     [Test]
     public void PushUInt256_then_PopUInt256_roundtrip()
     {
@@ -187,10 +216,13 @@ public class EvmStackTests
         // Multi-out pop returns top first: a=z (was top), b=y, c=x (deepest).
         Assert.That(stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c), Is.True);
 
-        Assert.That(a, Is.EqualTo(z));
-        Assert.That(b, Is.EqualTo(y));
-        Assert.That(c, Is.EqualTo(x));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a, Is.EqualTo(z));
+            Assert.That(b, Is.EqualTo(y));
+            Assert.That(c, Is.EqualTo(x));
+            Assert.That(stack.Head, Is.EqualTo(0));
+        }
     }
 
     // Direct-encoder coverage for the new PushN fast paths (PUSH1..PUSH32 normal path).
@@ -319,9 +351,16 @@ public class EvmStackTests
 
     private static VmState<EthereumGasPolicy> CreateEvmState() =>
         VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(10_000),
+            EthereumGasPolicy.FromULong(10_000UL),
             ExecutionType.CALL,
             ExecutionEnvironment.Rent(null, null, null, null, 0, default, default),
             new StackAccessTracker(),
             Snapshot.Empty);
+
+    private sealed class StackPushTracer : TxTracer
+    {
+        public byte[] StackItem { get; private set; } = [];
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackItem = stackItem.ToArray();
+    }
 }

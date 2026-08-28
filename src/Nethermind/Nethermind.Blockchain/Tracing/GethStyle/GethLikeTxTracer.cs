@@ -19,6 +19,7 @@ public abstract class GethLikeTxTracer : TxTracer
         IsTracingOpLevelStorage = !options.DisableStorage;
         IsTracingStack = !options.DisableStack;
         IsTracingFullMemory = options.EnableMemory;
+        IsTracingReturnData = options.EnableReturnData;
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
@@ -66,7 +67,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
 
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -87,7 +88,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
             CurrentTraceEntry.Error = GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
@@ -101,13 +102,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
     public override void SetOperationStack(TraceStack stack)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Stack = stack.ToHexWordList();
+            CurrentTraceEntry.Stack = stack.ToRawBytes();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
-            CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
+            CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
     }
 
     public override GethLikeTxTrace BuildResult()

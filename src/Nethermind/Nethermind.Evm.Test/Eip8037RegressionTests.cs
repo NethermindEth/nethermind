@@ -3,12 +3,14 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -28,7 +30,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Nonexistent
     }
 
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
     private static Prepare BuildCreateFactory(byte[] initCode, UInt256 value, bool create2, byte[]? salt = null) =>
@@ -37,7 +39,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             : Prepare.EvmCode.Create(initCode, value);
 
     [Test]
-    public void Eip8037_rejects_tx_when_calldata_floor_exceeds_tx_max_regular_gas()
+    public void Eip8037_rejects_tx_when_calldata_floor_exceeds_tx_max_execution_gas()
     {
         byte[] calldata = new byte[262_000];
         Array.Fill(calldata, (byte)0xff);
@@ -64,27 +66,181 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
             tracer);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowIntrinsicGas));
-        Assert.That(TestState.GetNonce(Sender), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitBelowIntrinsicGas));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
+    {
+        byte[] code = Prepare.EvmCode
+            .CallWithValue(TestItem.AddressF, long.MaxValue, 101.Ether)
+            .Op(Instruction.POP)
+            .Call(Address.FromNumber(6), long.MaxValue)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        ulong precompileCallGas = 0;
+        bool foundPrecompileCall = false;
+        foreach (TestAllTracerWithOutput.ActionTrace action in tracer.Actions)
+        {
+            if (action.IsPrecompileCall && action.To == Address.FromNumber(6))
+            {
+                precompileCallGas = action.Gas;
+                foundPrecompileCall = true;
+                break;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(foundPrecompileCall, Is.True);
+            Assert.That(precompileCallGas, Is.EqualTo(954_604));
+        }
+    }
+
+    [Test]
+    public void Eip8037_nested_exceptional_halts_burn_spilled_state_gas()
+    {
+        // Byte-exact reproduction of the recursive contract from nethermind#12964. Every frame:
+        //   PUSH0 PUSH0                    ; zeros reserved for the trailing CALL
+        //   PUSH1 0x0b SLOAD NOT           ; value = ~storage[11]
+        //   PUSH1 0x0b DUP2 DUP2 SSTORE    ; storage[11] = value, alternating 0 <-> 2^256-1
+        //                                  ; across nesting depths: fresh non-zero sets spill
+        //                                  ; their state charge when the reservoir is empty,
+        //                                  ; restorations to the original zero credit it back
+        //   CALLDATASIZE DUP2 DUP2         ; small constants reused as call operands
+        //   ADDRESS ADDRESS DELEGATECALL   ; nest one frame deeper
+        //   DUP4 CALLER CALLER CALL        ; trailing CALL reuses the all-ones value as a
+        //                                  ; memory-size operand, so its expansion overflows
+        //                                  ; and the frame halts exceptionally on unwind
+        byte[] code = Convert.FromHexString("5f5f600b5419600b8181553681813030f4833333f1");
+        const ulong gasLimit = 200_000;
+
+        TestAllTracerWithOutput tracer = Execute(
+            Activation,
+            gasLimit,
+            code,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
+            AssertStorage(new StorageCell(Recipient, 11), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_top_level_halt_refunds_reservoir_funded_new_account_state_gas()
+    {
+        // Empty BLAKE2F input fails after the value transfer charges NEW_ACCOUNT from the reservoir.
+        Address precompile = Blake2FPrecompile.Address;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.NewAccountState;
+        Transaction transaction = Build.A.Transaction
+            .WithTo(precompile)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithValue(1)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            // A failed top-level precompile surfaces as PrecompileOutOfGasException (VirtualMachine.ExecutePrecompile
+            // maps any failed precompile result to it), so the tracer reports OutOfGas.
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(TestState.AccountExists(precompile), Is.False);
+        }
+    }
+
+    [Test]
+    public void Eip8037_reservoir_funded_sstore_burns_on_halt_while_unspent_reservoir_refunds()
+    {
+        // Gas above the EIP-7825 cap funds the reservoir with exactly one SSTORE_SET state charge;
+        // the contract spends it on an SSTORE and then INVALIDs. The halt restores the reservoir to
+        // its frame-entry value: the reservoir-funded write burns with the halt and the user is
+        // charged only the execution dimension (the capped amount).
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + (ulong)GasCostOf.SSetState;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_failed_create_credit_does_not_survive_top_level_halt()
+    {
+        // The failing inner CREATE refunds its NEW_ACCOUNT state charge to this frame's reservoir;
+        // a subsequent exceptional halt must burn that credit instead of letting it reduce spent gas.
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.Op(Instruction.INVALID).Done, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        const ulong gasLimit = 200_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        }
     }
 
     /// <summary>
-    /// When a nested CREATE/CREATE2 child frame has too little regular gas to cover both
-    /// the regular code deposit cost AND the state-gas spill, the create operation must fail.
+    /// When a nested CREATE/CREATE2 child frame has too little execution gas to cover both
+    /// the execution code deposit cost AND the state-gas spill, the create operation must fail.
     ///
-    /// The child ends below the combined regular code-deposit cost and state-gas spill.
+    /// The child ends below the combined execution code-deposit cost and state-gas spill.
     /// Without the fix, the pre-check passes against each component separately and the
     /// charge runs on the merged parent+child pool, silently borrowing parent gas.
     /// </summary>
-    [TestCase(false, 215187L, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE")]
-    [TestCase(true, 215187L + GasCostOf.VeryLow + GasCostOf.Sha3Word, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE2")]
-    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas(bool create2, long gasLimit)
+    [TestCase(false, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_execution_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_execution_gas_CREATE2")]
+    public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_execution_gas(bool create2)
     {
-        // Init code: deploys 1 byte of zeros from memory
-        // PUSH1 1, PUSH1 0, RETURN = 5 bytes, costs 9 gas (3+3+3 memory expansion)
         byte[] initCode = Prepare.EvmCode
-            .PushData(1)
+            .PushData(256)
             .PushData(0)
             .Op(Instruction.RETURN)
             .Done;
@@ -99,33 +255,24 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        // Gas calculation for CREATE:
-        //   Intrinsic (CALL to existing account): 21000
-        //   Factory pre-CREATE opcodes: 21 gas
-        //   CREATE opcode costs:
-        //     CreateRegular(9000) + InitCodeWord(2) = 9002 regular
-        //     CreateState(183600) -> spills entirely to regular (factory has 0 state reservoir)
-        //     Total: 192602 regular
-        //   Remaining after CREATE costs: 1564
-        //   63/64 rule: callGas = 1564 - floor(1564/64) = 1540, factory retains 24
-        //   Child: 1540 gas -> 9 for init code -> 1531 remaining for code deposit
-        //   Factory post-CREATE: 12 gas (PUSH, MSTORE, PUSH, PUSH, RETURN)
-        //   Total: 21000 + 21 + 192602 + 1564 = 215187
-        //   CREATE2 delta: salt PUSH(3) before the opcode + one-word Sha3Word(6)
-        //   during the opcode. Gas limit: 215187 + 9 = 215196 for the same child frame gas.
-
+        // The nested child's 63/64 share cannot cover the 256-byte code deposit; it must fail on
+        // its own budget rather than borrowing the parent's execution gas.
+        const long gasLimit = 300_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
-
-        // Transaction succeeds (factory runs fine), but the nested CREATE/CREATE2 must fail
-        // because the child can't afford the code deposit from its own gas alone.
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "Factory execution should succeed");
 
         // CREATE/CREATE2 result: 0 = failure (returned in the 32-byte output)
         byte[] returnData = tracer.ReturnValue;
-        Assert.That(returnData.IsZero(), Is.True,
-            "Nested CREATE/CREATE2 should fail: child has 1531 gas but needs 1536 for code deposit (6 regular + 1530 state spill)");
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            // Transaction succeeds (factory runs fine), but the nested CREATE/CREATE2 must fail
+            // because the child can't afford the code deposit from its own gas alone.
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "Factory execution should succeed");
+
+            Assert.That(returnData.IsZero(), Is.True,
+                "Nested CREATE/CREATE2 should fail: the child's 63/64 gas share cannot cover the 256-byte code deposit.");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.GreaterThan(0));
+        }
     }
 
     [TestCase(false, TestName = "Eip8037_nested_create_code_deposit_failure_must_refund_parent_create_state_CREATE")]
@@ -154,11 +301,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     /// later code deposit fails, the reverted initcode state gas must unwind back to
     /// the intrinsic CREATE floor before final gas accounting.
     ///
-    /// Only the top-level CREATE state gas should remain in block_state_gas_used; the
-    /// reverted initcode state growth must not contribute to the block header gas_used.
+    /// Failed top-level CREATE execution burns spilled state gas, but reverted state growth must not
+    /// contribute to block_state_gas_used.
     /// </summary>
     [Test]
-    public void Eip8037_code_deposit_failure_must_keep_initcode_state_gas_in_state_dimension()
+    public void Eip8037_code_deposit_failure_burns_spilled_state_gas_without_block_state_gas()
     {
         // Initcode:
         //   1) CALL a dead account with value=1 - charges NewAccountState
@@ -170,7 +317,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        long gasLimit = 1_000_000;
+        ulong gasLimit = 1_000_000ul;
 
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, value: 1, blockGasLimit: DynamicStatePricingBlockGasLimit);
         transaction.To = null;
@@ -189,15 +336,18 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         parallelProcessor.Execute(transaction, tracer);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
-            "CREATE tx with oversized code return should fail");
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - 2 * GasCostOf.NewAccountState),
-            "Reverted initcode and top-level CREATE state gas return to the reservoir before transaction billing.");
-        Assert.That(tracer.GasConsumedResult.BlockStateGas,
-            Is.Zero,
-            "Reverted state gas must not contribute to block_state_gas_used.");
-        Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False,
-            "The initcode CALL target must be reverted together with its state gas.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+                "CREATE tx with oversized code return should fail");
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit),
+                "The top-level CREATE and initcode CALL state gas spills are burned by the exceptional halt.");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas,
+                Is.Zero,
+                "Reverted state gas must not contribute to block_state_gas_used.");
+            Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False,
+                "The initcode CALL target must be reverted together with its state gas.");
+        }
     }
 
     [Test]
@@ -212,7 +362,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Done;
 
         byte[] oversizedInitCode = new byte[(int)Spec.MaxInitCodeSize + 1];
-        long gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.CreateState;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.CreateState;
 
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, createFromCalldataCode, oversizedInitCode, UInt256.Zero);
         block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
@@ -220,15 +370,102 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(result, Is.EqualTo(TransactionResult.Ok));
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+        }
     }
 
     [Test]
-    public void Eip8037_top_level_create_collision_must_still_pay_calldata_floor()
+    public void Eip8037_top_level_create_state_oog_must_revert_value_transfer()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            1_000_000,
+            initCode,
+            value: 1,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        transaction.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.CreateState - 1;
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+
+        UInt256 senderBalanceBefore = TestState.GetBalance(Sender);
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(transaction.GasLimit));
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalanceBefore - transaction.GasLimit));
+            Assert.That(TestState.AccountExists(contractAddress), Is.False);
+            Assert.That(tracer.Actions, Has.Count.EqualTo(1));
+            Assert.That(tracer.Actions[0].CallType, Is.EqualTo(ExecutionType.CREATE));
+            Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
+        }
+    }
+
+    [TestCase(false, TestName = "Eip8037_top_level_create_on_existing_target_clears_storage_without_charging_create_state_gas")]
+    [TestCase(true, TestName = "Eip8037_top_level_create_on_pruned_storage_target_clears_stale_storage")]
+    public void Eip8037_top_level_create_clears_storage(bool pruneTarget)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            1_000_000,
+            initCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(contractAddress, pruneTarget ? UInt256.Zero : (UInt256)1);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        if (pruneTarget)
+        {
+            TestState.Commit(Spec, commitRoots: false);
+            Assert.That(TestState.AccountExists(contractAddress), Is.False);
+        }
+
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        if (!pruneTarget)
+            transaction.GasLimit = intrinsicGas.MinimalGas;
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            if (!pruneTarget)
+                Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(pruneTarget ? (ulong)GasCostOf.CreateState : 0));
+            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(pruneTarget ? UInt256.Zero : (UInt256)1));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_top_level_create_collision_must_not_charge_create_state_gas()
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -245,10 +482,13 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
+        }
     }
 
     [Test]
@@ -281,18 +521,186 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
-        long expectedPaidGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular + GasCostOf.PerAuthBaseState;
+        ulong expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
+        // Intrinsic + auth base costs plus the delegation-target access paid when calling the
+        // now-delegated authority; pinned to the fixture-validated value.
+        const ulong expectedPaidGas = 67006;
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedPaidGas));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedAuthorizationStateGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.CumulativeRegularGasUsed, expectedAuthorizationStateGas)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedPaidGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedAuthorizationStateGas));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.CumulativeExecutionGasUsed, expectedAuthorizationStateGas)));
+        }
     }
 
-    [TestCase(false, 410_365L, TestName = "Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas_CREATE")]
-    [TestCase(true, 410_365L, TestName = "Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas_CREATE2")]
-    public void Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas(bool create2, long expectedBlockGas)
+    [TestCase(false, TestName = "Eip8037_authorization_oog_restores_preparation_reservoir")]
+    [TestCase(true, TestName = "Eip8037_dispatch_oog_rolls_back_authorization_and_restores_preparation_reservoir")]
+    public void Eip8037_preparation_oog_restores_original_gas_state(bool authorizationSucceeds)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address codeSource = TestItem.AddressC;
+        AuthorizationTuple authorization = ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0);
+
+        Transaction template = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorization)
+            .TestObject;
+        IntrinsicGas<EthereumGasPolicy> baseIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(template, Spec);
+
+        ulong accessListAddressCost = Eip8038Constants.AccessListAddressCost
+            + Address.Size * Spec.GasCosts.TxDataNonZeroMultiplier * Spec.GasCosts.TotalCostFloorPerToken;
+        int accessListEntryCount = checked((int)((Eip7825Constants.DefaultTxGasLimitCap - baseIntrinsicGas.Standard.Value) / accessListAddressCost));
+        AccessList.Builder accessListBuilder = new();
+        for (int i = 0; i < accessListEntryCount; i++)
+        {
+            accessListBuilder.AddAddress(Address.FromNumber((ulong)i + 1000));
+        }
+
+        AccessList accessList = accessListBuilder.Build();
+        template.AccessList = accessList;
+        template.IntrinsicGasMemo = null;
+        IntrinsicGas<EthereumGasPolicy> accessListIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(template, Spec);
+        ulong remainingExecutionGas = Eip7825Constants.DefaultTxGasLimitCap - accessListIntrinsicGas.Standard.Value;
+        byte[] calldata = new byte[checked((int)(remainingExecutionGas / GasCostOf.TxDataZero))];
+
+        long reservoir = authorizationSucceeds
+            ? GasCostOf.PerAuthBaseState + 1_000
+            : GasCostOf.PerAuthBaseState - (long)GasCostOf.TxDataZero;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithData(calldata)
+            .WithAccessList(accessList)
+            .WithAuthorizationCode(authorization)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, Spec);
+
+        Assert.That(Eip7825Constants.DefaultTxGasLimitCap - intrinsicGas.Standard.Value, Is.LessThan(GasCostOf.TxDataZero));
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(TestState.GetNonce(Recipient), Is.Zero);
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(Recipient)), Is.False);
+        }
+    }
+
+    [Test]
+    public void Eip8037_halted_child_spill_does_not_reduce_persistent_authorization_state_gas()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address child = TestItem.AddressC;
+        Address codeSource = TestItem.AddressE;
+        byte[] childCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.INVALID)
+            .Done;
+        byte[] delegatedCode = Prepare.EvmCode
+            .Call(child, 200_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        TestState.CreateAccount(child, 0);
+        TestState.InsertCode(child, childCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, delegatedCode, SpecProvider.GenesisSpec);
+
+        const long gasLimit = 1_000_000;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.PerAuthBaseState));
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(Recipient)), Is.True);
+        }
+    }
+
+    [Test]
+    public void Eip8037_exceptional_halt_applies_calldata_floor_after_authorization_state_gas()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address codeSource = TestItem.AddressC;
+        byte[] calldata = new byte[10_000];
+
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.INVALID).Done, SpecProvider.GenesisSpec);
+
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(RecipientKey.Address)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithData(calldata)
+            .WithAuthorizationCode(ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        Assert.That(intrinsicGas.FloorGas, Is.GreaterThan(intrinsicGas.Standard));
+        transaction.GasLimit = intrinsicGas.MinimalGas;
+
+        (Block block, _) = PrepareTx(
+            Activation,
+            transaction.GasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.PerAuthBaseState));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(intrinsicGas.FloorGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(intrinsicGas.FloorGas));
+        }
+    }
+
+    [TestCase(false, 591_143L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE")]
+    [TestCase(true, 591_144L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE2")]
+    public void Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas(bool create2, long expectedBlockGas)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -314,10 +722,190 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         const long gasLimit = 600_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedBlockGas));
-        Assert.That(TestState.AccountExists(collisionAddress), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedBlockGas));
+            Assert.That(TestState.AccountExists(collisionAddress), Is.True);
+        }
+    }
+
+    [TestCase(false, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE2")]
+    public void Eip8037_nested_pruned_storage_only_target_charges_create_state_gas(bool create2)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] salt = [0x01];
+        Address createAddress = create2
+            ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
+            : ContractAddress.From(Recipient, 0);
+        TestState.CreateAccount(createAddress, 0);
+        TestState.Set(new StorageCell(createAddress, 0), [1]);
+        TestState.Commit(Spec, commitRoots: false);
+        Assert.That(TestState.AccountExists(createAddress), Is.False);
+
+        Prepare codeBuilder = create2
+            ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(initCode, UInt256.Zero);
+        byte[] code = codeBuilder
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 600_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo((ulong)GasCostOf.CreateState));
+            AssertStorage(new StorageCell(createAddress, 0), UInt256.Zero);
+        }
+    }
+
+    [TestCase(false, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
+    [TestCase(false, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE2")]
+    [TestCase(false, false, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE")]
+    [TestCase(false, true, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE2")]
+    public void Eip8037_create_state_gas_matches_reference(
+        bool create2,
+        bool emptyExistingTarget,
+        bool createFails,
+        ulong expectedGas)
+    {
+        Address factory = TestItem.AddressC;
+        byte[] initCode = Prepare.EvmCode
+            .Op(createFails ? Instruction.INVALID : Instruction.STOP)
+            .Done;
+        byte[] salt = [0x01];
+        Address createAddress = create2
+            ? ContractAddress.From(factory, salt.PadLeft(32), initCode)
+            : ContractAddress.From(factory, 0);
+
+        TestState.CreateAccount(factory, 0);
+        TestState.InsertCode(
+            factory,
+            BuildCreateFactory(initCode, UInt256.Zero, create2, salt)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done,
+            SpecProvider.GenesisSpec);
+
+        if (emptyExistingTarget)
+        {
+            TestState.CreateAccount(createAddress, 0);
+        }
+
+        byte[] callerCode = Prepare.EvmCode
+            .Call(factory, 600_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(
+            Activation,
+            1_000_000,
+            callerCode,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedGas));
+            Assert.That(
+                tracer.GasConsumedResult.BlockStateGas,
+                Is.EqualTo(createFails ? 0UL : (ulong)GasCostOf.CreateState));
+        }
+    }
+
+    [TestCase(false, TestName = "Eip8037_failed_create_on_balance_only_account_continues_parent_CREATE")]
+    [TestCase(true, TestName = "Eip8037_failed_create_on_balance_only_account_continues_parent_CREATE2")]
+    public void Eip8037_failed_create_on_balance_only_account_continues_parent(bool create2)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.INVALID)
+            .Done;
+        byte[] salt = [0x01];
+        Address createAddress = create2
+            ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
+            : ContractAddress.From(Recipient, 0);
+        TestState.CreateAccount(createAddress, 1);
+        TestState.Set(new StorageCell(Recipient, 0), [0x01]);
+        ulong creatorNonceBefore = TestState.GetNonce(Recipient);
+
+        Prepare codeBuilder = create2
+            ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(initCode, UInt256.Zero);
+        byte[] code = codeBuilder
+            .Op(Instruction.POP)
+            .PushData(2)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(creatorNonceBefore + 1));
+            AssertStorage(new StorageCell(Recipient, 0), (UInt256)2);
+        }
+    }
+
+    [TestCase(false, 479_030L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE")]
+    [TestCase(true, 479_039L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE2")]
+    public void Eip8037_failed_create_burns_child_execution_gas(bool create2, long expectedGas)
+    {
+        Address factory = TestItem.AddressC;
+        byte[] initCode = Bytes.FromHexString("600062070f605260006000f3");
+        byte[] salt = [0];
+        Prepare factoryBuilder = create2
+            ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(initCode, UInt256.Zero);
+        byte[] factoryCode = factoryBuilder
+            .PushData(0)
+            .Op(Instruction.GT)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        Address createAddress = create2
+            ? ContractAddress.From(factory, salt.PadLeft(32).AsSpan(), initCode.AsSpan())
+            : ContractAddress.From(factory, 0);
+
+        TestState.CreateAccount(factory, 0);
+        TestState.InsertCode(factory, factoryCode, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(createAddress, 1);
+
+        byte[] callerCode = Prepare.EvmCode.Call(factory, 0x08929a).Done;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            0x01000000,
+            callerCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        UInt256 senderBalanceBefore = TestState.GetBalance(Sender);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedGas));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(expectedGas));
+            Assert.That(senderBalanceBefore - TestState.GetBalance(Sender), Is.EqualTo((UInt256)(ulong)expectedGas));
+            Assert.That(TestState.GetNonce(factory), Is.EqualTo(1ul));
+            AssertStorage(new StorageCell(factory, 0), UInt256.Zero);
+        }
     }
 
     [TestCase(false, TestName = "Eip8037_top_level_create_revert_must_refund_inner_create_state_gas")]
@@ -353,7 +941,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_top_level_halt_must_refund_reverted_create_state_gas()
+    public void Eip8037_top_level_halt_burns_reverted_inner_create_state_gas()
     {
         byte[] childInitCode = Prepare.EvmCode
             .Create([], UInt256.One)
@@ -382,12 +970,13 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long refundedStateGas = 3 * GasCostOf.CreateState;
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - refundedStateGas));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - refundedStateGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
+        }
     }
 
     [Test]
@@ -417,11 +1006,113 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
+        }
+    }
+
+    private static TestCaseData[] FailedCreateRegressionCases =>
+    [
+        new TestCaseData(
+            "block 957 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "00000000000000000000000000000000000000000000000000000000000088485b" +
+            "364875973d492183f04aa70fa45a31fcd5e822735914c6e0416202ffff16816202" +
+            "ffff1691508261ffff169250376202ffff1654435b11907f0000000000000000000" +
+            "00000000000001a0111ea397fe69a4b1ba7b6434bacd76000527f64774b84f385" +
+            "12bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaac6020527f0000" +
+            "0000000000000000000000000000000000000000000000000000000000006040" +
+            "527f000000000000000000000000000000000000000000000000000000000000" +
+            "0000606052610100608060806000600060115af160805160a05160c05160e051" +
+            "610100516101205161014051610160515b315f6161cb5b5b6202ffff165430676" +
+            "83726a51be8d52d586941f5185409169aacafa861dfdbe6005b166202ffff168" +
+            "161ffff169150fd5f7847d784f8797a8859a8703f11135305c3f72598a7419c" +
+            "6ac0af4997603f161a5836045b826202ffff1692508361ffff169350846202ff" +
+            "ff1694508561ffff169550fa030365037b3d3c3e236202ffff16534aff826202" +
+            "ffff1692508361ffff169350846202ffff1694508561ffff169550fa00",
+            1_000_000UL,
+            0,
+            1_000_000UL)
+            .SetName("Eip8037_block_957_failed_create_burns_spilled_create_state_gas"),
+        new TestCaseData(
+            "block 1194 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "000000000000000000000000000000000000000000000000000000000000b249601" +
+            "03d38805f5f397f630000007e5679aa6e40f2063e1e64192a97465b9fa65ab5ef" +
+            "4222c8a501e8e25f52637c909564905f5ff55f5f5f5f5f855af15b60546108e860" +
+            "8038805f5f397f63000000be5679f7a4cd19fbdf54ce586f2dfb4022e28b7f018" +
+            "99f12f35156d15f526394d66496905f5ff55f5f5f5f845af45b367f30644e72e13" +
+            "1a029b85045b68181585d97816a916871ca8d3c208c16d87d00186000527f30644e" +
+            "72e131a029b85045b68181585d97816a916871ca8d3c208c16d87d00256020527fa" +
+            "f9cf1dbaf297ea537d2d3ec9e4e87703525e0770dc0da799b77e6b9862bee5860" +
+            "40526040606060606000600060075af160605160805171f586bae9c5708294d29a" +
+            "066ff262c19b732c5b7f0000000000000000000000000000000000000000000000" +
+            "000000000000000000016000527f000000000000000000000000000000000000000" +
+            "00000000000000000000000026020527f0000000000000000000000000000000000" +
+            "0000000000000000000000000000016040527f0000000000000000000000000000" +
+            "00000000000000000000000000000000026060526040608060806000600060065a" +
+            "f160805160a05100",
+            1_000_000UL,
+            0xe7f2,
+            1_000_000UL)
+            .SetName("Eip8037_block_1194_failed_create_burns_spilled_create_state_gas"),
+        new TestCaseData(
+            "block 2367 failed CREATE",
+            "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
+            "000000000000000000000000000000000000000000000000000000000001a76560" +
+            "c65b7ab2d270ff19a070ac1de11ed3230b711ee2f82bea9fb1a928d70b7c5b5b327" +
+            "e3605c632cb571258a2c6f0ae825be0bb90e6981313b37839d039db929193e7651" +
+            "15aa34aa8df345b875b045b6202ffff1655156cb838efd91cf623a4f97ab7258b3" +
+            "8805f5f397f63000000d8567912a8aa684c0bd1cef4b986362820f58ea59ccabfa" +
+            "2fca786285f525f5ff05f5f5f5f845af45b5b7f000000000000000000000000000" +
+            "00000000000000000000000000000000000016000527f0000000000000000000000" +
+            "0000000000000000000000000000000000000000026020527ffd9b0e805792c921" +
+            "421d5124bb834e7182882bed5dd078181d157944ed9cfeea604052604060606060" +
+            "6000600060075af1606051608051615f23604c61461b5a438744471b5b5b97437f" +
+            "e4d40ebec943bbf48d2dba0d8b2b8d31ade38f680cb6bc9bf20a5225c1305db2" +
+            "0b61006257816202ffff169150826202ffff1692508361ffff1693503c826202ff" +
+            "ff1692508361ffff169350846202ffff1694508561ffff169550fa3b3261b5bd60" +
+            "df6202ffff168161ffff169150a260a35900",
+            1_000_000UL,
+            0xf8cc,
+            1_000_000UL)
+            .SetName("Eip8037_block_2367_failed_create_burns_spilled_create_state_gas"),
+    ];
+
+    [TestCaseSource(nameof(FailedCreateRegressionCases))]
+    public void Eip8037_failed_create_burns_spilled_create_state_gas(
+        string scenario,
+        string initCodeHex,
+        ulong gasLimit,
+        int value,
+        ulong expectedGasUsed)
+    {
+        byte[] initCode = Bytes.FromHexString(initCodeHex);
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            initCode,
+            value: value,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), scenario);
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedGasUsed), scenario);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, scenario);
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(expectedGasUsed), scenario);
+        }
     }
 
     [Test]
@@ -458,9 +1149,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
     }
 
     [Test]
@@ -520,7 +1211,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
+        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
@@ -545,12 +1236,12 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(320_050));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(226_930));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(327_634));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(241_330));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
-        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
+        Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
@@ -591,7 +1282,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState));
-        Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(UInt256.One));
+        Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(1ul));
         AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
         AssertStorage(new StorageCell(Recipient, 2), UInt256.One);
@@ -655,9 +1346,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Top-level halt refunds reverted state gas back to the reservoir, including the portion
-    /// that spilled from execution gas. The regular burn excludes that reverted state gas and
-    /// BlockStateGas remains zero because the state change did not commit.
+    /// A top-level exceptional halt burns the spilled state gas, so the sender pays the full gas
+    /// limit; BlockStateGas stays zero as the burned spill is attributed to the execution dimension.
     /// </summary>
     [Test]
     public void Eip8037_top_level_exceptional_halt_burns_spilled_state_gas()
@@ -678,10 +1368,12 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StackOverflow)));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
+        // Under the repriced gas the PUSH0 run exhausts gas before the stack-overflow depth.
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+        // The SSTORE's spilled state gas is burned by the halt: full gas limit, all execution.
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
     }
@@ -690,7 +1382,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     /// Top-level REVERT preserves gas_left, so the spilled portion of state_gas_used —
     /// originally drawn from gas_left — is still in the user's pocket. The full
     /// state_gas_used (reservoir-portion AND spilled-portion) must be refunded to the
-    /// reservoir; the user is billed only the regular component (which already paid for
+    /// reservoir; the user is billed only the execution component (which already paid for
     /// the spill in gas_left). BlockStateGas ends at 0; SpentGas is below the limit
     /// because gas_left survives the revert.
     /// </summary>
@@ -717,7 +1409,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
     /// <summary>
     /// Same rule as the SSTORE-spill case but for an inner CALL whose NewAccountState charge
-    /// spills into regular gas before the parent INVALIDs at the top level.
+    /// spills into execution gas before the parent INVALIDs at the top level.
     /// </summary>
     [Test]
     public void Eip8037_top_level_exceptional_halt_burns_spilled_child_state_gas()
@@ -732,8 +1424,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.NewAccountState));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.NewAccountState));
+        // The inner CALL's spilled NewAccountState is burned by the top-level INVALID: full gas limit.
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False);
     }
@@ -760,7 +1453,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.INVALID)
             .Done;
 
-        long gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.SSetState;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.SSetState;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
@@ -818,9 +1511,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         // Child's SSTOREs reverted on halt.
         AssertStorage(new StorageCell(TestItem.AddressC, 0), UInt256.Zero);
         AssertStorage(new StorageCell(TestItem.AddressC, 1), UInt256.Zero);
-        // The child's spilled state gas stays state-attributed for block regular gas
-        // accounting even though the child state changes reverted.
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(368_663));
+        // The child halt burns its spilled state gas, which is then attributed to the block
+        // execution dimension; only the parent's two committed SSTOREs contribute state gas.
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(541_335));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(2 * GasCostOf.SSetState));
     }
 
@@ -847,10 +1540,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.GreaterThan(firstTx.BlockGasUsed),
             "The first tx should be state-gas dominated so header.gasUsed tracks the state dimension.");
 
-        block.Header.GasUsed = Math.Max(tracer.CumulativeRegularGasUsed, tracer.GasConsumedResult.BlockStateGas);
+        block.Header.GasUsed = Math.Max(tracer.CumulativeExecutionGasUsed, tracer.GasConsumedResult.BlockStateGas);
 
-        long legacyRemaining = block.Header.GasLimit - block.Header.GasUsed;
-        long secondTxGasLimit = legacyRemaining + 1;
+        ulong legacyRemaining = block.Header.GasLimit - block.Header.GasUsed;
+        ulong secondTxGasLimit = legacyRemaining + 1ul;
 
         SenderRecipientAndMiner secondParticipants = new()
         {
@@ -878,7 +1571,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_block_validation_must_allow_tx_gas_limit_above_remaining_regular_budget_when_2d_budget_fits()
+    public void Eip8037_block_validation_must_allow_tx_gas_limit_above_remaining_execution_budget_when_2d_budget_fits()
     {
         byte[] stopCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -916,7 +1609,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             value: zeroValue,
             blockGasLimit: blockGasLimit);
 
-        long secondTxGasLimit = blockGasLimit - GasCostOf.Transaction + 1;
+        // Sized to exceed the legacy 1-D remaining budget while still fitting the 2-D check in
+        // both dimensions.
+        ulong secondTxGasLimit = blockGasLimit - 1000;
         (_, Transaction secondTx) = PrepareTx(
             Activation,
             secondTxGasLimit,
@@ -936,9 +1631,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(firstResult, Is.EqualTo(TransactionResult.Ok));
         Assert.That(secondTxGasLimit, Is.GreaterThan(blockGasLimit - firstTx.BlockGasUsed),
-            "The second tx exceeds the legacy remaining regular budget.");
+            "The second tx exceeds the legacy remaining execution budget.");
         Assert.That(secondResult, Is.EqualTo(TransactionResult.Ok),
-            "Amsterdam should admit the tx because its capped regular contribution and state contribution both fit.");
+            "Amsterdam should admit the tx because its capped execution contribution and state contribution both fit.");
         Assert.That(secondTracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit));
     }
@@ -971,7 +1666,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedStateGas = fundContract ? GasCostOf.NewAccountState : 0;
+        ulong expectedStateGas = fundContract ? GasCostOf.NewAccountState : 0ul;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
@@ -1053,7 +1748,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        long expectedStateGas = 2 * GasCostOf.CreateState + GasCostOf.CodeDepositState;
+        ulong expectedStateGas = 2ul * GasCostOf.CreateState + GasCostOf.CodeDepositState;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
@@ -1107,7 +1802,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 600_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + selfDestructRuntime.Length * GasCostOf.CodeDepositState),
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState + (ulong)selfDestructRuntime.Length * GasCostOf.CodeDepositState),
             "CREATE account state and code-deposit state gas should not be refunded after same-tx SELFDESTRUCT.");
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
@@ -1203,12 +1898,12 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.GasConsumedResult.EffectiveBlockGas, expectedStateGas)));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.GasConsumedResult.EffectiveBlockGas, (ulong)expectedStateGas)));
     }
 
-    [TestCase(16_777_216L, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_spill")]
-    [TestCase(16_875_136L, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_reservoir")]
-    public void Eip8037_subcall_set_clear_revert_pays_no_state_gas(long gasLimit)
+    [TestCase(16_777_216ul, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_spill")]
+    [TestCase(16_875_136ul, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_reservoir")]
+    public void Eip8037_subcall_set_clear_revert_pays_no_state_gas(ulong gasLimit)
     {
         byte[] childCode = Bytes.FromHexString("6001600055600060005560006000fd");
 
@@ -1222,10 +1917,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        const long expectedRegularGas = 24_140;
+        const long expectedExecutionGas = 31_340;
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedRegularGas));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedRegularGas));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedExecutionGas));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedExecutionGas));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         AssertStorage(new StorageCell(TestItem.AddressC, UInt256.Zero), UInt256.Zero);
     }

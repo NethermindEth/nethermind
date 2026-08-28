@@ -7,13 +7,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -26,10 +24,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
-        private const int CODES_BATCH_SIZE = 1_000;
+        public const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
-        internal static readonly byte[] ACC_PROGRESS_KEY = "AccountProgressKey"u8.ToArray();
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
@@ -47,7 +44,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeAccRefreshRequests;
 
         private readonly ILogger _logger;
-        private readonly IDb _db;
+        private readonly ISnapTrieFactory _snapTrieFactory;
         string? _lastStateRangesReport;
         private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
         private readonly TimeSpan _maxTimeBetweenLog = TimeSpan.FromSeconds(5);
@@ -67,10 +64,10 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
 
-        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
+        public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
 
@@ -82,9 +79,6 @@ namespace Nethermind.Synchronization.SnapSync
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
 
             SetupAccountRangePartition();
-
-            //TODO: maybe better to move to a init method instead of the constructor
-            GetSyncProgress();
         }
 
         private void SetupAccountRangePartition()
@@ -154,7 +148,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
             Hash256 rootHash = pivotHeader!.StateRoot!;
-            long blockNumber = pivotHeader.Number;
+            ulong blockNumber = pivotHeader.Number;
 
             if (!AccountsToRefresh.IsEmpty)
             {
@@ -191,7 +185,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
-                    FinishRangePhase();
+                    _snapTrieFactory.MarkRangePhaseFinished();
                 }
 
                 LogRequest(NO_REQUEST);
@@ -219,7 +213,7 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { CodesRequest = codesToQuery };
         }
 
-        private SnapSyncBatch DequeStorageToRetrieveRequest(Hash256 rootHash, long blockNumber)
+        private SnapSyncBatch DequeStorageToRetrieveRequest(Hash256 rootHash, ulong blockNumber)
         {
             Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
@@ -245,7 +239,7 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { StorageRangeRequest = storageRange };
         }
 
-        private SnapSyncBatch CreateNextSlowRangeRequest(StorageRange slotRange, Hash256 rootHash, long blockNumber)
+        private SnapSyncBatch CreateNextSlowRangeRequest(StorageRange slotRange, Hash256 rootHash, ulong blockNumber)
         {
             slotRange.RootHash = rootHash;
             slotRange.BlockNumber = blockNumber;
@@ -255,7 +249,7 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { StorageRangeRequest = slotRange };
         }
 
-        private SnapSyncBatch CreateAccountRangeRequest(Hash256 rootHash, AccountRangePartition partition, long blockNumber)
+        private SnapSyncBatch CreateAccountRangeRequest(Hash256 rootHash, AccountRangePartition partition, ulong blockNumber)
         {
             Interlocked.Increment(ref _activeAccountRequests);
 
@@ -269,19 +263,17 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { AccountRangeRequest = range };
         }
 
-        private SnapSyncBatch DequeAccountToRefresh(Hash256 rootHash)
+        private SnapSyncBatch? DequeAccountToRefresh(Hash256 rootHash)
         {
+            // One account per request: each refresh is served by a single GetAccountRange.
+            if (!AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc))
+                return null;
+
             Interlocked.Increment(ref _activeAccRefreshRequests);
 
             LogRequest($"AccountsToRefresh: {AccountsToRefresh.Count}");
 
-            int queueLength = AccountsToRefresh.Count;
-            ArrayPoolList<AccountWithStorageStartingHash> paths = new(queueLength);
-
-            for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc); i++)
-            {
-                paths.Add(acc);
-            }
+            ArrayPoolList<AccountWithStorageStartingHash> paths = new(1) { acc };
 
             return new SnapSyncBatch { AccountsToRefreshRequest = new AccountsToRefreshRequest { RootHash = rootHash, Paths = paths } };
         }
@@ -295,9 +287,11 @@ namespace Nethermind.Synchronization.SnapSync
         {
             foreach (ValueHash256 hash in codeHashes)
             {
-                CodesToRetrieve.Enqueue(hash);
+                EnqueueCodeHash(hash);
             }
         }
+
+        public void EnqueueCodeHash(ValueHash256 hash) => CodesToRetrieve.Enqueue(hash);
 
         public void ReportCodeRequestFinished(ReadOnlySpan<ValueHash256> codeHashes)
         {
@@ -327,28 +321,8 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
-        public void ReportFullStorageRequestFinished(int originalStorageCount, IEnumerable<PathWithAccount>? storages = null)
-        {
-            if (storages is not null)
-            {
-                foreach (PathWithAccount pathWithAccount in storages)
-                {
-                    EnqueueAccountStorage(pathWithAccount);
-                }
-            }
-
-            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
-        }
-
-        public void ReportFullStorageRequestFinished(int originalStorageCount, ReadOnlySpan<PathWithAccount> storages)
-        {
-            foreach (PathWithAccount pathWithAccount in storages)
-            {
-                EnqueueAccountStorage(pathWithAccount);
-            }
-
-            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
-        }
+        public void ReportStorageRequestFinished(int accountCount) =>
+            Interlocked.Add(ref _activeStorageRequests, -accountCount);
 
         public void EnqueueNextSlot(StorageRange? storageRange)
         {
@@ -413,25 +387,21 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RetryStorageRange(StorageRange storageRange)
+        public void RequeueStorageRange(StorageRange storageRange)
         {
-            bool dispose = false;
+            // A single account is a continuation, so it keeps its starting hash and limit.
             if (storageRange.Accounts.Count == 1)
             {
                 EnqueueNextSlot(storageRange);
+                return;
             }
-            else
+
+            foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
             {
-                foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
-                {
-                    EnqueueAccountStorage(account);
-                }
-
-                dispose = true;
+                EnqueueAccountStorage(account);
             }
 
-            Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
-            if (dispose) storageRange.Dispose();
+            storageRange.Dispose();
         }
 
         public void ReportAccountRangePartitionFinished(in ValueHash256 hashLimit)
@@ -463,35 +433,16 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
 
-        private void GetSyncProgress()
+        public void LoadProgress()
         {
-            // Note, as before, the progress actually only store MaxValue or 0. So we can't actually resume
-            // snap sync on restart.
-            byte[] progress = _db.Get(ACC_PROGRESS_KEY);
-            if (progress is { Length: 32 })
+            if (!_snapTrieFactory.IsRangePhaseFinished()) return;
+
+            _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
+            foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
             {
-                ValueHash256 path = new(progress);
-
-                if (path == ValueKeccak.MaxValue)
-                {
-                    _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
-                    foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
-                    {
-                        partition.Value.MoreAccountsToRight = false;
-                    }
-                    AccountRangeReadyForRequest.Clear();
-                }
-                else
-                {
-                    _logger.Info($"Snap - State Ranges (Phase 1) progress loaded from DB:{path}");
-                }
+                partition.Value.MoreAccountsToRight = false;
             }
-        }
-
-        private void FinishRangePhase()
-        {
-            _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
-            _db.Flush();
+            AccountRangeReadyForRequest.Clear();
         }
 
         public void TrackAccountToHeal(ValueHash256 path)

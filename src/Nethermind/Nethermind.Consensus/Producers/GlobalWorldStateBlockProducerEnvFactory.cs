@@ -19,18 +19,21 @@ namespace Nethermind.Consensus.Producers
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory)
-        : IBlockProducerEnvFactory
+        : IMainStateBlockProducerEnvFactory
     {
         protected IWorldStateManager WorldStateManager => worldStateManager;
 
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
             .AddScoped(txSourceFactory.Create())
             .AddScoped(BlockchainProcessor.Options.Default)
-            .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
+            .AddScoped<TransactionProcessorAdapterFactory>(CreateBuildUpAdapter)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
+
+        private static ITransactionProcessorAdapter CreateBuildUpAdapter(ITransactionProcessor transactionProcessor)
+            => new BuildUpTransactionProcessorAdapter(transactionProcessor);
 
         protected virtual IWorldStateScopeProvider CreateWorldState() => worldStateManager.GlobalWorldState;
 

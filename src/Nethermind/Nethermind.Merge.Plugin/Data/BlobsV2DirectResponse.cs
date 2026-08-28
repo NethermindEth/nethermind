@@ -9,24 +9,30 @@ using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>Writes blob/proof V2 results directly into a <see cref="PipeWriter"/>.</summary>
-public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
+public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
 {
-    private readonly byte[]?[] _blobs;
-    private readonly ReadOnlyMemory<byte[]>[] _proofs;
+    private readonly ArrayPoolList<byte[]?> _blobs;
+    private readonly ArrayPoolList<ReadOnlyMemory<byte[]>> _proofs;
     private readonly int _count;
 
-    public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs, int count)
+    public BlobsV2DirectResponse(ArrayPoolList<byte[]?> blobs, ArrayPoolList<ReadOnlyMemory<byte[]>> proofs, int count)
     {
-        Debug.Assert(count <= blobs.Length && count <= proofs.Length, "count must not exceed array lengths");
+        Debug.Assert(count <= blobs.Count && count <= proofs.Count, "count must not exceed list lengths");
         _blobs = blobs;
         _proofs = proofs;
         _count = count;
+    }
+
+    public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs, int count)
+        : this(new ArrayPoolList<byte[]?>(blobs.Length, blobs), new ArrayPoolList<ReadOnlyMemory<byte[]>>(proofs.Length, proofs), count)
+    {
     }
 
     public int Count => _count;
@@ -41,7 +47,8 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     }
 
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(_blobs, _proofs), cancellationToken);
+        StreamableResultWriter.WriteArrayAsync(writer, _count,
+            new ItemWriter(_blobs.UnsafeGetInternalArray(), _proofs.UnsafeGetInternalArray()), cancellationToken);
 
     IEnumerator<BlobAndProofV2?> IEnumerable<BlobAndProofV2?>.GetEnumerator()
     {
@@ -55,6 +62,12 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         _blobs[i] is { } blob ? new BlobAndProofV2(blob, _proofs[i].ToArray()) : null;
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();
+
+    public void Dispose()
+    {
+        _blobs.Dispose();
+        _proofs.Dispose();
+    }
 
     private readonly struct ItemWriter(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofsByBlob) : IJsonArrayItemWriter
     {

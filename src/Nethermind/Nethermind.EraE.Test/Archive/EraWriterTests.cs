@@ -87,7 +87,7 @@ internal class EraWriterTests
     {
         using EraWriter sut = CreateSut();
 
-        for (int i = 0; i < EraWriter.MaxEraSize; i++)
+        for (ulong i = 0; i < EraWriter.MaxEraSize; i++)
         {
             Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             await sut.Add(block, []);

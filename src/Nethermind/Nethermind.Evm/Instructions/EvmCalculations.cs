@@ -14,7 +14,7 @@ namespace Nethermind.Evm;
 public static class EvmCalculations
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
+    public static ulong Div32Ceiling(in UInt256 length, out bool outOfGas)
     {
         if (!length.IsUint64)
         {
@@ -26,7 +26,7 @@ public static class EvmCalculations
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long Div32Ceiling(ulong result, out bool outOfGas)
+    public static ulong Div32Ceiling(ulong result, out bool outOfGas)
     {
         ulong rem = result & 31;
         result >>= 5;
@@ -42,24 +42,45 @@ public static class EvmCalculations
         }
 
         outOfGas = false;
-        return (long)result;
+        return result;
     }
 
-    public static long Div32Ceiling(in UInt256 length)
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowOutOfGasException()
     {
-        long result = Div32Ceiling(in length, out bool outOfGas);
+        Metrics.EvmExceptions++;
+        throw new OutOfGasException();
+    }
+
+    public static ulong Div32Ceiling(long length)
+    {
+        if (length < 0)
+        {
+            ThrowOutOfGasException();
+        }
+
+        return Div32Ceiling((ulong)length);
+    }
+
+    public static ulong Div32Ceiling(ulong length)
+    {
+        ulong result = Div32Ceiling(length, out bool outOfGas);
         if (outOfGas)
         {
             ThrowOutOfGasException();
         }
 
         return result;
+    }
 
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowOutOfGasException()
+    public static ulong Div32Ceiling(in UInt256 length)
+    {
+        ulong result = Div32Ceiling(in length, out bool outOfGas);
+        if (outOfGas)
         {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
+            ThrowOutOfGasException();
         }
+
+        return result;
     }
 }

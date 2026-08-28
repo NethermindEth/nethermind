@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -181,7 +179,7 @@ public partial class BlockDownloaderTests
             .TestObject;
 
         forwardHeaderProvider
-            .GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 IOwnedReadOnlyList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(2) { parent, header };
@@ -193,18 +191,7 @@ public partial class BlockDownloaderTests
             .Returns(Task.FromResult<int?>(1));
     }
 
-    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
-    {
-        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
-        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
-        {
-            for (int i = 0; i < blockAccessLists.Length; i++)
-            {
-                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
-            }
-        }
-
-        return new RlpByteArrayList(builder.ToRlpItemList());
-    }
+    private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
+        new ArrayPoolList<byte[]?>(blockAccessLists);
 
 }

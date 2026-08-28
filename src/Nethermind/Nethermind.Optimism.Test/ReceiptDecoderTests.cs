@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -16,17 +17,18 @@ public class ReceiptDecoderTests
         static OptimismTxReceipt TestNetworkEncodingRoundTrip(byte[] rlp, bool includesNonce, bool includesVersion)
         {
             OptimismReceiptMessageDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = new(rlp);
+            RlpReader ctx = new(rlp);
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
-            RlpStream encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
-            decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            byte[] encodedBytes = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
+            RlpWriter writer = new(encodedBytes);
+            decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
                 Assert.That(decodedReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
                 Assert.That(decodedReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
-                Assert.That(rlp, Is.EqualTo(encodedRlp.Data.ToArray()));
+                Assert.That(rlp, Is.EqualTo(encodedBytes));
             });
 
             return decodedReceipt;
@@ -36,11 +38,12 @@ public class ReceiptDecoderTests
         {
             OptimismCompactReceiptStorageDecoder decoder = new();
 
-            RlpStream encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
-            decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            byte[] encodedRlp = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
+            RlpWriter writer = new(encodedRlp);
+            decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            Rlp.ValueDecoderContext valueDecoderCtx = new(encodedRlp.Data);
-            OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
+            RlpReader reader = new(encodedRlp);
+            OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
@@ -54,12 +57,13 @@ public class ReceiptDecoderTests
         static void TestTrieEncoding(OptimismTxReceipt decodedReceipt, bool shouldIncludeNonceAndVersionForTxTrie)
         {
             OptimismReceiptTrieDecoder trieDecoder = new();
-            RlpStream encodedTrieRlp = new(trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            byte[] encodedTrieRlp = new byte[trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
+            RlpWriter writer = new(encodedTrieRlp);
 
-            trieDecoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            Rlp.ValueDecoderContext trieCtx = new(encodedTrieRlp.Data);
-            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieCtx, RlpBehaviors.SkipTypedWrapping);
+            RlpReader trieReader = new(encodedTrieRlp);
+            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieReader, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
@@ -71,6 +75,59 @@ public class ReceiptDecoderTests
         OptimismTxReceipt decodedReceipt = TestNetworkEncodingRoundTrip(rlp, includesNonce, includesVersion);
         TestStorageEncodingRoundTrip(decodedReceipt, includesNonce, includesVersion);
         TestTrieEncoding(decodedReceipt, shouldIncludeNonceAndVersionForTxTrie);
+    }
+
+    [Test]
+    public void Can_decode_compact_storage_receipt_with_null_sender()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            StatusCode = 1,
+            GasUsedTotal = 1,
+            Logs = []
+        };
+
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        Rlp rlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
+
+        RlpReader reader = new(rlp.Bytes);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
+
+        Assert.That(decoded.Sender, Is.Null);
+    }
+
+    [Test]
+    public void Can_decode_network_receipt_with_legacy_sequence_form_bloom()
+    {
+        OptimismReceiptMessageDecoder decoder = new();
+        byte[] receiptRlp = CreateReceiptWithLegacyBloom();
+        RlpReader reader = new(receiptRlp);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
+    }
+
+    private static byte[] CreateReceiptWithLegacyBloom()
+    {
+        byte[] receiptRlp = new byte[1 + 3 + 1 + 1 + 5 + Bloom.ByteLength + 1];
+        int position = 0;
+
+        receiptRlp[position++] = (byte)TxType.DepositTx;
+        receiptRlp[position++] = 0xF9;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x08;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0xF9;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x02;
+        receiptRlp[position++] = 0x81;
+        receiptRlp[position++] = 0x7F;
+        position += Bloom.ByteLength;
+        receiptRlp[position++] = 0xC0;
+
+        Assert.That(position, Is.EqualTo(receiptRlp.Length), "setup: receipt RLP length");
+        return receiptRlp;
     }
 
 

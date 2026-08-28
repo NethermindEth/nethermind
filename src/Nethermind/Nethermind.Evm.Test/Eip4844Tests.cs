@@ -4,7 +4,6 @@
 using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Int256;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
@@ -12,7 +11,7 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip4844Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     [TestCase(0, 0, Description = "Should return 0 when no hashes")]
@@ -34,7 +33,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
         byte[] expectedOutput = blobhashesCount > index ? hashes[index] : new byte[32];
 
         // Cost of transaction call + PUSH1 x4 + MSTORE (entry cost + 1 memory cell used)
-        const long gasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
+        const ulong gasCostOfCallingWrapper = GasCostOf.Transaction + GasCostOf.VeryLow * 5 + GasCostOf.Memory;
 
         byte[] code = Prepare.EvmCode
             .PushData(new UInt256((ulong)index))
@@ -46,7 +45,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 50000, code, blobVersionedHashes: hashes);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(result.ReturnValue.SequenceEqual(expectedOutput), Is.True);
+        Assert.That(result.ReturnValue, Is.EqualTo(expectedOutput));
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 

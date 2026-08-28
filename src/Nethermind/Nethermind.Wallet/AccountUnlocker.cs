@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -10,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IPasswordProvider passwordProvider)
+    public class AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, [KeyFilter(IPasswordProvider.ConfigOnly)] IPasswordProvider passwordProvider)
     {
         private readonly IKeyStoreConfig _config = config ?? throw new ArgumentNullException(nameof(config));
         private readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));

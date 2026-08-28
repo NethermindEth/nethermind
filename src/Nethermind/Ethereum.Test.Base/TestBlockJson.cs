@@ -10,5 +10,10 @@ namespace Ethereum.Test.Base
         public string? Rlp { get; set; }
         public LegacyTransactionJson[]? Transactions { get; set; }
         public string? ExpectException { get; set; }
+
+        public ExecutionWitnessJson? ExecutionWitness { get; set; }
+        public string? StatelessInputBytes { get; set; }
+        public string? StatelessOutputBytes { get; set; }
+        public bool? ExecutionWitnessMutated { get; set; }
     }
 }

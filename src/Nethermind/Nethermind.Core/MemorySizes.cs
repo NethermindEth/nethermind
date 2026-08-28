@@ -9,6 +9,10 @@ namespace Nethermind.Core
 {
     public static class MemorySizes
     {
+        public const int KiB = 1024;
+        public const int MiB = 1024 * 1024;
+        public const int GiB = 1024 * 1024 * 1024;
+
         private const int AlignmentMask = 7;
         public const int Alignment = 8;
 
@@ -25,7 +29,7 @@ namespace Nethermind.Core
         // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
         public const int ArrayOverhead = 24;
 
-        private static readonly BitArray _isPrime = ESieve(1024 * 1024); // 1MB in memory
+        private static readonly BitArray _isPrime = ESieve(MiB); // 1MB in memory
 
         public static int FindNextPrime(int number)
         {

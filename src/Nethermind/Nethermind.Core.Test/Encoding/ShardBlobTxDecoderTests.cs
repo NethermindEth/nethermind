@@ -27,6 +27,52 @@ public partial class ShardBlobTxDecoderTests
     [SetUp]
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
 
+    [Test]
+    public void V1_sparse_wrapper_without_cells_is_not_proof_valid()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlobCellsHelper.ValidateCells(wrapper), Is.False);
+            Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.False);
+        }
+    }
+
+    [Test]
+    public void V1_length_validation_rejects_null_commitments_and_proofs()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+        wrapper.Commitments[0] = null!;
+
+        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
+
+        wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+        wrapper.Proofs[0] = null!;
+
+        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
+    }
+
+    [Test]
+    public void Select_flattened_cells_rejects_non_subset_mask()
+    {
+        byte[][] selected = BlobCellsHelper.SelectFlattenedCells(
+            [new byte[Ckzg.BytesPerCell]],
+            new BlobCellMask(UInt128.One),
+            new BlobCellMask(UInt128.One << 1),
+            blobCount: 1);
+
+        Assert.That(selected, Is.Empty);
+    }
+
+    [Test]
+    public void Select_proofs_rejects_invalid_blob_index()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+
+        Assert.That(BlobCellsHelper.SelectProofs(wrapper, blobIndex: 1, BlobCellMask.Full), Is.Empty);
+    }
+
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
         TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
@@ -34,12 +80,29 @@ public partial class ShardBlobTxDecoderTests
             .SignedAndResolved()
             .TestObject, tos.Item2));
 
+    private static ShardBlobNetworkWrapper CreateV1SparseWrapperWithoutCells(int blobCount)
+    {
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            commitments[i] = new byte[Ckzg.BytesPerCommitment];
+            for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
+            {
+                proofs[i * Ckzg.CellsPerExtBlob + cellIndex] = new byte[Ckzg.BytesPerProof];
+            }
+        }
+
+        return new ShardBlobNetworkWrapper([], commitments, proofs, ProofVersion.V1);
+    }
+
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
-        _txDecoder.Encode(rlpStream, testCase.Tx);
-        Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+        byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, testCase.Tx);
+        RlpReader ctx = new(bytes);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -55,21 +118,21 @@ public partial class ShardBlobTxDecoderTests
 
         Action tryDecode = () =>
         {
-            Rlp.ValueDecoderContext ctx = new(bytes);
+            RlpReader ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
         };
         Assert.That(tryDecode, Throws.TypeOf<RlpException>());
     }
 
     [TestCaseSource(nameof(TestCaseSource))]
-    public void Roundtrip_ValueDecoderContext_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
+    public void Roundtrip_RlpReader_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        RlpStream rlpStream = new(10000);
-        _txDecoder.Encode(rlpStream, testCase.Tx);
+        byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, testCase.Tx);
 
-        Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
-        rlpStream.Position = 0;
+        Span<byte> spanIncomingTxRlp = bytes.AsSpan();
+        RlpReader decoderContext = new(spanIncomingTxRlp);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext);
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -95,8 +158,9 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TamperedTestCaseSource))]
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
-        RlpStream stream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
-        _txDecoder.Encode(stream, tx);
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, tx);
         // Tamper with sequence length
         {
             int itemsLength = 0;
@@ -106,15 +170,15 @@ public partial class ShardBlobTxDecoderTests
             }
 
             // Position where it starts encoding `BlobVersionedHashes`
-            stream.Position = 37;
+            RlpWriter tamperingWriter = new(bytes.AsSpan(37));
             // Accepts `itemsLength - 10` all the way to `itemsLength - 1`
-            stream.StartSequence(itemsLength - 1);
+            tamperingWriter.StartSequence(itemsLength - 1);
         }
 
         // Decoding should fail
         Action tryDecode = () =>
         {
-            Rlp.ValueDecoderContext ctx = new(stream.Data);
+            RlpReader ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
         };
         Assert.That(tryDecode, Throws.TypeOf<RlpException>());
@@ -125,13 +189,13 @@ public partial class ShardBlobTxDecoderTests
     {
         Rlp encoded = _txDecoder.Encode(tx, rlpBehaviors);
 
-        void DecodeByValueDecoderContext()
+        void DecodeByRlpReader()
         {
-            Rlp.ValueDecoderContext decoderContext = new(encoded.Bytes);
+            RlpReader decoderContext = new(encoded.Bytes);
             _txDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
-        Assert.That(DecodeByValueDecoderContext, Throws.InstanceOf<RlpException>());
+        Assert.That(DecodeByRlpReader, Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -144,11 +208,35 @@ public partial class ShardBlobTxDecoderTests
             ProofVersion.V1);
         Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
 
-        Rlp.ValueDecoderContext decoderContext = new(encoded.Bytes);
+        RlpReader decoderContext = new(encoded.Bytes);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)decoded!.NetworkWrapper!;
         Assert.That(wrapper.Proofs, Has.Length.EqualTo(BlobCellProofsCountLimit));
+    }
+
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list(ProofVersion version)
+    {
+        Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
+        Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
+
+        RlpReader wireReader = new(encoded.Bytes);
+        wireReader.ReadPrefixAndContentLength();
+        Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)TxType.Blob));
+        wireReader.ReadSequenceLength();
+        wireReader.SkipItem();
+        if (version is ProofVersion.V1)
+        {
+            Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)ProofVersion.V1));
+        }
+
+        Assert.That(wireReader.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
+
+        RlpReader decoderContext = new(encoded.Bytes);
+        Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
+        Assert.That(((ShardBlobNetworkWrapper)decoded!.NetworkWrapper!).Blobs, Is.Empty);
     }
 
     // Other clients validate each blob length
@@ -173,7 +261,7 @@ public partial class ShardBlobTxDecoderTests
 
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(rlp);
+            RlpReader ctx = new(rlp);
             _txDecoder.Decode(ref ctx);
         }, Throws.InstanceOf<RlpException>());
     }
@@ -181,20 +269,23 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(ShardBlobTxTests))]
     public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {
-        byte[] spanIncomingTxRlp = Bytes.FromHexString(rlp);
-        Rlp.ValueDecoderContext ctx = new(spanIncomingTxRlp.AsSpan());
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp.AsSpan());
+        byte[] incomingTxRlp = Bytes.FromHexString(rlp);
+        RlpReader ctx = new(incomingTxRlp);
+        RlpReader decoderContext = new(incomingTxRlp);
 
         Transaction? decoded = _txDecoder.Decode(ref ctx, rlpBehaviors);
-        Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Transaction? decodedByRlpReader = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
 
-        Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
-        Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
+            Assert.That(decodedByRlpReader!.Hash, Is.EqualTo(signedHash));
+        }
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
         {
             Rlp epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
-            Rlp.ValueDecoderContext epCtx = new(epEncoded.Bytes);
+            RlpReader epCtx = new(epEncoded.Bytes);
             Transaction? epDecoded = _txDecoder.Decode(ref epCtx, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
             Assert.That(epDecoded!.Hash, Is.EqualTo(signedHash));
         }
@@ -205,10 +296,13 @@ public partial class ShardBlobTxDecoderTests
         }
 
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
-        Rlp encodedWithDecodedByValueDecoderContext =
-            _txDecoder.Encode(decodedByValueDecoderContext!, rlpBehaviors);
-        Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
-        Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(spanIncomingTxRlp));
+        Rlp encodedWithDecodedByRlpReader =
+            _txDecoder.Encode(decodedByRlpReader!, rlpBehaviors);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes, Is.EqualTo(incomingTxRlp));
+            Assert.That(encodedWithDecodedByRlpReader.Bytes, Is.EqualTo(incomingTxRlp));
+        }
     }
 
     private static IEnumerable<TestCaseData> OverLimitCollectionDecodeCases()

@@ -64,7 +64,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         Hash256[] blobHashes = BuildBlobVersionedHashes(Blobs);
         Hash256 parentRoot = TestItem.KeccakA;
 
-        _sszBody = EncodeSszBody(payload, blobHashes, parentRoot);
+        _sszBody = EncodeSszBody(payload, parentRoot);
         _jsonBody = EncodeJsonBody(payload, blobHashes, parentRoot);
         _jsonPayloadOnly = JsonSerializer.SerializeToUtf8Bytes(payload, EthereumJsonSerializer.JsonOptions);
 
@@ -187,12 +187,11 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         return hashes;
     }
 
-    private static byte[] EncodeSszBody(ExecutionPayloadV3 payload, Hash256[] blobs, Hash256 parentRoot)
+    private static byte[] EncodeSszBody(ExecutionPayloadV3 payload, Hash256 parentRoot)
     {
         NewPayloadV3RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV3(payload),
-            ExpectedBlobVersionedHashes = blobs,
             ParentBeaconBlockRoot = parentRoot,
         };
 

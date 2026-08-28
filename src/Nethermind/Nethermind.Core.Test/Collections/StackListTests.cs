@@ -20,8 +20,11 @@ namespace Nethermind.Core.Test.Collections
         public void try_peek_should_return_last_element()
         {
             StackList<int> stack = GetStackList();
-            Assert.That(stack.TryPeek(out int item), Is.EqualTo(true));
-            Assert.That(item, Is.EqualTo(stack[^1]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stack.TryPeek(out int item), Is.EqualTo(true));
+                Assert.That(item, Is.EqualTo(stack[^1]));
+            }
         }
 
         [Test]

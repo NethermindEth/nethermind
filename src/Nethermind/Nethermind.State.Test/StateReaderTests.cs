@@ -52,7 +52,7 @@ namespace Nethermind.Store.Test
                 }
             }
 
-            public BlockHeader CommitAndCapture(Action<IWorldState> populate, long blockNumber = 0)
+            public BlockHeader CommitAndCapture(Action<IWorldState> populate, ulong blockNumber = 0)
             {
                 using IDisposable _ = WorldState.BeginScope(IWorldState.PreGenesis);
                 populate(WorldState);
@@ -188,7 +188,7 @@ namespace Nethermind.Store.Test
                     {
                         Assert.That(reader.TryGetAccount(baseBlock, _address1, out AccountStruct account), Is.True);
                         Assert.That(account.Balance, Is.EqualTo(value));
-                        Assert.That(account.Nonce, Is.EqualTo((UInt256)7));
+                        Assert.That(account.Nonce, Is.EqualTo(7UL));
                     }
                 });
 

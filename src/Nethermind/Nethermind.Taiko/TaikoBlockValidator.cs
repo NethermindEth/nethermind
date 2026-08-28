@@ -31,8 +31,8 @@ public class TaikoBlockValidator(
 
     public static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
-    private const long AnchorGasLimit = 250_000;
-    private const long AnchorV3V4GasLimit = 1_000_000;
+    private const ulong AnchorGasLimit = 250_000UL;
+    private const ulong AnchorV3V4GasLimit = 1_000_000UL;
 
     // Blob transactions are explicitly rejected in ValidateTransactions below; no extra EIP-4844 field
     // validation is needed on Taiko L2.
@@ -93,7 +93,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (!tx.ValueRef.IsZero)
+        if (tx.ValueRef != 0)
         {
             errorMessage = "Anchor transaction must have value of 0";
             return false;
@@ -113,12 +113,14 @@ public class TaikoBlockValidator(
 
         // We don't set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
         // from getting their sender address recovered
-        Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
-
+        Address? senderAddress = tx.SenderAddress;
         if (senderAddress is null)
         {
-            errorMessage = "Anchor transaction sender address is not recoverable";
-            return false;
+            if (!ecdsa.TryRecoverAddress(tx, out senderAddress))
+            {
+                errorMessage = "Anchor transaction sender address is not recoverable";
+                return false;
+            }
         }
 
         if (!senderAddress.Equals(GoldenTouchAccount))

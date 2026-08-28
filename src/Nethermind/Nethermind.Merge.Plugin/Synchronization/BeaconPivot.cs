@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             LoadBeaconPivot();
         }
 
-        public long PivotNumber => CurrentBeaconPivot?.Number ?? _blockTree.SyncPivot.BlockNumber;
+        public ulong PivotNumber => CurrentBeaconPivot?.Number ?? _blockTree.SyncPivot.BlockNumber;
 
         public Hash256? PivotHash => CurrentBeaconPivot?.Hash ?? _blockTree.SyncPivot.BlockHash;
 
@@ -70,14 +70,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public Hash256? PivotParentHash => CurrentBeaconPivot?.ParentHash ?? _blockTree.SyncPivot.BlockHash;
 
         // The stopping point (inclusive) for the reverse beacon header sync.
-        public long PivotDestinationNumber
+        public ulong PivotDestinationNumber
         {
             get
             {
                 if (CurrentBeaconPivot is null)
                 {
                     // Need to rethink if this is expected. Maybe it need to forward sync without a pivot.
-                    return 0;
+                    return 0UL;
                 }
 
                 // If head is not null, that means we processed some block before.
@@ -85,8 +85,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_blockTree.Head is not null && _blockTree.Head?.Number != 0)
                 {
                     // However, the head may not be canon, so the destination need to be before that.
-                    long safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
-                    return Math.Max(1, safeNumber);
+                    return _blockTree.Head!.Number.SaturatingSub(Reorganization.MaxDepth) + 1;
                 }
 
                 return _blockTree.SyncPivot.BlockNumber + 1;
@@ -138,8 +137,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
             {
-                Hash256? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
-                    .AsRlpValueContext().DecodeKeccak();
+                byte[]? pivotHashRlp = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash);
+                Hash256? pivotHash = pivotHashRlp is null ? null : new RlpReader(pivotHashRlp).DecodeKeccak();
                 if (pivotHash is not null)
                 {
                     _currentBeaconPivot =

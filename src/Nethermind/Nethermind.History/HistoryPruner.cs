@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -26,9 +27,9 @@ namespace Nethermind.History;
 public class HistoryPruner : IHistoryPruner
 {
     private const int LockWaitTimeoutMs = 100;
-    private const int SlotsPerEpoch = 32;
+    private const ulong SlotsPerEpoch = 32;
 
-    public long GetRetentionBlocks(long retentionEpochs) => retentionEpochs * SlotsPerEpoch;
+    public ulong GetRetentionBlocks(ulong retentionEpochs) => retentionEpochs * SlotsPerEpoch;
 
     private readonly object _pruneLock = new();
 
@@ -42,19 +43,23 @@ public class HistoryPruner : IHistoryPruner
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
-    private readonly long _pruningInterval;
-    private readonly long _minHistoryRetentionEpochs;
-    private readonly long _minBalRetentionEpochs;
-    private readonly int _deletionProgressLoggingInterval;
-    private readonly long _ancientBarrier;
-    private readonly long _minDeletableBlockNumber;
+    private readonly ulong _pruningInterval;
+    private readonly ulong _minHistoryRetentionEpochs;
+    private readonly ulong _minBalRetentionEpochs;
+    private readonly ulong _ancientBarrier;
+    private readonly ulong _minDeletableBlockNumber;
 
-    private long _blocksDeletePointer = 1;
-    private long _balsDeletePointer = 1;
-    private long _lastSavedBlocksDeletePointer = 1;
-    private long _lastSavedBalsDeletePointer = 1;
-    private BlockHeader? _oldestBlockHeader;
-    private bool _hasLoadedDeletePointers;
+    private ulong _blocksDeletePointer = 1;
+    private ulong _blocksReclaimCursor = 1;
+    private byte[]? _txIndexSweepCursor;
+    private bool _txIndexSweepCursorLoaded;
+    private ulong _balsDeletePointer = 1;
+    private ulong _lastSavedBlocksDeletePointer = 1;
+    private ulong _lastSavedBlocksReclaimCursor = 1;
+    private ulong _lastSavedBalsDeletePointer = 1;
+    // Read by JSON-RPC and the sync server while the pruner writes them under a lock it can hold for a whole reclaim.
+    private volatile BlockHeader? _oldestBlockHeader;
+    private volatile bool _hasLoadedDeletePointers;
     private int _currentlyPruning;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
@@ -77,7 +82,6 @@ public class HistoryPruner : IHistoryPruner
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
-        _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _blockAccessListStore = blockAccessListStore;
@@ -98,7 +102,7 @@ public class HistoryPruner : IHistoryPruner
         {
             if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
             {
-                _ancientBarrier = long.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
+                _ancientBarrier = ulong.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
             }
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
@@ -107,7 +111,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public long? CutoffBlockNumber
+    public ulong? CutoffBlockNumber
     {
         get
         {
@@ -122,9 +126,9 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public long? BalCutoffBlockNumber => _enabled ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
+    public ulong? BalCutoffBlockNumber => _enabled ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
 
-    internal long BalsDeletePointer => _balsDeletePointer;
+    internal ulong BalsDeletePointer => _balsDeletePointer;
 
     public BlockHeader? OldestBlockHeader
     {
@@ -140,14 +144,7 @@ public class HistoryPruner : IHistoryPruner
                     Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
                     if (lockTaken)
                     {
-                        if (!TryLoadDeletePointers())
-                        {
-                            return null;
-                        }
-                    }
-                    else
-                    {
-                        return null;
+                        TryLoadDeletePointers();
                     }
                 }
                 finally
@@ -163,16 +160,16 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private long? CalculateRollingCutoff(uint retentionEpochs)
+    private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
-        long? head = _blockTree.Head?.Number;
+        ulong? head = _blockTree.Head?.Number;
         if (head is null)
         {
             return null;
         }
 
-        long blocksToRetain = (long)retentionEpochs * SlotsPerEpoch;
-        return long.Max(head.Value - blocksToRetain, 0);
+        ulong blocksToRetain = retentionEpochs * SlotsPerEpoch;
+        return head.Value.SaturatingSub(blocksToRetain);
     }
 
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -230,9 +227,10 @@ public class HistoryPruner : IHistoryPruner
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
     {
+        // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            !ShouldPruneHistory())
+            (_hasLoadedDeletePointers && !ShouldPruneHistory()))
         {
             SkipLocalPruning();
             return;
@@ -250,27 +248,30 @@ public class HistoryPruner : IHistoryPruner
                     return;
                 }
 
-                long? blockCutoff = CutoffBlockNumber;
-                long? balCutoff = BalCutoffBlockNumber;
+                ulong? blockCutoff = CutoffBlockNumber;
+                ulong? balCutoff = BalCutoffBlockNumber;
                 Metrics.PruningCutoffBlocknumber = blockCutoff;
                 Metrics.BlockAccessListPruningCutoffBlocknumber = balCutoff;
 
-                long syncPivot = _blockTree.SyncPivot.BlockNumber;
-                long blockUpper = blockCutoff is null ? _blocksDeletePointer : long.Min(blockCutoff.Value, syncPivot);
-                long balUpper = balCutoff is null ? _balsDeletePointer : long.Min(balCutoff.Value, syncPivot);
+                ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
+                ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
+                ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
-                if (_logger.IsInfo)
+                ulong blocksRemaining = blockUpper.SaturatingSub(_blocksDeletePointer);
+                ulong balsRemaining = balUpper.SaturatingSub(_balsDeletePointer);
+                // Silent when only the sweep has work, which is most passes once a cycle is running: announcing two
+                // estimates of zero reads as "nothing to do" on the pass that does have some.
+                if (_logger.IsInfo && (blocksRemaining > 0 || balsRemaining > 0))
                 {
-                    long blocksRemaining = long.Max(0, blockUpper - _blocksDeletePointer);
-                    long balsRemaining = long.Max(0, balUpper - _balsDeletePointer);
                     _logger.Info($"Pruning historical blocks up to #{blockUpper} ({blocksRemaining} estimated) and block access lists up to #{balUpper} ({balsRemaining} estimated).");
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    PruneBlockAccessLists(balUpper, cancellationToken);
-                }
+                PruneBlockAccessLists(balUpper, cancellationToken);
+
+                // Last: the only pass whose cost its range does not bound, so ahead of the others it would take the
+                // whole timeout every pass and starve them.
+                SweepTransactionIndex(cancellationToken);
             }
             else if (_logger.IsDebug)
             {
@@ -293,7 +294,11 @@ public class HistoryPruner : IHistoryPruner
 
     internal bool SetDeletePointerToOldestBlock()
     {
-        long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(_minDeletableBlockNumber, _blockTree.SyncPivot.BlockNumber, BlockExists, BlockTree.BinarySearchDirection.Down);
+        ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
+            _minDeletableBlockNumber,
+            _blockTree.SyncPivot.BlockNumber,
+            BlockExists,
+            BlockTree.BinarySearchDirection.Down);
 
         if (oldestBlockNumber is not null)
         {
@@ -305,7 +310,11 @@ public class HistoryPruner : IHistoryPruner
         return false;
     }
 
-    private bool BlockExists(long n, bool _)
+    /// <summary>
+    /// Callback for <see cref="BlockTree.BinarySearchBlockNumber"/>. Must match
+    /// <c>Func&lt;ulong, bool, bool&gt;</c>.
+    /// </summary>
+    private bool BlockExists(ulong n, bool _)
     {
         ChainLevelInfo? info = _chainLevelInfoRepository.LoadLevel(n);
 
@@ -345,71 +354,91 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
-        long? blockCutoff = CutoffBlockNumber;
-        long? balCutoff = BalCutoffBlockNumber;
+        ulong? blockCutoff = CutoffBlockNumber;
+        ulong? balCutoff = BalCutoffBlockNumber;
         return (blockCutoff is { } bc && _blocksDeletePointer < bc)
-            || (balCutoff is { } balC && _balsDeletePointer < balC);
+            // Reclaim owed behind a boundary already published, which the cutoff comparison above cannot see.
+            || _blocksReclaimCursor < _blocksDeletePointer
+            || (balCutoff is { } balC && _balsDeletePointer < balC)
+            // A sweep left part-way through the column is owed too. Without this it only ever resumes while some
+            // other pass happens to be due, which is not a property either of them promises the other. Note this
+            // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
+            // still started incidentally by the access-list clause above, which is rolling in every mode.
+            || _txIndexSweepCursor is not null;
     }
 
     private bool PruningIntervalHasElapsed()
         => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
 
-    private void PruneBlocksAndReceipts(long upperExclusive, CancellationToken cancellationToken)
+    private const ulong ReclaimChunkBlocks = 1_000_000;
+
+    private const ulong MinimumReclaimChunkBlocks = 100_000;
+
+    /// <summary>
+    /// Heights the next chunk covers, reduced when the token is already spent so progress cannot reach zero without
+    /// a full chunk of tombstones and file unlinks landing in front of a block. Draining that way is slow, which is
+    /// right: a node in that state has no room to prune. The access-list loop mostly reaches the reduced step
+    /// because the block loop spent the budget legitimately, which is accepted - during a drain only the sliver
+    /// ahead of the block cursor is left for it, and afterwards it gets full steps again.
+    /// </summary>
+    private static ulong ChunkStep(ulong reclaimed, CancellationToken cancellationToken) =>
+        reclaimed == 0 && cancellationToken.IsCancellationRequested ? MinimumReclaimChunkBlocks : ReclaimChunkBlocks;
+
+    /// <summary>Ceiling on entries examined per pass, not what governs the rate: with a non-zero
+    /// <c>PruningTimeoutSeconds</c> the token ends the walk first, so the index settles at some stale fraction of
+    /// the live set rather than at zero.</summary>
+    private const int TxIndexSweepEntriesPerPass = 500_000;
+
+    /// <summary>Publishes the boundary first, then gives the disk back behind it: everything the reclaim touches is
+    /// already declared absent, so interrupting it leaves the node honest and merely fat.</summary>
+    private void PruneBlocksAndReceipts(ulong upperExclusive, CancellationToken cancellationToken)
     {
-        int deletedBlocks = 0;
+        ulong target = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+
+        if (target > _blocksDeletePointer)
+        {
+            VerifyReclaimSupported();
+            UpdateBlocksDeletePointer(target);
+            SaveDeletePointers();
+        }
+
+        // Chases the published boundary, not the cutoff: they part company the moment a pass is interrupted.
+        ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
+        ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
+        if (start >= limit) return;
+
+        ulong reclaimed = 0;
         try
         {
-            for (long number = _blocksDeletePointer; number < upperExclusive; number++)
+            for (ulong from = start; from < limit;)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Block pruning operation timed out at #{number}. Deleted {deletedBlocks} blocks.");
-                    break;
-                }
+                ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
+                _blockTree.DeleteOldBlockRange(from, to);
+                _receiptStorage.RemoveReceiptsRange(from, to);
+                _blockAccessListStore.DeleteRange(from, to);
 
-                // defensive guards against deleting genesis or anything past the (possibly moving) sync pivot
-                if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
+                _blocksReclaimCursor = to;
+                if (_balsDeletePointer < to)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Encountered unexpected block #{number} while pruning history, this block will not be deleted. Should be in range [{_minDeletableBlockNumber}, {_blockTree.SyncPivot.BlockNumber}).");
-                    continue;
-                }
-
-                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(number);
-                if (chainLevelInfo is not null)
-                {
-                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                    {
-                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, number);
-                        if (block is null)
-                        {
-                            continue;
-                        }
-
-                        if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {blockInfo.BlockHash}.");
-                        _blockTree.DeleteOldBlock(number, blockInfo.BlockHash);
-                        _receiptStorage.RemoveReceipts(block);
-                        // Only delete the BAL if the BAL-only pass hasn't already covered this block; otherwise the delete is a no-op and the counter would over-report.
-                        if (number >= _balsDeletePointer)
-                        {
-                            _blockAccessListStore.Delete(number, blockInfo.BlockHash);
-                            Metrics.BlockAccessListsPruned++;
-                        }
-                        deletedBlocks++;
-                        Metrics.BlocksPruned++;
-                    }
-                }
-
-                if (_logger.IsInfo && deletedBlocks > 0 && deletedBlocks % _deletionProgressLoggingInterval == 0)
-                {
-                    long remaining = long.Max(0, upperExclusive - number - 1);
-                    _logger.Info($"Historical block pruning in progress... Deleted {deletedBlocks} blocks, with {remaining} remaining.");
-                }
-
-                UpdateBlocksDeletePointer(number + 1, isFinalUpdate: number + 1 >= upperExclusive);
-                if (_balsDeletePointer < _blocksDeletePointer)
-                {
-                    _balsDeletePointer = _blocksDeletePointer;
+                    Metrics.BlockAccessListHeightsReclaimed += (long)(to - ulong.Max(from, _balsDeletePointer));
+                    _balsDeletePointer = to;
                     Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+                }
+
+                SaveDeletePointers();
+
+                reclaimed += to - from;
+                Metrics.BlockHeightsReclaimed += (long)(to - from);
+                if (_logger.IsInfo) _logger.Info($"Reclaimed historical blocks #{from} to #{to - 1}, {limit.SaturatingSub(to)} remaining.");
+                from = to;
+
+                // After a chunk, not before one: the deadline is stamped at enqueue, so a pass that waited behind
+                // others arrives spent, and checking first would reclaim nothing while the boundary kept advancing.
+                if (from < limit && cancellationToken.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info(
+                        $"Historical block reclaim interrupted at #{from}; the boundary is already published at #{limit} and the next pass resumes from here. Reclaimed {reclaimed} blocks.");
+                    return;
                 }
             }
         }
@@ -417,52 +446,90 @@ public class HistoryPruner : IHistoryPruner
         {
             SaveDeletePointers();
 
-            if (!cancellationToken.IsCancellationRequested && _logger.IsInfo && deletedBlocks > 0)
+            if (!cancellationToken.IsCancellationRequested && _logger.IsInfo && reclaimed > 0)
             {
-                _logger.Info($"Completed block pruning operation up to #{_blocksDeletePointer}. Deleted {deletedBlocks} blocks.");
+                _logger.Info($"Completed block pruning up to #{_blocksDeletePointer}. Reclaimed {reclaimed} heights.");
             }
         }
     }
 
-    private void PruneBlockAccessLists(long upperExclusive, CancellationToken cancellationToken)
+    /// <summary>Asks each store whether it can range delete, using an empty range so the question changes nothing.
+    /// Found out after the boundary is published, it would mean announcing a floor nothing can reclaim behind.</summary>
+    private void VerifyReclaimSupported()
     {
-        // BAL-only pruning for the range past the block cutoff. Blocks (with their BALs) up to
-        // _blocksDeletePointer have already been pruned by PruneBlocksAndReceipts.
-        int deletedBals = 0;
+        _blockTree.DeleteOldBlockRange(0, 0);
+        _receiptStorage.RemoveReceiptsRange(0, 0);
+        _blockAccessListStore.DeleteRange(0, 0);
+    }
+
+    private void SweepTransactionIndex(CancellationToken cancellationToken)
+    {
+        // No token check: running last, this is the pass most likely to arrive with the budget gone, and refusing to
+        // start there is how it ends up never running. The walk honours the token after a minimum slice instead.
+        if (_blocksDeletePointer <= _minDeletableBlockNumber) return;
+
+        LoadTxIndexSweepCursor();
+
+        byte[]? next;
+        int removed;
         try
         {
-            for (long number = _balsDeletePointer; number < upperExclusive; number++)
+            next = _receiptStorage.SweepTransactionIndex(
+                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, cancellationToken, out removed);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Isolated: this pass walks and decodes, so it has failure modes the reclaims do not, and none of them
+            // should cost a reclaim. Cancellation is not one of them and propagates.
+            if (_logger.IsWarn) _logger.Warn($"Transaction index sweep failed and will resume next pass: {e.Message}");
+            return;
+        }
+
+        Metrics.TransactionIndexEntriesPruned += removed;
+
+        if (Bytes.AreEqual(_txIndexSweepCursor, next)) return;
+
+        // Empty value, not a removal: it reads back the same way a missing key would.
+        _txIndexSweepCursor = next;
+        _metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, next ?? []);
+    }
+
+    private void LoadTxIndexSweepCursor()
+    {
+        if (_txIndexSweepCursorLoaded) return;
+
+        byte[]? stored = _metadataDb.Get(MetadataDbKeys.HistoryPruningTxIndexSweepCursor);
+        _txIndexSweepCursor = stored is { Length: > 0 } ? stored : null;
+        _txIndexSweepCursorLoaded = true;
+    }
+
+    private void PruneBlockAccessLists(ulong upperExclusive, CancellationToken cancellationToken)
+    {
+        ulong limit = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+        ulong start = ulong.Max(_balsDeletePointer, _minDeletableBlockNumber);
+        if (start >= limit) return;
+
+        ulong reclaimed = 0;
+        try
+        {
+            for (ulong from = start; from < limit;)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Block access list pruning operation timed out at #{number}. Deleted {deletedBals} BALs.");
-                    break;
-                }
+                ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
+                _blockAccessListStore.DeleteRange(from, to);
 
-                if (number < _minDeletableBlockNumber || number >= _blockTree.SyncPivot.BlockNumber)
-                {
-                    continue;
-                }
-
-                ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(number);
-                if (chainLevelInfo is not null)
-                {
-                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Deleting old block access list at #{number} with hash {blockInfo.BlockHash}.");
-                        _blockAccessListStore.Delete(number, blockInfo.BlockHash);
-                        deletedBals++;
-                        Metrics.BlockAccessListsPruned++;
-                    }
-                }
-
-                _balsDeletePointer = number + 1;
+                _balsDeletePointer = to;
                 Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+                SaveDeletePointers();
 
-                if (_logger.IsInfo && deletedBals > 0 && deletedBals % _deletionProgressLoggingInterval == 0)
+                reclaimed += to - from;
+                Metrics.BlockAccessListHeightsReclaimed += (long)(to - from);
+                from = to;
+
+                // After a chunk, for the same reason as the block pass.
+                if (from < limit && cancellationToken.IsCancellationRequested)
                 {
-                    long remaining = long.Max(0, upperExclusive - number - 1);
-                    _logger.Info($"Historical block access list pruning in progress... Deleted {deletedBals} BALs, with {remaining} remaining.");
+                    if (_logger.IsInfo) _logger.Info($"Block access list reclaim interrupted at #{from}. Reclaimed {reclaimed} access lists.");
+                    return;
                 }
             }
         }
@@ -470,9 +537,9 @@ public class HistoryPruner : IHistoryPruner
         {
             SaveDeletePointers();
 
-            if (!cancellationToken.IsCancellationRequested && _logger.IsInfo && deletedBals > 0)
+            if (!cancellationToken.IsCancellationRequested && _logger.IsInfo && reclaimed > 0)
             {
-                _logger.Info($"Completed block access list pruning operation up to #{_balsDeletePointer}. Deleted {deletedBals} BALs.");
+                _logger.Info($"Completed block access list pruning up to #{_balsDeletePointer}. Reclaimed {reclaimed} access lists.");
             }
         }
     }
@@ -494,18 +561,30 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateBlocksDeletePointer(long.Max(blocksVal.AsRlpValueContext().DecodeLong(), _minDeletableBlockNumber));
+            UpdateBlocksDeletePointer(ulong.Max(new RlpReader(blocksVal).DecodeULong(), _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
+
+        byte[]? reclaimVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
+        // Absent on a database pruned by the per-block code, where everything below the boundary is already gone.
+        _blocksReclaimCursor = reclaimVal is null
+            ? _blocksDeletePointer
+            : ulong.Max(new RlpReader(reclaimVal).DecodeULong(), _minDeletableBlockNumber);
+        _lastSavedBlocksReclaimCursor = reclaimVal is null ? ulong.MaxValue : _blocksReclaimCursor;
 
         byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         // Until BAL pruning runs once, the BAL pointer trails the blocks pointer because BALs are
         // deleted alongside blocks in PruneBlocksAndReceipts. Default to the blocks pointer on first load.
         _balsDeletePointer = balsVal is null
             ? _blocksDeletePointer
-            : long.Max(balsVal.AsRlpValueContext().DecodeLong(), _blocksDeletePointer);
-        _lastSavedBalsDeletePointer = balsVal is null ? long.MinValue : _balsDeletePointer;
+            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _blocksDeletePointer);
+        // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
+        _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+
+        // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
+        // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
+        LoadTxIndexSweepCursor();
 
         _hasLoadedDeletePointers = true;
         if (_logger.IsDebug) _logger.Debug($"Discovered oldest block stored #{_blocksDeletePointer}, oldest BAL stored #{_balsDeletePointer}.");
@@ -517,6 +596,14 @@ public class HistoryPruner : IHistoryPruner
         if (!_hasLoadedDeletePointers)
         {
             return;
+        }
+
+        // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no
+        // cursor reads it as "already level" and treats an unreclaimed backlog as finished, forever.
+        if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
+        {
+            _metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
+            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
         }
 
         if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
@@ -534,16 +621,17 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private void UpdateBlocksDeletePointer(long newDeletePointer, bool isFinalUpdate = true)
+    private void UpdateBlocksDeletePointer(ulong newDeletePointer)
     {
         _blocksDeletePointer = newDeletePointer;
         Metrics.OldestStoredBlockNumber = _blocksDeletePointer;
         _blockTree.NewOldestBlock(_blocksDeletePointer);
-        BlockHeader? oldest = _blockTree.FindBlock(_blocksDeletePointer)?.Header;
+        // Header, not body: headers are never pruned, so this cannot depend on data the reclaim is about to erase.
+        BlockHeader? oldest = _blockTree.FindHeader(_blocksDeletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (oldest is not null)
         {
             _oldestBlockHeader = oldest;
-            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest, isFinalUpdate));
+            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));
         }
     }
 }

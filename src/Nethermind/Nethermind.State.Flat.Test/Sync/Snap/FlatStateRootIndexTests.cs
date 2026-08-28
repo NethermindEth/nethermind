@@ -30,7 +30,7 @@ public class FlatStateRootIndexTests
         return blocks;
     }
 
-    private static (BlockTree tree, List<Block> blocks, FlatStateRootIndex index) BuildIndex(int chainLength, int lastN = 10)
+    private static (BlockTree tree, List<Block> blocks, FlatStateRootIndex index) BuildIndex(int chainLength, ulong lastN = 10)
     {
         List<Block> blocks = BuildChain(chainLength);
         BlockTree tree = Build.A.BlockTree().WithBlocks(blocks.ToArray()).TestObject;
@@ -44,7 +44,7 @@ public class FlatStateRootIndexTests
             .WithStateRoot(Keccak.Compute(rootSeed.ToBigEndianByteArray()))
             .TestObject;
         tree.SuggestBlock(next);
-        tree.UpdateMainChain(new[] { next }, true);
+        tree.TryUpdateMainChain(next.Header, true, preloadedBlocks: new[] { next });
     }
 
     [Test]

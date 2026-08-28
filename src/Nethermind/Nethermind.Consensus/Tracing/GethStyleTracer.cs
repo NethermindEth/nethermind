@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -59,8 +60,8 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
-        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+        TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
+        transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
 
         try
         {
@@ -68,7 +69,7 @@ public class GethStyleTracer(
         }
         finally
         {
-            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
         }
     }
 
@@ -83,7 +84,7 @@ public class GethStyleTracer(
         return TraceImpl(block, txHash, cancellationToken, traceOptions, writer: writer, pipeWriter: pipeWriter);
     }
 
-    public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
+    public GethLikeTxTrace? Trace(ulong blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
@@ -91,7 +92,7 @@ public class GethStyleTracer(
         return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options, writer: writer, pipeWriter: pipeWriter);
     }
 
-    public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(ulong blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
@@ -184,11 +185,20 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        if (options.BlockOverrides is not null || options.NoBaseFee)
+        {
+            block = block.WithReplacedBodyCloned(block.Body);
+        }
+
         BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
             ? FindParent(block)
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
+        if (options.NoBaseFee)
+        {
+            block.Header.BaseFeePerGas = UInt256.Zero;
+        }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
@@ -211,7 +221,7 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState)),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };

@@ -3,4 +3,8 @@
 
 namespace Nethermind.Serialization.Json;
 
-public class NullableULongConverter() : NullableJsonConverter<ulong>(new ULongConverter());
+public class NullableULongConverter : NullableJsonConverter<ulong>
+{
+    public NullableULongConverter() : base(new ULongConverter()) { }
+    public NullableULongConverter(bool strictQuantity) : base(new ULongConverter(strictQuantity)) { }
+}

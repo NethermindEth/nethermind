@@ -6,7 +6,6 @@ using System.IO.Abstractions;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Extensions;
 using System.Threading.Tasks;
 using Nethermind.Config;
 
@@ -14,8 +13,6 @@ namespace Nethermind.HealthChecks.Test;
 
 public class FreeDiskSpaceCheckerTests
 {
-    private static readonly long _freeSpaceBytes = (long)(1.GiB * 1.2);
-
     [Test]
     [TestCase(1.5f, true)] //throw exception - min required 2.5% / available 1.5%
     [TestCase(2.5f, false)]
@@ -30,7 +27,7 @@ public class FreeDiskSpaceCheckerTests
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
-            GetDriveInfos(availableDiskSpacePercent),
+            DiskSpaceTestHelper.GetDriveInfos(availableDiskSpacePercent),
             Core.Timers.TimerFactory.Default,
             exitSource,
             LimboLogs.Instance);
@@ -51,9 +48,9 @@ public class FreeDiskSpaceCheckerTests
             LowStorageSpaceShutdownThreshold = 1,
             LowStorageSpaceWarningThreshold = 5
         };
-        IDriveInfo[] drives = GetDriveInfos(availableDiskSpacePercent);
-        drives[0].AvailableFreeSpace.Returns(a => _freeSpaceBytes,
-                                                a => 3 * _freeSpaceBytes);
+        IDriveInfo[] drives = DiskSpaceTestHelper.GetDriveInfos(availableDiskSpacePercent);
+        drives[0].AvailableFreeSpace.Returns(a => DiskSpaceTestHelper.FreeSpaceBytes,
+                                                a => 3 * DiskSpaceTestHelper.FreeSpaceBytes);
         FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
             drives,
@@ -68,15 +65,5 @@ public class FreeDiskSpaceCheckerTests
         Assert.That(completed, Is.True);
 
         _ = drives[0].Received(awaitsForFreeSpace ? 3 : 1).AvailableFreeSpace;
-    }
-
-    private static IDriveInfo[] GetDriveInfos(float availableDiskSpacePercent)
-    {
-        IDriveInfo drive = Substitute.For<IDriveInfo>();
-        drive.AvailableFreeSpace.Returns(_freeSpaceBytes);
-        drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / availableDiskSpacePercent));
-        drive.RootDirectory.FullName.Returns("C:/");
-
-        return new[] { drive };
     }
 }

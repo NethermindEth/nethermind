@@ -24,6 +24,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
@@ -38,10 +39,12 @@ using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
 using Testably.Abstractions;
-using Nethermind.Network.Discovery.Discv5;
 #if !DEBUG
 using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
 #endif
+
+if (!BitConverter.IsLittleEndian)
+    throw new PlatformNotSupportedException("Nethermind requires a little-endian platform.");
 
 DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
@@ -182,6 +185,8 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     {
         PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
     }
+
+    DatabasePurger.DeleteOrphan(initConfig.BaseDbPath, "bloom", logger);
 
     logger.Info("Configuration complete");
 

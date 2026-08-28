@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 
 namespace Nethermind.Core.Crypto;
@@ -15,7 +16,21 @@ public sealed partial class KeccakHash
 {
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
+    private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
     private const int HASH_DATA_AREA = 136;
+    private const int ROUNDS = 24;
+
+    private static readonly ulong[] RoundConstants =
+    [
+        0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
+        0x8000000080008000UL, 0x000000000000808bUL, 0x0000000080000001UL,
+        0x8000000080008081UL, 0x8000000000008009UL, 0x000000000000008aUL,
+        0x0000000000000088UL, 0x0000000080008009UL, 0x000000008000000aUL,
+        0x000000008000808bUL, 0x800000000000008bUL, 0x8000000000008089UL,
+        0x8000000000008003UL, 0x8000000000008002UL, 0x8000000000000080UL,
+        0x000000000000800aUL, 0x800000008000000aUL, 0x8000000080008081UL,
+        0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
+    ];
 
     private byte[] _remainderBuffer = [];
     private ulong[] _state = [];
@@ -69,6 +84,7 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
+    [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
         if ((uint)(output.Length - 1) >= STATE_SIZE)
@@ -81,9 +97,22 @@ public sealed partial class KeccakHash
             return;
         }
 #endif
+        int inputLength = input.Length;
+        // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
+        if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
+            inputLength is Address.Size or 32 or 64)
+        {
+            ComputeHash256Avx512VL(
+                ref MemoryMarshal.GetReference(input), inputLength, ref MemoryMarshal.GetReference(output));
+            return;
+        }
+
         int roundSize = GetRoundSize(output.Length);
 
-        Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
+        // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts
+        // (no tiering or dynamic PGO) and add GS-cookie and stack-probe overhead per call.
+        KeccakState stateBuffer = default; // the sponge state must start all-zero
+        Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
         if (input.Length == Address.Size)
@@ -173,6 +202,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public ValueHash256 GenerateValueHash()
     {
         Unsafe.SkipInit(out ValueHash256 output);
@@ -180,6 +210,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public void Update(ReadOnlySpan<byte> input)
     {
         if (_hash is not null)
@@ -259,6 +290,7 @@ public sealed partial class KeccakHash
         }
     }
 
+    [SkipLocalsInit]
     public void UpdateFinalTo(Span<byte> output)
     {
         if (_hash is not null)
@@ -364,7 +396,8 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    private static int GetRoundSize(int hashSize) => checked(STATE_SIZE - 2 * hashSize);
+    // Callers bound hashSize to [1, STATE_SIZE], so the arithmetic cannot overflow.
+    private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
     {
@@ -373,7 +406,6 @@ public sealed partial class KeccakHash
         // Obtain the state data in the desired (hash) size we want.
         _hash = output;
 
-        // Return the result.
         return output;
     }
 
@@ -468,6 +500,12 @@ public sealed partial class KeccakHash
     [DoesNotReturn]
     private static void ThrowInvalidOutputSize(int length) => throw new ArgumentOutOfRangeException(
         nameof(length), length, $"Must be between 1 and {STATE_SIZE}.");
+
+    [InlineArray(STATE_LANES)]
+    private struct KeccakState
+    {
+        private ulong _lane0;
+    }
 
     private static class Pool
     {

@@ -46,9 +46,15 @@ jobs:
         id: set-image
         env:
           IMAGE_INPUT: ${{ github.event.inputs.nethermind_image }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           if [ -n "$IMAGE_INPUT" ]; then
             echo "docker_image=$IMAGE_INPUT" >> "$GITHUB_OUTPUT"
+          elif [ "$TRIGGER_EVENT" = "push" ] && [ -n "$HEAD_SHA" ]; then
+            # Pin to the per-commit tag so concurrent runs each validate their own
+            # commit; the nightly schedule publish creates no master-<sha> tag
+            echo "docker_image=nethermindeth/nethermind:master-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           else
             echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
           fi
@@ -78,8 +84,8 @@ jobs:
               ;;
           esac
 
-          # Filter testnet-matrix.json to master-validation chains only
-          MASTER_CHAINS='["mainnet","gnosis","op-mainnet"]'
+          # master-validation chains; op-mainnet dropped to cut Linode cost (kept in sync-supported-chains)
+          MASTER_CHAINS='["mainnet","gnosis"]'
 
           matrix=$(cat scripts/config/testnet-matrix.json | jq \
             --argjson chains "$MASTER_CHAINS" \
@@ -95,7 +101,7 @@ jobs:
                     + $run_id + "-master-" + $config.network
                   ),
                   timeout: (
-                    if $config.network == "mainnet" and $mode == "Flat" then 360
+                    if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
                     else $config.timeout end
                   )
                 }]')
@@ -114,6 +120,8 @@ jobs:
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     runs-on: ubuntu-latest
+    # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default (see run 32068506752)
+    timeout-minutes: 15
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
@@ -182,7 +190,8 @@ jobs:
       - name: Setup Go environment
         uses: actions/setup-go@v6
         with:
-          go-version: 'stable'
+          # Pinned to 1.26: Go 1.27 breaks sedge's abigen build (cockroachdb/swiss has no go1.27 case)
+          go-version: '1.26'
           check-latest: true
           cache: true
 
@@ -192,10 +201,14 @@ jobs:
           python-version: "3.X"
 
       - name: Install Sedge environment
+        env:
+          # proxy.golang.org serves large module zips as a redirect to storage.googleapis.com,
+          # unreachable from the sync runners; `|` falls back to direct on any error, not just 404/410
+          GOPROXY: https://proxy.golang.org|direct
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
-          make compile
+          make compile-sedge
 
       - name: Run Sedge
         working-directory: sedge
@@ -206,8 +219,6 @@ jobs:
           CL_CLIENT: ${{ matrix.config.cl }}
           CL_IMAGE: ${{ matrix.config.cl_image }}
           CHECKPOINT_URL: ${{ matrix.config.checkpoint-sync-url }}
-          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
-          GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
           MAINNET_CONSENSUS_URL: ${{ secrets.MAINNET_CONSENSUS_URL }}
           MAINNET_EXECUTION_URL: ${{ secrets.MAINNET_EXECUTION_URL }}
         run: |
@@ -217,27 +228,20 @@ jobs:
           esac
 
           node_name="SyncMasterValidation-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}"
+          echo "node_name=$node_name" >> $GITHUB_ENV
 
           ./build/sedge deps install
 
           GENERIC_METRICS_FLAGS=(
             --el-extra-flag "Metrics.NodeName=${node_name}"
             --el-extra-flag Metrics.Enabled=true
-            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io"
-            --el-extra-flag "Seq.ApiKey=${SEQ_API_KEY}"
-            --el-extra-flag Seq.MinLevel=Info
             --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
-            --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}"
           )
 
           OP_METRICS_FLAGS=(
             --el-op-extra-flag "Metrics.NodeName=${node_name}"
             --el-op-extra-flag Metrics.Enabled=true
-            --el-op-extra-flag "Seq.ServerUrl=https://seq.nethermind.io"
-            --el-op-extra-flag "Seq.ApiKey=${SEQ_API_KEY}"
-            --el-op-extra-flag Seq.MinLevel=Info
             --el-op-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
-            --el-op-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}"
           )
 
           if [[ "$NETWORK" == op-* ]]; then
@@ -289,6 +293,19 @@ jobs:
 
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
+      - name: Start Grafana Alloy
+        continue-on-error: true
+        uses: ./.github/actions/start-alloy
+        with:
+          network: ${{ matrix.config.network }}
+          node-name: ${{ env.node_name }}
+          loki-url: ${{ secrets.LOKI_URL }}
+          loki-username: ${{ secrets.LOKI_USERNAME }}
+          loki-password: ${{ secrets.LOKI_PASSWORD }}
+          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
+          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
+          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
       - name: Wait for sync
         env:
           NETWORK: ${{ matrix.config.network }}
@@ -328,6 +345,13 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Stop Grafana Alloy
+        if: always()
+        continue-on-error: true
+        run: |
+          docker stop -t 15 grafana-alloy 2>/dev/null || true
+          docker rm -f grafana-alloy 2>/dev/null || true
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
@@ -371,8 +395,8 @@ jobs:
           repo_name: "nethermind"
 
   notify-on-failure:
-    needs: [sync-chain]
-    if: ${{ contains(needs.*.result, 'failure') }}
+    needs: [create_a_runner, sync-chain]
+    if: ${{ always() && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect failed jobs
@@ -394,7 +418,7 @@ jobs:
         uses: slackapi/slack-github-action@v2
         env:
           FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           webhook: ${{ secrets.SLACK_SYNC_WEBHOOK_URL }}

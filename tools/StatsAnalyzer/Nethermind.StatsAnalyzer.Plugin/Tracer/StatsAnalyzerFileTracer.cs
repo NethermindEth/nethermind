@@ -39,8 +39,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     protected readonly SortOrder Sort = sort;
     private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
     private int _pos;
-    private long _currentBlock;
-    private long _initialBlock;
+    private ulong _currentBlock;
+    private ulong _initialBlock;
     private Task _lastTask = Task.CompletedTask;
     protected TxTracer Tracer = tracer;
     private bool _skipThisBlock;
@@ -51,8 +51,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     public override void EndBlockTrace()
     {
         TxTracer tracer = Tracer;
-        long initialBlockNumber = _initialBlock;
-        long currentBlockNumber = _currentBlock;
+        ulong initialBlockNumber = _initialBlock;
+        ulong currentBlockNumber = _currentBlock;
         bool skip = _skipThisBlock;
 
         ResetBufferAndTracer();
@@ -123,7 +123,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     public override void StartNewBlockTrace(Block block)
     {
         base.StartNewBlockTrace(block);
-        long number = block.Header.Number;
+        ulong number = block.Header.Number;
 
         // Approximates BlockAccessListManager.ParallelExecutionEnabled; missing
         // clauses are subtractive, so this never under-skips (no race), only
@@ -168,8 +168,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
     protected override TxTrace OnEnd(TxTracer txTracer) => throw new NotImplementedException();
 
     private static void WriteTrace(
-        long initialBlockNumber,
-        long currentBlockNumber,
+        ulong initialBlockNumber,
+        ulong currentBlockNumber,
         IStatsAnalyzerTxTracer<TxTrace> tracer,
         string fileName,
         IFileSystem fileSystem,
@@ -182,10 +182,8 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
 
         ct.ThrowIfCancellationRequested();
 
-        using (Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
-        using (Utf8JsonWriter jsonWriter = new(file))
-        {
-            JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
-        }
+        using Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write);
+        using Utf8JsonWriter jsonWriter = new(file);
+        JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
     }
 }

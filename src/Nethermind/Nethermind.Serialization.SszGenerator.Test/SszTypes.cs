@@ -8,6 +8,7 @@ using Nethermind.Serialization.Ssz;
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
@@ -101,6 +102,46 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(4)]
         public ulong[]? Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial class ByteListClassItself
+    {
+        [SszList(3)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial class StaticClassCollectionItem
+    {
+        public ulong Value { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct NonNullableStaticClassContainer
+    {
+        public StaticClassCollectionItem Child { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListListItself
+    {
+        [SszList(3)]
+        public List<byte> Bytes { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteVectorItself
+    {
+        [SszVector(3)]
+        public byte[]? Bytes { get; set; }
     }
 
     [SszContainer]
@@ -461,6 +502,21 @@ namespace Nethermind.Serialization.SszGenerator.Test
     public partial class ShadowDerived : ShadowBase
     {
         public new uint X { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct HugeLimitBasicList
+    {
+        // VALIDATOR_REGISTRY_LIMIT-sized list (2^40), exceeds int.MaxValue
+        [SszList(1_099_511_627_776)]
+        public ulong[] Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct HugeLimitCompositeList
+    {
+        [SszList(1_099_511_627_776)]
+        public FixedC[] Items { get; set; }
     }
 
 }

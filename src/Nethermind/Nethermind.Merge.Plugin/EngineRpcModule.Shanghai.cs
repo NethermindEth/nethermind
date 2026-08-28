@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -27,7 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes)
         => _executionGetPayloadBodiesByHashV1Handler.Handle(blockHashes);
 
-    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByRangeV1(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByRangeV1(ulong start, ulong count)
         => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)

@@ -45,13 +45,16 @@ namespace Nethermind.Grpc.Servers
                     });
                 }
             }
+            catch (ObjectDisposedException)
+            {
+            }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
             }
             finally
             {
-                _clientResults.TryRemove(client, out _);
+                if (_clientResults.TryRemove(client, out BlockingCollection<string> removed)) removed.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Finished the data stream for client: '{client}'.");
             }
         }
@@ -77,6 +80,9 @@ namespace Nethermind.Grpc.Servers
                     {
                         results.TryAdd(payload);
                     }
+                    catch (ObjectDisposedException)
+                    {
+                    }
                     catch (Exception ex)
                     {
                         if (_logger.IsError) _logger.Error(ex.Message, ex);
@@ -91,7 +97,13 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            clientResult.Add(payload);
+            try
+            {
+                clientResult.Add(payload);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
 
             return Task.CompletedTask;
         }

@@ -190,6 +190,19 @@ public class L1OriginStoreTests
         Assert.That(retrieved.IsPreconfBlock, Is.True);
     }
 
+    [Test]
+    public void Can_write_and_read_l1_origin_with_null_l2_block_hash()
+    {
+        UInt256 blockId = 456;
+        L1Origin origin = new(blockId, null, 123, Hash256.Zero, null);
+
+        _store.WriteL1Origin(blockId, origin);
+        L1Origin? retrieved = _store.ReadL1Origin(blockId);
+
+        Assert.That(retrieved, Is.Not.Null);
+        Assert.That(retrieved!.L2BlockHash, Is.Null);
+    }
+
     [TestCase(0)]
     [TestCase(L1OriginDecoder.SignatureLength - 1)]
     [TestCase(L1OriginDecoder.SignatureLength + 1)]
@@ -215,7 +228,7 @@ public class L1OriginStoreTests
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
 
         Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");

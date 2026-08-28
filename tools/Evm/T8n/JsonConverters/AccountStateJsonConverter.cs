@@ -13,9 +13,17 @@ namespace Evm.T8n.JsonConverters;
 // required to serialize in geth t8n format
 public class AccountStateJsonConverter : JsonConverter<AccountState>
 {
-    private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
+    private static readonly JsonSerializerOptions ReadOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters =
+        {
+            new UInt256Converter(),
+            new ByteArrayConverter(),
+        }
+    };
 
-    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
+    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => JsonSerializer.Deserialize<AccountState>(ref reader, ReadOptions);
 
     public override void Write(Utf8JsonWriter writer, AccountState value, JsonSerializerOptions options)
     {

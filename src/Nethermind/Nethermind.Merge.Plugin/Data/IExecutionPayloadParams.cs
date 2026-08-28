@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -13,18 +13,24 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
+    byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadParams(byte[][]? executionRequests = null)
+public class ExecutionPayloadParams(
+    byte[][]? executionRequests = null,
+    byte[][]? inclusionListTransactions = null)
 {
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
+
+    /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
+    public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
@@ -60,20 +66,50 @@ public class ExecutionPayloadParams(byte[][]? executionRequests = null)
             }
         }
 
+        if (spec.InclusionListsEnabled)
+        {
+            if (InclusionListTransactions is null)
+            {
+                error = "Inclusion list must be set";
+                return ValidationResult.Fail;
+            }
+
+            // Count is bounded separately from bytes: an empty entry costs no bytes but still allocates a slot.
+            if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
+            {
+                error = "Inclusion list exceeds the maximum number of transactions";
+                return ValidationResult.Fail;
+            }
+
+            long totalBytes = 0;
+            for (int i = 0; i < InclusionListTransactions.Length; i++)
+                totalBytes += InclusionListTransactions[i]?.Length ?? 0;
+            if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+            {
+                error = "Inclusion list exceeds the maximum aggregate size";
+                return ValidationResult.Fail;
+            }
+        }
+
         return ValidationResult.Success;
     }
 }
 
 public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
-    Hash256?[] blobVersionedHashes,
+    Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    byte[][]? executionRequests = null)
-    : ExecutionPayloadParams(executionRequests), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+    byte[][]? executionRequests = null,
+    byte[][]? inclusionListTransactions = null)
+    : ExecutionPayloadParams(executionRequests, inclusionListTransactions), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
+
+    public Hash256?[]? BlobVersionedHashes => blobVersionedHashes;
+
+    public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
@@ -87,6 +123,31 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (result != ValidationResult.Success)
         {
             return result;
+        }
+
+        bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
+            !spec.BlockLevelAccessListsEnabled &&
+            executionPayload.BlockAccessList is { Length: 0 };
+        if (executionPayload.BlockAccessList is { } encodedBlockAccessList)
+        {
+            // A pre-fork V4 payload can use empty bytes while its header still carries the
+            // forbidden BAL hash. Block reconstruction must classify that as INVALID.
+            if (!isEmptyPreForkV4)
+            {
+                if (!ExecutionPayloadV4.HasCompleteRlpListEnvelope(encodedBlockAccessList))
+                {
+                    error = "Error decoding block access list: Must be a complete RLP list";
+                    return ValidationResult.Invalid;
+                }
+
+                bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
+                    ? executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error);
+                if (!decoded)
+                {
+                    return ValidationResult.Invalid;
+                }
+            }
         }
 
         Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
@@ -110,20 +171,43 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
 
+        if (isEmptyPreForkV4)
+        {
+            Result<Block> reconstructedBlock = executionPayload.TryGetBlock();
+            if (reconstructedBlock.IsError)
+            {
+                error = reconstructedBlock.Error;
+                return ValidationResult.Invalid;
+            }
+
+            if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
+            {
+                error = "Block access list must not be set before engine_newPayloadV5";
+                return ValidationResult.Fail;
+            }
+        }
+
         error = null;
         return ValidationResult.Success;
     }
 
     private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
     {
+        if (version < EngineApiVersions.NewPayload.V4 && executionPayload.BlockAccessList is not null)
+        {
+            error = "Block access list must not be set before engine_newPayloadV4";
+            return ValidationResult.Fail;
+        }
+
+        if (version == EngineApiVersions.NewPayload.V4 &&
+            executionPayload.BlockAccessList is { Length: > 0 })
+        {
+            error = "Block access list must not be set before engine_newPayloadV5";
+            return ValidationResult.Fail;
+        }
+
         if (version < EngineApiVersions.NewPayload.V5)
         {
-            if (executionPayload.BlockAccessList is not null)
-            {
-                error = "Block access list must not be set before engine_newPayloadV5";
-                return ValidationResult.Fail;
-            }
-
             if (executionPayload.SlotNumber is not null)
             {
                 error = "Slot number must not be set before engine_newPayloadV5";
@@ -140,6 +224,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (spec.IsEip7843Enabled && executionPayload.SlotNumber is null)
         {
             error = "Slot number must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (spec.IsEip4844Enabled && blobVersionedHashes is null)
+        {
+            error = "Blob versioned hashes must not be null";
             return ValidationResult.Fail;
         }
 
@@ -170,3 +260,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return expectedIndex == expected.Length;
     }
 }
+
+/// <summary>An EIP-7805 newPayload request, distinguished by type because <see cref="ExecutionPayloadV4"/>
+/// spans two forks and shared handlers have nothing else to tell them apart by.</summary>
+public sealed class InclusionListExecutionPayloadParams(
+    ExecutionPayloadV4 executionPayload,
+    Hash256?[]? blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests,
+    byte[][]? inclusionListTransactions)
+    : ExecutionPayloadParams<ExecutionPayloadV4>(
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);

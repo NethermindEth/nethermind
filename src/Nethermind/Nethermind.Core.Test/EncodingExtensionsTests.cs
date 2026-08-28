@@ -80,10 +80,13 @@ public class EncodingExtensionsTests
         string expected = charsLimit > text.Length ? text : text[..charsLimit];
         ReadOnlySequence<byte> sequence = new(encoding.GetBytes(text));
 
-        Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
 
-        Assert.That(result, Is.EqualTo(expected));
-        Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
+        }
     }
 
     [Test]
@@ -106,9 +109,12 @@ public class EncodingExtensionsTests
             .WithSegment(new ReadOnlySequence<byte>(segment2))
             .Build();
 
-        Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result), Is.True);
 
-        Assert.That(result, Is.EqualTo(expected));
-        Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(completed, Is.EqualTo(charsLimit >= text.Length));
+        }
     }
 }

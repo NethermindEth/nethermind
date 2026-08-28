@@ -130,12 +130,12 @@ public class TaikoHeaderValidator(
         }
 
         IEip1559Spec eip1559Spec = spec;
-        ulong parentGasTarget = (ulong)(parent.GasLimit / eip1559Spec.ElasticityMultiplier);
+        ulong parentGasTarget = parent.GasLimit / eip1559Spec.ElasticityMultiplier;
         ulong parentAdjustedGasTarget = Math.Min(parentGasTarget * parentBlockTime / BlockTimeTarget,
-            (ulong)parent.GasLimit * MaxGasTargetPercentage / 100);
+            parent.GasLimit * MaxGasTargetPercentage / 100);
 
         // If the parent gasUsed is the same as the adjusted target, the baseFee remains unchanged
-        if ((ulong)parent.GasUsed == parentAdjustedGasTarget)
+        if (parent.GasUsed == parentAdjustedGasTarget)
         {
             return parent.BaseFeePerGas;
         }
@@ -143,7 +143,7 @@ public class TaikoHeaderValidator(
         UInt256 baseFee;
         UInt256 baseFeeChangeDenominator = eip1559Spec.BaseFeeMaxChangeDenominator;
 
-        if ((ulong)parent.GasUsed > parentAdjustedGasTarget)
+        if (parent.GasUsed > parentAdjustedGasTarget)
         {
             // If the parent block used more gas than its target, the baseFee should increase
             // max(1, parentBaseFee * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator)
@@ -154,7 +154,7 @@ public class TaikoHeaderValidator(
             }
             else
             {
-                UInt256 gasUsedDelta = (ulong)parent.GasUsed - parentAdjustedGasTarget;
+                UInt256 gasUsedDelta = parent.GasUsed - parentAdjustedGasTarget;
                 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
                 if (feeDelta < 1)
                 {
@@ -175,7 +175,7 @@ public class TaikoHeaderValidator(
             }
             else
             {
-                UInt256 gasUsedDelta = parentAdjustedGasTarget - (ulong)parent.GasUsed;
+                UInt256 gasUsedDelta = parentAdjustedGasTarget - parent.GasUsed;
                 feeDelta = parent.BaseFeePerGas * gasUsedDelta / parentGasTarget / baseFeeChangeDenominator;
             }
 

@@ -95,8 +95,11 @@ namespace Nethermind.Core.Test.Collections
             int expectedCount = linkedHashSet.Count;
             foreach (int i in toDelete)
             {
-                Assert.That(linkedHashSet.Remove(i), Is.True);
-                Assert.That(linkedHashSet.Count, Is.EqualTo(--expectedCount));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(linkedHashSet.Remove(i), Is.True);
+                    Assert.That(linkedHashSet.Count, Is.EqualTo(--expectedCount));
+                }
             }
 
             Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
@@ -106,9 +109,12 @@ namespace Nethermind.Core.Test.Collections
         public void not_removes_unknown_elements()
         {
             LinkedHashSet<int> linkedHashSet = [.. _defaultSet];
-            Assert.That(linkedHashSet.Remove(_unknownElement), Is.False);
-            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
-            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(linkedHashSet.Remove(_unknownElement), Is.False);
+                Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+                Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
+            }
         }
 
 

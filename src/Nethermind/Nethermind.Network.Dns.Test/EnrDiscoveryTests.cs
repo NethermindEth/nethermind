@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
@@ -28,7 +29,9 @@ public class EnrDiscoveryTests
         TestErrorLogManager testErrorLogManager = new();
         INetworkConfig config = new NetworkConfig();
         config.DiscoveryDns = url;
-        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, testErrorLogManager);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(true);
+        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, forkInfo, testErrorLogManager);
         long startTime = Stopwatch.GetTimestamp();
         List<Node> addedRecords = enrDiscovery.DiscoverNodes(default).ToBlockingEnumerable().ToList();
 
@@ -53,7 +56,7 @@ public class EnrDiscoveryTests
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)
             {
-                Assert.That(nodeRecord.EnrString, Is.EqualTo(record));
+                Assert.That(nodeRecord.ToString(), Is.EqualTo(record));
                 verified++;
             }
         }

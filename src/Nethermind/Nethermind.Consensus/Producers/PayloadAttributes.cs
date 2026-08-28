@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -26,9 +27,14 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public byte[][]? InclusionListTransactions { get; set; }
+
     public ulong? SlotNumber { get; set; }
 
-    public virtual long? GetGasLimit() => null;
+    public ulong? TargetGasLimit { get; set; }
+
+    public virtual ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
+        => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
     public override string ToString() => ToString(string.Empty);
 
@@ -52,6 +58,11 @@ public class PayloadAttributes
         if (SlotNumber is not null)
         {
             sb.Append($", {nameof(SlotNumber)}: {SlotNumber}");
+        }
+
+        if (TargetGasLimit is not null)
+        {
+            sb.Append($", {nameof(TargetGasLimit)}: {TargetGasLimit}");
         }
 
         sb.Append('}');
@@ -83,7 +94,9 @@ public class PayloadAttributes
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (SlotNumber is null ? 0 : sizeof(ulong)); // slot number
+        + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
+        + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
+        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -128,7 +141,67 @@ public class PayloadAttributes
             position += sizeof(ulong);
         }
 
+        if (TargetGasLimit is not null)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
+            position += sizeof(ulong);
+        }
+
+        if (InclusionListTransactions is not null)
+        {
+            ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
         return position;
+    }
+
+    /// <summary>Largest buffer any inclusion list within the EIP-7805 aggregate bounds can need.</summary>
+    private const long MaxPooledInclusionListDigestBuffer =
+        Eip7805Constants.MaxAggregateInclusionListBytes
+        + (long)Eip7805Constants.MaxAggregateInclusionListTransactions * sizeof(uint);
+
+    internal static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    {
+        // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
+        long totalLength = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+            totalLength += sizeof(uint) + (long)(inclusionListTransactions[i]?.Length ?? 0);
+
+        // forkchoiceUpdated keeps an oversized list rather than rejecting it, so stream anything past
+        // the aggregate bounds instead of renting a buffer sized by the engine body cap.
+        if (totalLength > MaxPooledInclusionListDigestBuffer)
+            return ComputeInclusionListDigestStreaming(inclusionListTransactions);
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent((int)totalLength, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, (int)totalLength);
+        int position = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(span.Slice(position, sizeof(uint)), (uint)entry.Length);
+            position += sizeof(uint);
+            entry.CopyTo(span[position..]);
+            position += entry.Length;
+        }
+
+        return ValueKeccak.Compute(span);
+    }
+
+    /// <summary>Same byte sequence and digest as the pooled path, assembled incrementally.</summary>
+    internal static ValueHash256 ComputeInclusionListDigestStreaming(byte[][] inclusionListTransactions)
+    {
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
+        KeccakHash hash = KeccakHash.Create();
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
+            hash.Update(lengthPrefix);
+            if (entry.Length > 0) hash.Update(entry);
+        }
+
+        return hash.GenerateValueHash();
     }
 
     /// <summary>
@@ -158,21 +231,22 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
+        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent when FCUv3 not yet activated in spec).
+        if (actualVersion != timestampVersion)
+        {
+            error = $"{methodName}{timestampVersion} expected";
+            bool unsupportedFork = timestampVersion >= PayloadAttributesVersions.V2
+                && !IsSupportedFcuForkCombination(fcuVersion, timestampVersion);
+            return unsupportedFork
+                ? PayloadAttributesValidationResult.UnsupportedFork
+                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
         // This FCU version doesn't support this fork at all (e.g. V3 attrs sent to FCUv2).
         if (!IsSupportedFcuForkCombination(fcuVersion, actualVersion))
         {
             error = $"{methodName}{fcuVersion} expected";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        // Attributes structure doesn't match what the fork expects (e.g. V3 attrs sent to when FCUv3 not yet activated in spec).
-        if (actualVersion != timestampVersion)
-        {
-            error = $"{methodName}{timestampVersion} expected";
-            // FCU also doesn't support this fork → UnsupportedFork (post-Paris only)
-            return fcuVersion != timestampVersion && timestampVersion >= PayloadAttributesVersions.V2
-                ? PayloadAttributesValidationResult.UnsupportedFork
-                : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         error = null;
@@ -185,10 +259,25 @@ public class PayloadAttributes
         [NotNullWhen(false)] out string? error)
     {
         int actualVersion = this.GetVersion();
+        int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
+
+        // When attrs are below the timestamp-implied version and the FCU doesn't accept this
+        // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
+        // specific missing field rather than a generic version-mismatch.
+        if (actualVersion < timestampVersion && !IsSupportedFcuForkCombination(fcuVersion, actualVersion))
+        {
+            string? fieldError = ValidateFields(timestampVersion);
+            if (fieldError is not null)
+            {
+                error = fieldError;
+                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+            }
+        }
+
         PayloadAttributesValidationResult result = ValidateVersion(
             fcuVersion,
             actualVersion,
-            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion(),
+            timestampVersion,
             "PayloadAttributesV",
             out error);
 
@@ -214,6 +303,10 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
+            >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
+            // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
+            // an absent one is not.
+            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
             _ => null
         };
     }
@@ -226,7 +319,8 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { SlotNumber: not null } => PayloadAttributesVersions.V4,
+            { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
+            { SlotNumber: not null } or { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,
             _ => PayloadAttributesVersions.V1
@@ -235,6 +329,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
             { WithdrawalsEnabled: true } => PayloadAttributesVersions.V2,
@@ -248,4 +343,5 @@ public static class PayloadAttributesVersions
     public const int V2 = 2; // Shanghai
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
+    public const int V5 = 5; // Bogota
 }

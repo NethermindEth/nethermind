@@ -8,11 +8,15 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -63,7 +67,7 @@ public partial class DebugRpcModuleTests
         Address freshA = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
-            "tracing failed: insufficient funds for transfer: address ",
+            $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForTransfer" };
 
@@ -77,7 +81,7 @@ public partial class DebugRpcModuleTests
         Address freshC = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x1" },
-            "tracing failed: insufficient funds for gas * price + value: address ",
+            $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForGasPriceValue" };
     }
@@ -101,6 +105,55 @@ public partial class DebugRpcModuleTests
         );
 
         RpcTest.AssertSuccess(response);
+    }
+
+    [TestCase(false, false, false, TestName = "Debug_traceCall_without_gas_pricing_uses_zero_base_fee")]
+    [TestCase(false, false, true, TestName = "Debug_traceCall_without_gas_pricing_ignores_base_fee_override")]
+    [TestCase(true, true, false, TestName = "Debug_traceCall_with_max_fee_uses_live_base_fee")]
+    [TestCase(true, true, true, TestName = "Debug_traceCall_with_max_fee_uses_base_fee_override")]
+    public async Task Debug_traceCall_uses_expected_base_fee(bool includeMaxFeePerGas, bool includeMaxPriorityFeePerGas, bool overrideBaseFee)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+
+        UInt256 baseFee = ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas;
+        Assert.That(baseFee, Is.Not.EqualTo(UInt256.Zero));
+
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new()
+        {
+            ["from"] = $"{sender}",
+            ["data"] = "0x4860005260206000f3"
+        };
+        if (includeMaxFeePerGas)
+            transaction["maxFeePerGas"] = "0x100000000";
+        if (includeMaxPriorityFeePerGas)
+            transaction["maxPriorityFeePerGas"] = "0x1";
+
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + sender + "\":{\"balance\":\"0x56BC75E2D63100000\"}}")!;
+        object? options = overrideBaseFee
+            ? new
+            {
+                stateOverrides = stateOverride,
+                blockOverrides = new { baseFeePerGas = "0x100" }
+            }
+            : new { stateOverrides = stateOverride };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            transaction, null, options);
+
+        JToken result = JToken.Parse(response)["result"]!;
+        UInt256 expectedBaseFee = !includeMaxFeePerGas && !includeMaxPriorityFeePerGas
+            ? UInt256.Zero
+            : overrideBaseFee
+                ? (UInt256)0x100
+                : baseFee;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.False);
+            Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
     }
 
     [TestCase(
@@ -146,29 +199,30 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+    // Returns gas available at start of execution as a 32-byte uint256.
+    private const string GasReturnContractAddress = "0xc200000000000000000000000000000000000000";
+    private static object GasReturnContractStateOverride() => JsonSerializer.Deserialize<object>(
+        $$$"""{"{{{GasReturnContractAddress}}}":{"code":"0x5a60005260206000f3"}}""")!;
+
     [Test]
     public async Task Debug_traceCall_caps_gas_to_gas_cap()
     {
         using Context ctx = await Context.Create();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a 32-byte uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
         // Request 100K gas — should be capped to 50K by GasCap
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
+            new { to = GasReturnContractAddress, gas = "0x186A0" },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
-        long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
+        ulong gasAvailable = (ulong)ParseReturnValue(response).ToUInt256();
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     [Test]
@@ -176,28 +230,47 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
+        ulong blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        ulong gasCap = blockGasLimit * 10;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
-        // No gas field — should default to gasCap, not blockGasLimit
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000" },
+        string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
-        UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
-        Assert.That(
-            gasAvailable > (UInt256)blockGasLimit,
-            Is.True,
-            $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        string explicitGasCapResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress, gas = $"0x{gasCap:x}" },
+            null,
+            new { stateOverrides = GasReturnContractStateOverride() }
+        );
+
+        UInt256 omittedGasAvailable = ParseReturnValue(omittedGasResponse).ToUInt256();
+        UInt256 explicitGasCapAvailable = ParseReturnValue(explicitGasCapResponse).ToUInt256();
+
+        Assert.That(omittedGasAvailable, Is.EqualTo(explicitGasCapAvailable));
+        Assert.That(omittedGasAvailable > (UInt256)blockGasLimit, Is.True);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_with_zero_gas_keeps_literal_zero_gas_semantics()
+    {
+        using Context ctx = await Context.Create();
+        ulong gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // No state override needed: tx fails at intrinsic-gas validation before the EVM runs.
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress, gas = "0x0" }
+        );
+
+        JToken result = JToken.Parse(response)["result"]!;
+        Assert.That(result["failed"]?.Value<bool>(), Is.True);
+        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
     }
 
     private static byte[] ParseReturnValue(string responseJson)

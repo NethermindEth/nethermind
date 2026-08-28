@@ -4,10 +4,12 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -37,7 +39,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         _logger = logManager.GetClassLogger<TrieNodeCache>();
 
-        long maxCacheMemoryThreshold = flatDbConfig.TrieCacheMemoryBudget;
+        long maxCacheMemoryThreshold = (long)flatDbConfig.TrieCacheMemoryBudget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
 
         int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount);
@@ -98,6 +100,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     public void Add(TransientResource transientResource)
     {
+        transientResource.WaitForExclusiveLease();
+
         if (_maxCacheMemoryThreshold == 0)
         {
             for (int i = 0; i < ShardCount; i++)
@@ -105,7 +109,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
                 {
-                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
+                    if (shard[j].node is { } newNode && !newNode.IsWarmerOwned) newNode.PrunePersistedRecursively(1);
 
                 }
             }
@@ -128,12 +132,49 @@ public sealed class TrieNodeCache : ITrieNodeCache
             }
         }
 
+        static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
+        {
+            if (!source.IsWarmerResolved) return null;
+
+            CappedArray<byte> fullRlp = source.FullRlp;
+            if (fullRlp.IsNull) return null;
+
+            Hash256? keccak = source.Keccak;
+            if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
+
+            TrieNode detached = keccak is null
+                ? new TrieNode(NodeType.Unknown, fullRlp)
+                : new TrieNode(NodeType.Unknown, keccak, fullRlp);
+            TreePath path = TreePath.Empty;
+
+            try
+            {
+                return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return null;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
         Parallel.For(0, ShardCount, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].node is not { } source) continue;
+
+                TrieNode? newNode = source.IsWarmerOwned
+                    ? TryMaterializeResolvedWarmerNode(source)
+                    : source;
+                if (newNode is not null)
+                {
+                    AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                }
             }
         });
 

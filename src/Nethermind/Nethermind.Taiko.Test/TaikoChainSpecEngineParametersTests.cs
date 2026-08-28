@@ -1,9 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Taiko.TaikoSpec;
+using Nethermind.Taiko.Test.ZkGas;
+using Nethermind.Taiko.ZkGas;
 using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test;
@@ -31,7 +41,7 @@ public class TaikoChainSpecEngineParametersTests
             UnzenTimestamp = 0x69df3615,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
@@ -53,12 +63,12 @@ public class TaikoChainSpecEngineParametersTests
             ShastaTimestamp = 0x69CE6BD4,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0L, 0x11CAB0L }));
+        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0UL, 0x11CAB0UL }));
         Assert.That(timestamps, Is.EqualTo(new[] { 0x69CE6BD4ul }));
     }
 
@@ -67,7 +77,7 @@ public class TaikoChainSpecEngineParametersTests
     {
         TaikoChainSpecEngineParameters parameters = new();
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
@@ -85,7 +95,7 @@ public class TaikoChainSpecEngineParametersTests
             L1StaticCallTransitionTimestamp = 0,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
@@ -110,13 +120,176 @@ public class TaikoChainSpecEngineParametersTests
             ],
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
         Assert.That(timestamps, Is.EqualTo(new[] { 0x1000ul, 0x2000ul }),
             "placeholder MaxValue-1 schedule timestamps must not enter the fork-id chain");
+    }
+
+    // Hoodi fork schedule mirrored from alethia-reth TAIKO_HOODI_HARDFORKS: Unzen set to
+    // 2026-06-18 13:00:00 UTC by alethia-reth PR #210.
+    private const ulong HoodiShastaTimestamp = 1_770_296_400;
+    private const ulong HoodiUnzenTimestamp = 1_781_787_600;
+
+    // Mainnet fork schedule mirrored from alethia-reth TAIKO_MAINNET_HARDFORKS: Unzen set to
+    // 2026-08-06 13:00:00 UTC by alethia-reth PR #217.
+    private const ulong MainnetOntakeBlock = 538_304;
+    private const ulong MainnetPacayaBlock = 1_166_000;
+    private const ulong MainnetShastaTimestamp = 1_775_135_700;
+    private const ulong MainnetUnzenTimestamp = 1_786_021_200;
+
+    [TestCase("taiko-hoodi.json", HoodiUnzenTimestamp, new ulong[0], new[] { HoodiShastaTimestamp, HoodiUnzenTimestamp })]
+    [TestCase("taiko-alethia.json", MainnetUnzenTimestamp, new[] { MainnetOntakeBlock, MainnetPacayaBlock }, new[] { MainnetShastaTimestamp, MainnetUnzenTimestamp })]
+    public void Chainspec_schedules_Unzen_at_the_upstream_fork_time(
+        string chainSpecFileName, ulong unzenTimestamp, ulong[] expectedBlockNumbers, ulong[] expectedTimestamps)
+    {
+        (_, TaikoChainSpecEngineParameters parameters) = LoadChainSpec(chainSpecFileName);
+
+        Assert.That(parameters.UnzenTimestamp, Is.EqualTo(unzenTimestamp));
+
+        SortedSet<ulong> blockNumbers = [];
+        SortedSet<ulong> timestamps = [];
+        parameters.AddTransitions(blockNumbers, timestamps);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockNumbers, Is.EqualTo(expectedBlockNumbers),
+                "block-number fork-id walk must mirror the alethia-reth hardfork list (genesis activations are filtered)");
+            Assert.That(timestamps, Is.EqualTo(expectedTimestamps),
+                "timestamp fork-id walk must mirror the alethia-reth hardfork list: Shasta, then Unzen");
+        }
+    }
+
+    [TestCase("taiko-hoodi.json", HoodiUnzenTimestamp, 0UL)]
+    [TestCase("taiko-alethia.json", MainnetUnzenTimestamp, MainnetPacayaBlock)]
+    public void Unzen_flips_osaka_semantics_and_zk_gas_schedule_atomically(
+        string chainSpecFileName, ulong unzenTimestamp, ulong blockNumber)
+    {
+        (ChainSpec chainSpec, TaikoChainSpecEngineParameters parameters) = LoadChainSpec(chainSpecFileName);
+        TaikoChainSpecBasedSpecProvider provider = new(chainSpec, parameters, LimboLogs.Instance);
+
+        ITaikoReleaseSpec shasta = (ITaikoReleaseSpec)provider.GetSpec(new ForkActivation(blockNumber, unzenTimestamp - 1));
+        ITaikoReleaseSpec unzen = (ITaikoReleaseSpec)provider.GetSpec(new ForkActivation(blockNumber, unzenTimestamp));
+
+        // Taiko executes Unzen with Osaka semantics: alethia-reth pins Cancun, Prague, and Osaka
+        // to the Unzen activation (extend_with_shared_hardforks), so every flag must flip at the
+        // same instant for NMC to stay in consensus with alethia-reth peers.
+        (string Name, Func<ITaikoReleaseSpec, bool> Flag)[] unzenImpliedForks =
+        [
+            (nameof(ITaikoReleaseSpec.IsUnzenEnabled), static s => s.IsUnzenEnabled),
+            (nameof(ITaikoReleaseSpec.IsEip1153Enabled), static s => s.IsEip1153Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip4788Enabled), static s => s.IsEip4788Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip4844Enabled), static s => s.IsEip4844Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip5656Enabled), static s => s.IsEip5656Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip6780Enabled), static s => s.IsEip6780Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip2537Enabled), static s => s.IsEip2537Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip2935Enabled), static s => s.IsEip2935Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip6110Enabled), static s => s.IsEip6110Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7002Enabled), static s => s.IsEip7002Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7251Enabled), static s => s.IsEip7251Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7623Enabled), static s => s.IsEip7623Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7702Enabled), static s => s.IsEip7702Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7594Enabled), static s => s.IsEip7594Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7823Enabled), static s => s.IsEip7823Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7825Enabled), static s => s.IsEip7825Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7883Enabled), static s => s.IsEip7883Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7918Enabled), static s => s.IsEip7918Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7934Enabled), static s => s.IsEip7934Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7939Enabled), static s => s.IsEip7939Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7951Enabled), static s => s.IsEip7951Enabled),
+        ];
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string name, Func<ITaikoReleaseSpec, bool> flag) in unzenImpliedForks)
+            {
+                Assert.That(flag(shasta), Is.False, $"{name} one second before Unzen");
+                Assert.That(flag(unzen), Is.True, $"{name} at Unzen");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unzen.UnzenBlockZkGasLimit, Is.EqualTo(ZkGasSchedule.BlockZkGasLimit));
+            Assert.That(unzen.UnzenTxIntrinsicZkGas, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
+            Assert.That(unzen.UnzenOpcodeZkGasMultipliers.Span.SequenceEqual(ZkGasTestSchedules.OpcodeMultipliers.Span),
+                Is.True, "opcode multipliers must match the recalibrated table mirrored in ZkGasTestSchedules");
+            Assert.That(unzen.UnzenPrecompileZkGasMultipliers.Count,
+                Is.EqualTo(ZkGasTestSchedules.PrecompileMultipliers.Count));
+            foreach ((AddressAsKey address, ushort multiplier) in ZkGasTestSchedules.PrecompileMultipliers)
+            {
+                Assert.That(unzen.UnzenPrecompileZkGasMultipliers.TryGetValue(address, out ushort actual) && actual == multiplier,
+                    Is.True, $"precompile {address.Value} multiplier");
+            }
+        }
+    }
+
+    /// <summary>
+    /// alethia-reth pins Cancun, Prague, and Osaka to the Unzen activation
+    /// (<c>extend_with_shared_hardforks</c>), so the Taiko spec at Unzen must agree with L1 Osaka
+    /// on every shared EIP flag. Reflection over the full flag set (instead of a hand-written
+    /// list) guards against an EIP key missing from both the chainspec and the curated list in
+    /// <see cref="Unzen_flips_osaka_semantics_and_zk_gas_schedule_atomically"/> — the exact miss
+    /// that shipped Hoodi Unzen without EIP-7594 (#11982).
+    /// </summary>
+    [TestCase("taiko-hoodi.json", HoodiUnzenTimestamp, 0UL)]
+    [TestCase("taiko-alethia.json", MainnetUnzenTimestamp, MainnetPacayaBlock)]
+    public void Unzen_spec_agrees_with_L1_Osaka_on_every_shared_EIP_flag(
+        string chainSpecFileName, ulong unzenTimestamp, ulong blockNumber)
+    {
+        (ChainSpec chainSpec, TaikoChainSpecEngineParameters parameters) = LoadChainSpec(chainSpecFileName);
+        TaikoChainSpecBasedSpecProvider provider = new(chainSpec, parameters, LimboLogs.Instance);
+        IReleaseSpec unzen = provider.GetSpec(new ForkActivation(blockNumber, unzenTimestamp));
+        IReleaseSpec osaka = Osaka.Instance;
+
+        Dictionary<string, PropertyInfo> osakaFlags = GetEipFlags(osaka);
+        int sharedFlagCount = 0;
+        List<string> diffs = [];
+        foreach ((string name, PropertyInfo unzenProperty) in GetEipFlags(unzen))
+        {
+            if (!osakaFlags.TryGetValue(name, out PropertyInfo? osakaProperty)) continue;
+            sharedFlagCount++;
+            bool unzenValue = (bool)unzenProperty.GetValue(unzen)!;
+            bool osakaValue = (bool)osakaProperty.GetValue(osaka)!;
+            if (unzenValue != osakaValue) diffs.Add($"{name}: taiko@unzen={unzenValue}, osaka={osakaValue}");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sharedFlagCount, Is.GreaterThanOrEqualTo(70),
+                "sanity: reflection must keep seeing the shared L1 flag set");
+            Assert.That(diffs, Is.Empty,
+                "Taiko executes Unzen with Osaka semantics; every shared EIP flag must match L1 Osaka");
+        }
+    }
+
+    private static Dictionary<string, PropertyInfo> GetEipFlags(IReleaseSpec spec)
+    {
+        Dictionary<string, PropertyInfo> flags = [];
+        foreach (PropertyInfo property in spec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.PropertyType == typeof(bool)
+                && property.Name.StartsWith("Is", StringComparison.Ordinal)
+                && property.Name.EndsWith("Enabled", StringComparison.Ordinal)
+                && property.GetMethod is not null)
+            {
+                flags[property.Name] = property;
+            }
+        }
+        return flags;
+    }
+
+    private static (ChainSpec ChainSpec, TaikoChainSpecEngineParameters Parameters) LoadChainSpec(string chainSpecFileName)
+    {
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains", chainSpecFileName);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        TaikoChainSpecEngineParameters parameters =
+            chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>();
+        return (chainSpec, parameters);
     }
 
     [Test]

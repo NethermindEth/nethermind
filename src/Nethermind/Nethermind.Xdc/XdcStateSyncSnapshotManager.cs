@@ -30,7 +30,7 @@ public class XdcStateSyncSnapshotManager(
     private readonly ISnapshotManager _snapshotManager = snapshotManager;
     private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
-    public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
+    public XdcBlockHeader[]? GetGapBlocks(XdcBlockHeader pivotHeader)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader);
 
@@ -38,20 +38,22 @@ public class XdcStateSyncSnapshotManager(
 
         while (!_epochSwitchManager.IsEpochSwitchAtBlock(epochSwitchHeader))
         {
-            epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
+            if (_blockTree.FindHeader(epochSwitchHeader.ParentHash) is not XdcBlockHeader parentHeader)
+                return null;
+
+            epochSwitchHeader = parentHeader;
         }
 
-        long gapBlockNum = Math.Max(
+        ulong gapBlockNum = Math.Max(
             epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
             spec.EpochLength
          ) - spec.Gap;
 
         if (gapBlockNum + spec.Gap == spec.SwitchBlock)
         {
-            XdcBlockHeader checkpointHeader = (XdcBlockHeader)_blockTree.FindHeader(spec.SwitchBlock);
-            XdcBlockHeader gapBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
-            if (checkpointHeader is null || gapBlockHeader is null)
-                throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
+            if (_blockTree.FindHeader(spec.SwitchBlock) is not XdcBlockHeader checkpointHeader
+                || _blockTree.FindHeader(gapBlockNum) is not XdcBlockHeader gapBlockHeader)
+                return null;
 
             Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
             _snapshotManager.StoreSnapshot(snapshot);
@@ -69,7 +71,10 @@ public class XdcStateSyncSnapshotManager(
 
         for (int i = 0; i < count; i++)
         {
-            gapBlockHeaders[i] = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            if (_blockTree.FindHeader(gapBlockNum) is not XdcBlockHeader gapBlockHeader)
+                return null;
+
+            gapBlockHeaders[i] = gapBlockHeader;
             gapBlockNum += spec.EpochLength;
         }
 

@@ -428,7 +428,7 @@ public class GetPayloadDirectResponseTests
     {
         Block block = Build.A.Block
             .WithPostMergeRules()
-            .WithNumber(12)
+            .WithNumber(12UL)
             .WithTimestamp(1234)
             .WithParentHash(TestItem.KeccakA)
             .WithBeneficiary(TestItem.AddressB)
@@ -439,7 +439,7 @@ public class GetPayloadDirectResponseTests
             .WithExtraData([1, 2, 3])
             .WithBaseFeePerGas(7)
             .WithGasLimit(30_000_000)
-            .WithGasUsed(transactions.Length * Transaction.BaseTxGasCost)
+            .WithGasUsed((ulong)transactions.Length * Transaction.BaseTxGasCost)
             .WithParentBeaconBlockRoot(TestItem.KeccakE)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
