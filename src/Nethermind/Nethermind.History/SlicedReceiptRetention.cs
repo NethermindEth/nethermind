@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -25,13 +24,10 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
     private const int StampValueLength = 2 * sizeof(ulong);
 
     private static ReadOnlySpan<byte> StampKeyPrefix => "history:sliceLogsFrom:"u8;
-    private const int StampKeyPrefixLength = 22; // == StampKeyPrefix.Length
 
     private readonly FrozenDictionary<Address, ulong?> _slices = ParseSlices(flatDbConfig.HistorySliceAddresses);
     private readonly ConcurrentDictionary<AddressAsKey, ulong> _stampCache = new();
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<SlicedReceiptRetention>();
-
-    static SlicedReceiptRetention() => Debug.Assert(StampKeyPrefix.Length == StampKeyPrefixLength);
 
     public bool ShouldRetainReceipts(BlockHeader header)
     {
@@ -162,38 +158,36 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return true;
     }
 
-    /// <summary>Records, per configured address, the height its receipt retention has provably been in force from:
-    /// everything the pruner reclaims from this call on is reclaimed retention-aware, and
-    /// <paramref name="pruningUpTo"/> extends the proof over the pass that follows. An address first seen here is
-    /// stamped at <paramref name="oldestStoredReceipts"/> - anything below was reclaimed before this retention
-    /// existed, or never stored at all. An address whose record trails <paramref name="oldestStoredReceipts"/> was
-    /// removed from the config while reclaims ran, so its earned depth lapsed and it restarts. The stamp never
-    /// lowers itself: receipts backfilled below it stay refused rather than guessed at.</summary>
-    public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong pruningUpTo)
+    /// <summary>Records, per configured address, the height its receipt retention has provably been in force
+    /// from. An address first seen here is stamped at <paramref name="oldestStoredReceipts"/> - anything below
+    /// was reclaimed before this retention existed, or never stored at all. An address whose record trails
+    /// <paramref name="reclaimedThrough"/> missed retention-aware reclaims while unconfigured, so its earned depth
+    /// lapsed and it restarts. The stamp never lowers itself: receipts backfilled below it stay refused rather
+    /// than guessed at.</summary>
+    public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough)
     {
         if (_slices.Count == 0 || dbProvider?.MetadataDb is not { } metadata) return;
 
-        Span<byte> key = stackalloc byte[StampKeyPrefixLength + Address.Size];
+        Span<byte> key = stackalloc byte[StampKeyPrefix.Length + Address.Size];
         StampKeyPrefix.CopyTo(key);
         Span<byte> value = stackalloc byte[StampValueLength];
-        ulong retainedThrough = ulong.Max(oldestStoredReceipts, pruningUpTo);
 
         foreach (Address address in _slices.Keys)
         {
-            address.Bytes.CopyTo(key[StampKeyPrefixLength..]);
+            address.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
             byte[]? stored = metadata.Get(key);
             ulong stampFrom;
             if (stored is { Length: StampValueLength })
             {
                 stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);
                 ulong storedThrough = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
-                if (oldestStoredReceipts > storedThrough)
+                if (reclaimedThrough > storedThrough)
                 {
                     stampFrom = oldestStoredReceipts;
                     if (_logger.IsInfo) _logger.Info(
                         $"Slice log coverage for {address} restarts at #{stampFrom}: heights up to there were reclaimed while it was not configured.");
                 }
-                else if (storedThrough >= retainedThrough)
+                else
                 {
                     _stampCache[address] = stampFrom;
                     continue;
@@ -206,9 +200,32 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
             }
 
             BinaryPrimitives.WriteUInt64BigEndian(value, stampFrom);
-            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], retainedThrough);
+            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedThrough);
             metadata.PutSpan(key, value);
             _stampCache[address] = stampFrom;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void OnPruningPassCompleted(ulong reclaimedThrough)
+    {
+        if (_slices.Count == 0 || dbProvider?.MetadataDb is not { } metadata) return;
+
+        Span<byte> key = stackalloc byte[StampKeyPrefix.Length + Address.Size];
+        StampKeyPrefix.CopyTo(key);
+        Span<byte> value = stackalloc byte[StampValueLength];
+
+        foreach (Address address in _slices.Keys)
+        {
+            address.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
+            if (metadata.Get(key) is not { Length: StampValueLength } stored) continue;
+
+            ulong storedThrough = BinaryPrimitives.ReadUInt64BigEndian(stored.AsSpan(sizeof(ulong)));
+            if (storedThrough >= reclaimedThrough) continue;
+
+            stored.AsSpan(0, sizeof(ulong)).CopyTo(value);
+            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], reclaimedThrough);
+            metadata.PutSpan(key, value);
         }
     }
 
@@ -219,9 +236,9 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         if (_stampCache.TryGetValue(address, out ulong cached)) return cached;
         if (dbProvider?.MetadataDb is not { } metadata) return ulong.MaxValue;
 
-        Span<byte> key = stackalloc byte[StampKeyPrefixLength + Address.Size];
+        Span<byte> key = stackalloc byte[StampKeyPrefix.Length + Address.Size];
         StampKeyPrefix.CopyTo(key);
-        address.Value.Bytes.CopyTo(key[StampKeyPrefixLength..]);
+        address.Value.Bytes.CopyTo(key[StampKeyPrefix.Length..]);
         if (metadata.Get(key) is not { Length: StampValueLength } stored) return ulong.MaxValue;
 
         ulong stampFrom = BinaryPrimitives.ReadUInt64BigEndian(stored);

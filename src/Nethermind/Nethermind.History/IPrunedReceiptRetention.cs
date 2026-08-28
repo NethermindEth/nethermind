@@ -33,9 +33,13 @@ public interface IPrunedReceiptRetention
     ulong ExpiredRetentionUpperBound() => 0;
 
     /// <summary>Called at the start of every pruning pass, after the pruner has loaded its pointers: the oldest
-    /// height whose receipts this node can be assumed to hold, and the height the pass is about to reclaim up to.
-    /// Lets an implementation record from which height its retention has provably been in force - anything
-    /// reclaimed before its first call predates it, and reclaims between calls that never saw an entry lapse it.
-    /// The default ignores it.</summary>
-    void OnPruningPassStarting(ulong oldestStoredReceipts, ulong pruningUpTo) { }
+    /// height whose receipts this node actually holds, and how far retention-aware reclaims have provably reached
+    /// so far. Lets an implementation record from which height its retention has been in force - anything
+    /// reclaimed before its first call predates it, and reclaims that ran past an entry's recorded reach while it
+    /// was unconfigured lapse it. The default ignores it.</summary>
+    void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough) { }
+
+    /// <summary>Called after a pass's reclaims with the height they actually reached, extending the proof exactly
+    /// that far - never over ground a pass only intended to cover. The default ignores it.</summary>
+    void OnPruningPassCompleted(ulong reclaimedThrough) { }
 }

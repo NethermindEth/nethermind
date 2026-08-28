@@ -55,6 +55,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
+    private readonly bool _fastSync;
+    private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
     private ulong _blocksDeletePointer = 1;
@@ -112,6 +114,8 @@ public class HistoryPruner : IHistoryPruner
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
+        _fastSync = syncConfig.FastSync;
+        _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
         CheckConfig();
@@ -273,7 +277,7 @@ public class HistoryPruner : IHistoryPruner
 
                 ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
                 ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
-                _receiptRetention.OnPruningPassStarting(ulong.Max(_blocksDeletePointer, _ancientReceiptsBarrier), blockUpper);
+                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor);
                 ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
@@ -287,6 +291,7 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
+                _receiptRetention.OnPruningPassCompleted(_blocksReclaimCursor);
                 CleanupExpiredSliceRetention(cancellationToken);
                 PruneBlockAccessLists(balUpper, cancellationToken);
 
@@ -843,6 +848,22 @@ public class HistoryPruner : IHistoryPruner
                 _logger.Info($"Completed block access list pruning up to #{_balsDeletePointer}. Reclaimed {reclaimed} access lists.");
             }
         }
+    }
+
+    /// <summary>The oldest height whose receipts this node holds: the delete pointer measures bodies, so a
+    /// fast-synced node also consults the receipt backfill's own pointer - absent, no ancient receipt has been
+    /// downloaded yet and the pivot is the floor.</summary>
+    private ulong OldestStoredReceipts()
+    {
+        ulong receiptsFloor = 0;
+        if (_fastSync)
+        {
+            receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
+                ? new RlpReader(lowestInserted).DecodeULong()
+                : _blockTree.SyncPivot.BlockNumber;
+        }
+
+        return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
     }
 
     private bool TryLoadDeletePointers()
