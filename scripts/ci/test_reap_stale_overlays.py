@@ -10,8 +10,8 @@ benchmark runners, and it is duplicated verbatim across three checkout-less jobs
   * extracts the step body from the shipped YAML instead of re-implementing it, and asserts the
     three copies are byte-identical, and
   * drives that body against synthetic mount tables, with `sudo` and `umount` replaced by shell
-    functions and the mount table redirected via REAP_MOUNTS_FILE, so the guards that keep
-    `rm -rf` inside the benchmark data dir are exercised rather than argued about.
+    functions and the mount table passed positionally, so the guards that keep `rm -rf` inside
+    the benchmark data dir are exercised rather than argued about.
 
 The body runs under the options GitHub gives a `shell: bash` step - `--noprofile --norc -eo
 pipefail` - because `set -e` is on there and the body cannot turn it off.
@@ -40,6 +40,7 @@ WORKFLOWS = [
 # bin dir and behaves the same wherever bash runs. The fake umount edits the mount table the step
 # reads, which is what makes the stacked-mount and still-mounted cases meaningful.
 PREAMBLE = r"""
+MOUNTS_TABLE="$1"   # the same synthetic table the step takes positionally
 sudo() { "$@"; }
 umount() {
   local lazy=0
@@ -53,8 +54,8 @@ umount() {
   # Pop the top layer only, like the real umount: drop the last line with this target.
   awk -v t="${t}" '{ l[NR] = $0; if ($2 == t) last = NR }
                    END { for (i = 1; i <= NR; i++) if (i != last) print l[i] }' \
-      "${REAP_MOUNTS_FILE}" > "${REAP_MOUNTS_FILE}.new" \
-    && mv "${REAP_MOUNTS_FILE}.new" "${REAP_MOUNTS_FILE}"
+      "${MOUNTS_TABLE}" > "${MOUNTS_TABLE}.new" \
+    && mv "${MOUNTS_TABLE}.new" "${MOUNTS_TABLE}"
 }
 """
 
@@ -176,7 +177,6 @@ class ReapStepTestCase(unittest.TestCase):
         umount_log.write_bytes(b"")
         env = dict(os.environ)
         env.update(
-            REAP_MOUNTS_FILE=to_bash(mounts_file),
             UMOUNT_LOG=to_bash(umount_log),
             FAIL_PLAIN=":".join(fail_plain),
             FAIL_ALL=":".join(fail_all),
@@ -186,8 +186,10 @@ class ReapStepTestCase(unittest.TestCase):
             # The same options GitHub gives a `shell: bash` step (`bash --noprofile --norc -eo
             # pipefail {0}`); the body's own `set -uo pipefail` adds `u` but cannot clear `-e`, so
             # without these the suite would exercise a laxer shell than the runner does.
+            # `$0`, then the mount table as `$1` - the way the step itself reads it.
             [self.bash, "--noprofile", "--norc", "-eo", "pipefail", "-c",
-             PREAMBLE + (self.bodies[0] if body is None else body)],
+             PREAMBLE + (self.bodies[0] if body is None else body),
+             "reap", to_bash(mounts_file)],
             env=env,
             capture_output=True,
             text=True,
@@ -217,6 +219,12 @@ class CopiesInSync(ReapStepTestCase):
             self.assertEqual(lists[0], names, "the holder reap filter lists have drifted")
         for filter_ in ("name=expb", "label=expb", "name=rpcbench-", "name=nethermind-rpcbench"):
             self.assertIn(filter_, lists[0])
+
+    def test_the_mount_table_seam_is_not_reachable_from_the_job_environment(self):
+        """A fabricated table both picks the targets and certifies the unmount, so keep it to a
+        positional - Actions invokes a `run:` block with no arguments after the script path."""
+        self.assertIn('MOUNTS="${1:-/proc/self/mounts}"', self.bodies[0])
+        self.assertNotIn("MOUNTS_FILE", self.bodies[0])
 
     def test_all_three_copies_are_byte_identical(self):
         """Sharing the body would need a checkout none of the three jobs has; this is the guard."""

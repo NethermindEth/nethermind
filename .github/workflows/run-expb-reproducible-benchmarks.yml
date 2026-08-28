@@ -897,7 +897,9 @@ jobs:
           # not depend on - it is the workflow you dispatch when the disk is full.
           # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
-          MOUNTS="${REAP_MOUNTS_FILE:-/proc/self/mounts}"   # overridable only for that test
+          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
+          # script path, so only that test can point this at a table it wrote.
+          MOUNTS="${1:-/proc/self/mounts}"
           as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
           # Any mount left on this target, whatever its type - the check that an unmount actually took.
           still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
@@ -2150,7 +2152,9 @@ jobs:
           # not depend on - it is the workflow you dispatch when the disk is full.
           # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
-          MOUNTS="${REAP_MOUNTS_FILE:-/proc/self/mounts}"   # overridable only for that test
+          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
+          # script path, so only that test can point this at a table it wrote.
+          MOUNTS="${1:-/proc/self/mounts}"
           as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
           # Any mount left on this target, whatever its type - the check that an unmount actually took.
           still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
