@@ -142,6 +142,11 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
+        /// <remarks>
+        /// For an account deleted in the same commit, whether its clear is counted depends on how the address
+        /// reached the pending-root set: one added by a storage write is pruned against <c>AccountExists</c> and
+        /// its clear is dropped, while one added by <c>MarkStorageDestroyed</c> bypasses that pruning and is counted.
+        /// </remarks>
         [CounterMetric]
         [Description("Number of contracts whose non-empty persisted storage was explicitly cleared during a committed tree write, including trace/debug RPC state-override commits.")]
         public static long StorageCleared => _storageCleared.Value;
