@@ -3,10 +3,8 @@
   "engine": {
     "XDPoS": {
       "params": {
-        "period": 2,
         "epoch": 900,
         "reward": 5000,
-        "rewardCheckpoint": 900,
         "gap": 450,
         "foundationWalletAddr": "0x746249c61f5832c5eed53172776b460491bdcd5c",
         "switchEpoch": 63143,
@@ -45,9 +43,9 @@
             "TimeoutSyncThreshold": 3,
             "TimeoutPeriod": 10,
             "MinePeriod": 2,
-            "MasternodeReward": 63420000000000001704,
-            "ProtectorReward": 50270000000000003128,
-            "ObserverReward": 25129999999999999006,
+            "MasternodeReward": 63.42,
+            "ProtectorReward": 50.27,
+            "ObserverReward": 25.13,
             "MinimumMinerBlockPerEpoch": 5,
             "LimitPenaltyEpoch": 5,
             "MinimumSigningTx": 30

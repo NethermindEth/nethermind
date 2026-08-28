@@ -30,10 +30,17 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
                 writer.WritePropertyName("type");
                 JsonSerializer.Serialize(writer, receipt.Type, options);
             }
-            writer.WritePropertyName("root");
-            JsonSerializer.Serialize(writer, receipt.Root ?? Keccak.Zero, options);
-            writer.WritePropertyName("status");
-            JsonSerializer.Serialize(writer, receipt.Status, options);
+            // EIP-658: a receipt carries either a post-state root (pre-Byzantium) or a status code, never both.
+            if (receipt.Root is not null)
+            {
+                writer.WritePropertyName("root");
+                JsonSerializer.Serialize(writer, receipt.Root, options);
+            }
+            else
+            {
+                writer.WritePropertyName("status");
+                JsonSerializer.Serialize(writer, receipt.Status, options);
+            }
 
             writer.WritePropertyName("cumulativeGasUsed");
             JsonSerializer.Serialize(writer, receipt.CumulativeGasUsed, options);
@@ -42,7 +49,15 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             writer.WritePropertyName("logsBloom");
             JsonSerializer.Serialize(writer, receipt.LogsBloom, options);
             writer.WritePropertyName("logs");
-            JsonSerializer.Serialize(writer, receipt.Logs.Length == 0 ? null : receipt.Logs, options);
+            JsonSerializer.Serialize(writer, receipt.Logs!.Length == 0 ? null : receipt.Logs, options);
+            // EIP-8141: emitted only for frame transactions, so other receipts keep their existing shape.
+            if (receipt.Type == TxType.FrameTx)
+            {
+                writer.WritePropertyName("payer");
+                JsonSerializer.Serialize(writer, receipt.Payer, options);
+                writer.WritePropertyName("frameReceipts");
+                JsonSerializer.Serialize(writer, receipt.FrameReceipts, options);
+            }
             writer.WritePropertyName("transactionHash");
             JsonSerializer.Serialize(writer, receipt.TransactionHash, options);
             writer.WritePropertyName("contractAddress");

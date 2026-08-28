@@ -1,12 +1,57 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Reflection;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
 public class TransactionTests
 {
+    [Test]
+    public void CopyTo_should_preserve_legacy_hash_behavior_and_expose_explicit_hash_control()
+    {
+        MethodInfo? legacyCopy = typeof(Transaction).GetMethod(nameof(Transaction.CopyTo), [typeof(Transaction)]);
+        MethodInfo? explicitCopy = typeof(Transaction).GetMethod(nameof(Transaction.CopyTo), [typeof(Transaction), typeof(bool)]);
+        Transaction source = new() { Hash = TestItem.KeccakA };
+        Transaction legacyDestination = new() { Hash = TestItem.KeccakB };
+        Transaction hashPreservingDestination = new();
+
+        source.CopyTo(legacyDestination);
+        source.CopyTo(hashPreservingDestination, copyHash: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(legacyCopy, Is.Not.Null);
+            Assert.That(explicitCopy, Is.Not.Null);
+            Assert.That(explicitCopy?.GetParameters()[1].HasDefaultValue, Is.False);
+            Assert.That(legacyDestination.Hash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(hashPreservingDestination.Hash, Is.EqualTo(source.Hash));
+        }
+    }
+
+    [Test]
+    public void ShardBlobNetworkWrapper_should_preserve_legacy_constructor_and_deconstructor()
+    {
+        Type wrapperType = typeof(ShardBlobNetworkWrapper);
+        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[][]), typeof(ProofVersion)];
+        Type[] deconstructorParameters =
+        [
+            typeof(byte[][]).MakeByRefType(),
+            typeof(byte[][]).MakeByRefType(),
+            typeof(byte[][]).MakeByRefType(),
+            typeof(ProofVersion).MakeByRefType(),
+        ];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapperType.GetConstructor(constructorParameters), Is.Not.Null);
+            Assert.That(wrapperType.GetMethod("Deconstruct", deconstructorParameters), Is.Not.Null);
+        }
+    }
+
     [Test]
     public void When_to_not_empty_then_is_message_call()
     {

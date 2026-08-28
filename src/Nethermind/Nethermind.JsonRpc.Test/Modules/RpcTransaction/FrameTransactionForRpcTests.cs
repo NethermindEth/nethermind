@@ -4,15 +4,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -30,10 +33,14 @@ public class FrameTransactionForRpcTests
         DecodedMaxFeePerGas = 100,
         Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            SelfVerify(PrefixFrameGas),
         ],
         FrameSignatures = [],
     };
+
+    private static readonly EthereumJsonSerializer Serializer = new();
+
+    private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
     [Test]
     public void FromTransaction_FrameTx_ReturnedAsFrameTransactionForRpc()
@@ -52,8 +59,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildMinimalFrameTx();
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         Assert.That(doc.RootElement.GetProperty("type").GetString(), Is.EqualTo("0x6"));
     }
@@ -61,25 +67,11 @@ public class FrameTransactionForRpcTests
     [Test]
     public void FrameTransactionForRpc_SerializesFrames()
     {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 3151908,
-            Nonce = 0,
-            SenderAddress = TestItem.AddressA,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 100,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default),
-            ],
-            FrameSignatures = [],
-        };
+        Transaction tx = BuildMinimalFrameTx();
+        tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
         JsonElement frames = doc.RootElement.GetProperty("frames");
 
         using (Assert.EnterMultipleScope())
@@ -88,35 +80,19 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
             Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("gasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
     [Test]
     public void FrameTransactionForRpc_SerializesSignatures()
     {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = 3151908,
-            Nonce = 0,
-            SenderAddress = TestItem.AddressA,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 100,
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-            ],
-            FrameSignatures =
-            [
-                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, msg: default, new byte[65]),
-            ],
-        };
+        Transaction tx = BuildMinimalFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, msg: default, new byte[65])];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
         JsonElement signatures = doc.RootElement.GetProperty("signatures");
 
         using (Assert.EnterMultipleScope())
@@ -151,8 +127,7 @@ public class FrameTransactionForRpcTests
 
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -167,8 +142,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildMinimalFrameTx();
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -226,8 +200,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildKeyedFrameTx(nonceKeys);
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         using (Assert.EnterMultipleScope())
         {
@@ -243,8 +216,7 @@ public class FrameTransactionForRpcTests
         Transaction tx = BuildKeyedFrameTx(nonceKeys: null);
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
-        string json = new EthereumJsonSerializer().Serialize(rpc);
-        using JsonDocument doc = JsonDocument.Parse(json);
+        using JsonDocument doc = SerializeToJson(rpc);
 
         Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out _), Is.False);
     }
@@ -287,7 +259,7 @@ public class FrameTransactionForRpcTests
             }
             """;
 
-        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json);
 
         Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
         Transaction tx = rpc.ToTransaction().Data!;
@@ -299,43 +271,153 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    [Test]
-    public void ReceiptForRpc_FrameTx_ExposesPayer()
+    private static readonly LogEntry FrameLog = new(TestItem.AddressC, [1, 2, 3], [TestItem.KeccakA]);
+
+    private static TxReceipt BuildFrameTxReceipt() => new()
     {
-        TxReceipt receipt = new()
-        {
-            TxType = TxType.FrameTx,
-            Payer = TestItem.AddressA,
-            Sender = TestItem.AddressB,
-            BlockHash = Keccak.Zero,
-        };
+        TxType = TxType.FrameTx,
+        Payer = TestItem.AddressA,
+        Sender = TestItem.AddressB,
+        BlockHash = Keccak.Zero,
+        Logs = [FrameLog],
+        FrameReceipts =
+        [
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, executionGasUsed: 21_000, stateGasUsed: 97_920, logs: [FrameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, executionGasUsed: 5_000, stateGasUsed: 0, logs: []),
+        ],
+    };
 
-        ReceiptForRpc receiptForRpc = new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
-
-        Assert.That(receiptForRpc.Payer, Is.EqualTo(TestItem.AddressA));
-    }
+    private static ReceiptForRpc ToRpc(TxReceipt receipt) =>
+        new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
 
     [Test]
-    public void ReceiptForRpc_FrameTx_ExposesFrameReceipts()
+    public void ReceiptForRpc_FrameTx_ExposesPayerAndFrameReceipts()
     {
-        TxReceipt receipt = new()
-        {
-            TxType = TxType.FrameTx,
-            Payer = TestItem.AddressA,
-            Sender = TestItem.AddressB,
-            BlockHash = Keccak.Zero,
-            FrameReceipts =
-            [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: []),
-            ],
-        };
-
-        ReceiptForRpc receiptForRpc = new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(1));
+            Assert.That(receiptForRpc.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receiptForRpc.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000));
+            Assert.That(receiptForRpc.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920));
         }
+    }
+
+    [TestCase(false, TestName = "A frame receipt survives the in-memory round trip")]
+    [TestCase(true, TestName = "A frame receipt survives the JSON round trip")]
+    public void ReceiptForRpc_FrameTx_RoundTripsPayerAndFrameReceipts(bool throughJson)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        if (throughJson)
+        {
+            EthereumJsonSerializer serializer = new();
+            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc));
+        }
+
+        TxReceipt roundTripped = receiptForRpc.ToReceipt();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
+            Assert.That(roundTripped.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(roundTripped.FrameReceipts[0].ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
+            Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Address, Is.EqualTo(TestItem.AddressC));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Data, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+            Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(roundTripped.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(5_000UL));
+            Assert.That(roundTripped.FrameReceipts[1].StateGasUsed, Is.EqualTo(0UL));
+        }
+    }
+
+    /// <summary>The wire-facing converter, not just the DTO, must carry the frame fields both ways.</summary>
+    /// <remarks><see cref="TxReceiptConverter"/> is the registered converter for <see cref="TxReceipt"/>.</remarks>
+    [Test]
+    public void TxReceiptConverter_FrameTx_RoundTripsPayerAndFrameReceipts()
+    {
+        TxReceipt receipt = BuildFrameTxReceipt();
+        receipt.TxHash = Keccak.Zero;
+        EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+        TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped!.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
+            Assert.That(roundTripped.FrameReceipts![0].ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
+            Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(roundTripped.Logs, Has.Length.EqualTo(1));
+        }
+    }
+
+    /// <summary>Frame receipts win over top-level fields that contradict them.</summary>
+    /// <remarks>
+    /// debug_insertReceipts binds arbitrary payloads, and <see cref="TxReceipt.FrameReceipts"/> requires
+    /// <see cref="TxReceipt.Logs"/> to hold the frame log union, or the bloom disagrees with the frames.
+    /// </remarks>
+    [TestCase(true, TestName = "Frame receipts override contradicting top-level fields")]
+    [TestCase(false, TestName = "Without frame receipts the top-level fields stand")]
+    public void ReceiptForRpc_FrameTx_DerivesLogsAndStatusFromTheFrames(bool hasFrameReceipts)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.Logs = [];
+        receiptForRpc.Status = TxFrameReceipt.StatusSuccess;
+        receiptForRpc.LogsBloom = new Bloom();
+        if (!hasFrameReceipts)
+        {
+            receiptForRpc.FrameReceipts = null;
+        }
+
+        TxReceipt receipt = receiptForRpc.ToReceipt();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(hasFrameReceipts ? 1 : 0));
+            Assert.That(receipt.StatusCode,
+                Is.EqualTo(hasFrameReceipts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
+            // Bloom and Logs are a matched pair: deriving one from the frames and keeping the caller's
+            // other half would only move the contradiction. The wire receipt carries no bloom at all.
+            Assert.That(receipt.Bloom, Is.EqualTo(hasFrameReceipts ? new Bloom([FrameLog]) : new Bloom()));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> MalformedFrameReceiptsCases()
+    {
+        yield return new TestCaseData("[null]").SetName("A null frame receipt entry is rejected");
+        yield return new TestCaseData(
+                $"[{string.Join(',', Enumerable.Repeat("{}", Eip8141Constants.MaxFrames + 1))}]")
+            .SetName("More frame receipts than MAX_FRAMES are rejected");
+    }
+
+    /// <summary>A shape EIP-8141 cannot produce is a caller error, not a node error.</summary>
+    /// <remarks>
+    /// debug_insertReceipts binds these entries straight from JSON, and JsonRpcService answers a
+    /// <see cref="JsonException"/> with invalid params where an unhandled one becomes an internal error.
+    /// </remarks>
+    [TestCaseSource(nameof(MalformedFrameReceiptsCases))]
+    public void ReceiptForRpc_FrameTx_RejectsMalformedFrameReceipts(string frameReceiptsJson)
+    {
+        EthereumJsonSerializer serializer = new();
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts = serializer.Deserialize<FrameReceiptForRpc[]>(frameReceiptsJson);
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    /// <summary>The same hazard on the top-level logs, which every receipt type carries.</summary>
+    [Test]
+    public void ReceiptForRpc_RejectsANullLogEntry()
+    {
+        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""");
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 }

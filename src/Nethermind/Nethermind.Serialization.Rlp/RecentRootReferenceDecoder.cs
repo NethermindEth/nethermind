@@ -54,9 +54,8 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
 
     public int GetArrayLength(RecentRootReference[] items) => Rlp.LengthOfSequence(GetArrayContentLength(items));
 
-    /// <summary>The zero and non-zero byte counts of the encoded reference array, which the split EIP-8141
-    /// calldata pricing needs. Measured off the encoding rather than recomputed, so the charge cannot drift
-    /// from the wire form.</summary>
+    /// <summary>Zero and non-zero byte counts of the encoded reference array, measured off the encoding so the
+    /// EIP-8141 calldata charge cannot drift from the wire form.</summary>
     public (int ZeroBytes, int NonZeroBytes) Measure(RecentRootReference[]? references)
     {
         if (references is null)
@@ -65,8 +64,11 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
         }
 
         int length = GetArrayLength(references);
-        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
-        Span<byte> calldata = buffer[..length];
+        // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
+        // public: the references can reach it from an RPC-built transaction the decoder never bounded.
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
+        Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
         EncodeArray(ref writer, references);
         int zeros = calldata.CountZeros();

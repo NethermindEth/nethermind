@@ -12,8 +12,7 @@ public static class TxTypeExtensions
     public static bool Supports1559(this TxType txType)
         => txType >= TxType.EIP1559 && txType != TxType.DepositTx;
 
-    // A type-3-only predicate. A frame tx may or may not carry blobs, so its blob handling keys on
-    // presence (Transaction.CarriesBlobs) rather than on the type.
+    // Type-3 only; a blob-carrying frame tx is matched by Transaction.CarriesBlobs instead.
     public static bool SupportsBlobs(this TxType txType)
         => txType == TxType.Blob;
 

@@ -27,10 +27,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
 
-/// <summary>
-/// A non-accepting verdict from <see cref="FrameTxPrefixSimulator"/> is charged to the sending peer's flood
-/// counter, so the simulator must only reject for reasons the transaction is actually answerable for.
-/// </summary>
+/// <summary>A non-accepting verdict is charged to the sending peer's flood counter, so the simulator must
+/// only reject for reasons the transaction is actually answerable for.</summary>
 [TestFixture]
 public class FrameTxPrefixSimulatorTests
 {
@@ -147,7 +145,18 @@ public class FrameTxPrefixSimulatorTests
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), cts.Token));
+        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), token: cts.Token));
+    }
+
+    [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]
+    [TestCase(true, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameSignaturesPreValidated)]
+    public void Simulate_ForwardsTheCallersSignaturePrecondition(bool preValidated, ExecutionOptions expected)
+    {
+        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor);
+
+        simulator.Simulate(Tx(), signaturesPreValidated: preValidated);
+
+        processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
 
     private static FrameTxPrefixSimulator CreateSimulator(

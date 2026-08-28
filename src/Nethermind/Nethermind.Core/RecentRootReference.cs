@@ -18,13 +18,14 @@ public class RecentRootReference(in ValueHash256 sourceId, ulong slot, in ValueH
     public ValueHash256 Root { get; } = root;
 
     /// <summary>
-    /// The <c>recent_root_reference_intrinsic_gas</c> that prepays warming the predeploy and each derived
-    /// storage key, plus the two Keccak computations deriving the key and the committed entry hash.
+    /// The <c>recent_root_reference_intrinsic_gas</c> that pre-warms the predeploy and each derived storage
+    /// key, plus the two Keccak computations deriving the key and the committed entry hash.
     /// </summary>
     /// <remarks>
-    /// A mandatory cost charged outside the EIP-7623 floored term. Both the rates and the fork itself are
-    /// resolved from the spec, so a reference cannot be priced against a fork the transaction does not
-    /// execute under: before EIP-8272 it warms no predeploy and derives no key, so it costs nothing.
+    /// A mandatory cost charged outside the EIP-7623 floored term. EIP-8272 prices the pre-warm at the
+    /// access-list entry rates — cold access less the warm charge — so the validation reads that follow are
+    /// themselves uncharged. Before EIP-8272 a reference warms no predeploy and derives no key, so it costs
+    /// nothing.
     /// </remarks>
     public static ulong IntrinsicGas(RecentRootReference[]? references, IReleaseSpec spec)
     {
