@@ -323,6 +323,59 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [Test]
+    public void Simulate_PrefixCarriesAnUnverifiableSignature_RejectedByTheSignatureCheck()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [UnverifiableSignature()];
+
+        (TransactionResult result, _) = Simulate(tx);
+
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+    }
+
+    [Test]
+    public void Simulate_CallerAssertsSignaturesPreValidated_SkipsTheDuplicateCheckAndResolvesThePayer()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [UnverifiableSignature()];
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, extraOptions: ExecutionOptions.FrameSignaturesPreValidated);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Process_MainPathWithSignaturesPreValidated_VerifiesTheSignaturesAnyway()
+    {
+        // The assertion is only legible to the prefix simulation, so a caller that sets it on any other
+        // path — block execution, eth_call, eth_estimateGas, eth_simulate, debug_traceCall — gains nothing.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [UnverifiableSignature()];
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameSignaturesPreValidated);
+
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+    }
+
+    /// <summary>A canonical SECP256K1 entry that recovers to nobody, so only <c>validate_signature</c> rejects it.</summary>
+    private static TxFrameSignature UnverifiableSignature()
+    {
+        byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        raw[32] = 1; // r = 1
+        raw[64] = 1; // s = 1
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
+    }
+
     private static byte[] CalldataOf(int length)
     {
         byte[] data = new byte[length];
@@ -330,7 +383,7 @@ public class FrameTxValidationPrefixSimulationTests
         return data;
     }
 
-    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null)
+    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -339,7 +392,7 @@ public class FrameTxValidationPrefixSimulationTests
             .WithGasLimit(30_000_000).TestObject;
         FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-        TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | extraOptions);
         return (result, tracer);
     }
 
