@@ -104,28 +104,44 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     /// <summary>Enumerates all stored light blob transactions.</summary>
     /// <remarks>
-    /// Undecodable records are skipped so that a single corrupt entry cannot abort restoration of the whole
-    /// pool at startup; the number skipped is reported once, after enumeration completes.
+    /// Undecodable records are skipped so that a single corrupt entry cannot abort restoration of the whole pool at
+    /// startup. Both counts and the first failure are reported once when enumeration ends, so that losing one record
+    /// and losing every record — which a layout change does — stay distinguishable without logging per record.
     /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
         int skipped = 0;
+        int restored = 0;
+        string? firstFailure = null;
 
-        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        try
         {
-            if (TryDecodeLightTx(txBytes, out LightTransaction? transaction))
+            foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
+                LightTransaction? transaction;
+                try
+                {
+                    if (!TryDecodeLightTx(txBytes, out transaction)) continue;
+                }
+                // A truncated record surfaces from RlpReader's unchecked Span.Slice, not as an RlpException, so the
+                // filter spans every root a corrupt record is known to decode into.
+                catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+                {
+                    skipped++;
+                    firstFailure ??= $"{e.GetType().Name}: {e.Message}";
+                    continue;
+                }
+
+                restored++;
                 yield return transaction;
             }
-            else
-            {
-                skipped++;
-            }
         }
-
-        if (skipped > 0 && _logger.IsWarn)
+        finally
         {
-            _logger.Warn($"Skipped {skipped} unreadable blob transaction record(s) while restoring the blob transaction pool.");
+            if (skipped > 0 && _logger.IsWarn)
+            {
+                _logger.Warn($"Skipped {skipped} of {skipped + restored} blob transaction record(s) as unreadable while restoring the blob transaction pool. First failure: {firstFailure}");
+            }
         }
     }
 
@@ -256,16 +272,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     {
         if (txBytes is not null)
         {
-            try
-            {
-                lightTx = LightTxDecoder.Decode(txBytes);
-                return true;
-            }
-            // A truncated record escapes as ArgumentOutOfRangeException or IndexOutOfRangeException rather than
-            // RlpException, because RlpReader.Read slices without bounds checking.
-            catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
-            {
-            }
+            lightTx = LightTxDecoder.Decode(txBytes);
+            return true;
         }
 
         lightTx = default;

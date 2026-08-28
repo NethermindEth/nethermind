@@ -233,6 +233,9 @@ public class BlobTxStorageTests
             .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
         yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
+        // A record written by a newer version carrying a fifth optional field: every record fails after a downgrade.
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01]), typeof(RlpException))
+            .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 
     [TestCaseSource(nameof(CorruptLightTxRecords))]
@@ -246,8 +249,8 @@ public class BlobTxStorageTests
         Transaction[] txs = [CreateBlobTransaction(TestItem.PrivateKeyA), CreateBlobTransaction(TestItem.PrivateKeyB)];
 
         byte[] corruptRecord = corrupt(LightTxDecoder.Encode(txs[0]));
-        Assert.That(() => LightTxDecoder.Decode(corruptRecord), Throws.InstanceOf(expectedDecodeException),
-            "case no longer exercises the decode failure mode it is meant to cover");
+        Exception decodeFailure = Assert.Throws(Is.InstanceOf(expectedDecodeException), () => LightTxDecoder.Decode(corruptRecord),
+            "case no longer exercises the decode failure mode it is meant to cover")!;
 
         blobTxStorage.Add(txs[0]);
         columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(TestItem.KeccakA, corruptRecord);
@@ -258,7 +261,8 @@ public class BlobTxStorageTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restored.Select(static tx => tx.Hash), Is.EquivalentTo(txs.Select(static tx => tx.Hash)));
-            iLogger.Received(1).Warn(Arg.Is<string>(static message => message.Contains("Skipped 1")));
+            iLogger.Received(1).Warn(Arg.Is<string>(message =>
+                message.Contains("Skipped 1 of 3 ") && message.Contains($"{decodeFailure.GetType().Name}: {decodeFailure.Message}")));
         }
     }
 
