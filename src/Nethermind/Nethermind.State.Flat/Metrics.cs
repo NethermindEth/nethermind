@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
-using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
