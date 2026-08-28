@@ -512,6 +512,48 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
+    [Test]
+    public void AbandonedBatch_ThenCommitToAnotherTarget_DoesNotServeTheUncommittedBranch()
+    {
+        Account persistedAccount = Build.An.Account.WithNonce(1).TestObject;
+        Account abandonedAccount = Build.An.Account.WithNonce(2).TestObject;
+        FakePersistence inner = new()
+        {
+            AccountValue = persistedAccount,
+            ThrowOnSetStorage = true,
+        };
+        CarryForwardCachingPersistence cache = new(inner);
+        try
+        {
+            cache.Clear();
+            ReadAccount(cache, Address);
+
+            using (IPersistence.IWriteBatch abandoned = cache.CreateWriteBatch(Basis0, Basis1))
+            {
+                abandoned.SetAccount(Address, abandonedAccount);
+                Assert.Throws<InvalidOperationException>(() => abandoned.SetStorage(Address, 1, null));
+            }
+
+            // A reorg retargets the retry, so Basis1 is never committed.
+            inner.ThrowOnSetStorage = false;
+            using (IPersistence.IWriteBatch retry = cache.CreateWriteBatch(Basis0, Basis2))
+                retry.SetAccount(TestItem.AddressB, persistedAccount);
+            inner.ReaderState = Basis2;
+
+            Account? read = ReadAccountValue(cache, Address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read?.Nonce, Is.EqualTo(persistedAccount.Nonce), "an account written by the abandoned branch must not be servable after a commit to another target");
+                Assert.That(inner.AccountReads, Is.EqualTo(2), "the abandoned entry was dropped, so the read fell through to the database");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
