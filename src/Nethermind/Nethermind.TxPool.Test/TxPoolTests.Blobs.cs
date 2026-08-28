@@ -3718,8 +3718,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules.
+        // EIP-8141: a frame tx (type 6) routes by whether it carries versioned hashes — to the blob pool
+        // when it does, mirroring type-3 routing and inheriting blob-pool rules, and to the normal pool otherwise.
         [TestCase(1, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
         [TestCase(0, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
         public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, int expectedBlobPool, int expectedNormalPool)

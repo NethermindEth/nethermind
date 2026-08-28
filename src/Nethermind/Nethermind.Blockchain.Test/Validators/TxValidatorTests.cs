@@ -500,7 +500,6 @@ public class TxValidatorTests
         Assert.That(result, Is.False);
     }
 
-    // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
     [TestCaseSource(nameof(FrameBlobProofVersionCases))]
     public bool IsWellFormed_FrameBlobTxProofVersion(ProofVersion proofVersion)
     {
@@ -513,6 +512,7 @@ public class TxValidatorTests
     private static IEnumerable<TestCaseData> FrameBlobProofVersionCases()
     {
         yield return new TestCaseData(Eip8141Prototype.Instance.BlobProofVersion).Returns(true).SetName("IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue");
+        // The frames fork (Amsterdam-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
         yield return new TestCaseData(ProofVersion.V0).Returns(false).SetName("IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse");
     }
 
