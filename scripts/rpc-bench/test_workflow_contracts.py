@@ -91,5 +91,13 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         self.assertIn("MIN_ROOT_FREE_GB", reclaim_step)
         self.assertIn("avail_gb /", reclaim_step)
 
+    def test_the_master_baseline_group_lets_the_running_refresh_finish(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        # Cancelling mid-run would starve the refresh: a cell is tens of minutes downstream of the image build.
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertNotIn("cancel-in-progress: true", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
