@@ -28,10 +28,9 @@ using System.Threading;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Covers the column-index fast path on the sequential execution path, reachable only because
-/// <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated validation index. Drives
-/// real execution to produce a BAL, then re-validates it: a matching BAL is accepted (and the
-/// generated index that gates the fast path is shown to be populated), a tampered BAL is rejected.
+/// Covers BAL generation and the column-index fast path on the sequential execution path,
+/// reachable only because <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated
+/// validation index.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListSequentialValidationTests
@@ -68,24 +67,60 @@ public class BlockAccessListSequentialValidationTests
             () => RunSequentialValidation(tampered));
     }
 
+    [TestCase(ProcessingOptions.NoValidation)]
+    [TestCase(ProcessingOptions.ForceSequentialBlockAccessList)]
+    public void Sequential_validation_defers_mismatched_bal_when_requested(ProcessingOptions processingOptions)
+    {
+        ReadOnlyBlockAccessList tampered = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads((UInt256)1)
+                .TestObject)
+            .TestObject;
+
+        Assert.DoesNotThrow(() => RunSequentialValidation(tampered, processingOptions));
+    }
+
+    [Test]
+    public void Generated_bal_includes_system_address_fee_recipient_credited_with_zero_fee()
+    {
+        ReadOnlyBlockAccessList generated = GenerateBlockAccessList(static block => block.Header.Beneficiary = Address.SystemUser);
+
+        // EIP-7928 BAL generation records touched accounts even when no state value changes.
+        ReadOnlyAccountChanges? systemAccount = generated.GetAccountChanges(Address.SystemUser);
+        Assert.That(systemAccount, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(systemAccount!.BalanceChanges, Is.Empty);
+            Assert.That(systemAccount.NonceChanges, Is.Empty);
+            Assert.That(systemAccount.CodeChanges, Is.Empty);
+            Assert.That(systemAccount.StorageChanges, Is.Empty);
+            Assert.That(systemAccount.StorageReads, Is.Empty);
+        }
+    }
+
     /// <summary>
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
     /// </summary>
-    private static ReadOnlyBlockAccessList GenerateBlockAccessList()
+    private static ReadOnlyBlockAccessList GenerateBlockAccessList(Action<Block>? configureBlock = null)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
         Block block = BuildBlock();
+        configureBlock?.Invoke(block);
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
         byte[] encoded = BlockAccessListDecoder.EncodeToBytes(balManager.GeneratedBlockAccessList);
         return Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
     }
 
-    private static BlockAccessListManager RunSequentialValidation(ReadOnlyBlockAccessList suggested)
+    private static BlockAccessListManager RunSequentialValidation(
+        ReadOnlyBlockAccessList suggested,
+        ProcessingOptions processingOptions = ProcessingOptions.None)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -93,11 +128,16 @@ public class BlockAccessListSequentialValidationTests
 
         Block block = BuildBlock();
         block.Header.BlockAccessListHash = Keccak.Zero;
-        RunSequential(stateProvider, balManager, block, suggested);
+        RunSequential(stateProvider, balManager, block, suggested, processingOptions);
         return balManager;
     }
 
-    private static void RunSequential(IWorldState stateProvider, BlockAccessListManager balManager, Block block, ReadOnlyBlockAccessList? blockAccessList)
+    private static void RunSequential(
+        IWorldState stateProvider,
+        BlockAccessListManager balManager,
+        Block block,
+        ReadOnlyBlockAccessList? blockAccessList,
+        ProcessingOptions processingOptions = ProcessingOptions.None)
     {
         block.BlockAccessList = blockAccessList;
 
@@ -110,14 +150,15 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance);
 
         BlockExecutionContext executionContext = new(block.Header, Amsterdam.Instance);
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, processingOptions);
         executor.SetBlockExecutionContext(executionContext);
         balManager.Setup(block);
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
 
-        executor.ProcessTransactions(block, ProcessingOptions.None, tracer, CancellationToken.None);
+        executor.ProcessTransactions(block, processingOptions, tracer, CancellationToken.None);
+        balManager.SetBlockAccessList(block);
     }
 
     private static (IWorldState, BlockAccessListManager) CreateFundedAmsterdamSetup()
@@ -126,11 +167,10 @@ public class BlockAccessListSequentialValidationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
         return (stateProvider, balManager);
     }
 

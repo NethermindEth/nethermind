@@ -3,6 +3,10 @@ name: "Run a node with selected configuration"
 on:
   workflow_dispatch:
     inputs:
+      nethermind_repo_ref:
+        description: "Ref of the nethermind repo to build/use. Leave blank to use the workflow's own ref. For arbitrum-* networks, this is treated as the NethermindEth/nethermind-arbitrum ref (default 'main' if left blank)."
+        default: ""
+        required: false
       network:
         description: "Select a network on which You want to run a node"
         default: "mainnet"
@@ -24,10 +28,13 @@ on:
           # - linea-sepolia
           - taiko-alethia
           - taiko-hoodi
+          - arbitrum-mainnet
+          - arbitrum-sepolia
           - energyweb
           - volta
+          - xdc
       cl_client:
-        description: "Select Consensus Layer Client to run node against (for Volta or Energyweb just set any - it will be omitted)"
+        description: "Select Consensus Layer Client to run node against (for Volta, Energyweb, XDC or Arbitrum just set any - it will be omitted)"
         default: ""
         required: true
         type: choice
@@ -70,7 +77,7 @@ on:
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
       additional_l2_options:
         description: "Extra options to configure L2 node"
-        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
         default: false
@@ -134,7 +141,7 @@ on:
       additional_l2_options:
         type: string
         description: "Extra options to configure L2 node"
-        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
@@ -172,7 +179,16 @@ jobs:
       - name: Prepare docker tag
         id: prepare_ref
         run: |
-          REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
+          # CLEAN_REF is forwarded downstream as 'nethermind_branch'. For
+          # arbitrum-* networks the downstream workflow uses it as the
+          # NethermindEth/nethermind-arbitrum ref (cloned + built on the node
+          # VM), not the NethermindEth/nethermind ref — so the workflow's own
+          # github.ref is not a meaningful default. Fall back to 'main' instead.
+          if [[ "${{ inputs.network }}" == arbitrum-* ]]; then
+            REF_NAME="${{ inputs.nethermind_repo_ref || 'main' }}"
+          else
+            REF_NAME="${{ inputs.nethermind_repo_ref || github.ref }}"
+          fi
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
@@ -199,9 +215,17 @@ jobs:
           echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
 
-      - name: Check if master branch and default additional_options
+      - name: Determine docker build conditions
         id: check_conditions
         run: |
+          # Arbitrum runs use the nethermind-arbitrum image (built on the node VM
+          # by the downstream workflow), not the nethermindeth/nethermind image
+          # produced by publish-docker.yml — so the L1 build is always skipped.
+          if [[ "${{ inputs.network }}" == arbitrum-* ]]; then
+            echo "skip_docker_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           ref="${{ inputs.nethermind_repo_ref || github.ref }}"
           if [ -z "$ref" ]; then
             ref="${{ github.ref }}"
@@ -254,6 +278,8 @@ jobs:
   trigger_node_and_vm_creation:
     needs: create_docker_image
     runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.wait_node.outputs.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -271,7 +297,15 @@ jobs:
       - name: Prepare docker tag
         id: prepare_ref
         run: |
-          REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
+          # See the matching step in create_docker_image: for arbitrum-* the
+          # downstream workflow treats this ref as the nethermind-arbitrum
+          # branch (built on the node VM), so the default is 'main' instead
+          # of the workflow's own github.ref.
+          if [[ "${{ inputs.network }}" == arbitrum-* ]]; then
+            REF_NAME="${{ inputs.nethermind_repo_ref || 'main' }}"
+          else
+            REF_NAME="${{ inputs.nethermind_repo_ref || github.ref }}"
+          fi
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
 
           echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
@@ -286,6 +320,7 @@ jobs:
           echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
           echo "l1_nethermind_image=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
           echo "l2_node_image=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_node_image)" >> $GITHUB_OUTPUT
+          echo "l2_el_image=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_el_image)" >> $GITHUB_OUTPUT
           echo "l2_el_extra_flags=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_el_extra_flags)" >> $GITHUB_OUTPUT
           echo "l2_cl_extra_flags=$(echo '${{ inputs.additional_l2_options }}' | jq -r .l2_cl_extra_flags)" >> $GITHUB_OUTPUT
           echo "layer1_el_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
@@ -307,10 +342,11 @@ jobs:
             "network": "${{ inputs.network }}",
             "cl_client": "${{ inputs.cl_client }}",
             "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"${{ inputs.convert_to_paprika }}\"}",
-            "additional_l2_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"l2_node_image\":\"${{ steps.extract_variables.outputs.l2_node_image}}\", \"l2_el_extra_flags\":\"${{ steps.extract_variables.outputs.l2_el_extra_flags}}\", \"l2_cl_extra_flags\":\"${{ steps.extract_variables.outputs.l2_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
+            "additional_l2_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"l2_node_image\":\"${{ steps.extract_variables.outputs.l2_node_image}}\", \"l2_el_image\":\"${{ steps.extract_variables.outputs.l2_el_image}}\", \"l2_el_extra_flags\":\"${{ steps.extract_variables.outputs.l2_el_extra_flags}}\", \"l2_cl_extra_flags\":\"${{ steps.extract_variables.outputs.l2_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
             }'
 
       - name: Wait for creation of node
+        id: wait_node
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           WORKFLOW_ID: "run-single-node.yml"
@@ -327,6 +363,7 @@ jobs:
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV
+          echo "run_id=$run_id" >> $GITHUB_OUTPUT
         working-directory: ${{ github.workspace }}
 
       - name: Download machine specs artifact

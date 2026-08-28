@@ -14,20 +14,23 @@ namespace Nethermind.Core.Test
         [Test]
         public void epoch_timestamp_in_seconds_and_milliseconds_should_be_valid()
         {
-            // very strange fail once:
-            // Failed epoch_timestamp_in_seconds_and_milliseconds_should_be_valid [317 ms]
-            // Error Message:
-            // Expected value to be 1613321574133UL, but found 1613321574132UL.
+            // Use the same integer-precision path as the implementation. TimeSpan.TotalMilliseconds
+            // returns a double and loses sub-millisecond precision once ticks exceed 2^53 (mid-2255),
+            // so feeding it through (ulong) was flaking off-by-one against DateTimeOffset.ToUnixTimeMilliseconds.
 
             DateTime utcNow = DateTime.UtcNow;
             ITimestamper timestamper = new Timestamper(utcNow);
+            DateTimeOffset utcNowOffset = new(utcNow);
             ulong epochSeconds = timestamper.UnixTime.Seconds;
             ulong epochMilliseconds = timestamper.UnixTime.Milliseconds;
-            ulong unixUtcUntilNowSeconds = (ulong)utcNow.Subtract(Jan1St1970).TotalSeconds;
-            ulong unixUtcUntilNowMilliseconds = (ulong)utcNow.Subtract(Jan1St1970).TotalMilliseconds;
+            ulong unixUtcUntilNowSeconds = (ulong)utcNowOffset.ToUnixTimeSeconds();
+            ulong unixUtcUntilNowMilliseconds = (ulong)utcNowOffset.ToUnixTimeMilliseconds();
 
-            Assert.That(epochSeconds, Is.EqualTo(unixUtcUntilNowSeconds));
-            Assert.That(epochMilliseconds, Is.EqualTo(unixUtcUntilNowMilliseconds));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(epochSeconds, Is.EqualTo(unixUtcUntilNowSeconds));
+                Assert.That(epochMilliseconds, Is.EqualTo(unixUtcUntilNowMilliseconds));
+            }
         }
     }
 }

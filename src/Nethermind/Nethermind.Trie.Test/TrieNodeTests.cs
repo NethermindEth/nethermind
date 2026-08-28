@@ -100,6 +100,118 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Warmer_owned_resolution_preserves_unrelated_flags()
+    {
+        (byte[] rlp, _) = EncodedLeaf();
+        TrieNode trieNode = new(NodeType.Unknown, rlp);
+        trieNode.MarkWarmerOwned();
+        trieNode.IsBoundaryProofNode = true;
+        trieNode.IsPersisted = false;
+
+        TreePath path = TreePath.Empty;
+        Assert.That(trieNode.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.IsWarmerOwned, Is.True);
+            Assert.That(trieNode.IsWarmerResolved, Is.True);
+            Assert.That(trieNode.IsBoundaryProofNode, Is.True);
+            Assert.That(trieNode.IsPersisted, Is.False);
+        }
+    }
+
+    [Test]
+    public void Inline_child_of_warmer_owned_node_uses_owned_resolution()
+    {
+        TrieNode inlineLeaf = TrieNodeFactory.CreateLeaf([0x3, 0x4], new CappedArray<byte>(new byte[] { 0x5 }));
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, inlineLeaf);
+        TreePath path = TreePath.Empty;
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+
+        TrieNode owned = new(NodeType.Unknown, branch.Keccak!);
+        owned.MarkWarmerOwned();
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, branch.Keccak!, ReadFlags.None).Returns(branch.FullRlp.ToArray());
+
+        Assert.That(owned.TryResolveNode(resolver, ref path), Is.True);
+
+        owned.AppendChildPath(ref path, 0);
+        TrieNode child = owned.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref path, 0, keepChildRef: true)!;
+        Assert.That(child.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.IsWarmerOwned, Is.True);
+            Assert.That(child.IsWarmerResolved, Is.True);
+        }
+    }
+
+    [Test]
+    public void Concurrent_warmer_owned_try_resolve_loads_once()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        trieNode.MarkWarmerOwned();
+
+        int loads = 0;
+        using ManualResetEventSlim loadStarted = new(false);
+        using ManualResetEventSlim allowLoad = new(false);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            Interlocked.Increment(ref loads);
+            loadStarted.Set();
+            if (!allowLoad.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("owned resolver was not released");
+            return rlp;
+        });
+
+        using ManualResetEventSlim start = new(false);
+        Task[] tasks = new Task[4];
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            tasks[i] = Task.Run(() =>
+            {
+                start.Wait();
+                TreePath path = TreePath.Empty;
+                Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            });
+        }
+
+        start.Set();
+        bool firstLoadStarted = loadStarted.Wait(TimeSpan.FromSeconds(30));
+        allowLoad.Set();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstLoadStarted, Is.True);
+            Assert.That(Task.WaitAll(tasks, TimeSpan.FromSeconds(30)), Is.True);
+            Assert.That(Volatile.Read(ref loads), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Warmer_owned_try_resolve_rejects_rlp_of_another_node()
+    {
+        (byte[] unrelatedRlp, _) = EncodedLeaf();
+        Hash256 requestedHash = Keccak.Compute("requested node");
+        TrieNode trieNode = new(NodeType.Unknown, requestedHash);
+        trieNode.MarkWarmerOwned();
+
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, requestedHash, ReadFlags.None).Returns(unrelatedRlp);
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(trieNode.IsWarmerResolved, Is.False);
+            Assert.That(trieNode.FullRlp.IsNotNull, Is.False);
+        }
+    }
+
+    [Test]
     public void Encoding_leaf_without_key_throws_trie_exception()
     {
         TrieNode trieNode = new(NodeType.Leaf);
@@ -212,6 +324,71 @@ public class TrieNodeTests
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
 
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
+    }
+
+    [TestCase(0x0001)]
+    [TestCase(0x0003)]
+    [TestCase(0x0007)]
+    [TestCase(0x5555)]
+    [TestCase(0xffff)]
+    public void Resolves_full_branch_children_to_their_individual_hashes(int branchMask)
+    {
+        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
+        {
+            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+        }
+
+        TrieNode root = new(NodeType.Branch);
+        TrieNode?[] branches = new TrieNode?[TrieNode.BranchesCount];
+
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            if ((branchMask & (1 << i)) == 0)
+            {
+                continue;
+            }
+
+            TrieNode branch = branches[i] = new TrieNode(NodeType.Branch);
+            root.SetChild(i, branch);
+            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
+            {
+                Hash256 childHash = Keccak.Compute([(byte)i, (byte)childIndex]);
+                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, childHash));
+            }
+        }
+
+        TrieNode? nonCandidate = null;
+        if (branchMask != 0xffff)
+        {
+            const int nonCandidateIndex = TrieNode.BranchesCount - 1;
+            nonCandidate = new TrieNode(NodeType.Branch);
+            nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
+            root.SetChild(nonCandidateIndex, nonCandidate);
+        }
+
+        TreePath path = TreePath.Empty;
+        root.ResolveKey(NullTrieNodeResolver.Instance, ref path, canBeParallel: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < branches.Length; i++)
+            {
+                TrieNode? branch = branches[i];
+                if (branch is not null)
+                {
+                    Assert.That(branch.FullRlp.Length, Is.EqualTo(532), $"RLP length at branch {i}");
+                    Assert.That(branch.Keccak, Is.EqualTo(Keccak.Compute(branch.FullRlp.AsSpan())), $"hash at branch {i}");
+                }
+            }
+
+            if (nonCandidate is not null)
+            {
+                Assert.That(nonCandidate.FullRlp.Length, Is.Not.EqualTo(532), "non-candidate RLP length");
+                Assert.That(nonCandidate.Keccak, Is.EqualTo(Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
+                    "non-candidate hash");
+            }
+            Assert.That(root.Keccak, Is.EqualTo(Keccak.Compute(root.FullRlp.AsSpan())), "root hash");
+        }
     }
 
     [Test]
@@ -642,20 +819,6 @@ public class TrieNodeTests
     public void Size_of_keccak_is_correct() => Assert.That(Hash256.MemorySize, Is.EqualTo(48));
 
     [Test]
-    public void Size_of_rlp_stream_is_correct()
-    {
-        RlpStream rlpStream = new(100);
-        Assert.That(rlpStream.MemorySize, Is.EqualTo(160));
-    }
-
-    [Test]
-    public void Size_of_rlp_stream_7_is_correct()
-    {
-        RlpStream rlpStream = new(7);
-        Assert.That(rlpStream.MemorySize, Is.EqualTo(64));
-    }
-
-    [Test]
     public void Size_of_rlp_unaligned_is_correct()
     {
         Rlp rlp = new(new byte[1]);
@@ -931,11 +1094,9 @@ public class TrieNodeTests
 
         using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
         {
-            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
-            {
-                committer.CommitNode(ref path, leaf1);
-                committer.CommitNode(ref path, leaf2);
-            }
+            using ICommitter? committer = trieStore.BeginCommit(leaf2);
+            committer.CommitNode(ref path, leaf1);
+            committer.CommitNode(ref path, leaf2);
         }
 
         TrieNode trieNode = new(NodeType.Branch);
@@ -1005,6 +1166,14 @@ public class TrieNodeTests
         // Should stay unpersisted
         child = parentExtension.GetChild(inMemoryScopedTrieStore, ref path, 1);
         Assert.That(child.IsPersisted, Is.False);
+    }
+
+    private static (byte[] Rlp, Hash256 Hash) EncodedLeaf()
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[32]);
+        TreePath path = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        return (leaf.FullRlp.ToArray()!, leaf.Keccak!);
     }
 
     private class InMemoryScopedTrieStore : IScopedTrieStore

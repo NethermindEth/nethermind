@@ -28,11 +28,11 @@ public class ReorgDepthFinalizedStateProviderTests
     public void FinalizedBlockNumber_ReturnsCorrectValue()
     {
         // Arrange
-        long bestKnownNumber = 1000;
+        ulong bestKnownNumber = 1000;
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
 
         // Act
-        long result = _provider.FinalizedBlockNumber;
+        ulong result = _provider.FinalizedBlockNumber;
 
         // Assert
         Assert.That(result, Is.EqualTo(bestKnownNumber - Reorganization.MaxDepth));
@@ -42,8 +42,8 @@ public class ReorgDepthFinalizedStateProviderTests
     public void GetFinalizedStateRootAt_ReturnsNull_WhenBlockNumberExceedsFinalizedBlock()
     {
         // Arrange
-        long bestKnownNumber = 100;
-        long blockNumber = 100;
+        ulong bestKnownNumber = 100;
+        ulong blockNumber = 100;
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
 
         // Act
@@ -51,15 +51,15 @@ public class ReorgDepthFinalizedStateProviderTests
 
         // Assert
         Assert.That(result, Is.Null);
-        _blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+        _blockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>());
     }
 
     [Test]
     public void GetFinalizedStateRootAt_ReturnsStateRoot_WhenBlockNumberIsFinalized()
     {
         // Arrange
-        long bestKnownNumber = 1000;
-        long blockNumber = 900;
+        ulong bestKnownNumber = 1000;
+        ulong blockNumber = 900;
         Hash256 expectedStateRoot = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(expectedStateRoot).TestObject;
 
@@ -78,8 +78,8 @@ public class ReorgDepthFinalizedStateProviderTests
     public void GetFinalizedStateRootAt_AtBoundary_ReturnsStateRoot()
     {
         // Arrange
-        long bestKnownNumber = 1000;
-        long blockNumber = bestKnownNumber - Reorganization.MaxDepth; // Exactly at the boundary
+        ulong bestKnownNumber = 1000;
+        ulong blockNumber = bestKnownNumber - Reorganization.MaxDepth; // Exactly at the boundary
         Hash256 expectedStateRoot = TestItem.KeccakD;
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(expectedStateRoot).TestObject;
 

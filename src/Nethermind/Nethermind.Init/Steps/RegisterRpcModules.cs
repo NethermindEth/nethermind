@@ -21,7 +21,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializePlugins))]
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer))]
 public class RegisterRpcModules(
     Lazy<IRpcModuleProvider> rpcModuleProvider, // Lazy because it could be disabled, in which case don't resolve it.
 
@@ -35,6 +35,7 @@ public class RegisterRpcModules(
     IEthSyncingInfo ethSyncingInfo,
     IPeerPool peerPool,
     IRlpxHost rlpxHost,
+    IBlockForRpcFactory blockForRpcFactory,
     ILogManager logManager
 ) : IStep
 {
@@ -61,7 +62,8 @@ public class RegisterRpcModules(
             txPool,
             ethSyncingInfo,
             peerPool,
-            rlpxHost);
+            rlpxHost,
+            blockForRpcFactory);
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
         ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();

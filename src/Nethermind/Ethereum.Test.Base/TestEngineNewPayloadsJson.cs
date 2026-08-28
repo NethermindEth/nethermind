@@ -11,6 +11,11 @@ namespace Ethereum.Test.Base
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
+        // EIP-7805: expected PayloadStatusV2.inclusionListSatisfied; only meaningful for a VALID payload.
+        public bool? InclusionListSatisfied { get; set; }
+
+        public ExecutionWitnessJson? ExecutionWitness { get; set; }
+        public bool? ExecutionWitnessMutated { get; set; }
 
         public class ParamsExecutionPayload
         {

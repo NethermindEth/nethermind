@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -72,7 +72,28 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null)
+    [Test]
+    public async Task ShouldContact_AlwaysAcceptsPrivilegedIp()
+    {
+        IPAddress privilegedIp = IPAddress.Parse("203.0.113.1");
+        IPrivilegedIpProvider privilegedIpProvider = Substitute.For<IPrivilegedIpProvider>();
+        privilegedIpProvider.IsPrivileged(privilegedIp).Returns(true);
+
+        // Exact-match filtering would otherwise block the second attempt from the same IP.
+        RlpxHost host = CreateHost(filterEnabled: true, subnetBucketing: false, privilegedIpProvider: privilegedIpProvider);
+        try
+        {
+            Assert.That(host.ShouldContact(privilegedIp), Is.True, "first attempt accepted");
+            Assert.That(host.ShouldContact(privilegedIp), Is.True, "privileged IP is never rate-limited");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
+        IPrivilegedIpProvider? privilegedIpProvider = null)
     {
         NetworkConfig networkConfig = new()
         {
@@ -84,13 +105,18 @@ public class RlpxHostIntegrationTests
             MaxActivePeers = 50
         };
 
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, externalIp is null ? IPAddress.None : IPAddress.Parse(externalIp))));
+
         return new RlpxHost(
             Substitute.For<IMessageSerializationService>(),
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
             Substitute.For<IHandshakeService>(),
             Substitute.For<ISessionMonitor>(),
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
+            ipResolver,
+            privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>(),
             LimboLogs.Instance);
     }
 

@@ -60,7 +60,7 @@ class ShutterCryptoTests
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
-        Assert.That(msg.SequenceEqual(decryptedMessage));
+        Assert.That(msg.SequenceEqual(decryptedMessage), Is.True);
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));
@@ -162,7 +162,7 @@ class ShutterCryptoTests
         ShutterCrypto.Decrypt(ref decryptedMessage, c, decryptionKey);
         TestContext.Out.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
-        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)), Is.True);
     }
 
     [Test]
@@ -217,5 +217,17 @@ class ShutterCryptoTests
         IdentityPreimageSszVectorTypeConverter.Feed(ref merkleizer, default);
 
         Assert.That(chunk[0], Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    // IndexOutOfRangeException escapes ShutterTxLoader's catch list — too-short input must surface as ShutterCryptoException.
+    public void DecodeEncryptedMessage_throws_ShutterCryptoException_on_too_short_input(
+        [Values(0, 1, 97, 128)] int length)
+    {
+        byte[] tooShort = new byte[length];
+        if (length > 0) tooShort[0] = 0x03;
+
+        Assert.That(() => ShutterCrypto.DecodeEncryptedMessage(tooShort),
+            Throws.TypeOf<ShutterCrypto.ShutterCryptoException>());
     }
 }

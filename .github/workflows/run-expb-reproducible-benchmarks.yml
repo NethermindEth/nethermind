@@ -3,6 +3,18 @@ name: Run EXPB Reproducible Benchmarks
 on:
   workflow_dispatch:
     inputs:
+      arch:
+        description: >-
+          Which self-hosted benchmark runner to use, and with it every path that differs between the
+          boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda); arm64 =
+          `reproducible-benchmarks-arm` (Axion, snapshots under /data, flat layout only). Timings from
+          the two boxes are NOT comparable — never mix them in one A/B.
+        required: false
+        type: choice
+        options:
+          - amd64
+          - arm64
+        default: amd64
       expb_repo:
         description: execution-payloads-benchmarks repository in owner/repo format
         required: false
@@ -26,6 +38,7 @@ on:
         options:
           - realblocks
           - superblocks
+          - fusaka
         default: superblocks
       delay_seconds:
         description: Value used to replace <<DELAY>> placeholder (integer)
@@ -40,6 +53,27 @@ on:
           Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
           Example (multiple): --Sync.FastSync=false, --Pruning.CacheMb=12000
           (or provide one flag per line).
+        required: false
+        default: ""
+      flat_write_buffer_floor:
+        description: >-
+          FlatDb write-buffer (memtable) floor in bytes for flat-layout runs, applied as
+          --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
+          shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
+          disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+          SET THIS EMPTY when benchmarking an image built before 2026-06-16 (#11936 added the flag):
+          older clients reject an unknown argument by printing CLI usage and exiting, which looks
+          like a workflow failure rather than a flag mismatch.
+        required: false
+        default: "67108864"
+      expb_env:
+        description: >-
+          Optional environment variables passed to the expb process (KEY=VALUE,
+          comma- or newline-separated). Applies to both single-image and
+          multi-image runs. Enables expb env-gated options, e.g.
+          EXPB_EVM_WARMUP=1 (per-block eth_simulateV1 warmup). Values that
+          themselves contain commas must use the newline-separated form, since
+          commas are treated as entry separators.
         required: false
         default: ""
       rebuild_docker:
@@ -75,10 +109,37 @@ on:
         type: number
         default: 10
       dottrace:
-        description: Enable JetBrains dotTrace profiling (captures .dtp snapshot per run)
+        description: >-
+          dotTrace profiling of the client. sampling/tracing snapshots are post-processed to XML
+          reports; timeline captures a UI-only snapshot (Reporter cannot convert it). Line-by-line
+          is not offered - it needs PDBs the docker images do not carry. 'true' is a legacy alias
+          for sampling. Any enabled mode also collects a dotnet-trace EventPipe .nettrace
+          (gc/contention/threading/exception events) alongside, shipped in the same artifact.
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - "false"
+          - sampling
+          - tracing
+          - timeline
+        default: "false"
+      trace_blocks:
+        description: >-
+          Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
+          implies dottrace=true and passes the list to the client as NETHERMIND_PROFILE_BLOCKS (so its
+          BlockProfiler plugin brackets each block). Produces one .dtp workspace containing one
+          snapshot per traced block (open in the dotTrace UI; the numbered .dtp.NNNN files are storage
+          segments, not per-block files); the parsed XML report aggregates all traced windows, so trace
+          a single block per run when isolated XML matters. Leave empty for whole-run profiling.
+        required: false
+        default: ""
+      client_env:
+        description: >-
+          Extra environment variables for the Nethermind client container (KEY=VALUE, comma-separated),
+          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Applied to every
+          scenario, including each image of a multi-image run.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -108,9 +169,13 @@ jobs:
       expb_repo: ${{ steps.resolve.outputs.expb_repo }}
       expb_branch: ${{ steps.resolve.outputs.expb_branch }}
       expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
+      runner_label: ${{ steps.resolve.outputs.runner_label }}
+      flat_snapshot_dir: ${{ steps.resolve.outputs.flat_snapshot_dir }}
+      flat_snapshot_block_dir: ${{ steps.resolve.outputs.flat_snapshot_block_dir }}
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
+      expb_env: ${{ steps.resolve.outputs.expb_env }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
       run_count: ${{ steps.resolve.outputs.run_count }}
@@ -121,6 +186,9 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
+      trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
+      client_env: ${{ steps.resolve.outputs.client_env }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -133,12 +201,15 @@ jobs:
           CURRENT_REPO: ${{ github.repository }}
           PUSH_BRANCH: ${{ github.ref_name }}
           DISPATCH_STATE_LAYOUT: ${{ inputs.state_layout }}
+          DISPATCH_ARCH: ${{ inputs.arch }}
           DISPATCH_PAYLOAD_SET: ${{ inputs.payload_set }}
           DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
           DISPATCH_DELAY_SECONDS: ${{ inputs.delay_seconds }}
           DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
+          DISPATCH_FLAT_WRITE_BUFFER_FLOOR: ${{ inputs.flat_write_buffer_floor }}
+          DISPATCH_EXPB_ENV: ${{ inputs.expb_env }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
           DISPATCH_DOCKER_IMAGES: ${{ inputs.docker_images }}
@@ -146,27 +217,39 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
+          DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
           set -euo pipefail
 
           should_run="true"
           mode="single"
+          # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
+          flat_write_buffer_floor="67108864"
+          expb_env=""
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
-            expb_data_dir="/mnt/sda/expb-data"
+            arch="${DISPATCH_ARCH:-amd64}"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
-            elif [[ "${payload_set}" == "realblocks" ]]; then
+            elif [[ "${payload_set}" == "realblocks" || "${payload_set}" == "fusaka" ]]; then
               amount="1000"
             else
               amount="100"
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
+            flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            # "off" disables the floor injection entirely (an empty dispatch input falls back to the default,
+            # so it cannot express "no floor"; needed to benchmark images predating the config key).
+            if [[ "${flat_write_buffer_floor}" == "off" ]]; then
+              flat_write_buffer_floor=""
+            fi
+            expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -178,6 +261,30 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            # Normalize the profiling selector: legacy boolean 'true' means sampling.
+            case "${dottrace}" in
+              true|sampling) dottrace_mode="sampling" ;;
+              tracing|timeline) dottrace_mode="${dottrace}" ;;
+              false|"") dottrace_mode="" ;;
+              *) echo "dottrace must be false, sampling, tracing, or timeline (got '${dottrace}')."; exit 1;;
+            esac
+            trace_blocks="$(printf '%s' "${DISPATCH_TRACE_BLOCKS:-}" | tr -d '[:space:]')"
+            if [[ -n "${trace_blocks}" ]]; then
+              if ! [[ "${trace_blocks}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+                echo "trace_blocks must be a comma-separated list of block numbers, got '${trace_blocks}'."
+                exit 1
+              fi
+              # Per-block snapshots ride the MeasureProfiler API (--use-api), which needs a
+              # performance profiling session - timeline cannot bracket blocks.
+              if [[ "${dottrace_mode}" == "timeline" ]]; then
+                echo "trace_blocks cannot be combined with dottrace=timeline (per-block snapshots need a performance profiling session)."
+                exit 1
+              fi
+              # tracing specific blocks implies dotTrace
+              if [[ -z "${dottrace_mode}" ]]; then dottrace_mode="sampling"; fi
+            fi
+            if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
+            client_env="${DISPATCH_CLIENT_ENV:-}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -191,10 +298,10 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            arch="amd64"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -202,14 +309,17 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            dottrace_mode=""
+            trace_blocks=""
+            client_env=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            arch="amd64"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -217,6 +327,53 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            dottrace_mode=""
+            trace_blocks=""
+            client_env=""
+          fi
+
+          # One switch drives the runner and every path that differs between the two boxes, so a
+          # dispatch cannot end up on one runner holding the other's snapshot paths.
+          case "${arch}" in
+            arm64)
+              runner_label="reproducible-benchmarks-arm"
+              expb_data_dir="/data/expb-data"
+              # This box carries a single flat snapshot and serves both config spellings from it.
+              flat_snapshot_dir="/data/nethermind/nethermind-flat-25490000"
+              flat_snapshot_block_dir="/data/nethermind/nethermind-flat-25490000"
+              ;;
+            amd64)
+              runner_label="reproducible-benchmarks"
+              expb_data_dir="/mnt/sda/expb-data"
+              # Identity rewrites: the configs on this box already carry these paths.
+              flat_snapshot_dir="/mnt/sda/nethermind-flat-snapshot"
+              flat_snapshot_block_dir="/mnt/sda/nethermind-flat-25490000"
+              ;;
+            *)
+              echo "::error::Unsupported arch '${arch}' (expected amd64 or arm64)."
+              exit 1
+              ;;
+          esac
+
+          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
+          # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
+          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
+            exit 1
+          fi
+
+          # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
+          # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
+          # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
+          if [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
+            if ! printf '%s' "${additional_extra_flags}" | grep -qi "PersistenceWriteBufferFloor"; then
+              floor_flag="--FlatDb.PersistenceWriteBufferFloor=${flat_write_buffer_floor}"
+              if [[ -n "${additional_extra_flags}" ]]; then
+                additional_extra_flags="${additional_extra_flags}, ${floor_flag}"
+              else
+                additional_extra_flags="${floor_flag}"
+              fi
+            fi
           fi
 
           branch="${branch#refs/heads/}"
@@ -225,8 +382,8 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
-            echo "delay_seconds must be an integer, got '${delay_seconds}'."
+          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "delay_seconds must be a number (integer or decimal seconds, e.g. 0.25), got '${delay_seconds}'."
             exit 1
           fi
 
@@ -271,8 +428,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -291,6 +452,9 @@ jobs:
             echo "expb_repo=${expb_repo}"
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
+            echo "runner_label=${runner_label}"
+            echo "flat_snapshot_dir=${flat_snapshot_dir}"
+            echo "flat_snapshot_block_dir=${flat_snapshot_block_dir}"
             echo "delay_seconds=${delay_seconds}"
             echo "amount=${amount}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
@@ -304,8 +468,14 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "dottrace_mode=${dottrace_mode}"
+            echo "trace_blocks=${trace_blocks}"
+            echo "client_env=${client_env}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
+            echo "EOF"
+            echo "expb_env<<EOF"
+            printf '%s\n' "${expb_env}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
@@ -326,6 +496,7 @@ jobs:
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: trigger-publish-docker
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: publish-docker.yml
@@ -348,9 +519,21 @@ jobs:
           TIMEOUT: "120"
           ORG_NAME: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+          # Wait on the run we actually dispatched. Without this the script falls back to discovering a
+          # run by workflow name + branch, which silently latches onto any other concurrent build of the
+          # same branch and reports success for an image that was never produced.
+          RUN_ID: ${{ steps.trigger-publish-docker.outputs.runId }}
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          # An empty runId would silently fall back to run discovery - the exact false green this
+          # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
+          # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
+          # output, so make the bypass impossible rather than unlikely.
+          if [ -z "${RUN_ID}" ]; then
+            echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
+            exit 1
+          fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 
@@ -444,10 +627,12 @@ jobs:
         payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
+      FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
     steps:
@@ -467,8 +652,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -484,6 +673,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Event: ${{ github.event_name }}"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
@@ -493,6 +683,18 @@ jobs:
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${SCENARIO_NAME}"
+
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
 
       - name: Restore cached master metrics
         id: restore-master-metrics
@@ -527,10 +729,12 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
-            if [[ "${PAYLOAD_SET}" == "realblocks" ]]; then
+            if [[ "${PAYLOAD_SET}" == "realblocks" || "${PAYLOAD_SET}" == "fusaka" ]]; then
               AMOUNT="1000"
             else
               AMOUNT="100"
@@ -583,16 +787,22 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#${FLAT_SNAPSHOT_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -602,6 +812,29 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -614,8 +847,8 @@ jobs:
           set -euo pipefail
 
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
@@ -638,10 +871,27 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
@@ -670,7 +920,10 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -936,7 +1189,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -1015,6 +1268,16 @@ jobs:
           restore-keys: |
             expb-master-metrics-v3-realblocks-
 
+      - name: Restore master metrics (fusaka)
+        id: restore-master-fusaka
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka
+          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v3-fusaka-
+
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
@@ -1022,6 +1285,7 @@ jobs:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
           MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
+          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
@@ -1157,11 +1421,11 @@ jobs:
             current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
 
             # Master metrics from cache
-            if [[ "${ps}" == "superblocks" ]]; then
-              master_metrics="${MASTER_SUPERBLOCKS}"
-            else
-              master_metrics="${MASTER_REALBLOCKS}"
-            fi
+            case "${ps}" in
+              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
+              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
+              *) master_metrics="${MASTER_REALBLOCKS}" ;;
+            esac
 
             build_table "${ps}" "${current_metrics}" "${master_metrics}"
           done
@@ -1462,13 +1726,11 @@ jobs:
             page_size=100
             remaining="${LAST}"
 
+            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
+            # page_size on the last page shifts the window (duplicating mid-range tags and
+            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
-              fetch_size="${page_size}"
-              if [[ "${remaining}" -lt "${page_size}" ]]; then
-                fetch_size="${remaining}"
-              fi
-
-              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
 
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
@@ -1488,6 +1750,12 @@ jobs:
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
+
+            if [[ "${#all_tags[@]}" -gt "${LAST}" ]]; then
+              all_tags=("${all_tags[@]:0:LAST}")
+              all_images=("${all_images[@]:0:LAST}")
+              all_dates=("${all_dates[@]:0:LAST}")
+            fi
 
             echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
@@ -1564,10 +1832,12 @@ jobs:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
+      FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
@@ -1575,12 +1845,25 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Multi-image benchmark run"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Image tag: ${{ matrix.tag }}"
           echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
+
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1604,6 +1887,8 @@ jobs:
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -1649,16 +1934,22 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#${FLAT_SNAPSHOT_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1668,6 +1959,29 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1679,8 +1993,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
@@ -1701,10 +2015,27 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
@@ -1731,7 +2062,10 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -1980,7 +2314,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -2181,9 +2515,11 @@ jobs:
 
   generate-dottrace-reports:
     needs: [resolve, benchmark, benchmark-multi]
+    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
     if: >-
       always()
       && needs.resolve.outputs.dottrace == 'true'
+      && needs.resolve.outputs.dottrace_mode != 'timeline'
       && needs.resolve.outputs.should_run == 'true'
       && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
     runs-on: windows-latest

@@ -7,7 +7,6 @@ using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
@@ -192,10 +191,5 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => true;
-
-        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
-            throw new NotImplementedException();
     }
 }

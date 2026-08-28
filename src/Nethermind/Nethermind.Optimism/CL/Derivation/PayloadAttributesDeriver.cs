@@ -95,7 +95,7 @@ public class PayloadAttributesDeriver(
     {
         OptimismPayloadAttributes payload = new()
         {
-            GasLimit = (long)systemConfig.GasLimit,
+            GasLimit = systemConfig.GasLimit,
             NoTxPool = true,
             ParentBeaconBlockRoot = l1Origin.ParentBeaconBlockRoot,
             Timestamp = timestamp,

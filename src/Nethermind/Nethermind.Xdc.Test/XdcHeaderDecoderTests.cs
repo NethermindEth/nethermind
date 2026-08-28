@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -47,7 +48,7 @@ namespace Nethermind.Xdc.Test
             );
 
             // Decode
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            RlpReader context = new(encodedBytes);
             BlockHeader? decodedBase = codec.Decode(ref context);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcBlockHeader>(), "The decoded header should be an instance of XdcBlockHeader.");
@@ -64,10 +65,63 @@ namespace Nethermind.Xdc.Test
             (XdcBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, includeBaseFee: false);
 
             // Decode back
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            RlpReader context = new(encodedBytes);
             XdcBlockHeader decoded = (XdcBlockHeader)codec.Decode(ref context)!;
 
             Assert.That(decoded.BaseFeePerGas.IsZero, "BaseFeePerGas should be zero when omitted.");
+        }
+
+        [Test]
+        public void Null_Mandatory_Fields_Encode_As_Defaults()
+        {
+            XdcHeaderDecoder codec = new();
+            XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+            header.ParentHash = null;
+            header.UnclesHash = null;
+            header.Beneficiary = null;
+            header.StateRoot = null;
+            header.TxRoot = null;
+            header.ReceiptsRoot = null;
+            header.Bloom = null;
+            header.MixHash = null;
+
+            RlpReader context = new(codec.Encode(header).Bytes);
+            XdcBlockHeader decoded = (XdcBlockHeader)codec.Decode(ref context)!;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.ParentHash, Is.EqualTo(Hash256.Zero));
+                Assert.That(decoded.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+                Assert.That(decoded.Beneficiary, Is.EqualTo(Address.Zero));
+                Assert.That(decoded.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.TxRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.ReceiptsRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+                Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
+                Assert.That(decoded.MixHash, Is.EqualTo(Hash256.Zero));
+            }
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        [TestCase(6)]
+        [TestCase(13)]
+        public void Rejects_Empty_Mandatory_Fixed_Size_Field(int fieldIndex)
+        {
+            XdcHeaderDecoder codec = new();
+            byte[] validRlp = codec.Encode(Build.A.XdcBlockHeader().TestObject).Bytes;
+            byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
+
+            Assert.That(() => Decode(codec, crafted), Throws.InstanceOf<RlpException>());
+        }
+
+        private static void Decode(XdcHeaderDecoder codec, byte[] rlp)
+        {
+            RlpReader context = new(rlp);
+            codec.Decode(ref context);
         }
 
         [Test]
@@ -90,7 +144,7 @@ namespace Nethermind.Xdc.Test
 
             // ForSealing encoding
             Rlp encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
-            Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
+            RlpReader context = new(encoded.Bytes);
             XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null,
@@ -103,7 +157,7 @@ namespace Nethermind.Xdc.Test
         {
             XdcHeaderDecoder decoder = new();
 
-            Rlp.ValueDecoderContext context = Bytes.FromHexString(hexRlp).AsRlpValueContext();
+            RlpReader context = new(Bytes.FromHexString(hexRlp));
             XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(ref context);
 
             string encoded = decoder.Encode(unencoded).ToString();

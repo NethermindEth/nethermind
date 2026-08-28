@@ -97,6 +97,28 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         Assert.That(test.CopyDb.Count, Is.EqualTo(count));
     }
 
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task records_duration_and_count_on_success()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        // Seed a sentinel so the assertion proves RecordPruningMetrics actually wrote the duration
+        // (a sub-second test prune truncates to 0, which would otherwise be indistinguishable from unset).
+        Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
+        TestContext test = CreateTest();
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
+        Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
+    public async Task does_not_record_count_on_unsuccessful_pruning()
+    {
+        long countBefore = Nethermind.Db.Metrics.FullPruningCount;
+        TestContext test = CreateTest(successfulPruning: false);
+        await test.RunFullPruning();
+        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore));
+    }
+
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true, FullPruningCompletionBehavior.None, false)]
     [TestCase(true, FullPruningCompletionBehavior.ShutdownOnSuccess, true)]
@@ -193,10 +215,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         private readonly bool _clearPrunedDb;
         private readonly Hash256 _stateRoot;
-        private long _head;
+        private ulong _head;
         public TestFullPruningDb FullPruningDb { get; }
         public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
+        public IStateBoundary StateBoundary { get; } = Substitute.For<IStateBoundary>();
         public IStateReader StateReader { get; }
         public FullPruner Pruner { get; }
         public MemDb TrieDb { get; }
@@ -216,7 +239,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
             INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
         {
-            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
+            BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
             TrieDb = new TestMemDb();
             CopyDb = new TestMemDb();
@@ -247,6 +270,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 },
                 BlockTree,
                 Substitute.For<IStateBoundaryWriter>(),
+                StateBoundary,
                 StateReader,
                 ProcessExitSource,
                 _chainEstimations,
@@ -304,12 +328,12 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
             for (int i = 0; i < count; i++)
             {
-                long number = _head + 1;
-                BlockTree.BestPersistedState.Returns(_head);
+                ulong number = _head + 1ul;
+                StateBoundary.BestPersistedState.Returns(_head);
                 Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
                 BlockTree.Head.Returns(head);
                 BlockTree.FindHeader(number).Returns(head.Header);
-                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<BlockHeader>() { head.Header }, true));
                 Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
             }
         }

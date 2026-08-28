@@ -20,9 +20,12 @@ public class CappedArrayTests
     public void WhenGivenNullArray_AsSpan_ShouldReturnEmpty()
     {
         CappedArray<byte> array = new(null);
-        Assert.That(array.AsSpan().IsEmpty, Is.True);
-        Assert.That(array.AsSpan().Length, Is.EqualTo(0));
-        Assert.That(array.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.AsSpan().IsEmpty, Is.True);
+            Assert.That(array.AsSpan().Length, Is.EqualTo(0));
+            Assert.That(array.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -30,11 +33,14 @@ public class CappedArrayTests
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray);
-        Assert.That(array.IsUncapped, Is.True);
-        Assert.That(array.IsNull, Is.False);
-        Assert.That(array.IsNotNull, Is.True);
-        Assert.That(array.Length, Is.EqualTo(10));
-        Assert.That(array.ToArray(), Is.SameAs(baseArray));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.IsUncapped, Is.True);
+            Assert.That(array.IsNull, Is.False);
+            Assert.That(array.IsNotNull, Is.True);
+            Assert.That(array.Length, Is.EqualTo(10));
+            Assert.That(array.ToArray(), Is.SameAs(baseArray));
+        }
     }
 
     [Test]
@@ -42,12 +48,15 @@ public class CappedArrayTests
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray, 5);
-        Assert.That(array.IsUncapped, Is.False);
-        Assert.That(array.IsNull, Is.False);
-        Assert.That(array.IsNotNull, Is.True);
-        Assert.That(array.Length, Is.EqualTo(5));
-        Assert.That(array.ToArray(), Is.EqualTo(baseArray[..5]));
-        Assert.That(array.AsSpan().Length, Is.EqualTo(5));
-        Assert.That(array.AsSpan().ToArray(), Is.EqualTo(baseArray[..5]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.IsUncapped, Is.False);
+            Assert.That(array.IsNull, Is.False);
+            Assert.That(array.IsNotNull, Is.True);
+            Assert.That(array.Length, Is.EqualTo(5));
+            Assert.That(array.ToArray(), Is.EqualTo(baseArray[..5]));
+            Assert.That(array.AsSpan().Length, Is.EqualTo(5));
+            Assert.That(array.AsSpan().ToArray(), Is.EqualTo(baseArray[..5]));
+        }
     }
 }

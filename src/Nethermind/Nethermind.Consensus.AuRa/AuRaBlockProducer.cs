@@ -51,8 +51,15 @@ namespace Nethermind.Consensus.AuRa
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
-            block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            return block;
+            if (block.Header is AuRaBlockHeader aura)
+            {
+                aura.AuRaStep = _auRaStepCalculator.CurrentStep;
+                return block;
+            }
+
+            AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(block.Header);
+            upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
+            return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
 
         protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
@@ -85,5 +92,6 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
         }
+
     }
 }

@@ -79,20 +79,20 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
 
     public ulong BlockNumber
     {
-        get => (ulong)Inner.BlockNumber;
-        set => Inner.BlockNumber = SszNumericChecks.CheckedLong(value);
+        get => Inner.BlockNumber;
+        set => Inner.BlockNumber = value;
     }
 
     public ulong GasLimit
     {
-        get => (ulong)Inner.GasLimit;
-        set => Inner.GasLimit = SszNumericChecks.CheckedLong(value);
+        get => Inner.GasLimit;
+        set => Inner.GasLimit = value;
     }
 
     public ulong GasUsed
     {
-        get => (ulong)Inner.GasUsed;
-        set => Inner.GasUsed = SszNumericChecks.CheckedLong(value);
+        get => Inner.GasUsed;
+        set => Inner.GasUsed = value;
     }
 
     public ulong Timestamp
@@ -143,7 +143,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
             }
             byte[][] raw = new byte[value.Length][];
             for (int i = 0; i < value.Length; i++)
-                raw[i] = value[i].Bytes ?? [];
+                raw[i] = value[i].Bytes.ToByteArray();
             Inner.Transactions = raw;
         }
     }

@@ -13,8 +13,8 @@ public class EthStatsMessageParserTests
         yield return new TestCaseData(
             """{"emit":["history",{"min":1,"max":3}]}""",
             (int)EthStatsIncomingMessageType.History,
-            1L,
-            3L,
+            1UL,
+            3UL,
             null)
             .SetName("Can_parse_history_request");
 
@@ -39,8 +39,8 @@ public class EthStatsMessageParserTests
     public void Can_parse_message(
         string json,
         int expectedMessageType,
-        long? expectedHistoryMin,
-        long? expectedHistoryMax,
+        ulong? expectedHistoryMin,
+        ulong? expectedHistoryMax,
         long? expectedClientTime)
     {
         bool parsed = EthStatsMessageParser.TryParse(json, out EthStatsIncomingMessage message);

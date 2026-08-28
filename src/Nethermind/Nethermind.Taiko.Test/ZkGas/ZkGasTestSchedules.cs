@@ -10,10 +10,10 @@ using Nethermind.Taiko.ZkGas;
 namespace Nethermind.Taiko.Test.ZkGas;
 
 /// <summary>
-/// Mirrors the recalibrated Unzen ZK gas multiplier tables that the production chainspec
-/// (<c>Chains/taiko-alethia.json</c>) ships under <c>unzenZkGasSchedules</c>. Production code
-/// no longer carries any in-code defaults; tests pin against these test-owned copies so failing
-/// assertions surface schedule drift the same way they did before the chainspec migration.
+/// Test-owned mirror of the Unzen ZK gas multiplier tables shipped in
+/// <c>Chains/taiko-alethia.json</c> and <c>Chains/taiko-hoodi.json</c> under
+/// <c>unzenZkGasSchedules</c>. Tests pin against these copies so a chainspec edit must also
+/// update this file — drift surfaces as a failing assertion.
 /// </summary>
 public static class ZkGasTestSchedules
 {

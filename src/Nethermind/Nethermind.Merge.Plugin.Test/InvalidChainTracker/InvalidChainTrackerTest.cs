@@ -214,6 +214,21 @@ public class InvalidChainTrackerTest
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
     }
 
+    [Test]
+    public void queryingValidHashes_shouldNotEvictRecordedInvalidChainNode()
+    {
+        List<Hash256> hashes = MakeChain(3);
+        _tracker.OnInvalidBlock(hashes[1], hashes[0]);
+        AssertInvalid(hashes[1]);
+
+        for (int i = 0; i < 4096; i++)
+        {
+            _tracker.IsOnKnownInvalidChain(Keccak.Compute($"valid-{i}"), out _);
+        }
+
+        AssertInvalid(hashes[1]);
+    }
+
     private void AssertValid(Hash256 hash) =>
         Assert.That(_tracker.IsOnKnownInvalidChain(hash, out _), Is.False);
 

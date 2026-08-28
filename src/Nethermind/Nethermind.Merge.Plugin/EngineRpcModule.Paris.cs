@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
@@ -41,7 +41,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         => NewPayload(executionPayload, EngineApiVersions.NewPayload.V1);
 
-    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(
+        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         _engineRequestsTracker.OnForkchoiceUpdatedCalled();
         if (await _locker.WaitAsync(_timeout))
@@ -64,19 +65,22 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
+
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
-        if (!executionPayload.ValidateFork(_specProvider))
+        if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {
@@ -91,15 +95,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
-                try
-                {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
-                }
-                finally
-                {
-                    (await regionTask).Dispose();
-                }
+                // Hide the tx-root computation (consumed by TryGetBlock) under the no-GC-region
+                // start; inside the lock so competing requests cannot run trie work concurrently.
+                _ = executionPayload.StartTxRootComputation();
+                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+                return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
             catch (BlockchainException exception)
             {

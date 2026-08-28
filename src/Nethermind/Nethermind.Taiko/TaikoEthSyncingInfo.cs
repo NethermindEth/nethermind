@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Eth;
 using Nethermind.Synchronization.ParallelSync;
@@ -30,14 +29,14 @@ public sealed class TaikoEthSyncingInfo(
     IBlockTree blockTree,
     IEthSyncingInfo inner) : IEthSyncingInfo
 {
-    private readonly Stopwatch _syncStopwatch = new();
+    private readonly SyncTimeStopwatch _syncStopwatch = new();
 
     public SyncingResult GetFullInfo()
     {
-        long suggestedHeader = blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        long beaconSuggestedHeader = blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
-        long bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
-        long headNumberOrZero = blockTree.Head?.Number ?? 0;
+        ulong suggestedHeader = blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        ulong beaconSuggestedHeader = blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
+        ulong bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
+        ulong headNumberOrZero = blockTree.Head?.Number ?? 0;
         bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + EthSyncingInfo.MaxDistanceForSynced;
 
         if (isSyncing)
@@ -46,7 +45,7 @@ public sealed class TaikoEthSyncingInfo(
             {
                 CurrentBlock = headNumberOrZero,
                 HighestBlock = bestSuggestedNumber,
-                StartingBlock = 0L,
+                StartingBlock = 0UL,
                 SyncMode = inner.SyncMode,
                 IsSyncing = true
             };
@@ -57,25 +56,7 @@ public sealed class TaikoEthSyncingInfo(
 
     public bool IsSyncing() => GetFullInfo().IsSyncing;
 
-    public TimeSpan UpdateAndGetSyncTime()
-    {
-        if (!_syncStopwatch.IsRunning)
-        {
-            if (IsSyncing())
-            {
-                _syncStopwatch.Start();
-            }
-            return TimeSpan.Zero;
-        }
-
-        if (!IsSyncing())
-        {
-            _syncStopwatch.Stop();
-            return TimeSpan.Zero;
-        }
-
-        return _syncStopwatch.Elapsed;
-    }
+    public TimeSpan UpdateAndGetSyncTime() => _syncStopwatch.UpdateAndGet(IsSyncing());
 
     public SyncMode SyncMode => inner.SyncMode;
 }

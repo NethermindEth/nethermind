@@ -3,12 +3,16 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -99,16 +103,56 @@ public class OptimismEngineRpcModuleTest
         Assert.That(result.Data, Is.EqualTo(new OptimismSignalSuperchainV1Result(current)));
     }
 
+    [Test]
+    public async Task NewPayloadWithWitnessV4_delegates_Optimism_payload()
+    {
+        IEngineRpcModule engineRpcModule = Substitute.For<IEngineRpcModule>();
+        OptimismExecutionPayloadV3 payload = new() { BlockHash = Hash256.Zero, WithdrawalsRoot = Hash256.Zero };
+        Hash256?[] blobVersionedHashes = [];
+        byte[][] executionRequests = [];
+        ResultWrapper<NewPayloadWithWitnessV1Result> expected =
+            ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Syncing }));
+        engineRpcModule.engine_newPayloadWithWitnessV4(payload, blobVersionedHashes, Hash256.Zero, executionRequests)
+            .Returns(expected);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(
+            engineRpcModule, Substitute.For<IOptimismSignalSuperchainV1Handler>());
+
+        ResultWrapper<NewPayloadWithWitnessV1Result> result = await rpcModule.engine_newPayloadWithWitnessV4(
+            payload, blobVersionedHashes, Hash256.Zero, executionRequests);
+
+        Assert.That(result, Is.SameAs(expected));
+        await engineRpcModule.Received(1).engine_newPayloadWithWitnessV4(
+            payload, blobVersionedHashes, Hash256.Zero, executionRequests);
+    }
+
+    [Test]
+    public void NewPayloadWithWitnessV4_capability_is_enabled_for_Isthmus_without_SSZ_route()
+    {
+        OptimismReleaseSpec spec = new() { IsOpIsthmusEnabled = true };
+        OptimismEngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(spec));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                provider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)].IsEnabled(),
+                Is.True);
+            Assert.That(
+                provider.GetSszRestPaths()[SszRestPaths.PostPayloadsWitness].IsEnabled(),
+                Is.False);
+        });
+    }
+
     private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()
     {
         yield return (
-            """{"recommended":"0x0000000000000000000000000000000000000200000000000000000000000000","required":"0x0000000000000000000000000000000000000100000000000000000000000000"}""",
-            """{"protocolVersion":"0x0000000000000000000000000000000000000300000002000000010000000000"}""",
+            """{"recommended":"0x0000000000000000000000000000000000000002000000000000000000000000","required":"0x0000000000000000000000000000000000000001000000000000000000000000"}""",
+            """{"protocolVersion":"0x0000000000000000000000000000000000000003000000020000000100000000"}""",
             new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0));
 
         yield return (
-            """{"recommended":"0x0000000000000000000000000000000000000400000000000000000000000000","required":"0x0000000000000000000000000000000000000300000000000000000000000000"}""",
-            """{"protocolVersion":"0x00000000000000000000000000000000000002000000090000000a0000000000"}""",
+            """{"recommended":"0x0000000000000000000000000000000000000004000000000000000000000000","required":"0x0000000000000000000000000000000000000003000000000000000000000000"}""",
+            """{"protocolVersion":"0x0000000000000000000000000000000000000002000000090000000a00000000"}""",
             new OptimismProtocolVersion.V0(new byte[8], 2, 9, 10, 0));
     }
     [TestCaseSource(nameof(SignalSuperchainV1JsonCases))]

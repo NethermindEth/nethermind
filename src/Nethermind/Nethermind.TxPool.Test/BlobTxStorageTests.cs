@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -62,7 +64,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);
@@ -92,7 +94,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);
@@ -113,6 +115,87 @@ public class BlobTxStorageTests
     }
 
     [Test]
+    public void TryGetWithoutBlobs_should_return_tx_with_elided_blob_payloads()
+    {
+        BlobTxStorage blobTxStorage = new();
+        Transaction tx = CreateBlobTransaction();
+
+        blobTxStorage.Add(tx);
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, out Transaction elidedTx), Is.True);
+
+        ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper elidedWrapper = (ShardBlobNetworkWrapper)elidedTx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(elidedTx.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(elidedTx.Nonce, Is.EqualTo(tx.Nonce));
+            Assert.That(elidedTx.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(elidedWrapper.Blobs, Is.Empty);
+            Assert.That(elidedWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
+            Assert.That(elidedWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
+            Assert.That(elidedWrapper.Version, Is.EqualTo(originalWrapper.Version));
+            Assert.That(elidedWrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
+            Assert.That(elidedWrapper.Cells, Is.Null);
+        }
+    }
+
+    [Test]
+    public void TryGetWithoutBlobs_should_return_false_for_missing_tx()
+    {
+        BlobTxStorage blobTxStorage = new();
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+        Assert.That(tx, Is.Null);
+    }
+
+    [Test]
+    public void Add_should_not_rewrite_existing_elided_payload()
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        MemDb fullBlobTxsDb = (MemDb)columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction tx = CreateBlobTransaction();
+
+        blobTxStorage.Add(tx);
+        long writesAfterInsert = fullBlobTxsDb.WritesCount;
+        blobTxStorage.Add(tx);
+
+        Assert.That(fullBlobTxsDb.WritesCount, Is.EqualTo(writesAfterInsert + 1));
+    }
+
+    [Test]
+    public void AddWithoutBlobs_should_not_restore_deleted_transaction()
+    {
+        BlobTxStorage blobTxStorage = new();
+        Transaction tx = CreateBlobTransaction();
+        blobTxStorage.Add(tx);
+        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction storedTx), Is.True);
+
+        blobTxStorage.Delete(tx.Hash, tx.Timestamp);
+        blobTxStorage.AddWithoutBlobs(storedTx);
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, out _), Is.False);
+    }
+
+    [Test]
+    public void Delete_should_remove_elided_payload_as_well()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction tx = CreateBlobTransaction();
+
+        blobTxStorage.Add(tx);
+        blobTxStorage.Delete(tx.Hash, tx.Timestamp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, out _), Is.False);
+            Assert.That(columnsDb.StartedWriteBatchCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void TryGetMany_should_handle_all_missing_keys()
     {
         BlobTxStorage blobTxStorage = new();
@@ -129,5 +212,33 @@ public class BlobTxStorageTests
         Assert.That(found, Is.EqualTo(0));
         Assert.That(results[0], Is.Null);
         Assert.That(results[1], Is.Null);
+    }
+
+    private static Transaction CreateBlobTransaction() => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields()
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA).TestObject;
+
+    private sealed class TrackingColumnsDb : IColumnsDb<BlobTxsColumns>
+    {
+        private readonly MemColumnsDb<BlobTxsColumns> _inner = new();
+
+        public int StartedWriteBatchCount { get; private set; }
+        public IEnumerable<BlobTxsColumns> ColumnKeys => _inner.ColumnKeys;
+
+        public IDb GetColumnDb(BlobTxsColumns key) => _inner.GetColumnDb(key);
+
+        public IColumnsWriteBatch<BlobTxsColumns> StartWriteBatch()
+        {
+            StartedWriteBatchCount++;
+            return _inner.StartWriteBatch();
+        }
+
+        public IColumnDbSnapshot<BlobTxsColumns> CreateSnapshot() => _inner.CreateSnapshot();
+
+        public void Flush(bool onlyWal = false) => _inner.Flush(onlyWal);
+
+        public void Dispose() => _inner.Dispose();
     }
 }

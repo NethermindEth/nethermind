@@ -25,7 +25,7 @@ public class SigningTxCache : ISigningTxCache
         _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
 
-    public Transaction[] GetSigningTransactions(Hash256 blockHash, long blockNumber, IXdcReleaseSpec spec)
+    public Transaction[] GetSigningTransactions(Hash256 blockHash, ulong blockNumber, IXdcReleaseSpec spec)
     {
         if (_signingTxsCache.TryGet(blockHash, out Transaction[] signingTxs))
             return signingTxs;

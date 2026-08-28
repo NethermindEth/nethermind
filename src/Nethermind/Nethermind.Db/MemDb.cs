@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb
+    public class MemDb : IFullDb, IRangeRemovableKeyValueStore
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
@@ -84,6 +84,21 @@ namespace Nethermind.Db
 
         public void Clear() => _db.Clear();
 
+        /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests.</summary>
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            foreach (byte[] key in Keys)
+            {
+                if (Bytes.BytesComparer.Compare(key, firstKeyInclusive) >= 0 && Bytes.BytesComparer.Compare(key, lastKeyExclusive) < 0)
+                {
+                    Remove(key);
+                }
+            }
+        }
+
+        // Removing already returned the memory; there is no deferred storage to give back.
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) { }
+
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => ordered ? OrderedDb.Select(kvp => kvp.Key) : Keys;
@@ -134,6 +149,8 @@ namespace Nethermind.Db
         }
 
         public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
+
+        public long EstimatedCount => Count;
 
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }

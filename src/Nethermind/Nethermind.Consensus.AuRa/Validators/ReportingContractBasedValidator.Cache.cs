@@ -13,12 +13,12 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
 
-            private readonly LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports =
+            private readonly LruCache<(Address Validator, ReportType ReportType, ulong BlockNumber), bool> _lastBlockReports =
                 new(MaxQueuedReports, "ReportCache");
 
-            internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber)
+            internal bool AlreadyReported(ReportType reportType, Address validator, in ulong blockNumber)
             {
-                (Address Validator, ReportType ReportType, long BlockNumber) key = (validator, reportType, blockNumber);
+                (Address Validator, ReportType ReportType, ulong BlockNumber) key = (validator, reportType, blockNumber);
                 bool alreadyReported = _lastBlockReports.TryGet(key, out _);
                 _lastBlockReports.Set(key, true);
                 return alreadyReported;

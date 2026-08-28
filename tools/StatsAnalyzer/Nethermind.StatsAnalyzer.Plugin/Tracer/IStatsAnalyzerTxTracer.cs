@@ -2,7 +2,7 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
 
 public interface IStatsAnalyzerTxTracer<TTrace>
 {
-    TTrace BuildResult(long fromBlock = 0, long toBlock = 0);
+    TTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL);
 
     /// <summary>
     /// When <c>true</c>, per-tx hot paths must short-circuit. Used to skip

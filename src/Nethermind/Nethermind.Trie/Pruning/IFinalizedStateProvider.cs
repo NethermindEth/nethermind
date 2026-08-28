@@ -7,6 +7,6 @@ namespace Nethermind.Trie.Pruning;
 
 public interface IFinalizedStateProvider
 {
-    long FinalizedBlockNumber { get; }
-    Hash256? GetFinalizedStateRootAt(long blockNumber);
+    ulong FinalizedBlockNumber { get; }
+    Hash256? GetFinalizedStateRootAt(ulong blockNumber);
 }

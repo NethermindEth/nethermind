@@ -36,7 +36,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         V = YParity ?? 0;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;

@@ -11,9 +11,19 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      # Labels added with the default GITHUB_TOKEN do not emit workflow-triggering events, so
+      # label-triggered runs (e.g. the reproducible benchmarks) never fired on auto-labeling.
       - name: Apply labels from PR template checkboxes
         uses: actions/github-script@v8
         with:
+          github-token: ${{ steps.gh-app.outputs.token }}
           script: |
             // --- Checkbox rules ---
             const checkboxToLabel = {

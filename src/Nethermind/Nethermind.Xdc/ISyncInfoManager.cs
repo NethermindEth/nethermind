@@ -8,5 +8,6 @@ namespace Nethermind.Xdc;
 public interface ISyncInfoManager
 {
     void ProcessSyncInfo(SyncInfo syncInfo);
+    SyncInfo GetSyncInfo();
     bool VerifySyncInfo(SyncInfo syncInfo, out string error);
 }

@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Peers
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ILogManager logManager)
-        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.ActivePeersMaxCount, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
+        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.MaxActivePeers, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
         {
 
         }
@@ -193,13 +193,18 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public IEnumerable<PeerInfo> NonStaticPeers
+        /// <summary>
+        /// Peers eligible for worst-peer eviction. Static and trusted peers are excluded: they are
+        /// operator-configured must-keep peers (static is actively redialed by the peer manager, trusted
+        /// bypasses the peer limit), so evicting them here only causes disconnect/redial churn.
+        /// </summary>
+        public IEnumerable<PeerInfo> DroppablePeers
         {
             get
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (!peerInfo.SyncPeer.Node.IsStatic)
+                    if (!peerInfo.SyncPeer.Node.IsStatic && !peerInfo.SyncPeer.Node.IsTrusted)
                     {
                         yield return peerInfo;
                     }
@@ -313,9 +318,28 @@ namespace Nethermind.Synchronization.Peers
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
-                initCancelTokenSource?.Cancel();
+                try
+                {
+                    initCancelTokenSource?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The refresh continuation disposed the source between the lookup and the cancel.
+                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node:c} completed while the peer was being removed.");
+                }
             }
         }
+
+        // Replaces only the dictionary target; the refresh continuation retains ownership of the
+        // original source and disposes it. Used to reproduce the cancel-versus-dispose race.
+        internal bool TryReplaceRefreshCancellation(PublicKey id, CancellationTokenSource replacement)
+        {
+            if (!_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current)) return false;
+            return _refreshCancelTokens.TryUpdate(id, replacement, current);
+        }
+
+        internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
+            _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
 
         public void SetPeerPriority(PublicKey id)
         {
@@ -325,6 +349,13 @@ namespace Nethermind.Synchronization.Peers
                 Interlocked.Increment(ref PriorityPeerCount);
             }
         }
+
+        // Cap for the allocation retry backoff. A shallow-sleep wake-up is time-based and never fires
+        // _signal, so this retry delay is the only path that notices it, and AllocateAndRun passes an
+        // unbounded budget that would otherwise let the backoff grow without limit.
+        private const int MaxAllocationWaitTimeMs = 1000;
+
+        internal static int GetAllocationWaitTime(int tryCount) => (int)Math.Min(10L * tryCount, MaxAllocationWaitTimeMs);
 
         public async Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
@@ -360,7 +391,7 @@ namespace Nethermind.Synchronization.Peers
                                       || elapsedMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
-                int waitTime = 10 * tryCount++;
+                int waitTime = GetAllocationWaitTime(tryCount++);
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
                 if (waitTime > 0)
@@ -492,7 +523,7 @@ namespace Nethermind.Synchronization.Peers
             int peersDropped = 0;
             _lastUselessPeersDropTime = DateTime.UtcNow;
 
-            if (PeerCount == PeerMaxCount)
+            if (PeerCount >= PeerMaxCount)
             {
                 peersDropped += DropWorstPeer();
             }
@@ -530,7 +561,7 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo? worstPeer = null;
             string? worstReason = "DEFAULT";
 
-            foreach (PeerInfo peerInfo in NonStaticPeers)
+            foreach (PeerInfo peerInfo in DroppablePeers)
             {
                 if (peerInfo.SyncPeer.IsPriority && !canDropPriorityPeer)
                 {

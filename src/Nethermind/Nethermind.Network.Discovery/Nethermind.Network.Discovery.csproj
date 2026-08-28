@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -14,12 +15,14 @@
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+    <ProjectReference Include="..\Nethermind.Kademlia\Nethermind.Kademlia.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" />
+    <PackageReference Include="Collections.Pooled" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
   </ItemGroup>
 

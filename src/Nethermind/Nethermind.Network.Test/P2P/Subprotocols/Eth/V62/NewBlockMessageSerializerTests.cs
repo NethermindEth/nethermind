@@ -48,7 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void To_string()
         {
             using NewBlockMessage newBlockMessage = new();
-            _ = newBlockMessage.ToString();
+            Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(NewBlockMessage)));
         }
     }
 }

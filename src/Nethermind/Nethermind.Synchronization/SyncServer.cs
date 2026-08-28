@@ -58,14 +58,13 @@ namespace Nethermind.Synchronization
 
         private readonly LruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
-        private readonly long _pivotNumber;
+        private readonly ulong _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
         private CancellationTokenSource _rangeBroadcastCts = new();
         private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
-        private const int NewOldestBlockRangeUpdateFrequency = 10000;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -130,7 +129,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, _blockTree.GetLowestBlock());
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -173,7 +172,8 @@ namespace Nethermind.Synchronization
             // it delivers information about the peer's chain.
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
-            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+            ulong headNumber = _blockTree.Head?.Number ?? 0UL;
+            bool isBlockOlderThanMaxReorgAllows = block.Number < headNumber.SaturatingSub(Sync.MaxReorgLength);
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -252,7 +252,8 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
+            ulong start = block.Number.SaturatingSub(128);
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, start, block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 
@@ -344,11 +345,6 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header?.AuRaStep is not null)
-            {
-                sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
-            }
-
             if (_logger.IsDebug)
             {
                 sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");
@@ -357,7 +353,7 @@ namespace Nethermind.Synchronization
             _logger.Info(sb.ToString());
         }
 
-        public void HintBlock(Hash256 hash, long number, ISyncPeer syncPeer)
+        public void HintBlock(Hash256 hash, ulong number, ISyncPeer syncPeer)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
@@ -441,7 +437,7 @@ namespace Nethermind.Synchronization
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
-        public Hash256? FindHash(long number)
+        public Hash256? FindHash(ulong number)
         {
             try
             {
@@ -471,29 +467,25 @@ namespace Nethermind.Synchronization
             if (_blockTree.Head is null)
                 return;
 
-            // Don't send new range for every single deletion
-            if (!onNewOldestBlockArgs.isFinalUpdate &&
-                onNewOldestBlockArgs.OldestBlockHeader.Number % NewOldestBlockRangeUpdateFrequency != 0)
-            {
-                return;
-            }
-
             OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
         }
 
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
         {
-            if (Genesis is null)
-                return;
-
             Block latestBlock = latestBlockEventArgs.Block;
 
             // Notify every 32 blocks
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            BlockHeader oldestBlockHeader = _historyPruner.OldestBlockHeader ?? Genesis;
-            OnNewRange(oldestBlockHeader, latestBlock.Header);
+            BlockHeader? earliest = _historyPruner.OldestBlockHeader;
+            if (earliest is null || earliest.Number > latestBlock.Number)
+            {
+                ulong floor = ulong.Min(_blockTree.GetLowestBlock(), latestBlock.Number);
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
+            }
+
+            OnNewRange(earliest, latestBlock.Header);
         }
 
         private void OnNewRange(BlockHeader earliest, BlockHeader latest)

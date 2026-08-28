@@ -1,74 +1,224 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
 public class LightTxDecoderTests
 {
-    [TestCase(ProofVersion.V0, (byte)0x80)]
-    [TestCase(ProofVersion.V1, (byte)0x01)]
-    public void Should_roundtrip_proof_version(ProofVersion version, byte trailingByte)
+    private const int FieldsBeforeProofVersion = 12;
+
+    [Test]
+    public void should_roundtrip_sparse_blob_tx_cell_mask_and_consensus_size()
     {
-        Transaction tx = BuildBlobTx(version);
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        System.Array.Fill(emptyBlobs, []);
+        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs, CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
 
-        byte[] encoded = LightTxDecoder.Encode(tx);
-        LightTransaction decoded = LightTxDecoder.Decode(encoded);
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
 
-        // Pinned so the fix stays on the read side: already-persisted records carry these exact bytes.
-        Assert.That(encoded[^1], Is.EqualTo(trailingByte));
-        Assert.That(decoded.GetProofVersion(), Is.EqualTo(version));
-        AssertCommonFields(decoded, tx);
+        Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
+        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
+        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
     }
 
     [Test]
-    public void Should_decode_record_written_without_proof_version()
+    public void should_roundtrip_v0_proof_version()
     {
-        Transaction tx = BuildBlobTx(ProofVersion.V0);
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BuildV0BlobTx()));
 
-        // Records persisted before the proof version field was appended end after the size field
-        byte[] encoded = LightTxDecoder.Encode(tx);
-        LightTransaction decoded = LightTxDecoder.Decode(encoded[..^1]);
-
-        Assert.That(decoded.GetProofVersion(), Is.EqualTo(ProofVersion.V0));
-        AssertCommonFields(decoded, tx);
+        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V0));
     }
 
-    private static Transaction BuildBlobTx(ProofVersion version)
+    [Test]
+    public void should_pin_on_disk_proof_version_bytes()
     {
-        Transaction tx = Build.A.Transaction
-            .WithShardBlobTxTypeAndFields()
-            .WithMaxFeePerGas(1.GWei)
-            .WithMaxPriorityFeePerGas(1.GWei)
-            .WithNonce(3)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA).TestObject;
-
-        tx.PoolIndex = 7;
-        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Version = version };
-        return tx;
-    }
-
-    private static void AssertCommonFields(LightTransaction decoded, Transaction expected) =>
-        Assert.Multiple(() =>
+        // Pinned so the field stays readable from the write side: V0 is persisted as the RLP scalar 0x80,
+        // and a raw-byte encoder would keep every roundtrip green while mis-decoding persisted records.
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.Hash, Is.EqualTo(expected.Hash));
-            Assert.That(decoded.SenderAddress, Is.EqualTo(expected.SenderAddress));
-            Assert.That(decoded.Nonce, Is.EqualTo(expected.Nonce));
-            Assert.That(decoded.Value, Is.EqualTo(expected.Value));
-            Assert.That(decoded.GasLimit, Is.EqualTo(expected.GasLimit));
-            Assert.That(decoded.GasPrice, Is.EqualTo(expected.GasPrice));
-            Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(expected.DecodedMaxFeePerGas));
-            Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo(expected.MaxFeePerBlobGas));
-            Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(expected.BlobVersionedHashes));
-            Assert.That(decoded.Timestamp, Is.EqualTo(expected.Timestamp));
-            Assert.That(decoded.PoolIndex, Is.EqualTo(expected.PoolIndex));
-            Assert.That(decoded.GetLength(), Is.EqualTo(expected.GetLength()));
-        });
+            Assert.That(ProofVersionByte(BuildV0BlobTx()), Is.EqualTo((byte)0x80));
+            Assert.That(ProofVersionByte(BuildBlobTx()), Is.EqualTo((byte)0x01));
+        }
+    }
+
+    [Test]
+    public void should_preserve_sparse_metadata_when_reencoding_light_transaction()
+    {
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        Array.Fill(emptyBlobs, []);
+        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs, CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
+
+        LightTransaction first = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        LightTransaction second = LightTxDecoder.Decode(LightTxDecoder.Encode(first));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
+            Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
+            Assert.That(second.GetConsensusEncodingSize(), Is.EqualTo(first.GetConsensusEncodingSize()));
+        }
+    }
+
+    [Test]
+    public void should_not_treat_legacy_sparse_network_size_as_consensus_encoding_size()
+    {
+        Transaction tx = BuildBlobTx();
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
+            tx,
+            includeProofVersion: true,
+            cellMask,
+            sparseBlobNetworkSize: 12345));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+            Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void should_decode_legacy_entry_without_mask_as_full(bool includeProofVersion)
+    {
+        Transaction tx = BuildBlobTx();
+
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion));
+
+        // Entries persisted before the mask field was added always hold full blobs.
+        Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
+        Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
+        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(0));
+        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+    }
+
+    [Test]
+    public void should_preserve_sparse_pool_public_api()
+    {
+        Type[] constructorParameters =
+        [
+            typeof(UInt256), typeof(Address), typeof(ulong), typeof(Hash256), typeof(UInt256),
+            typeof(ulong), typeof(UInt256), typeof(UInt256), typeof(UInt256), typeof(byte[][]),
+            typeof(ulong), typeof(int), typeof(ProofVersion)
+        ];
+        Transaction fullTx = BuildBlobTx();
+        LightTransaction lightTx = new(fullTx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(LightTransaction).GetConstructor(constructorParameters), Is.Not.Null);
+            Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
+            Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
+        }
+    }
+
+    private static Transaction BuildBlobTx() => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithNonce(0UL)
+        .SignedAndResolved()
+        .TestObject;
+
+    private static Transaction BuildV0BlobTx() => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithNonce(0UL)
+        .SignedAndResolved()
+        .TestObject;
+
+    private static byte ProofVersionByte(Transaction tx)
+    {
+        byte[] encoded = LightTxDecoder.Encode(tx);
+        RlpReader reader = new(encoded);
+        for (int i = 0; i < FieldsBeforeProofVersion; i++)
+        {
+            reader.SkipItem();
+        }
+
+        return encoded[reader.Position];
+    }
+
+    private static byte[] EncodeLegacy(
+        Transaction tx,
+        bool includeProofVersion,
+        BlobCellMask? cellMask = null,
+        int? sparseBlobNetworkSize = null)
+    {
+        int length = Rlp.LengthOf(tx.Timestamp)
+            + Rlp.LengthOf(tx.SenderAddress)
+            + Rlp.LengthOf(tx.Nonce)
+            + Rlp.LengthOf(tx.Hash)
+            + Rlp.LengthOf(tx.Value)
+            + Rlp.LengthOf(tx.GasLimit)
+            + Rlp.LengthOf(tx.GasPrice)
+            + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.BlobVersionedHashes!)
+            + Rlp.LengthOf(tx.PoolIndex)
+            + Rlp.LengthOf(tx.GetLength())
+            + (includeProofVersion ? Rlp.LengthOf(sizeof(byte)) : 0)
+            + (cellMask is null ? 0 : Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0))
+            + (sparseBlobNetworkSize is null ? 0 : Rlp.LengthOf(sparseBlobNetworkSize.Value));
+
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        if (includeProofVersion)
+        {
+            writer.Encode((byte)ProofVersion.V1);
+        }
+
+        if (cellMask is { } availableCellMask)
+        {
+            System.Span<byte> maskBytes = stackalloc byte[BlobCellMask.FixedByteLength];
+            availableCellMask.WriteTo(maskBytes);
+            writer.Encode(maskBytes);
+        }
+
+        if (sparseBlobNetworkSize is { } networkSize)
+        {
+            writer.Encode(networkSize);
+        }
+
+        return bytes;
+    }
 }

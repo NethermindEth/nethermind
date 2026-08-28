@@ -39,7 +39,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler forkchoiceUpdatedHandler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -88,7 +87,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),

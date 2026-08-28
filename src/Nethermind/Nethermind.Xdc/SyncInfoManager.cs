@@ -17,6 +17,9 @@ internal class SyncInfoManager(
     ILogManager logManager) : ISyncInfoManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SyncInfoManager>();
+
+    public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC);
+
     public void ProcessSyncInfo(SyncInfo syncInfo)
     {
         try

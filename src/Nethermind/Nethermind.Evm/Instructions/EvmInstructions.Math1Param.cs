@@ -20,12 +20,12 @@ public static partial class EvmInstructions
     /// Interface for single-parameter mathematical operations on 256‐bit vectors.
     /// Implementations provide a specific operation that takes one 256‐bit operand and returns a 256‐bit result.
     /// </summary>
-    public interface IOpMath1Param
+    public interface IOpMath1Param : IGasCost
     {
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
@@ -56,8 +56,17 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
+        return Math1ParamCore<TOpMath>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath1Param
+    {
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
@@ -91,7 +100,18 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+#if ZK_EVM
+        // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
+        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
+        // (endianness-agnostic for a zero test).
+        public static EvmWord Operation(EvmWord value)
+        {
+            ref ulong p = ref As<EvmWord, ulong>(ref value);
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
+        }
+#else
         public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
+#endif
     }
 
     /// <summary>
@@ -100,7 +120,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
 
         public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
@@ -116,12 +136,13 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes))
+            goto StackUnderflow;
 
         // If the position is out-of-range, push zero. Using direct limb access avoids the
         // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
@@ -141,6 +162,25 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+#if !ZK_EVM
+    /// <summary>
+    /// Set bytes followed by an equal run of clear ones, so loading a word at
+    /// <c>WordSize - position</c> yields a mask whose leading <c>position</c> bytes are set.
+    /// </summary>
+    /// <remarks>Spans of constants become a rodata blob, so this costs no allocation and no static field.</remarks>
+    private static ReadOnlySpan<byte> SignExtendPrefixMask =>
+    [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+#endif
+
     /// <summary>
     /// Implements the SIGNEXTEND opcode.
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
@@ -149,7 +189,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.Low);
+        TGasPolicy.Consume<LowGasCost>(ref gas);
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
@@ -165,20 +205,27 @@ public static partial class EvmInstructions
         int position = 31 - (int)a;
 
         // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
-        sbyte sign = (sbyte)bytes[position];
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef))
+            goto StackUnderflow;
 
-        // Extend the sign by replacing higher-order bytes.
-        if (sign >= 0)
-        {
-            // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
-        else
-        {
-            // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
-        }
+        // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
+        sbyte sign = (sbyte)Add(ref bytesRef, position);
+
+#if ZK_EVM
+        // No hardware SIMD in the guest: a 32-element Vector256 fallback would cost more than the copy.
+        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
+        (sign >= 0 ? BytesZero32 : BytesMax32).AsSpan(0, position).CopyTo(bytes[..position]);
+#else
+        // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
+        // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
+        // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
+        // single load, so nothing here depends on `position` being a constant.
+        EvmWord fill = Vector256.Create((byte)(sign >> 7));
+        EvmWord mask = Vector256.LoadUnsafe(
+            ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
+        Vector256.ConditionalSelect(mask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+#endif
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.

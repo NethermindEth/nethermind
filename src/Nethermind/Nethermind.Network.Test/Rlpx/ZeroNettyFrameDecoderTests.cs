@@ -74,6 +74,26 @@ public class ZeroNettyFrameDecoderTests
         Assert.Throws<CorruptedFrameException>(() => zeroFrameDecoderTestWrapper.Decode(input));
     }
 
+    [Test]
+    public void Rejects_zero_size_frame()
+    {
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor encoderMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        ZeroFrameEncoderTestWrapper encoder = new(new FrameCipher(a.AesSecret), encoderMac);
+        ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
+
+        byte[] zeroSizeHeader = new byte[Frame.HeaderSize];
+        zeroSizeHeader[3] = 0xc1;
+        zeroSizeHeader[4] = 0x80;
+
+        IByteBuffer rawFrame = ReferenceCountUtil.ReleaseLater(Unpooled.WrappedBuffer(zeroSizeHeader));
+        IByteBuffer encoded = ReferenceCountUtil.ReleaseLater(Unpooled.Buffer(64));
+        encoder.Encode(rawFrame, encoded);
+
+        Assert.Throws<CorruptedFrameException>(() => decoder.Decode(encoded));
+    }
+
     private void Test(string frame, Delivery delivery, string expectedOutput)
     {
         byte[] frameBytes = Bytes.FromHexString(frame);

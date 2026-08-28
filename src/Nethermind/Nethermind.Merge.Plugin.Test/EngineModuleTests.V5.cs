@@ -32,13 +32,16 @@ public partial class EngineModuleTests
         (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Osaka.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
         ResultWrapper<GetPayloadV5Result?> result = await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!));
         BlobsBundleV2 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
-        Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
-        Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
-        Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
-        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
+            Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
+            Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
+            Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
+        }
     }
 
     [Test]
@@ -63,9 +66,12 @@ public partial class EngineModuleTests
             [],
             []);
 
-        Assert.That(buildResult.Result, Is.EqualTo(Result.Success));
-        Assert.That(buildResult.Data, Is.Not.Null);
-        Assert.That(buildResult.Data, Is.AssignableTo<GetPayloadV5Result>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buildResult.Result, Is.EqualTo(Result.Success));
+            Assert.That(buildResult.Data, Is.Not.Null);
+            Assert.That(buildResult.Data, Is.AssignableTo<GetPayloadV5Result>());
+        }
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)buildResult.Data!;
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
@@ -89,7 +95,7 @@ public partial class EngineModuleTests
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         Block head = chain.BlockTree.Head!;
-        long initialHeadNumber = head.Number;
+        ulong initialHeadNumber = head.Number;
 
         PayloadAttributes payloadAttributes = new()
         {
@@ -102,19 +108,19 @@ public partial class EngineModuleTests
 
         ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(payloadAttributes, [], []);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(initialHeadNumber + 1));
-        Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(result.Data));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(initialHeadNumber + 1));
+            Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(result.Data));
+        }
     }
 
     [Test]
     public async Task GetBlobsV2_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         List<byte[]> request = new(requestSize);
@@ -140,10 +146,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_handle_empty_request()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2([]);
@@ -155,10 +158,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -174,19 +174,19 @@ public partial class EngineModuleTests
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-        Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-        Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+            Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+        }
     }
 
     [Test]
     public async Task GetBlobsV2_should_return_empty_array_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         // we are not adding this tx
@@ -209,10 +209,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -243,10 +240,13 @@ public partial class EngineModuleTests
         {
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
-            Assert.That(result.Data, Is.Not.Null);
-            Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data, Is.Not.Null);
+                Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+                Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
+                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+            }
         }
     }
 
@@ -255,10 +255,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -281,9 +278,12 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV3(blobVersionedHashesRequest.ToArray());
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!, Has.Count.EqualTo(requestSize));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+            Assert.That(result.Data!, Has.Count.EqualTo(requestSize));
+        }
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
 
@@ -294,9 +294,12 @@ public partial class EngineModuleTests
             bool shouldBeFound = i % multiplier == 0;
             if (shouldBeFound)
             {
-                Assert.That(result.Data!.ElementAt(i), Is.Not.Null);
-                Assert.That(result.Data!.ElementAt(i)!.Blob, Is.EqualTo(wrapper.Blobs[foundIndex]));
-                Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.Data!.ElementAt(i), Is.Not.Null);
+                    Assert.That(result.Data!.ElementAt(i)!.Blob, Is.EqualTo(wrapper.Blobs[foundIndex]));
+                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128)));
+                }
                 foundIndex++;
             }
             else

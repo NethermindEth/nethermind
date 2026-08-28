@@ -30,8 +30,8 @@ public class HeaderStore(
 
     public void Insert(BlockHeader header)
     {
-        using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        headerDb.Set(header.Number, header.Hash!, newRlp.AsSpan());
+        using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
+        headerDb.Set(header.Number, header.Hash!, rlp);
         InsertBlockNumber(header.Hash, header.Number);
     }
 
@@ -43,15 +43,15 @@ public class HeaderStore(
         Span<byte> blockNumberSpan = stackalloc byte[8];
         foreach (BlockHeader header in headers)
         {
-            using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-            headerWriteBatch.Set(header.Number, header.Hash!, newRlp.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
+            headerWriteBatch.Set(header.Number, header.Hash!, rlp);
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
@@ -67,30 +67,30 @@ public class HeaderStore(
 
     public void Delete(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
         blockNumberDb.Delete(blockHash);
         headerDb.Delete(blockHash);
         _headerCache.Delete(in blockHash.ValueHash256);
     }
 
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
+    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber)
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
-    public long? GetBlockNumber(Hash256 blockHash)
+    public ulong? GetBlockNumber(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
         return Get(blockHash)?.Number;
     }
 
-    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
+    private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
         Span<byte> numberSpan = blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
@@ -101,7 +101,7 @@ public class HeaderStore(
                 throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
             }
 
-            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            return BinaryPrimitives.ReadUInt64BigEndian(numberSpan);
         }
         finally
         {
@@ -109,7 +109,7 @@ public class HeaderStore(
         }
     }
 
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count)
     {
         Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
 
@@ -117,7 +117,8 @@ public class HeaderStore(
         {
             Span<byte> startKey = stackalloc byte[40];
             Span<byte> endKey = stackalloc byte[40];
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(Math.Max(0L, endBlockNumber - count + 1), default, startKey);
+            ulong startBlockNumber = (endBlockNumber + 1).SaturatingSub((ulong)count);
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(startBlockNumber, default, startKey);
             KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
 
             using ISortedView view = sorted.GetViewBetween(startKey, endKey);
@@ -139,7 +140,7 @@ public class HeaderStore(
         ArrayPoolList<BlockHeader> result = new(count) { cursor };
         while (result.Count < count && cursor.ParentHash is not null)
         {
-            long parentNumber = cursor.Number - 1;
+            ulong parentNumber = cursor.Number - 1;
             cursor = prefetched.TryGetValue(cursor.ParentHash.ValueHash256, out BlockHeader? dictHeader)
                 ? dictHeader
                 : Get(cursor.ParentHash, shouldCache: false, blockNumber: parentNumber);
@@ -151,7 +152,7 @@ public class HeaderStore(
         return result;
     }
 
-    BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
+    BlockHeader? IHeaderFinder.Get(Hash256 blockHash, ulong? blockNumber) => Get(blockHash, true, blockNumber);
 
     void IClearableCache.ClearCache() => _headerCache.Clear();
 }

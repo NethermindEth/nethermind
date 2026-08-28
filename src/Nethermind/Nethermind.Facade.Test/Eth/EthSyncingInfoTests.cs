@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -28,15 +29,15 @@ namespace Nethermind.Facade.Test.Eth
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(0));
-            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0));
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0UL));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(0UL));
+            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0UL));
             Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.None));
         }
 
@@ -49,21 +50,21 @@ namespace Nethermind.Facade.Test.Eth
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010L).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000L));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(6178010));
-            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0));
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000UL));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(6178010UL));
+            Assert.That(syncingResult.StartingBlock, Is.EqualTo(0UL));
             Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.All));
         }
 
-        [TestCase(6178001L, 6178000L, false)]
-        [TestCase(6178010L, 6178000L, true)]
-        public void IsSyncing_ReturnsExpectedResult(long bestHeader, long currentHead, bool expectedResult)
+        [TestCase(6178001UL, 6178000UL, false)]
+        [TestCase(6178010UL, 6178000UL, true)]
+        public void IsSyncing_ReturnsExpectedResult(ulong bestHeader, ulong currentHead, bool expectedResult)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
@@ -76,6 +77,25 @@ namespace Nethermind.Facade.Test.Eth
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public void IsSyncing_StillReportsHeadDistanceWhenSynchronizationDisabled()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            SyncConfig syncConfig = new() { SynchronizationEnabled = false };
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject).TestObject);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
+                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.True);
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(80UL));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
         }
 
         [TestCase(false, true, true)]
@@ -97,19 +117,19 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+            blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingReceipts);
 
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
                 new StaticSelector(SyncMode.FastBlocks), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-            Assert.That(syncingResult, Is.EqualTo(CreateSyncingResult(expectedResult, 6178000L, 6178001L, SyncMode.FastBlocks)));
+            Assert.That(syncingResult, Is.EqualTo(CreateSyncingResult(expectedResult, 6178000UL, 6178001UL, SyncMode.FastBlocks)));
         }
 
         [Test]
@@ -122,8 +142,8 @@ namespace Nethermind.Facade.Test.Eth
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
 
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100).TestObject)
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100UL).TestObject)
                 .TestObject);
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
@@ -132,32 +152,40 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
             Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
 
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80).TestObject)
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
                 .TestObject);
 
-            // First call starting timer
+            // First call starts the timer; at the metric's whole-second resolution this is still 0
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            Assert.That((long)ethSyncingInfo.UpdateAndGetSyncTime().TotalSeconds, Is.EqualTo(0));
 
             Thread.Sleep(100);
 
-            // Second call timer should count some time
+            // While syncing the timer accumulates
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.Not.EqualTo(0));
+            TimeSpan whileSyncing = ethSyncingInfo.UpdateAndGetSyncTime();
+            Assert.That(whileSyncing, Is.GreaterThan(TimeSpan.Zero));
 
-            // Sync ended time should be zero
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100).TestObject)
+            // Sync ended: the total is retained (not reset to zero) so the final duration stays observable
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(100UL).TestObject)
                 .TestObject);
 
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
-            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
+            TimeSpan afterSync = ethSyncingInfo.UpdateAndGetSyncTime();
+            Assert.That(afterSync, Is.GreaterThanOrEqualTo(whileSyncing));
+
+            // Falling behind again resumes (does not reset) the total — no false drop to zero
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject)
+                .TestObject);
+            Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(true));
+            Assert.That(ethSyncingInfo.UpdateAndGetSyncTime(), Is.GreaterThanOrEqualTo(afterSync));
         }
 
-        [TestCase(6178001L, 6178000L)]
-        [TestCase(8001L, 8000L)]
-        public void IsSyncing_ReturnsFalseOnFastSyncWithoutPivot(long bestHeader, long currentHead)
+        [TestCase(6178001UL, 6178000UL)]
+        [TestCase(8001UL, 8000UL)]
+        public void IsSyncing_ReturnsFalseOnFastSyncWithoutPivot(ulong bestHeader, ulong currentHead)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
@@ -179,7 +207,7 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(syncingResult.IsSyncing, Is.False);
         }
 
-        private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock, SyncMode syncMode)
+        private SyncingResult CreateSyncingResult(bool isSyncing, ulong currentBlock, ulong highestBlock, SyncMode syncMode)
         {
             if (!isSyncing) return SyncingResult.NotSyncing;
             return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0, SyncMode = syncMode };

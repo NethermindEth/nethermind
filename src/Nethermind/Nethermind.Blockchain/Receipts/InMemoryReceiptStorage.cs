@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,9 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
+
+        // A receipt does not reliably carry its height - Insert and EnsureCanonical never set it.
+        private readonly ConcurrentDictionary<Hash256AsKey, ulong> _blockNumbers = new();
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
@@ -47,8 +51,8 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
             _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
-        public bool CanGetReceiptsByHash(long blockNumber) => true;
-        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
             if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out TxReceipt[] receipts))
             {
@@ -64,12 +68,13 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
             => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
 
-        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
+            _blockNumbers[block.Hash] = block.Number;
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
@@ -80,7 +85,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
 
-        public bool HasBlock(long blockNumber, Hash256 hash)
+        public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
 
         public void EnsureCanonical(Block block)
@@ -97,13 +102,33 @@ namespace Nethermind.Blockchain.Receipts
         public void RemoveReceipts(Block block)
         {
             _receipts.TryRemove(block.Hash, out _);
+            _blockNumbers.TryRemove(block.Hash, out _);
             foreach (Transaction tx in block.Transactions)
             {
                 _transactions.TryRemove(tx.Hash, out _);
             }
         }
 
-        public long MigratedBlockNumber { get; set; }
+        /// <summary>Takes the transaction index with it: unlike the persistent store, nothing sweeps behind this one.
+        /// </summary>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        {
+            foreach (KeyValuePair<Hash256AsKey, ulong> entry in _blockNumbers)
+            {
+                if (entry.Value < fromInclusive || entry.Value >= toExclusive) continue;
+
+                _blockNumbers.TryRemove(entry.Key, out _);
+                if (_receipts.TryRemove(entry.Key, out TxReceipt[]? removed))
+                {
+                    foreach (TxReceipt receipt in removed)
+                    {
+                        _transactions.TryRemove(receipt.TxHash, out _);
+                    }
+                }
+            }
+        }
+
+        public ulong MigratedBlockNumber { get; set; }
 
         public int Count => _transactions.Count;
     }

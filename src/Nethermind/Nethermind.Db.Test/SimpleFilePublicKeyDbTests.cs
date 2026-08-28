@@ -47,7 +47,7 @@ public class SimpleFilePublicKeyDbTests
         Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
         foreach (KeyValuePair<byte[], byte[]> kv in dict)
         {
-            Assert.That(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value), Is.True);
+            Assert.That(filePublicKeyDb[kv.Key], Is.EqualTo(kv.Value));
         }
     }
 

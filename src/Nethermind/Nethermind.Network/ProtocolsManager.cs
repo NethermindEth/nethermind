@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -25,11 +26,6 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
-        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-        {
-            new(Protocol.Eth, 68),
-        };
-
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
@@ -38,10 +34,13 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
+        private readonly IPeerManager _peerManager;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
-        private readonly HashSet<Capability> _capabilities = DefaultCapabilities.ToHashSet();
+        private readonly IP2PCapabilityResolver[] _capabilityResolvers;
+        private readonly Lock _capabilitiesLock = new();
+        private Capability[]? _cachedCapabilities;
         private readonly EventHandler<SessionEventArgs> _onSessionCreated;
         private readonly EventHandler<EventArgs> _onSessionInitialized;
         private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
@@ -53,8 +52,10 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
+            IPeerManager peerManager,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
+            IP2PCapabilityResolver[] capabilityResolvers,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -62,11 +63,17 @@ namespace Nethermind.Network
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
-            _factories = factories;
+            _factories = factories ?? throw new ArgumentNullException(nameof(factories));
+            _capabilityResolvers = capabilityResolvers ?? throw new ArgumentNullException(nameof(capabilityResolvers));
+            foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
+            {
+                resolver.Changed += InvalidateCapabilities;
+            }
             _onSessionCreated = SessionCreated;
             _onSessionInitialized = SessionInitialized;
             _onSessionDisconnected = SessionDisconnected;
@@ -165,9 +172,10 @@ namespace Nethermind.Network
         {
             session.PingSender = handler;
 
-            foreach (Capability capability in _capabilities)
+            Capability[] capabilities = GetAdvertisedCapabilities();
+            for (int i = 0; i < capabilities.Length; i++)
             {
-                session.AddSupportedCapability(capability);
+                session.AddSupportedCapability(capabilities[i]);
             }
         }
 
@@ -197,7 +205,7 @@ namespace Nethermind.Network
         {
             if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
 
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 PeerInfo? peer = _syncPool.GetPeer(session.Node);
@@ -252,7 +260,11 @@ namespace Nethermind.Network
 
             AddNodeToDiscovery(session, args);
 
-            _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
+            if (isValid)
+            {
+                _peerManager.OnP2PProtocolInitialized(session);
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
         }
@@ -269,7 +281,7 @@ namespace Nethermind.Network
                 ProtocolVersion = args.ProtocolVersion,
                 TotalDifficulty = (BigInteger)args.TotalDifficulty
             });
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
@@ -338,20 +350,10 @@ namespace Nethermind.Network
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
 
-        public void AddSupportedCapability(Capability capability) => _capabilities.Add(capability);
-
-        public void RemoveSupportedCapability(Capability capability)
-        {
-            if (_capabilities.Remove(capability))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removed supported capability: {capability}");
-            }
-        }
-
         public int GetHighestProtocolVersion(string protocol)
         {
             int highestVersion = 0;
-            foreach (Capability capability in _capabilities)
+            foreach (Capability capability in GetAdvertisedCapabilities())
             {
                 if (capability.ProtocolCode == protocol)
                 {
@@ -360,6 +362,44 @@ namespace Nethermind.Network
             }
 
             return highestVersion;
+        }
+
+        private void InvalidateCapabilities()
+        {
+            lock (_capabilitiesLock)
+            {
+                _cachedCapabilities = null;
+            }
+        }
+
+        /// <summary>
+        /// Returns the capabilities to advertise, computed by running the registered
+        /// <see cref="IP2PCapabilityResolver"/>s (including <see cref="DefaultP2PCapabilityResolver"/>) over an empty
+        /// set. The result is cached and only recomputed when a resolver signals a change via
+        /// <see cref="IP2PCapabilityResolver.Changed"/>, keeping the per-session path allocation-free.
+        /// </summary>
+        private Capability[] GetAdvertisedCapabilities()
+        {
+            Capability[]? cached = Volatile.Read(ref _cachedCapabilities);
+            if (cached is not null) return cached;
+
+            lock (_capabilitiesLock)
+            {
+                if (_cachedCapabilities is null)
+                {
+                    HashSet<Capability> capabilities = [];
+                    foreach (IP2PCapabilityResolver resolver in _capabilityResolvers)
+                    {
+                        resolver.Resolve(capabilities);
+                    }
+
+                    Capability[] resolved = capabilities.ToArray();
+                    if (_logger.IsDebug) _logger.Debug($"Resolved advertised P2P capabilities: {string.Join(", ", resolved.Select(static c => $"{c.ProtocolCode}/{c.Version}"))}");
+                    Volatile.Write(ref _cachedCapabilities, resolved);
+                }
+
+                return _cachedCapabilities!;
+            }
         }
     }
 }

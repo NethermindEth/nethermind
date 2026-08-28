@@ -13,11 +13,11 @@ namespace Nethermind.Era1;
 /// </summary>
 public interface IEraStore : IDisposable
 {
-    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default);
-    long LastBlock { get; }
-    long FirstBlock { get; }
+    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default);
+    ulong LastBlock { get; }
+    ulong FirstBlock { get; }
 
     /// Used for optimization where multiple tasks should not read on the same era file.
     /// Ideally not necessary in the future.
-    long NextEraStart(long blockNumber);
+    ulong NextEraStart(ulong blockNumber);
 }

@@ -42,7 +42,6 @@ public class BoundedModulePoolTests
 
         BlockTree blockTree = Build.A
             .BlockTree()
-            .WithRealBloom
             .TestObject;
 
         _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
@@ -63,13 +62,15 @@ public class BoundedModulePoolTests
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogIndexConfig>(),
+            new ReceiptConfig(),
             new EthCapabilitiesProvider(
                 blockTree.AsReadOnly(),
                 Substitute.For<IStateBoundary>(),
                 new SyncConfig(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>())),
+                Substitute.For<IHistoryPruner>()),
+            new BlockForRpcFactory()),
              1, 1000);
 
         return Task.CompletedTask;

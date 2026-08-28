@@ -44,14 +44,14 @@ public class PeerManagerFilteringIntegrationTests
             MaxOutgoingConnectPerSec = 1000000
         };
 
-        NodesLoader nodesLoader = new(networkConfig, stats, storage, trackingMock, LimboLogs.Instance);
+        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         staticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
         TestNodeSource testNodeSource = new();
         CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), staticNodesManager, testNodeSource);
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, LimboLogs.Instance);
+        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
         try
         {
@@ -90,6 +90,28 @@ public class PeerManagerFilteringIntegrationTests
 
         await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Not.Empty, "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
+    }
+
+    [Test]
+    public async Task OwnRecord_IsRejectedBeforeTheIpFilterSeesIt()
+    {
+        await using Context ctx = new();
+        Node self = new(TestItem.PublicKeyA, "203.0.113.50", 30303);
+        Node other = new(new PrivateKeyGenerator().Generate().PublicKey, "198.51.100.7", 30303) { IsStatic = true };
+
+        ctx.TestNodeSource.AddNode(self);
+        ctx.TestNodeSource.AddNode(other);
+
+        ctx.PeerPool.Start();
+        ctx.PeerManager.Start();
+
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Contain(other.Address.Address),
+            "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason - the peer is static because this mock filter only accepts privileged dials");
+        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
+            "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));
     }
 
     [Test]
@@ -153,14 +175,14 @@ public class PeerManagerFilteringIntegrationTests
                 MaxOutgoingConnectPerSec = 1000000
             };
 
-            NodesLoader nodesLoader = new(networkConfig, stats, storage, RlpxMock, LimboLogs.Instance);
+            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
             StaticNodesManager = Substitute.For<IStaticNodesManager>();
             StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
             TestNodeSource = new TestNodeSource();
             CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), StaticNodesManager, TestNodeSource);
             ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
             PeerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, LimboLogs.Instance);
+            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         public async ValueTask DisposeAsync()
@@ -178,9 +200,14 @@ public class PeerManagerFilteringIntegrationTests
     private class FilterRejectingRlpxMock : IRlpxHost
     {
         public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
         public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+        {
+            CallsToShouldContact.Add(ip);
+            return exactOnly;
+        }
 
         public Task<bool> ConnectAsync(Node node)
         {
@@ -194,7 +221,6 @@ public class PeerManagerFilteringIntegrationTests
 
         public Task Init() => Task.CompletedTask;
         public Task Shutdown() => Task.CompletedTask;
-        public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated;
         public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }
@@ -222,7 +248,6 @@ public class PeerManagerFilteringIntegrationTests
 
         public Task Init() => Task.CompletedTask;
         public Task Shutdown() => Task.CompletedTask;
-        public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
         public int LocalPort => 30303;
         public event EventHandler<SessionEventArgs>? SessionCreated { add { } remove { } }
         public event SessionDisconnectedEventHandler? SessionDisconnected { add { } remove { } }

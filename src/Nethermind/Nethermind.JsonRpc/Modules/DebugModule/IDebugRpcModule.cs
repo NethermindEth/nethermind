@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -74,7 +75,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
 
-    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true, ResultCanBeNull = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
@@ -84,25 +85,25 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
-    Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to);
+    Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
 
     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
 
     [JsonRpcMethod(Description = "Get Raw Block format.")]
-    ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawBlock(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get raw block access list format.")]
     ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
-    ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);
+    ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Header format.")]
-    ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Get Raw Transaction format.")]
-    ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
+    [JsonRpcMethod(Description = "Get Raw Transaction format.", ResultCanBeNull = true)]
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
     Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();
@@ -118,7 +119,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
-    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
+    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
+        IsSharable = true)]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
@@ -127,7 +129,4 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
-
-    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.")]
-    ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
 }

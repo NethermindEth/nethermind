@@ -29,11 +29,11 @@ namespace Nethermind.TxPool.Test.Collections
         private const int Capacity = 16;
         private ITransactionComparerProvider _transactionComparerProvider;
 
-        private static Transaction[] GenerateTransactions(int count = Capacity, UInt256? gasPrice = null, Address address = null, UInt256? nonce = null) =>
+        private static Transaction[] GenerateTransactions(int count = Capacity, UInt256? gasPrice = null, Address address = null, ulong? nonce = null) =>
             Enumerable.Range(0, count).Select(i =>
             {
                 UInt256 iUint256 = (UInt256)i;
-                Transaction transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
+                Transaction transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? (ulong)i)
                     .WithSenderAddress(address ?? TestItem.Addresses[i]).TestObject;
                 transaction.Hash = Keccak.Compute(i.ToString());
                 return transaction;

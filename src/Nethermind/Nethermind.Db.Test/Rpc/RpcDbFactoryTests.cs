@@ -44,7 +44,6 @@ namespace Nethermind.Db.Test.Rpc
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.BlocksDb,
-                memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
                 memDbProvider.BlockInfosDb);
 

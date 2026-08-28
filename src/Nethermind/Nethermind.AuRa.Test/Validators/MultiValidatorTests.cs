@@ -22,7 +22,7 @@ namespace Nethermind.AuRa.Test.Validators
         private AuRaParameters.Validator _validator;
         private IAuRaValidatorFactory _factory;
         private ILogManager _logManager;
-        private IDictionary<long, IAuRaValidator> _innerValidators;
+        private IDictionary<ulong, IAuRaValidator> _innerValidators;
         private Block _block;
         private IAuRaBlockFinalizationManager _finalizationManager;
         private IBlockTree _blockTree;
@@ -32,19 +32,19 @@ namespace Nethermind.AuRa.Test.Validators
         public void SetUp()
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.List);
-            _innerValidators = new SortedList<long, IAuRaValidator>();
+            _innerValidators = new SortedList<ulong, IAuRaValidator>();
             _factory = Substitute.For<IAuRaValidatorFactory>();
             _logManager = LimboLogs.Instance;
             _finalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
             _blockTree = Substitute.For<IBlockTree>();
             _validatorStore = Substitute.For<IValidatorStore>();
-            _finalizationManager.LastFinalizedBlockLevel.Returns(0);
+            _finalizationManager.LastFinalizedBlockLevel.Returns(0UL);
 
             _factory.CreateValidatorProcessor(default, default, default)
                 .ReturnsForAnyArgs(x =>
                 {
                     IAuRaValidator innerValidator = Substitute.For<IAuRaValidator>();
-                    _innerValidators[x.Arg<long?>() ?? 0] = innerValidator;
+                    _innerValidators[x.Arg<ulong?>() ?? 0UL] = innerValidator;
                     return innerValidator;
                 });
 
@@ -98,9 +98,9 @@ namespace Nethermind.AuRa.Test.Validators
             MultiValidator validator = new(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             validator.SetFinalizationManager(_finalizationManager, null);
 
-            foreach (long blockNumber in _validator.Validators.Keys.Skip(1))
+            foreach (ulong blockNumber in _validator.Validators.Keys.Skip(1))
             {
-                _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
+                _finalizationManager.BlocksFinalized += Raise.EventWith(new AuRaFinalizeEventArgs(
                     Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
             }
 
@@ -115,8 +115,8 @@ namespace Nethermind.AuRa.Test.Validators
             // Arrange
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            Dictionary<AuRaParameters.Validator, long> innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
-            long maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
+            Dictionary<AuRaParameters.Validator, ulong> innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
+            ulong maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
 
             // Act
             ProcessBlocks(maxCalls, validator, blocksToFinalization);
@@ -129,10 +129,10 @@ namespace Nethermind.AuRa.Test.Validators
             callCountPerValidator[0] += blocksToFinalization;
             callCountPerValidator[^1] -= blocksToFinalization;
 
-            long GetFinalizedIndex(int j)
+            ulong GetFinalizedIndex(int j)
             {
-                long finalizedIndex = innerValidatorsFirstBlockCalls.Values.ElementAt(j);
-                return finalizedIndex == 1 ? finalizedIndex : finalizedIndex + blocksToFinalization;
+                ulong finalizedIndex = innerValidatorsFirstBlockCalls.Values.ElementAt(j);
+                return finalizedIndex == 1 ? finalizedIndex : finalizedIndex + (ulong)blocksToFinalization;
             }
 
             EnsureInnerValidatorsCalled(i => (_innerValidators[GetFinalizedIndex(i)], callCountPerValidator[i]));
@@ -152,9 +152,9 @@ namespace Nethermind.AuRa.Test.Validators
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
 
-        [TestCase(16L, ExpectedResult = 11)]
-        [TestCase(21L, ExpectedResult = 21)]
-        public long initializes_validator_when_producing_block(long blockNumber)
+        [TestCase(16UL, ExpectedResult = 11UL)]
+        [TestCase(21UL, ExpectedResult = 21UL)]
+        public ulong initializes_validator_when_producing_block(ulong blockNumber)
         {
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             _block.Header.Number = blockNumber;
@@ -163,37 +163,52 @@ namespace Nethermind.AuRa.Test.Validators
             return _innerValidators.Keys.Last();
         }
 
-        [TestCase(16L, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11)]
-        [TestCase(21L, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21)]
-        [TestCase(16L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15)]
-        [TestCase(23L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22)]
-        [TestCase(16L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1)]
-        [TestCase(21L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11)]
-        public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
+        [TestCase(16UL, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11UL)]
+        [TestCase(21UL, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21UL)]
+        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15UL)]
+        [TestCase(23UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22UL)]
+        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1UL)]
+        [TestCase(21UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11UL)]
+        public ulong initializes_validator_when_on_nonconsecutive_block(ulong blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
         {
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, static (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, AuRaParameters.Validator> validatorInfo);
-            _finalizationManager.GetFinalizationLevel(validatorInfo.Key).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?)null);
+            _validator.Validators.ToList().TryGetSearchedItem<KeyValuePair<ulong, AuRaParameters.Validator>, ulong>(
+                in blockNumber,
+                static (l, pair) => l.CompareTo(pair.Key),
+                out KeyValuePair<ulong, AuRaParameters.Validator> validatorInfo);
+
+            ulong? finalizationLevel = finalizedLastValidatorBlockLevel
+                ? blockNumber - 2UL
+                : null;
+            _finalizationManager.GetFinalizationLevel(validatorInfo.Key)
+                .Returns(finalizationLevel.HasValue ? finalizationLevel.Value : null);
+
             _block.Header.Number = blockNumber;
             validator.OnBlockProcessingStart(_block);
             return _innerValidators.Keys.Last();
         }
 
-        private void ProcessBlocks(long count, IAuRaValidator validator, int blocksToFinalization)
+        private void ProcessBlocks(ulong count, IAuRaValidator validator, int blocksToFinalization)
         {
-            for (int i = 1; i < count; i++)
+            for (ulong i = 1; i < count; i++)
             {
                 _block.Header.Number = i;
                 validator.OnBlockProcessingStart(_block);
                 validator.OnBlockProcessingEnd(_block, []);
 
-                int finalizedBlock = i - blocksToFinalization;
-                if (finalizedBlock >= 1)
+                // Guard against underflow: only raise finalization event once i has advanced
+                // far enough that (i - blocksToFinalization) is a valid (>= 1) block number.
+                // Safe: blocksToFinalization is small (0, 1, or 2) and i starts at 1.
+                if (i >= (ulong)blocksToFinalization)
                 {
-                    _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
-                        Build.A.BlockHeader.WithNumber(i).TestObject,
-                        Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
+                    ulong finalizedBlock = i - (ulong)blocksToFinalization;
+                    if (finalizedBlock >= 1)
+                    {
+                        _finalizationManager.BlocksFinalized += Raise.EventWith(new AuRaFinalizeEventArgs(
+                            Build.A.BlockHeader.WithNumber(i).TestObject,
+                            Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
+                    }
                 }
             }
         }
@@ -210,7 +225,7 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
 
-        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(
+        private Dictionary<AuRaParameters.Validator, ulong> GetInnerValidatorsFirstBlockCalls(
             AuRaParameters.Validator validator) =>
             validator.Validators.ToDictionary(static x => x.Value, static x => Math.Max(x.Key + 1, 1));
 
@@ -218,7 +233,7 @@ namespace Nethermind.AuRa.Test.Validators
             new()
             {
                 ValidatorType = AuRaParameters.ValidatorType.Multi,
-                Validators = new SortedList<long, AuRaParameters.Validator>()
+                Validators = new SortedList<ulong, AuRaParameters.Validator>()
                 {
                     {
                         0,
