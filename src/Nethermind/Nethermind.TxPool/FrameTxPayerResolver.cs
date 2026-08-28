@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -14,47 +10,22 @@ namespace Nethermind.TxPool;
 internal static class FrameTxPayerResolver
 {
     /// <param name="senderAccount">The sender's chain-head account, already fetched by the caller.</param>
-    public static FrameTxPayerResolution Resolve(Transaction tx, IReadOnlyStateProvider state, in AccountStruct senderAccount)
+    public static FrameTxPayerResolution Resolve(Transaction tx, in AccountStruct senderAccount)
     {
         TxFrame[]? frames = tx.Frames;
         Address? sender = tx.SenderAddress;
         if (frames is null || frames.Length == 0 || sender is null)
         {
-            return new FrameTxPayerResolution(FrameTxPayerOutcome.RequiresSimulation, null, default);
+            return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
         TxFrameSignature[] signatures = tx.FrameSignatures ?? [];
 
-        // A never-seen account is the zeroed struct whose code hash isn't empty-keccak; normalize both.
-        bool senderExists = !senderAccount.IsNull;
-        bool senderHasCode = senderExists && senderAccount.HasCode;
-        ValueHash256 senderCodeHash = senderExists ? senderAccount.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
-        // Copied out of the in-parameter so the local-function dependency-set builders can close over it.
-        ulong senderNonce = senderAccount.Nonce;
+        // A never-seen account is the zeroed struct whose code hash isn't empty-keccak, so HasCode
+        // would wrongly report code on it.
+        bool senderHasCode = !senderAccount.IsNull && senderAccount.HasCode;
 
         int index = PrefixVerifyIndex(frames);
-
-        bool dependsOnExpiry = false;
-        ulong expiryDeadline = 0;
-        ValueHash256 expiryCodeHash = default;
-        if (FrameTxValidation.IsExpiryVerifyFrame(frames[0]))
-        {
-            dependsOnExpiry = true;
-            expiryDeadline = BinaryPrimitives.ReadUInt64BigEndian(frames[0].Data.Span);
-            expiryCodeHash = state.GetCodeHash(Eip8141Constants.ExpiryVerifierAddress);
-        }
-
-        FrameTxPayerResolution Unresolved(FrameTxPayerOutcome outcome) =>
-            new(outcome, null, new FrameTxDependencySet(
-                senderCodeHash, senderNonce,
-                payer: null, default, default,
-                dependsOnExpiry, expiryDeadline, expiryCodeHash));
-
-        FrameTxPayerResolution ResolvedTo(Address payer, in ValueHash256 payerCodeHash, in UInt256 payerBalance) =>
-            new(FrameTxPayerOutcome.Resolved, payer, new FrameTxDependencySet(
-                senderCodeHash, senderNonce,
-                payer, payerCodeHash, payerBalance,
-                dependsOnExpiry, expiryDeadline, expiryCodeHash));
 
         // Re-checked here, though FrameTxPayerlessFilter already rejects these, so a direct caller still gets NoPayer.
         if (IsStructurallyPayerless(frames, sender, index))
@@ -81,13 +52,15 @@ internal static class FrameTxPayerResolver
 
             // A non-matching signature shape is not proof of invalidity, so defer rather than drop.
             return DefaultCodeApproves(signatures, sender)
-                ? ResolvedTo(sender, in senderCodeHash, senderAccount.Balance)
+                ? new FrameTxPayerResolution(FrameTxPayerOutcome.Resolved, sender)
                 : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
         // Everything else is opaque: the pool cannot verify a third-party pay-frame signature at admission.
         return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
     }
+
+    private static FrameTxPayerResolution Unresolved(FrameTxPayerOutcome outcome) => new(outcome, null);
 
     /// <summary>Signature- and state-free test of whether a validation prefix provably never approves a payer.</summary>
     public static bool IsStructurallyPayerless(Transaction tx)

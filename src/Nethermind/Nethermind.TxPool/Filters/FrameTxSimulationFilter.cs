@@ -3,7 +3,6 @@
 
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
@@ -14,10 +13,7 @@ namespace Nethermind.TxPool.Filters;
 /// path here, and after <see cref="FrameTxVerifyGasFilter"/>, which is what bounds the state gas a deploy
 /// frame may spend here. Runs inside the pool's head read lock, so the simulator has to bound its own wait.
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.</remarks>
-internal sealed class FrameTxSimulationFilter(
-    IReadOnlyStateProvider stateProvider,
-    IFrameTxPrefixSimulator? simulator,
-    ILogger logger) : IIncomingTxFilter
+internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
@@ -28,7 +24,7 @@ internal sealed class FrameTxSimulationFilter(
         }
 
         // An unresolved payer is either provably invalid (NoPayer) or opaque; only the latter is simulated.
-        if (FrameTxPayerResolver.Resolve(tx, stateProvider, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
+        if (FrameTxPayerResolver.Resolve(tx, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;
         }
