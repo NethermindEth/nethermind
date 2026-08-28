@@ -72,6 +72,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
+    private int _stalledBelowBoundary = -1;
 
     public string Description => "log index builder";
 
@@ -373,12 +374,22 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 if (batch.Length == 0)
                 {
                     ulong lowestStored = _blockTree.GetLowestBlock();
-                    if (!isForward && (ulong)start < lowestStored && !_indexRetainedSlices)
+                    if (!isForward && (ulong)start < lowestStored)
                     {
-                        if (_logger.IsDebug) _logger.Debug(
-                            $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
-                        MarkCompleted(isForward: false);
-                        return;
+                        if (!_indexRetainedSlices)
+                        {
+                            if (_logger.IsDebug) _logger.Debug(
+                                $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
+                            MarkCompleted(isForward: false);
+                            return;
+                        }
+
+                        if (start != _stalledBelowBoundary && _logger.IsWarn)
+                        {
+                            _stalledBelowBoundary = start;
+                            _logger.Warn(
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} has a body but no readable receipts - waiting for the pruner to finish reclaiming it before the descent can continue.");
+                        }
                     }
 
                     // TODO: stop waiting immediately when receipts become available
@@ -484,9 +495,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
-            // A sliced node keeps receipt islands below the pruned boundary. The pruner only reclaimed a
-            // height after proving no sliced address logged there, so an empty batch keeps the descent
-            // contiguous without losing a log the node can still serve.
+            // A sliced node keeps receipt islands below the pruned boundary. A height is only absent below
+            // it because a reclaim ran, so an empty batch keeps the descent contiguous without losing a log
+            // the node can still serve; depths the retention cannot vouch for are refused at query time.
             if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
             {
                 blockReceipts = new((int)blockNumber, []);

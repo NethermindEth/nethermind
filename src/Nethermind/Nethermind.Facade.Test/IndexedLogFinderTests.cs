@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -48,14 +49,17 @@ public class IndexedLogFinderTests
     [TearDown]
     public async Task TearDownAsync() => await _logIndexStorage.DisposeAsync();
 
-    private IndexedLogFinder GetFinder(IPrunedLogsRetention? prunedLogsRetention) => new(
+    private IndexedLogFinder GetFinder(IPrunedLogsRetention? prunedLogsRetention, IFlatDbConfig? flatDbConfig = null) => new(
         _blockFinder,
         Substitute.For<IReceiptFinder>(),
         _receiptStorage,
         LimboLogs.Instance,
         Substitute.For<IReceiptsRecovery>(),
         _logIndexStorage,
-        prunedLogsRetention: prunedLogsRetention);
+        prunedLogsRetention: prunedLogsRetention,
+        flatDbConfig: flatDbConfig);
+
+    private static FlatDbConfig SlicedConfig => new() { HistorySliceAddresses = TestItem.AddressA.ToString() };
 
     private static LogFilter CreateFilter() => new(
         0,
@@ -70,7 +74,7 @@ public class IndexedLogFinderTests
         IPrunedLogsRetention retention = Substitute.For<IPrunedLogsRetention>();
         retention.RetainsLogsFor(Arg.Any<IReadOnlyCollection<AddressAsKey>>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        FilterLog[] logs = GetFinder(retention).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray();
+        FilterLog[] logs = GetFinder(retention, SlicedConfig).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray();
 
         Assert.That(logs, Is.Empty);
         _logIndexStorage.Received().GetEnumerator(TestItem.AddressA, From, To);
@@ -85,13 +89,25 @@ public class IndexedLogFinderTests
             Build.A.BlockHeader.WithNumber(ci.ArgAt<ulong>(0)).WithReceiptsRoot(TestItem.KeccakC).TestObject);
 
         Assert.Throws<ResourceNotFoundException>(() =>
-            GetFinder(retention).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray());
+            GetFinder(retention, SlicedConfig).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray());
     }
 
     [Test]
     public void Should_UseTheFullIndexRange_WhenNoRetentionIsConfigured()
     {
         FilterLog[] logs = GetFinder(prunedLogsRetention: null).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        _logIndexStorage.Received().GetEnumerator(TestItem.AddressA, From, To);
+    }
+
+    [Test]
+    public void Should_UseTheFullIndexRange_WhenRetentionIsResolvedButNoSlicesAreConfigured()
+    {
+        IPrunedLogsRetention retention = Substitute.For<IPrunedLogsRetention>();
+        retention.RetainsLogsFor(Arg.Any<IReadOnlyCollection<AddressAsKey>>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(false);
+
+        FilterLog[] logs = GetFinder(retention).FindLogs(CreateFilter(), _fromHeader, _toHeader, CancellationToken.None).ToArray();
 
         Assert.That(logs, Is.Empty);
         _logIndexStorage.Received().GetEnumerator(TestItem.AddressA, From, To);
