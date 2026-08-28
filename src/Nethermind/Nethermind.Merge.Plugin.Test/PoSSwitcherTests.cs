@@ -457,6 +457,33 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        public void Config_only_ttd_zero_genesis_is_not_persisted_as_terminal_pow()
+        {
+            using MemDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.UpdateMergeTransitionInfo(0, 0);
+            // No ChainSpec.Parameters at all - the shape a command-line TTD or a devnet harness leaves behind,
+            // and what MergeTestBlockchain builds. Classification still follows the chain spec, but nothing
+            // may be persisted as a terminal PoW block.
+            PoSSwitcher poSSwitcher = new(new MergeConfig { TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb,
+                Substitute.For<IBlockTree>(), specProvider, new ChainSpec(), LimboLogs.Instance);
+            int terminalBlockReachedCount = 0;
+            poSSwitcher.TerminalBlockReached += (_, _) => terminalBlockReachedCount++;
+            Block genesis = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+
+            bool updated = poSSwitcher.TryUpdateTerminalBlock(genesis.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updated, Is.False);
+                Assert.That(terminalBlockReachedCount, Is.Zero);
+                Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber), Is.False);
+                Assert.That(metadataDb.KeyExists(MetadataDbKeys.TerminalPoWHash), Is.False);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(0));
+            }
+        }
+
+        [Test]
         public void Post_merge_genesis_is_not_persisted_as_terminal_pow()
         {
             using MemDb metadataDb = new();

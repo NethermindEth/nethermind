@@ -194,7 +194,12 @@ namespace Nethermind.Merge.Plugin
             {
                 // Config-known FinalTotalDifficulty must not block recording the locally observed terminal block,
                 // so this checks the finalized hash (EIP-3675 step 3) rather than TransitionFinished.
-                if (_terminalBlockExplicitSpecified || _finalizedBlockHash != Keccak.Zero || IsPostMergeGenesis(header) || !header.IsTerminalBlock(_specProvider))
+                // Genesis under a zero effective TTD is never a terminal PoW block, whatever supplied the zero:
+                // classification stays chain-spec-only (see IsPostMergeGenesis) but persisting merge-transition
+                // metadata for it is wrong on a MergeConfig or command-line override too.
+                if (_terminalBlockExplicitSpecified || _finalizedBlockHash != Keccak.Zero
+                    || header.IsGenesis && TerminalTotalDifficulty?.IsZero == true
+                    || !header.IsTerminalBlock(_specProvider))
                 {
                     return false;
                 }
