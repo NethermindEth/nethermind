@@ -90,6 +90,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             private IBlockFinder? _blockFinderOverride = null;
             private IReceiptFinder? _receiptFinderOverride = null;
             private IBlockchainBridge? _blockchainBridgeOverride = null;
+            private IReceiptConfig? _receiptConfigOverride = null;
             private IBlocksConfig? _blocksConfigOverride = null;
 
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
@@ -136,6 +137,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithReceiptConfig(IReceiptConfig receiptConfig)
             {
                 _blockchain.ReceiptConfig = receiptConfig;
+                _receiptConfigOverride = receiptConfig;
                 return this;
             }
 
@@ -180,6 +182,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                 if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
                 if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
+                if (_receiptConfigOverride is not null) builder.AddSingleton(_receiptConfigOverride);
 
                 builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
             });

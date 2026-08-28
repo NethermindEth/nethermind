@@ -1011,6 +1011,64 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
+    private static IEnumerable<TestCaseData> MaxBlockDepthCases()
+    {
+        foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getLogs_{name}");
+            yield return new TestCaseData("eth_getFilterLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getFilterLogs_{name}");
+        }
+
+        static IEnumerable<(string Name, int MaxBlockDepth, string Filter, bool ShouldReject)> Cases()
+        {
+            const int range = TestBlockchain.HeadNumber + 1;
+            const int tooLow = range - 1;
+
+            string head = $"0x{TestBlockchain.HeadNumber:x}";
+            string wholeChain = $$"""{"fromBlock":"0x0","toBlock":"{{head}}"}""";
+            string fromOmitted = $$"""{"toBlock":"{{head}}"}""", toOmitted = """{"fromBlock":"0x0"}""";
+
+            yield return ($"range {range} exceeds limit {tooLow} -> rejected", tooLow, wholeChain, true);
+            yield return ($"range {range} within limit {range} -> allowed", range, wholeChain, false);
+            yield return ("limit disabled -> allowed", 0, wholeChain, false);
+            yield return ($"fromBlock omitted -> Earliest, range {range} exceeds limit {tooLow} -> rejected", tooLow, fromOmitted, true);
+            yield return ($"fromBlock omitted -> Earliest, range {range} within limit {range} -> allowed", range, fromOmitted, false);
+            yield return ($"toBlock omitted -> Latest, range {range} exceeds limit {tooLow} -> rejected", tooLow, toOmitted, true);
+            yield return ($"toBlock omitted -> Latest, range {range} within limit {range} -> allowed", range, toOmitted, false);
+        }
+    }
+
+    [TestCaseSource(nameof(MaxBlockDepthCases))]
+    public async Task Eth_logs_enforce_max_block_depth(string method, int maxBlockDepth, string filter, bool shouldReject)
+    {
+        using Context ctx = await Context.Create();
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false)
+            .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
+            .Build();
+
+        string parameter = filter;
+
+        // create filter if needed
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        string serialized = await ctx.Test.TestEthRpc(method, parameter);
+
+        if (shouldReject)
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
+            Assert.That(serialized, Does.Contain(nameof(IReceiptConfig.MaxBlockDepth)));
+        }
+        else
+        {
+            Assert.That(serialized, Does.Not.Contain("\"error\""));
+        }
+    }
+
     [TestCase("eth_getLogs", "{}")]
     [TestCase("eth_getFilterLogs", "0x1")]
     public async Task Eth_logs_ignore_max_logs_response_body_size_when_stream_mode_disabled(string method, string parameter)
