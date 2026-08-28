@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -19,6 +20,26 @@ public class PayloadDecoderTests
         byte[] bytes = Convert.FromBase64String(testCase.Data);
         ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(bytes);
         ComparePayloads(testCase.Payload, decoded);
+    }
+
+    [Test]
+    public void DecodePayload_InvalidFirstTransactionOffset(
+        [ValueSource(nameof(RealPayloadsTestCases))] (string Data, ExecutionPayloadV3 Payload) testCase,
+        // Zero, misaligned, and past the end of the transactions region
+        [Values(0u, 1u, 0xFFFFFFFCu, UInt32.MaxValue)] UInt32 firstTxOffset)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+
+        // The transactions region ends at the payload end and starts with one 4-byte offset per transaction
+        int transactionsOffset = bytes.Length - 4 * testCase.Payload.Transactions.Length;
+        foreach (byte[] transaction in testCase.Payload.Transactions)
+        {
+            transactionsOffset -= transaction.Length;
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(transactionsOffset, 4), firstTxOffset);
+
+        Func<ExecutionPayloadV3> tryDecode = () => PayloadDecoder.Instance.DecodePayload(bytes);
+        Assert.That(tryDecode, Throws.TypeOf<ArgumentException>().With.Message.Contains("transaction offset"));
     }
 
     private void ComparePayloads(ExecutionPayloadV3 expected, ExecutionPayloadV3 actual)

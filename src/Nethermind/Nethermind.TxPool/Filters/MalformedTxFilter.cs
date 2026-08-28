@@ -22,7 +22,11 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            ValidationResult result = txValidator.IsWellFormed(tx, spec);
+            ValidationResult result = txValidator.IsWellFormed(
+                tx,
+                spec,
+                blockGasLimit: 0,
+                TxValidationOptions.SkipBlobProofs);
             bool retryAfterSenderRecovery = !result
                 && spec.IsEip2780Enabled
                 && tx.IsMessageCall
@@ -48,7 +52,11 @@ namespace Nethermind.TxPool.Filters
 
             // An unresolved sender is conservatively priced as non-self, so only a rejected
             // intrinsic result can become valid after recovery.
-            if (retryAfterSenderRecovery && !(result = txValidator.IsWellFormed(tx, spec)))
+            if (retryAfterSenderRecovery && !(result = txValidator.IsWellFormed(
+                tx,
+                spec,
+                blockGasLimit: 0,
+                TxValidationOptions.SkipBlobProofs)))
             {
                 return RejectMalformed(tx, result);
             }

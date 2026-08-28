@@ -863,18 +863,12 @@ namespace Nethermind.Network.P2P
                     Array.Copy(_handlers, rentedHandlers, count);
                 }
 
-                try
+                for (int i = 0; i < count; i++)
                 {
-                    for (int i = 0; i < count; i++)
-                    {
-                        rentedHandlers[i]!(sender, args);
-                    }
+                    rentedHandlers[i]!(sender, args);
                 }
-                finally
-                {
-                    Array.Clear(rentedHandlers, 0, count);
-                    ArrayPool<EventHandler<DisconnectEventArgs>?>.Shared.Return(rentedHandlers);
-                }
+                Array.Clear(rentedHandlers, 0, count);
+                ArrayPool<EventHandler<DisconnectEventArgs>?>.Shared.Return(rentedHandlers);
             }
         }
     }

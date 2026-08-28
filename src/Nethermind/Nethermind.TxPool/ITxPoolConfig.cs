@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -20,6 +20,11 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(Description = "The blobs support mode.", DefaultValue = nameof(BlobsSupportMode.StorageWithReorgs))]
     BlobsSupportMode BlobsSupport { get; set; }
 
+    [ConfigItem(
+        DefaultValue = "15",
+        Description = "The EIP-8070 full-provider selection probability for normal sparse blob-pool nodes, in percent. Values are clamped to the protocol-compliant range `15..100`. Nodes with at least 64 custody columns act as supernodes and request every announced cell.")]
+    int SparseBlobProviderProbabilityPercent { get; set; }
+
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }
 
@@ -34,6 +39,9 @@ public interface ITxPoolConfig : IConfig
 
     [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is additionally capped, frame by frame, at the fixed `Eip8141Constants.MaxVerifyGas`, which raising this value does not move. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
+
+    [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for the transaction to be accepted into the public mempool. `0` to lift the limit. Raise it only on a test network.")]
+    ulong FrameTxMaxVerifyStateGas { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }

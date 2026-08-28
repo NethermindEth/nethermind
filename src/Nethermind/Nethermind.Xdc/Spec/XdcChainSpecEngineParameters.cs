@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -56,10 +57,23 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? TipTrc21Fee { get; set; }
     public ulong TIP2019Block { get; set; }
+
+    // These fork blocks are only required for fork ID calculation, and are not actually supported
+    public ulong? TipSigningBlock { get; set; }
+    public ulong? TipRandomizeBlock { get; set; }
+    public ulong? TipIncreaseMasternodesBlock { get; set; }
+    public ulong? TipNoHalvingMNRewardBlock { get; set; }
+    public ulong? TipXDCXLendingBlock { get; set; }
+    public ulong? TipXDCXCancellationFeeBlock { get; set; }
+    public ulong? Gas50xBlock { get; set; }
+
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; set; }
     public ulong MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
@@ -96,6 +110,15 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipUpgradePenalty.Value);
         if (TipUpgradeReward is not null)
             blockNumbers.Add(TipUpgradeReward.Value);
+        // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
+        if (DynamicGasLimitBlock is not null)
+            blockNumbers.Add(DynamicGasLimitBlock.Value);
+        if (TipXDCX is not null)
+            blockNumbers.Add(TipXDCX.Value);
+        if (TIPXDCXMinerDisable is not null)
+            blockNumbers.Add(TIPXDCXMinerDisable.Value);
+        if (TIPXDCXReceiverDisable is not null)
+            blockNumbers.Add(TIPXDCXReceiverDisable.Value);
     }
 }
 
@@ -109,8 +132,11 @@ public sealed class V2ConfigParams
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public ulong MinePeriod { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; init; }
     public ulong MinimumMinerBlockPerEpoch { get; init; }
     public ulong LimitPenaltyEpoch { get; init; }

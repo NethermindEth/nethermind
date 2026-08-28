@@ -15,6 +15,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
 
+    /// <summary>Seeds a frame budget from EIP-8141 <c>limits = [execution, state]</c>; pre-EIP-8037 policies fall back to a single combined budget.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual TSelf FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
+        TSelf.FromULong(executionGasLimit > ulong.MaxValue - stateGasLimit ? ulong.MaxValue : executionGasLimit + stateGasLimit);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) => TSelf.FromULong(0);
 
@@ -23,6 +28,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.CreateAvailableFromIntrinsic(gasLimit, in intrinsicGas, spec);
 
     static abstract ulong GetRemainingGas(in TSelf gas);
+
+    /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
+    static abstract ulong GetColdAccountAccessCost(IReleaseSpec spec);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) => Math.Max(blockExecutionGas, blockStateGas);
