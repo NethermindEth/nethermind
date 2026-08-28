@@ -175,6 +175,7 @@ namespace Nethermind.Consensus.Producers
             ulong maxBlobs,
             bool validateForkSensitiveState)
         {
+            // A larger, separate rejection budget prevents invalid prefixes from consuming the valid-candidate budget while bounding sidecar reads.
             ulong maxBlobsToConsider = maxBlobs * BlobConsiderationMultiplier;
             ulong maxRejectedBlobsToConsider = maxBlobsToConsider * RejectedBlobConsiderationMultiplier;
             ulong countOfRemainingBlobs = 0UL;
@@ -182,7 +183,6 @@ namespace Nethermind.Consensus.Producers
             ulong rejectedBlobCount = 0UL;
             Dictionary<Hash256, Transaction>? fullBlobTxs = null;
 
-            // A larger, separate rejection budget prevents invalid prefixes from consuming the valid-candidate budget while bounding sidecar reads.
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining blobs, failed to calculate gas price.");
