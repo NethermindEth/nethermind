@@ -92,19 +92,19 @@ public static class SszRestPaths
         return ResourceScoping.ForkScoped;
     }
 
-    public const string PostPayloads = "POST /engine/v2/payloads";
-    public const string GetPayloads = "GET /engine/v2/payloads/{payload_id}";
-    public const string PostForkchoice = "POST /engine/v2/forkchoice";
-    public const string PostBodiesByHash = "POST /engine/v2/bodies/hash";
-    public const string GetBodiesByRange = "GET /engine/v2/bodies";
-    public const string GetCapabilities = "GET /engine/v2/capabilities";
-    public const string GetIdentity = "GET /engine/v2/identity";
-    public const string PostBlobsV1 = "POST /engine/v2/blobs/v1";
-    public const string PostBlobsV2 = "POST /engine/v2/blobs/v2";
-    public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
-    public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
-    public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
-    public const string GetInclusionList = "GET /engine/v2/inclusion_list";
+    public const string PostPayloads = "POST /engine/v1/payloads";
+    public const string GetPayloads = "GET /engine/v1/payloads/{payload_id}";
+    public const string PostForkchoice = "POST /engine/v1/forkchoice";
+    public const string PostBodiesByHash = "POST /engine/v1/bodies/hash";
+    public const string GetBodiesByRange = "GET /engine/v1/bodies";
+    public const string GetCapabilities = "GET /engine/v1/capabilities";
+    public const string GetIdentity = "GET /engine/v1/identity";
+    public const string PostBlobsV1 = "POST /engine/v1/blobs/v1";
+    public const string PostBlobsV2 = "POST /engine/v1/blobs/v2";
+    public const string PostBlobsV3 = "POST /engine/v1/blobs/v3";
+    public const string PostBlobsV4 = "POST /engine/v1/blobs/v4";
+    public const string PostPayloadsWitness = "POST /engine/v1/payloads/witness";
+    public const string GetInclusionList = "GET /engine/v1/inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a

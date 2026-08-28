@@ -9,7 +9,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// <remarks>
 /// Per <c>execution-apis#793</c>: <c>MAX_BODIES_REQUEST = 2**5 = 32</c>,
 /// <c>MAX_BLOBS_REQUEST = 2**7 = 128</c>. These values are advertised via
-/// <c>GET /engine/v2/capabilities</c> and enforced by the corresponding handlers.
+/// <c>GET /engine/v1/capabilities</c> and enforced by the corresponding handlers.
 /// </remarks>
 public static class SszRestLimits
 {

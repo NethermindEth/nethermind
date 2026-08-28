@@ -33,9 +33,9 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v2/{resource}[/{extra}]. Since execution-apis#793 the fork is no longer a
+    // Path: /engine/v1/{resource}[/{extra}]. Since execution-apis#793 the fork is no longer a
     // path segment — fork-scoped endpoints select their container shape via the request header below.
-    private const string EnginePrefix = "/engine/v2/";
+    private const string EnginePrefix = "/engine/v1/";
 
     /// <summary>
     /// Request header that selects the fork (and thus the SSZ container shape) for fork-scoped
@@ -181,13 +181,13 @@ public sealed class SszMiddleware
             if (endpointNotAvailableForFork)
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                    $"Fork '{fork}' does not support {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    $"Fork '{fork}' does not support {ctx.Request.Method} /engine/v1/{pathSegment.Span}",
                     MergeErrorCodes.UnsupportedFork);
             }
             else
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    $"Unknown method: {ctx.Request.Method} /engine/v1/{pathSegment.Span}",
                     SszRestErrorCodes.MethodNotFound);
             }
         }
@@ -201,8 +201,8 @@ public sealed class SszMiddleware
             if (_logger.IsTrace)
             {
                 _logger.Trace(extra.IsEmpty
-                    ? $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}"
-                    : $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}/{extra.Span}");
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/v1/{pathSegment.Span}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/v1/{pathSegment.Span}/{extra.Span}");
             }
 
             await DispatchAsync(ctx, handler!, version, extra);
@@ -334,8 +334,9 @@ public sealed class SszMiddleware
         string? headerValue = headerValues.Count == 1 ? headerValues[0] : null;
         if (string.IsNullOrEmpty(headerValue))
         {
+            // execution-apis#793 maps a missing header to unsupported-fork, same as an unknown value.
             error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                $"Request must carry exactly one '{ForkHeaderName}' header", SszRestErrorCodes.InvalidRequest);
+                $"Request must carry exactly one '{ForkHeaderName}' header", MergeErrorCodes.UnsupportedFork);
             return false;
         }
 
@@ -457,25 +458,41 @@ public sealed class SszMiddleware
                 if (IsDiagnosticGetPath(path))
                     return SszRequestKind.EngineOk;
 
-                foreach (string? v in ctx.Request.Headers.Accept)
-                {
-                    if (v is not null && v.Contains(
-                        MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                        return SszRequestKind.EngineOk;
-                }
-
-                return SszRequestKind.NotEngine;
+                return AcceptsOctetStream(ctx)
+                    ? SszRequestKind.EngineOk
+                    : SszRequestKind.EngineWrongMediaType;
 
             default:
                 return SszRequestKind.NotEngine;
         }
     }
 
+    /// <summary>
+    /// Whether the request's <c>Accept</c> header allows an SSZ response body. An absent header
+    /// means any type is acceptable (RFC 9110 §12.5.1), so it is treated as a match rather than
+    /// as a rejection — CLs that omit <c>Accept</c>, and clients defaulting to <c>*&#47;*</c>,
+    /// must still reach the hot-path endpoints.
+    /// </summary>
+    private static bool AcceptsOctetStream(HttpContext ctx)
+    {
+        bool anyValue = false;
+        foreach (string? v in ctx.Request.Headers.Accept)
+        {
+            if (string.IsNullOrWhiteSpace(v)) continue;
+            anyValue = true;
+            if (v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase)
+                || v.Contains("*/*", StringComparison.Ordinal)
+                || v.Contains("application/*", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return !anyValue;
+    }
+
     private static bool IsDiagnosticGetPath(string path)
     {
         ReadOnlySpan<char> span = path.AsSpan();
-        const string capabilitiesPath = "/engine/v2/capabilities";
-        const string identityPath = "/engine/v2/identity";
+        const string capabilitiesPath = "/engine/v1/capabilities";
+        const string identityPath = "/engine/v1/identity";
 
         return span.Equals(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
             || (span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > capabilitiesPath.Length && span[capabilitiesPath.Length] == '/')

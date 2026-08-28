@@ -12,7 +12,7 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v2/{fork}/payloads/witness</c>, the SSZ-REST equivalent of
+/// Handles <c>POST /engine/v1/{fork}/payloads/witness</c>, the SSZ-REST equivalent of
 /// <c>engine_newPayloadWithWitnessV5</c>. The response is <c>PayloadStatusWithWitness</c>, the payload
 /// status plus a witness present only when the status is VALID (execution-apis#773/#793).
 /// </summary>
