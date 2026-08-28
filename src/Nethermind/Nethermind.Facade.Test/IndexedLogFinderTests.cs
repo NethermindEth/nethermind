@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
