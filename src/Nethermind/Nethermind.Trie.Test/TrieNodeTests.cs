@@ -99,10 +99,12 @@ public class TrieNodeTests
         Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
     }
 
-    [Test]
-    public void Undecodable_rlp_is_kept_and_loaded_once()
+    // A malformed node reaches the RLP reader as an out-of-range read rather than an RlpException: an empty key
+    // indexes an empty span, a truncated length prefix slices past the end. Neither may escape the Try variant.
+    [TestCase(new byte[] { 0xc2, 0x80, 0x01 })]
+    [TestCase(new byte[] { 0xf8 })]
+    public void Undecodable_rlp_is_kept_and_loaded_once(byte[] invalidRlp)
     {
-        byte[] invalidRlp = [0xc2, 0x80, 0x01];
         Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
         TrieNode trieNode = new(NodeType.Unknown, hash);
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
