@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -43,21 +44,21 @@ public class LightTxDecoderTests
     [Test]
     public void should_roundtrip_v0_proof_version()
     {
-        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BuildV0BlobTx()));
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BuildBlobTx(Cancun.Instance)));
 
         Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V0));
     }
 
-    [Test]
-    public void should_pin_on_disk_proof_version_bytes()
+    [TestCase(ProofVersion.V0, (byte)0x80)]
+    [TestCase(ProofVersion.V1, (byte)0x01)]
+    public void should_pin_on_disk_proof_version_byte(ProofVersion version, byte expectedByte)
     {
-        // Pinned so the field stays readable from the write side: V0 is persisted as the RLP scalar 0x80,
-        // and a raw-byte encoder would keep every roundtrip green while mis-decoding persisted records.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ProofVersionByte(BuildV0BlobTx()), Is.EqualTo((byte)0x80));
-            Assert.That(ProofVersionByte(BuildBlobTx()), Is.EqualTo((byte)0x01));
-        }
+        Transaction tx = BuildBlobTx(version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
+        Assert.That(tx.GetProofVersion(), Is.EqualTo(version));
+
+        // Pinned so the field stays readable from the write side: a raw-byte encoder would keep every
+        // roundtrip green while mis-decoding persisted records, which encode V0 as the RLP scalar 0x80.
+        Assert.That(ProofVersionByte(tx), Is.EqualTo(expectedByte));
     }
 
     [Test]
@@ -138,16 +139,8 @@ public class LightTxDecoderTests
         }
     }
 
-    private static Transaction BuildBlobTx() => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-        .WithMaxFeePerGas(1.GWei)
-        .WithMaxPriorityFeePerGas(1.GWei)
-        .WithNonce(0UL)
-        .SignedAndResolved()
-        .TestObject;
-
-    private static Transaction BuildV0BlobTx() => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+    private static Transaction BuildBlobTx(IReleaseSpec spec = null) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(spec: spec ?? Osaka.Instance)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
         .WithNonce(0UL)
@@ -156,14 +149,13 @@ public class LightTxDecoderTests
 
     private static byte ProofVersionByte(Transaction tx)
     {
-        byte[] encoded = LightTxDecoder.Encode(tx);
-        RlpReader reader = new(encoded);
+        RlpReader reader = new(LightTxDecoder.Encode(tx));
         for (int i = 0; i < FieldsBeforeProofVersion; i++)
         {
             reader.SkipItem();
         }
 
-        return encoded[reader.Position];
+        return reader.PeekByte();
     }
 
     private static byte[] EncodeLegacy(
