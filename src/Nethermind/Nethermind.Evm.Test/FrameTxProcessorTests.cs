@@ -2770,7 +2770,10 @@ public class FrameTxProcessorTests
         switch (rollback)
         {
             case RipemdRollback.BatchUnroll:
-                return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer));
+                // The flag binds a frame to its successor, so the touching frame needs one to unroll onto.
+                return FrameTx(nonce: 0, SelfVerifyFrame(),
+                    Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer),
+                    Frame(TxFrame.ModeDefault, target: Recipient));
             case RipemdRollback.PostTxFailure:
                 return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer),
                     Frame(TxFrame.ModePostTx, target: Recipient));
