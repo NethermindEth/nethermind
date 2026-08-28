@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -89,6 +90,10 @@ public class StatelessSchemaTests
     private const ulong BlockNumber = 30_000_000;
     private const ulong Timestamp = 2_000_000_000;
 
+    // Wire bytes of a current-fork input carrying DeterministicPublicKeys(5); see Public_key_vector_encoding_is_pinned.
+    private const int PinnedPublicKeyInputLength = 951;
+    private const string PinnedPublicKeyInputHash = "926d9f2ddf31daf7182e5bea35a3732a8b8d232682e950ce748ea39f8a15bb86";
+
     [TestCase(InputDecoder.CurrentForkSchemaId)]
     [TestCase(InputDecoder.AmsterdamSchemaId)]
     public void Revision_1_schema_roundtrips(ushort schemaId)
@@ -105,6 +110,50 @@ public class StatelessSchemaTests
             Assert.That(payload.ChainId, Is.EqualTo(ChainId));
             Assert.That(payload.GetBlock().Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash));
         }
+    }
+
+    /// <summary>
+    /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The hash is the guard that matters: a round-trip alone passes when
+    /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
+    /// </remarks>
+    [Test]
+    public void Public_key_vector_encoding_is_pinned()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(5);
+
+        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
+        ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Has.Length.EqualTo(PinnedPublicKeyInputLength));
+            Assert.That(SHA256.HashData(encoded).ToHexString(), Is.EqualTo(PinnedPublicKeyInputHash));
+            Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
+        }
+
+        for (int i = 0; i < publicKeys.Length; i++)
+            Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
+    }
+
+    private static SszPublicKey[] DeterministicPublicKeys(int count)
+    {
+        SszPublicKey[] publicKeys = new SszPublicKey[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[SszPublicKey.PublicKeyLength];
+            bytes[0] = 0x04;
+
+            for (int j = 1; j < bytes.Length; j++)
+                bytes[j] = (byte)(i * 31 + j);
+
+            publicKeys[i] = SszPublicKey.FromSpan(bytes);
+        }
+
+        return publicKeys;
     }
 
     /// <summary>
@@ -300,7 +349,8 @@ public class StatelessSchemaTests
     private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
 
     private static byte[] EncodeInput<TExecutionPayload>(
-        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null,
+        SszPublicKey[] publicKeys = null)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         executionPayload.BlockNumber = BlockNumber;
@@ -332,7 +382,7 @@ public class StatelessSchemaTests
                 Headers = []
             },
             ChainId = ChainId,
-            PublicKeys = []
+            PublicKeys = publicKeys ?? []
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];
