@@ -42,10 +42,18 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
 
     public Address? Payer { get; private set; }
 
-    void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame)
+    void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame, Address target)
     {
         SettleCreate();
         _inDeployFrame = isDeployFrame;
+
+        // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
+        // and it is the one arbitrary address the prefix executes. A delegated factory is mutable by its
+        // authority, which is the dependency that rule exists to close.
+        if (isDeployFrame && IsForbiddenCallTarget(target))
+        {
+            Violate($"deploy frame target {target} is not an undelegated contract");
+        }
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)

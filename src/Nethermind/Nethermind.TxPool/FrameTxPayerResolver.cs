@@ -38,8 +38,10 @@ internal static class FrameTxPayerResolver
         // Self relay: a self_verify frame approves both sender and payer, so the payer is the sender.
         if (FrameTxValidation.IsSelfVerifyFrame(verifyFrame, sender))
         {
-            // A deployed or EIP-7702-delegated sender runs its own account code and must be simulated.
-            if (senderHasCode)
+            // A deployed or EIP-7702-delegated sender runs its own account code and must be simulated. So
+            // does a codeless one behind a deploy frame: by the time the VERIFY frame runs, that frame has
+            // installed code at tx.sender, so the default-code inference below reads the wrong account.
+            if (senderHasCode || (index > 0 && FrameTxValidation.IsDeployFrame(frames[index - 1])))
             {
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }

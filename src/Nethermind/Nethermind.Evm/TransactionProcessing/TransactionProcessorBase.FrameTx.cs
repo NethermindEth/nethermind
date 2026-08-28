@@ -659,7 +659,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
                 // tracer cannot see from opcodes alone.
-                prefixTracer?.StartPrefixFrame(isDeployFrame);
+                prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);

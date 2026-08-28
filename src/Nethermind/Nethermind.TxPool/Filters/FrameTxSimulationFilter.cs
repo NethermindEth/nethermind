@@ -11,7 +11,9 @@ namespace Nethermind.TxPool.Filters;
 /// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those that do not validate.</summary>
 /// <remarks>Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast
 /// path here, and after <see cref="FrameTxVerifyGasFilter"/>, which is what bounds the state gas a deploy
-/// frame may spend here. Runs inside the pool's head read lock, so the simulator has to bound its own wait.
+/// frame may spend here — with no simulator-side floor under it, unlike execution gas, so zeroing
+/// <see cref="ITxPoolConfig.FrameTxMaxVerifyStateGas"/> lifts that bound entirely. Runs inside the pool's
+/// head read lock, so the simulator has to bound its own wait.
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.</remarks>
 internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {

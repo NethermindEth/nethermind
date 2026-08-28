@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+
 namespace Nethermind.Evm.Tracing;
 
 /// <summary>
@@ -13,5 +15,6 @@ namespace Nethermind.Evm.Tracing;
 public interface IFrameTxPrefixTracer
 {
     /// <param name="isDeployFrame">Whether the frame about to run is the prefix-opening <c>deploy</c> frame.</param>
-    void StartPrefixFrame(bool isDeployFrame);
+    /// <param name="target">The address the frame dispatches, already resolved from <c>frame.Target</c>.</param>
+    void StartPrefixFrame(bool isDeployFrame, Address target);
 }

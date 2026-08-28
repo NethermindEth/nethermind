@@ -330,6 +330,31 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
     }
 
+    [TestCase(false, TestName = "an undelegated factory is allowed")]
+    [TestCase(true, TestName = "a delegated factory is refused")]
+    public void Simulate_DeployFrameTargetingADelegatedFactory_RecordsViolation(bool delegated)
+    {
+        // The processor dispatches the deploy frame's target, so it never meets the CALL* target rule; a
+        // delegated factory is mutable by its authority, which is what that rule exists to close.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        if (delegated)
+        {
+            DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
+            _stateProvider.InsertCode(Factory, delegation, Spec);
+            _stateProvider.Commit(Spec);
+            _stateProvider.CommitTree(0);
+        }
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, delegated
+            ? Does.Contain("is not an undelegated contract")
+            : Is.Null);
+    }
+
     [Test]
     public void Simulate_DeployFrameLeavesTheSenderCodeless_Rejected()
     {
