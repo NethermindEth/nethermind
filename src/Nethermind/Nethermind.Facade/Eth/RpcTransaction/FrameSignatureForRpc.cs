@@ -41,16 +41,10 @@ public class FrameSignatureForRpc
         return result;
     }
 
-    public static TxFrameSignature[]? ToSignatures(FrameSignatureForRpc[]? signatures)
-    {
-        if (signatures is null) return null;
-
-        TxFrameSignature[] result = new TxFrameSignature[signatures.Length];
-        for (int i = 0; i < signatures.Length; i++)
-        {
-            result[i] = signatures[i].ToSignature();
-        }
-
-        return result;
-    }
+    /// <summary>Maps the deserialized <c>signatures</c> list onto the transaction's frame signatures.</summary>
+    /// <param name="signatures">The deserialized list, or <c>null</c> when the request omitted it.</param>
+    /// <param name="converted">The mapped list, or <c>null</c> when <paramref name="signatures"/> is absent.</param>
+    /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
+    public static bool TryToSignatures(FrameSignatureForRpc[]? signatures, out TxFrameSignature[]? converted) =>
+        RpcListConverter.TryConvert(signatures, static s => s.ToSignature(), out converted);
 }

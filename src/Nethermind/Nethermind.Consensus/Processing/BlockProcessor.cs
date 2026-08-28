@@ -422,7 +422,7 @@ public partial class BlockProcessor(
                 // we need this tracer to be able to track any potential miner account creation
                 using ITxTracer txTracer = tracer.StartNewTxTrace(null);
 
-                ApplyMinerReward(block, reward, spec);
+                ApplyMinerReward(reward, spec);
 
                 tracer.EndTxTrace();
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
@@ -436,17 +436,21 @@ public partial class BlockProcessor(
         {
             for (int i = 0; i < rewards.Length; i++)
             {
-                ApplyMinerReward(block, rewards[i], spec);
+                ApplyMinerReward(rewards[i], spec);
             }
         }
     }
 
-    private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ApplyMinerReward(BlockReward reward, IReleaseSpec spec)
     {
-        if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+        if (_logger.IsTrace) TraceMinerReward(reward);
 
         _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceMinerReward(BlockReward reward) => _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
     private void ApplyDaoTransition(Block block)
     {

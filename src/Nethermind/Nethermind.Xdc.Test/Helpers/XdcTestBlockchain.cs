@@ -231,7 +231,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024UL;
         xdcSpec.LimitPenaltyEpoch = 4;
-        xdcSpec.LimitPenaltyEpochV2 = 0;
 
         xdcSpec.BlackListedAddresses =
             [

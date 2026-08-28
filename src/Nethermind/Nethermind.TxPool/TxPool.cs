@@ -60,6 +60,7 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly PayerExposureCache _payerExposure = new();
+        private readonly PendingPaymasterCache _pendingPaymasters = new();
 
         private readonly ILogger _logger;
 
@@ -222,11 +223,16 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
             postHashFilters.Add(new BlobProofsTxFilter());
 
+            // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor. After the filters
+            // that prove a transaction garbage, so taking a sponsor's slot needs a valid one; before the
+            // simulation, which is the per-sponsor work the cap exists to bound.
+            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, _logger));
+
             // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved.
-            postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
+            postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(chainHeadInfoProvider.ReadOnlyStateProvider, frameTxPrefixSimulator, _logger));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -267,7 +273,7 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
             _blobTransactions.GetBucketSnapshot(filterToReadyTx
-                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                ? data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)
                 : null);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -353,10 +359,18 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
-            ReleasePayerExposure(args.Value);
+            ReleaseFrameTxReservations(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        /// <summary>
+        /// The paymaster a pending frame transaction pays through, keying the EIP-8141 non-canonical
+        /// paymaster cap; <c>null</c> when it uses none, or when a reloaded record no longer records one.
+        /// </summary>
+        /// <remarks>Admission and release derive the same key from the record the pool holds, so a slot is
+        /// always returned to the sponsor it was taken from.</remarks>
+        private static Address? GetPaymaster(Transaction tx) => tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
 
         [Conditional("DEBUG")]
         private void TrackPoolMutation()
@@ -385,12 +399,14 @@ namespace Nethermind.TxPool
                 int mutations = Volatile.Read(ref _poolMutations);
 
                 Dictionary<AddressAsKey, UInt256> pooledExposure = [];
+                Dictionary<AddressAsKey, int> pooledPaymasters = [];
                 int pooledExpiring = 0;
-                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
-                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
+                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring);
+                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring);
 
                 int recordedExpiring = Volatile.Read(ref _expiringFrameTxCount);
                 List<KeyValuePair<AddressAsKey, UInt256>> recordedExposure = [.. _payerExposure.Reservations];
+                List<KeyValuePair<AddressAsKey, int>> recordedPaymasters = [.. _pendingPaymasters.Counts];
 
                 // RemoveTransaction and EvictTransaction run outside the head lock held here, so a mutation across
                 // the reading means it was torn rather than the pool inconsistent.
@@ -400,6 +416,8 @@ namespace Nethermind.TxPool
                     $"Expiring frame transaction count is {recordedExpiring}, but {pooledExpiring} pooled transactions carry a deadline.");
                 Debug.Assert(recordedExposure.Count == pooledExposure.Count,
                     $"Payer exposure ledger holds {recordedExposure.Count} payers, but {pooledExposure.Count} are pooled.");
+                Debug.Assert(recordedPaymasters.Count == pooledPaymasters.Count,
+                    $"Paymaster cap ledger holds {recordedPaymasters.Count} paymasters, but {pooledPaymasters.Count} are pooled.");
 
                 foreach (KeyValuePair<AddressAsKey, UInt256> reservation in recordedExposure)
                 {
@@ -407,6 +425,14 @@ namespace Nethermind.TxPool
                     if (!pooledExposure.TryGetValue(reservation.Key, out UInt256 pooled) || pooled != reservation.Value)
                     {
                         Debug.Fail($"Payer {reservation.Key} holds {reservation.Value} reserved, but its pooled transactions total {pooled}.");
+                    }
+                }
+
+                foreach (KeyValuePair<AddressAsKey, int> counted in recordedPaymasters)
+                {
+                    if (!pooledPaymasters.TryGetValue(counted.Key, out int pooled) || pooled != counted.Value)
+                    {
+                        Debug.Fail($"Paymaster {counted.Key} counts {counted.Value} pending, but {pooled} pooled transactions name it.");
                     }
                 }
 
@@ -418,13 +444,19 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
-        // A payer the pool never resolved — a record restored from storage — prices null here and at release
-        // alike, so its exposure is out of this check's reach rather than verified by it.
-        private static void AccumulateFrameTxBookkeeping(Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, ref int expiring)
+        // A payer or paymaster the pool never resolved — a record restored from storage — prices null here and
+        // at release alike, so it is out of this check's reach rather than verified by it.
+        private static void AccumulateFrameTxBookkeeping(
+            Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
         {
             foreach (Transaction tx in snapshot)
             {
                 if (HasExpiryDeadline(tx)) expiring++;
+
+                if (GetPaymaster(tx) is Address paymaster)
+                {
+                    paymasters[paymaster] = paymasters.TryGetValue(paymaster, out int pending) ? pending + 1 : 1;
+                }
 
                 // A zero cost is never recorded by admission, so it must not be expected back either.
                 if (!TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost) || maxCost.IsZero)
@@ -832,6 +864,14 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                // The cap counts ahead of the filters that follow it, so anything leaving the transaction
+                // unpooled — a later rejection or a throw — hands the slot back; AddCore clears the flag
+                // once the pool owns it or has released it itself.
+                if (state.PaymasterReserved && GetPaymaster(tx) is Address paymaster)
+                {
+                    _pendingPaymasters.Decrement(paymaster);
+                }
+
                 _newHeadLock.ExitReadLock();
             }
 
@@ -912,8 +952,8 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            // EIP-8141: a successful insert hands the payer reservation to the pool, released on Removed.
-            // Every other exit, a throw included, must release it here or it leaks for good.
+            // EIP-8141: a successful insert hands the payer exposure and paymaster slot to the pool,
+            // released on Removed. Every other exit, a throw included, must release them here or they leak.
             bool reservationSettled = false;
             try
             {
@@ -929,13 +969,14 @@ namespace Nethermind.TxPool
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 // The reservation is now the pool's, or was already released by a self-eviction Removed.
                 reservationSettled = true;
+                state.PaymasterReserved = false;
 
                 if (!inserted)
                 {
                     // it means it failed on adding to the pool - it is possible when new tx has the same sender
                     // and nonce as already existent tx and is not good enough to replace it
-                    // No Removed event fires for this tx, so release the reservation it took.
-                    ReleasePayerExposure(tx);
+                    // No Removed event fires for this tx, so release the reservations it took.
+                    ReleaseFrameTxReservations(tx);
                     Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
                     return AcceptTxResult.ReplacementNotAllowed;
                 }
@@ -944,7 +985,7 @@ namespace Nethermind.TxPool
                 {
                     // it means it was added and immediately evicted - pool was full of better txs
                     // Its Removed already released the reservation, so a tx kept only by the broadcaster
-                    // under-counts its payer; accepted, as the broadcaster has no hook to release on.
+                    // under-counts its payer and its paymaster; accepted, as the broadcaster has no hook to release on.
                     if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,
@@ -986,7 +1027,8 @@ namespace Nethermind.TxPool
             {
                 if (!reservationSettled)
                 {
-                    ReleasePayerExposure(tx);
+                    ReleaseFrameTxReservations(tx);
+                    state.PaymasterReserved = false;
                 }
             }
         }
@@ -1017,17 +1059,23 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool.
+        /// (<see cref="FrameTxPayerExposureFilter"/>) and the slot its paymaster took
+        /// (<see cref="FrameTxPaymasterFilter"/>), once the transaction leaves the pool.
         /// </summary>
         /// <remarks>
         /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
         /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert.
         /// </remarks>
-        private void ReleasePayerExposure(Transaction tx)
+        private void ReleaseFrameTxReservations(Transaction tx)
         {
             if (TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost))
             {
                 _payerExposure.Subtract(payer, maxCost);
+            }
+
+            if (GetPaymaster(tx) is Address paymaster)
+            {
+                _pendingPaymasters.Decrement(paymaster);
             }
         }
 

@@ -26,9 +26,10 @@ namespace Ethereum.Test.Base;
 /// themselves.
 /// </para>
 /// <para>
-/// Only <c>BlockchainTestBase</c> consumes this today; the transaction-test table gains its
-/// <c>TYPE_6_INVALID_FRAME_FORMAT</c> entry with #12788, which should point at <see cref="Format"/> rather
-/// than repeat the fragments.
+/// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps only
+/// <c>TYPE_6_INVALID_FRAME_FORMAT</c>, from <see cref="Format"/> and <see cref="Decode"/>: it stops at
+/// <c>TxValidator.IsWellFormed</c>, which runs neither the signature validator nor the transaction
+/// processor, so no <see cref="Signature"/> or <see cref="Execution"/> message can reach it.
 /// </para>
 /// </remarks>
 public static class FrameExceptionFragments
@@ -69,6 +70,9 @@ public static class FrameExceptionFragments
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,
         FrameTxSignatureValidator.InvalidP256Signer,
+        // A decoder literal, no constant to reference: the trailing element is present but is not
+        // the recent-root-reference sequence. Thrown before any rule runs, so no rule names it.
+        "frame transaction must not carry a trailing signature",
     ];
 
     /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>

@@ -9,10 +9,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -110,6 +113,137 @@ public class LightTxDecoderTests
         }
 
         return keys;
+    }
+
+    // The blob fields were later put ahead of the frame-transaction ones, so a record written by an earlier build of
+    // this branch no longer decodes. The pool is a cache, so it has to lose that record rather than refuse to start.
+    [TestCase(TxType.Blob, null)]
+    [TestCase(TxType.FrameTx, null)]
+    [TestCase(TxType.FrameTx, 1_000ul)]
+    public void Unreadable_record_is_skipped_and_leaves_the_rest_of_the_pool_loadable(TxType type, ulong? deadline)
+    {
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        lightBlobTxs.Set(UnreadableRecordKey, EncodeWithBlobFieldsLast(BlobCarryingTx(type, deadline)));
+        lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
+    // A record layout change leaves every record unreadable at once, so the skips have to collapse into one line
+    // rather than one per blob transaction in the pool.
+    [Test]
+    public void Unreadable_records_are_reported_as_one_warning()
+    {
+        const int unreadableCount = 5;
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < unreadableCount; i++)
+        {
+            lightBlobTxs.Set([(byte)i], EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)));
+        }
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+
+        // The exception type is what tells a layout change apart from one corrupt record, so the summary names it.
+        string expectedType = Assert.Catch(() => LightTxDecoder.Decode(EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx))))!.GetType().Name;
+
+        List<LightTransaction> loaded = [.. new BlobTxStorage(database, new OneLoggerLogManager(new ILogger(logger))).GetAll()];
+
+        Assert.That(loaded, Is.Empty);
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString()) && text.Contains(expectedType)));
+    }
+
+    // The catch must span every shape a foreign or damaged record decodes into, not just the mask check:
+    // a truncated record surfaces from the reader's unchecked slice rather than as an RlpException.
+    [Test]
+    public void Records_failing_in_different_ways_are_all_skipped()
+    {
+        // A long-form list prefix mid-record makes the reader take a bogus length and index past the buffer,
+        // which is the third root and reaches neither the mask check nor the RLP grammar errors.
+        byte[] longFormPrefix = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
+        longFormPrefix[64] = 0xf8;
+
+        byte[][] corrupt =
+        [
+            EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)),
+            LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob))[..^5],
+            longFormPrefix,
+            [0xff, 0xff, 0xff, 0xff],
+        ];
+
+        HashSet<string> shapes = [];
+        foreach (byte[] record in corrupt)
+        {
+            shapes.Add(Assert.Catch(() => LightTxDecoder.Decode(record))!.GetType().Name);
+        }
+
+        Assert.That(shapes, Has.Count.GreaterThanOrEqualTo(3),
+            $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
+
+        Transaction readable = BlobCarryingTx(TxType.Blob);
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < corrupt.Length; i++)
+        {
+            lightBlobTxs.Set([(byte)i], corrupt[i]);
+        }
+
+        lightBlobTxs.Set([(byte)corrupt.Length], LightTxDecoder.Encode(readable));
+
+        List<LightTransaction> loaded = null;
+        Assert.That(() => loaded = [.. new BlobTxStorage(database).GetAll()], Throws.Nothing);
+        Assert.That(loaded, Has.Count.EqualTo(1));
+        Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
+    }
+
+    private static readonly byte[] UnreadableRecordKey = [0];
+    private static readonly byte[] ReadableRecordKey = [1];
+
+    /// <summary>Writes the record layout that preceded the blob fields moving in front of the frame-transaction ones.</summary>
+    private static byte[] EncodeWithBlobFieldsLast(Transaction tx)
+    {
+        bool hasDeadline = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline);
+        int length = Rlp.LengthOf(tx.Timestamp)
+            + Rlp.LengthOf(tx.SenderAddress)
+            + Rlp.LengthOf(tx.Nonce)
+            + Rlp.LengthOf(tx.Hash)
+            + Rlp.LengthOf(tx.Value)
+            + Rlp.LengthOf(tx.GasLimit)
+            + Rlp.LengthOf(tx.GasPrice)
+            + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
+            + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+            + Rlp.LengthOf(tx.BlobVersionedHashes!)
+            + Rlp.LengthOf(tx.PoolIndex)
+            + Rlp.LengthOf(tx.GetLength())
+            + Rlp.LengthOf(sizeof(byte))
+            + Rlp.LengthOf((byte)tx.Type)
+            + (hasDeadline ? Rlp.LengthOf(expiryDeadline) : 0);
+
+        byte[] bytes = new byte[length];
+        RlpWriter writer = new(bytes);
+        writer.Encode(tx.Timestamp);
+        writer.Encode(tx.SenderAddress);
+        writer.Encode(tx.Nonce);
+        writer.Encode(tx.Hash);
+        writer.Encode(in tx.ValueRef);
+        writer.Encode(tx.GasLimit);
+        writer.Encode(tx.GasPrice);
+        writer.Encode(tx.DecodedMaxFeePerGas);
+        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        writer.Encode(tx.BlobVersionedHashes!);
+        writer.Encode(tx.PoolIndex);
+        writer.Encode(tx.GetLength());
+        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode((byte)tx.Type);
+        if (hasDeadline) writer.Encode(expiryDeadline);
+
+        return bytes;
     }
 
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)

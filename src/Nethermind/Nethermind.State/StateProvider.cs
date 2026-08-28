@@ -389,14 +389,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         // Roll back each change from newest down to target
-        for (int i = 0; i < stepsBack; i++)
+        for (int nextPosition = changes.Length - 1; nextPosition > snapshot; nextPosition--)
         {
-            int nextPosition = lastIndex - i;
             ref readonly Change change = ref changes[nextPosition];
             ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change!.Address);
 
-            if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(lastIndex, i, -1);
-            if (head != nextPosition) ThrowUnexpectedPosition(lastIndex, i, head);
+            if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(nextPosition, -1);
+            if (head != nextPosition) ThrowUnexpectedPosition(nextPosition, head);
 
             if (change.PrevIdx != -1)
             {
@@ -436,8 +435,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             => throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snap} beyond current position {current}");
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedPosition(int current, int step, int actual)
-            => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {current} - {step}");
+        static void ThrowUnexpectedPosition(int expected, int actual)
+            => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {expected}");
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)

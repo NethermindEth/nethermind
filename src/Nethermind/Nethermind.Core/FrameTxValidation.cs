@@ -249,6 +249,22 @@ public static class FrameTxValidation
         _ => 0,
     };
 
+    /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// What <see cref="Transaction.GasLimit"/> carries for a frame transaction, which has no <c>gas_limit</c>
+    /// field. Saturates per frame as well as across them, so every construction path agrees on the value.
+    /// </remarks>
+    public static ulong TotalGasLimit(TxFrame[]? frames)
+    {
+        ulong total = 0;
+        foreach (TxFrame frame in frames ?? [])
+        {
+            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+        }
+
+        return total;
+    }
+
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
     /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
@@ -339,6 +355,41 @@ public static class FrameTxValidation
         }
 
         return false;
+    }
+
+    /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
+    /// <remarks>
+    /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
+    /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
+    /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
+    /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
+    /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
+    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, unset after a
+    /// reload — <c>null</c> then means unknown, not unsponsored.
+    /// </remarks>
+    public static Address? GetPrefixPaymaster(Transaction transaction)
+    {
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null)
+        {
+            return transaction.PersistedPaymaster;
+        }
+
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+
+        for (int i = next; i < frames.Length; i++)
+        {
+            // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
+            if (frames[i].Mode != TxFrame.ModeVerify) break;
+            if ((frames[i].Flags & TxFrame.ApprovePayment) == 0) continue;
+
+            Address? resolved = frames[i].Target ?? transaction.SenderAddress;
+            return resolved == transaction.SenderAddress ? null : resolved;
+        }
+
+        return null;
     }
 
     /// <summary>

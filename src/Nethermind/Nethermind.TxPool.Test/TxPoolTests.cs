@@ -2673,6 +2673,143 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
+        {
+            // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
+            // bounds how many of its sponsored transactions may be pending at once.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx freed the paymaster's slot");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_ConcurrentFrameTransactions_SharingNonCanonicalPaymaster_AdmitsOnlyTheCap()
+        {
+            // Reading the count and then inserting would let every submission observe the same free slot,
+            // leaving the sponsor over its cap for as long as the transactions stay pending.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyE, TestItem.PrivateKeyF];
+            foreach (PrivateKey sender in senders)
+            {
+                EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            }
+
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction[] sponsored = [.. senders.Select(sender => SponsoredFrameTx(sender, TestItem.PrivateKeyD))];
+            AcceptTxResult[] results = new AcceptTxResult[sponsored.Length];
+
+            Parallel.For(0, sponsored.Length, i => results[i] = _txPool.SubmitTx(sponsored[i], TxHandlingOptions.PersistentBroadcast));
+
+            Assert.That(results.Count(static result => result == AcceptTxResult.Accepted),
+                Is.EqualTo(Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster),
+                "concurrent submissions must not admit more than the cap");
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_RejectedAfterTheCapIsCounted_ReleasesThePaymasterSlot()
+        {
+            // The cap counts ahead of the filters that resolve the payer, so a rejection there must hand the
+            // slot back or the sponsor is locked out for the life of the pool.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("declined"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            AcceptTxResult rejected = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            AcceptTxResult afterRelease = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.Not.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(afterRelease, Is.EqualTo(AcceptTxResult.Accepted), "the refused transaction must have released the slot it counted");
+            }
+        }
+
+        [Test]
+        public async Task Frame_transaction_rejected_after_the_cap_gate_does_not_hold_the_sponsor_slot()
+        {
+            // The slot is a reservation over pending transactions, so it must not be taken by a submission
+            // that is still going to be rejected: at a cap of one, that would let unpooled traffic naming a
+            // sponsor deny the sponsor's real transaction for as long as the remaining filters run.
+            Address sponsor = TestItem.PrivateKeyD.Address;
+            using ManualResetEventSlim reachedFilter = new(false);
+            using ManualResetEventSlim releaseFilter = new(false);
+
+            Transaction doomed = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            BlockingRejectFilter blocker = new(() => doomed.Hash, reachedFilter, releaseFilter);
+
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), incomingTxFilter: blocker);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(sponsor, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], sponsor);
+
+            Task<AcceptTxResult> doomedResult = Task.Run(() => _txPool.SubmitTx(doomed, TxHandlingOptions.None));
+            Assert.That(reachedFilter.Wait(TimeSpan.FromSeconds(10)), Is.True, "the doomed submission never reached the injected filter");
+
+            // Submitted while the doomed one is parked past the cap gate and has not been rejected yet.
+            AcceptTxResult sponsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            releaseFilter.Set();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sponsored, Is.EqualTo(AcceptTxResult.Accepted), "a submission that never pools must not occupy the sponsor's slot");
+                Assert.That(await doomedResult, Is.EqualTo(AcceptTxResult.Invalid));
+            }
+        }
+
+        /// <summary>Parks one transaction inside the filter chain, then rejects it.</summary>
+        private sealed class BlockingRejectFilter(
+            Func<Hash256> target,
+            ManualResetEventSlim reached,
+            ManualResetEventSlim release) : IIncomingTxFilter
+        {
+            public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+            {
+                if (tx.Hash != target()) return AcceptTxResult.Accepted;
+
+                reached.Set();
+                release.Wait(TimeSpan.FromSeconds(10));
+                return AcceptTxResult.Invalid;
+            }
+        }
+
+        [Test]
         public void Frame_transaction_prefix_simulation_is_told_the_signatures_are_already_verified()
         {
             // Pins the guarantee, not the registration order: whatever the chain looks like, the prefix
@@ -2857,8 +2994,35 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_FrameTransactions_SharingAPaymasterAcrossKeyedNonceDomains_BothCountAgainstTheCap()
+        {
+            // EIP-8250: two nonce-key domains at one nonce do not compete, so both stay pending and both
+            // owe the paymaster a slot. Discounting one against the other would double the cap per sender.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached),
+                    "the second domain joins the pending set rather than displacing the first");
+            }
+        }
+
         // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
-        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null)
         {
             Transaction tx = new()
             {
@@ -2866,6 +3030,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
                 SenderAddress = senderKey.Address,
+                NonceKeys = nonceKeys,
                 Frames =
                 [
                     new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
