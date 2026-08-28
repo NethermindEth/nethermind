@@ -286,9 +286,9 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 
 /// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
 /// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
-/// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> precedes this validator in the
-/// frame-transaction composite and enforces the cap through <see cref="FrameTxValidation.IsWellFormed"/>, which
-/// applies it to decoder-built and caller-built transactions alike.</remarks>
+/// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> also sits in the frame-transaction
+/// composite and enforces it through <see cref="FrameTxValidation.IsWellFormed"/>, on decoder-built and
+/// caller-built transactions alike.</remarks>
 public sealed class FrameTxEnvelopeTxValidator : ITxValidator
 {
     public static readonly FrameTxEnvelopeTxValidator Instance = new();
