@@ -113,9 +113,13 @@ public static class FrameTxSignatureValidator
             return Fail(NonCanonicalSignature, out error);
         }
 
+        // Split as the P256 arm is: recovery failing outright is the signature not verifying, and only a
+        // recovered address that differs from the signer is a signer mismatch. The canonicality gate above
+        // bounds r but cannot make it a curve x-coordinate, so a null recovery is reachable.
         Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v + Signature.VOffset);
         Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
-        return recovered is not null && recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
+        if (recovered is null) return Fail(InvalidSignature, out error);
+        return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
     }
 
     private static bool ValidateP256(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)

@@ -205,19 +205,22 @@ public class FrameTxSignatureValidatorTests
         Transaction mismatched = CreateFrameTx();
         mismatched.FrameSignatures = [Secp256k1Entry(mismatched, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
+        // Both arms are SECP256K1 so the pair guards the scheme the split changed. r = 5 clears the
+        // canonicality gate but is not a curve x-coordinate, so recovery is impossible and there is no
+        // recovered address to compare a signer against.
         Transaction unverifiable = CreateFrameTx();
-        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
-        raw[31] = 1; // r = 1 (canonical low-s range)
-        raw[63] = 1; // s = 1
-        raw.AsSpan(64).Fill(0x42); // qx || qy — a matching signer over non-verifying signature bytes
-        unverifiable.FrameSignatures =
-        [
-            new TxFrameSignature(TxFrameSignature.SchemeP256, new Address(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]), default, raw),
-        ];
+        byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        raw[32] = 5; // r = 5
+        raw[64] = 1; // s = 1
+        unverifiable.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw)];
 
         Assert.That(Validate(mismatched, out string? mismatchError), Is.False);
         Assert.That(Validate(unverifiable, out string? verifyError), Is.False);
-        Assert.That(mismatchError, Is.Not.EqualTo(verifyError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatchError, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+            Assert.That(verifyError, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+        }
     }
 
     [Test]

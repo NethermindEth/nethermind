@@ -7,14 +7,29 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Ethereum.Test.Base;
 
 /// <summary>
-/// Client message fragments behind each EIP-8141 <c>TransactionException.TYPE_6_*</c> fixture label,
-/// shared by the transaction-test and blockchain-test exception tables so the two cannot drift.
+/// Client message fragments behind each EIP-8141 <c>TransactionException.TYPE_6_*</c> fixture label.
 /// </summary>
 /// <remarks>
-/// The three sets must stay pairwise disjoint under substring matching: a fixture naming one label
-/// has to fail when the client rejects for one of the other two, so no set may use a fragment broad
-/// enough to catch another's messages — in particular not a bare "frame". Constants are referenced
-/// rather than copied wherever one exists.
+/// <para>
+/// <see cref="Format"/>, <see cref="Signature"/> and <see cref="Execution"/> must stay pairwise disjoint
+/// under substring matching: a fixture naming one label has to fail when the client rejects for one of the
+/// other two, so no set may use a fragment broad enough to catch another's messages — in particular not a
+/// bare "frame", which would catch the execution failure "validation prefix frame reverted". Constants are
+/// referenced rather than copied wherever one exists.
+/// </para>
+/// <para>
+/// <see cref="Decode"/> is deliberately outside that invariant. Its fragments are generic RLP-decoder text
+/// carrying no frame context, so they also match decode failures from unrelated payloads. That only widens
+/// what satisfies <c>TYPE_6_INVALID_FRAME_FORMAT</c> — the exception table is additive and a fixture passes
+/// when its expected label is among those matched, so a broad fragment can mask a rejection for the wrong
+/// reason but can never turn a passing lane red. Narrowing it needs frame context in the decoder messages
+/// themselves.
+/// </para>
+/// <para>
+/// Only <c>BlockchainTestBase</c> consumes this today; the transaction-test table gains its
+/// <c>TYPE_6_INVALID_FRAME_FORMAT</c> entry with #12788, which should point at <see cref="Format"/> rather
+/// than repeat the fragments.
+/// </para>
 /// </remarks>
 public static class FrameExceptionFragments
 {
