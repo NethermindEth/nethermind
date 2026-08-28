@@ -2892,15 +2892,20 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
-            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            Transaction evicted = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction next = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            // Exactly one transaction's worth, or a leaked reservation could not refuse the second one.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(next, Eip8141Prototype.Instance, out UInt256 oneTx), Is.True);
+            EnsureSenderBalance(TestItem.AddressD, oneTx);
+
+            _txPool.SubmitTx(evicted, TxHandlingOptions.None);
 
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None),
+            Assert.That(_txPool.SubmitTx(next, TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted), "the evicted transaction must have released its sponsor reservation");
         }
 
@@ -3159,7 +3164,6 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 simulator.Received(1).Simulate(tx, signaturesPreValidated: true, token: Arg.Any<CancellationToken>(), local: Arg.Any<bool>());
-
             }
         }
 

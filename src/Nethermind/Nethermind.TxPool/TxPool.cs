@@ -874,14 +874,17 @@ namespace Nethermind.TxPool
         private void CollectFrameTxsToRevalidate(ArrayPoolList<AddressAsKey>? completeAccountChanges)
         {
             _frameTxsToRevalidate.Clear();
+            if (_frameDependencies.Count > 0)
+            {
+                if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
+                else _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
+            }
+
             // Carried from the previous head: a bound this node spent judged nothing, and a one-off change
-            // leaves no later change list that would name the transaction's dependencies again.
+            // leaves no later change list that would name the transaction's dependencies again. Unioned last,
+            // so a saturated budget spends on this head's changes before the previous head's backlog.
             _frameTxsToRevalidate.UnionWith(_frameTxsDeferredToNextHead);
             _frameTxsDeferredToNextHead.Clear();
-            if (_frameDependencies.Count == 0) return;
-
-            if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
-            else _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
         }
 
         /// <summary>
@@ -889,7 +892,8 @@ namespace Nethermind.TxPool
         /// the new block touched, and evicts those that no longer satisfy the public mempool rules.
         /// </summary>
         /// <remarks>
-        /// EIP-8141 "Revalidation". Only the dependency-affected subset is rechecked — revalidating the
+        /// EIP-8141 "Revalidation". Only the dependency-affected subset is rechecked, plus whatever the
+        /// previous head's admission bounds left unjudged — revalidating the
         /// whole pool per head would be its own denial-of-service vector, and it is why caching a simulation
         /// result against its dependency set would add nothing: a re-simulated prefix has already moved.
         /// Evicting here is the spec's
@@ -905,7 +909,6 @@ namespace Nethermind.TxPool
             if (_frameTxsToRevalidate.Count == 0 || !spec.IsEip8141Enabled)
             {
                 _frameTxsToRevalidate.Clear();
-                _frameTxsDeferredToNextHead.Clear();
                 return;
             }
 
