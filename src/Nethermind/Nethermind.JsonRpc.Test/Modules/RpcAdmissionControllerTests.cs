@@ -656,7 +656,6 @@ public class RpcAdmissionControllerTests
         const int requests = 2_000;
         RpcAdmissionController controller = new(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, MaxQueueWaitMs = 1 }, LimboLogs.Instance);
         ResolvedMethodInfo ethCall = Resolve<IEthRpcModule>("eth_call");
-        long timeoutsBefore = Metrics.RpcAdmissionWaitTimeoutRejections.GetValueOrDefault(RpcMethodCostClass.EvmExecution);
         int admitted = 0;
         int shed = 0;
         Task[] callers = new Task[requests];
@@ -686,7 +685,10 @@ public class RpcAdmissionControllerTests
             Assert.That(admitted + shed, Is.EqualTo(requests));
             Assert.That(admitted, Is.GreaterThan(0));
             Assert.That(shed, Is.GreaterThan(0));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections[RpcMethodCostClass.EvmExecution], Is.GreaterThan(timeoutsBefore), "some waiters must have timed out");
+            // Deliberately not asserting which shed path ran: with a 1 ms budget the byte-weighted prediction
+            // can reject every waiter up front, so no queue timeout need fire at all. Timeout accounting is
+            // owned by the ManualTimeProvider tests; this one is about permits not leaking or double-releasing,
+            // and reading the process-global counter here also coupled it to whatever ran in parallel.
             Assert.That(controller.GetInFlight(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
             Assert.That(controller.GetQueued(RpcMethodCostClass.EvmExecution), Is.EqualTo(0));
         }
