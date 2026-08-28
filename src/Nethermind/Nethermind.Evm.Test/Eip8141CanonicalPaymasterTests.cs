@@ -52,9 +52,9 @@ public class Eip8141CanonicalPaymasterTests
     // so an instance deployed with this balance cannot back the sponsorship until a deposit tops it up.
     private static readonly UInt256 UnderfundedBalance = 1_000;
 
-    // Measured pay-frame validation gas under the prototype fork. Higher than the design doc §5a
-    // ~2,150 estimate because this fork carries the EIP-8037/8038 state-gas repricing, which raises
-    // the single cold SLOAD; still far under the 15,000 pay-frame bound.
+    // Measured pay-frame validation gas: 110 gas of opcodes, one cold SLOAD (ColdStorageAccess, 2,100)
+    // and the frame's entry access on the cold paymaster (ColdAccountAccess, 3,000) — the entry access is
+    // what puts it above the design doc §5a ~2,150 estimate. Still far under the 15,000 pay-frame bound.
     private const ulong ValidationPathGas = 5_210;
 
     private static readonly byte[] PaymasterCode = Bytes.FromHexString(PaymasterRuntimeHex);
@@ -336,11 +336,10 @@ public class Eip8141CanonicalPaymasterTests
     // tx. This test pins both layers:
     //   (a) the real, end-to-end defense — static validation rejects the sponsored tx before it can
     //       execute; and
-    //   (b) defense-in-depth — the paymaster's SIGPARAM(msg, 1) != 0 gate is a value check, so a
-    //       32-byte zero digest would pass that gate IF it ever reached execution. It never does in a
-    //       full node because static validation rejects it first.
+    //   (b) the processor enforces the same constraints, so the paymaster's own SIGPARAM(msg, 1) != 0
+    //       gate — a value check, which a 32-byte zero digest would pass — is unreachable either way.
     [Test]
-    public void AllZeroMsgAtIndex1_RejectedByStaticValidation_ExecutionGateIsValueOnly()
+    public void AllZeroMsgAtIndex1_RejectedByBothValidationLayers()
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         DeployPaymaster(PaymasterCode, Signer, 1.Ether);
@@ -352,12 +351,9 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(wellFormed, Is.False, "static validation rejects a 32-byte zero digest msg");
         Assert.That(error, Is.EqualTo(FrameTxValidation.ZeroDigestMsg));
 
-        // (b) Driving the processor directly bypasses static validation; the value-only execution gate
-        // then lets the zero digest through because the signer still resolves to slot 0. This documents
-        // the execution gate's nature only — it is not reachable end-to-end.
-        TxReceipt receipt = ProcessBlock(BlockTimestamp, tx)[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success), "the execution gate is value-only and does not itself catch the zero digest");
-        Assert.That(receipt.Payer, Is.EqualTo(Paymaster));
+        // (b) The processor enforces the same structural constraints, so driving it directly no longer
+        // reaches the paymaster: the transaction produces no receipt at all.
+        Assert.That(ProcessBlock(BlockTimestamp, tx), Is.Empty, "the processor declines it before any frame runs");
     }
 
     // 13/14. A matured withdrawal whose value-bearing CALL to the signer fails reverts the whole
