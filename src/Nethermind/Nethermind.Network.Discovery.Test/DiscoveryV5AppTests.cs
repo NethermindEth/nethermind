@@ -258,7 +258,70 @@ public class DiscoveryV5AppTests
                 added.Host == "8.8.8.8" &&
                 added.Port == 30303 &&
                 added.DiscoveryPort == 30304 &&
-                added.Enr == enr));
+                added.Enr == enr &&
+                !added.IsVerifiedEnr(enr)));
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddNodeToDiscovery_ShouldPreserveProvenanceAndObservedSequence(bool isVerified)
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 30304);
+        Node node = new(TestItem.PrivateKeyA.PublicKey, "1.1.1.1", 30303);
+        if (isVerified)
+        {
+            node.SetVerifiedEnr(enr);
+        }
+        else
+        {
+            node.Enr = enr;
+        }
+
+        node.ObserveEnrSequence(enr.EnrSequence);
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(added =>
+                added.Enr == enr &&
+                added.IsVerifiedEnr(enr) == isVerified &&
+                added.HighestObservedEnrSequence == enr.EnrSequence));
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldSkipRetainedStaleEnr()
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 30304);
+        Node node = new(TestItem.PrivateKeyA.PublicKey, "1.1.1.1", 30303)
+        {
+            Enr = enr
+        };
+        node.ObserveEnrSequence(enr.EnrSequence + 1);
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
         }
         finally
         {

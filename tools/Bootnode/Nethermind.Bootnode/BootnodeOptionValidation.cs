@@ -94,11 +94,17 @@ internal static class BootnodeOptionValidation
         throw new ArgumentException($"{optionName} must be a valid IP address, DNS name, '*', or '+'.", optionName);
     }
 
-    private static bool IsUnspecified(IPAddress ipAddress) =>
-        ipAddress.Equals(IPAddress.Any) ||
-        ipAddress.Equals(IPAddress.IPv6Any) ||
-        ipAddress.Equals(IPAddress.None) ||
-        ipAddress.Equals(IPAddress.IPv6None);
+    private static bool IsUnspecified(IPAddress ipAddress)
+    {
+        if (ipAddress.IsIPv4MappedToIPv6)
+        {
+            ipAddress = ipAddress.MapToIPv4();
+        }
+
+        return ipAddress.Equals(IPAddress.Any) ||
+               ipAddress.Equals(IPAddress.IPv6Any) ||
+               ipAddress.Equals(IPAddress.None);
+    }
 
     private static bool TryParseExternalIp(string value, [NotNullWhen(true)] out IPAddress? ipAddress)
     {

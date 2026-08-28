@@ -55,6 +55,7 @@ public class KademliaAdapter(
     });
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
+    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
 
     public IMsgSender? MsgSender { get; set; }
 
@@ -274,10 +275,29 @@ public class KademliaAdapter(
     }
 
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
-        => HasExpectedNodeId(record, node.Id);
+        => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
+
+    public void AddOrRefresh(Node node) => AddOrRefreshRemoteNode(node);
 
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
+
+    private void MergeKnownEnrState(Node node)
+    {
+        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(_currentNodeHash, node.Id.Hash);
+        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            Node knownNode = nodes[i];
+            if (ReferenceEquals(knownNode, node) || !knownNode.Id.Equals(node.Id))
+            {
+                continue;
+            }
+
+            node.MergeEnrStateFrom(knownNode);
+            return;
+        }
+    }
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
     {
@@ -388,6 +408,7 @@ public class KademliaAdapter(
         Node? enrNode = null;
         NodeRecord? record = node.Enr;
         if (record is { Signature: not null } &&
+            record.EnrSequence >= node.HighestObservedEnrSequence &&
             (advertisedEnrSequence is null || record.EnrSequence >= advertisedEnrSequence) &&
             _nodeRecordSigner.Verify(record) &&
             Node.TryFromEnr(
@@ -398,6 +419,7 @@ public class KademliaAdapter(
             candidate.HasDiscoveryEndpoint &&
             candidate.DiscoveryAddress.Equals(discoveryEndpoint))
         {
+            candidate.SetVerifiedEnr(record);
             enrNode = candidate;
         }
 
@@ -415,6 +437,7 @@ public class KademliaAdapter(
         if (useSignedPing)
         {
             peerCandidate = new Node(node.Id, node.Address, node.DiscoveryPort);
+            peerCandidate.ObserveEnrSequence(node.HighestObservedEnrSequence);
         }
         else if (enrNode is not null)
         {
@@ -452,6 +475,7 @@ public class KademliaAdapter(
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
             Node node = CreateNode(msg);
+            MergeKnownEnrState(node);
 
             if (IsResponse(msgType))
             {
@@ -535,9 +559,6 @@ public class KademliaAdapter(
 
         return false;
     }
-
-    private static bool HasExpectedNodeId(NodeRecord record, PublicKey expectedNodeId)
-        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(expectedNodeId) == true;
 
     public ValueTask DisposeAsync()
     {

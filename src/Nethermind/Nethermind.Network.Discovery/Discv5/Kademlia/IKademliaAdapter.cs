@@ -19,5 +19,10 @@ public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IAs
     /// <param name="excluding">An optional node to exclude from the result.</param>
     Node[] GetNodesAtDistances(IEnumerable<int> distances, Node? excluding = null);
 
+    /// <summary>
+    /// Adds or refreshes a routing node while preserving newer authenticated ENR state.
+    /// </summary>
+    void AddOrRefresh(Node node);
+
     Task RunAsync(CancellationToken token);
 }

@@ -70,7 +70,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             return;
         }
 
-        base.AddNodeToDiscovery(reachableNode);
+        _discv4Adapter.AddOrRefresh(reachableNode);
     }
 
     internal static bool TryCreateReachableNode(
@@ -78,32 +78,38 @@ public class DiscoveryApp : KademliaDiscoveryApp
         IPAddress localIp,
         [NotNullWhen(true)] out Node? reachableNode)
     {
-        if (node.Enr is { Signature: not null } record)
+        NodeRecord? record = node.Enr is { Signature: not null } signedRecord ? signedRecord : null;
+        if (record is not null &&
+            !KademliaAdapterBase.HasExpectedNodeId(record, node.Id.Hash.ValueHash256))
         {
-            if (record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Equals(node.Id) != true)
-            {
-                reachableNode = null;
-                return false;
-            }
-
-            if (node.HasDiscoveryEndpoint &&
-                CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
-            {
-                reachableNode = node;
-                return true;
-            }
-
-            return CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
-                record,
-                localIp,
-                preferredEndpoint: null,
-                out reachableNode);
+            reachableNode = null;
+            return false;
         }
 
         if (node.HasDiscoveryEndpoint &&
             CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
         {
             reachableNode = node;
+            return true;
+        }
+
+        if (record is not null)
+        {
+            if (!CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                record,
+                localIp,
+                preferredEndpoint: null,
+                out reachableNode))
+            {
+                return false;
+            }
+
+            if (node.IsVerifiedEnr(record))
+            {
+                reachableNode.SetVerifiedEnr(record);
+            }
+
+            reachableNode.ObserveEnrSequence(node.HighestObservedEnrSequence);
             return true;
         }
 
@@ -115,13 +121,17 @@ public class DiscoveryApp : KademliaDiscoveryApp
     {
         if (networkNode.IsEnr)
         {
-            return CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+            if (CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
                 networkNode.Enr,
                 localIp,
                 preferredEndpoint: null,
-                out Node? node)
-                ? node
-                : null;
+                out Node? node))
+            {
+                node.SetVerifiedEnr(networkNode.Enr);
+                return node;
+            }
+
+            return null;
         }
 
         Node enode = new(networkNode);
@@ -154,6 +164,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
                     if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode}");
                     continue;
                 }
+
+                node.SetVerifiedEnr(bootnode.Enr);
             }
             else
             {

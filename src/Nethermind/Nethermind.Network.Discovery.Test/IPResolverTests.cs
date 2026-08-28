@@ -111,19 +111,24 @@ public class IPResolverTests
         Assert.That(ip.ExternalIpV6, Is.Null);
     }
 
-    [TestCase("192.0.2.1", null, "192.0.2.1", null)]
-    [TestCase("2001:db8::1", null, null, "2001:db8::1")]
-    [TestCase("::ffff:198.51.100.2", null, "198.51.100.2", null)]
-    [TestCase("192.0.2.1", "2001:db8::1", "192.0.2.1", "2001:db8::1")]
-    [TestCase("192.0.2.1", "192.0.2.2", "192.0.2.1", null)] // wrong-family override ignored
-    [TestCase("192.0.2.1", "::", "192.0.2.1", null)] // unspecified override ignored
+    [TestCase("192.0.2.1", null, null, "192.0.2.1", null)]
+    [TestCase("2001:db8::1", null, null, null, "2001:db8::1")]
+    [TestCase("::ffff:198.51.100.2", null, null, "198.51.100.2", null)]
+    [TestCase("192.0.2.1", null, "2001:db8::1", "192.0.2.1", "2001:db8::1")]
+    [TestCase("2001:db8::1", "192.0.2.1", null, "192.0.2.1", "2001:db8::1")]
+    [TestCase("192.0.2.1", null, "192.0.2.2", "192.0.2.1", null)] // wrong-family override ignored
+    [TestCase("192.0.2.1", null, "::", "192.0.2.1", null)] // unspecified override ignored
     public void NethermindIp_derives_family_addresses(
-        string externalIp, string? externalIpV6, string? expectedIpV4, string? expectedIpV6)
+        string externalIp,
+        string? externalIpV4,
+        string? externalIpV6,
+        string? expectedIpV4,
+        string? expectedIpV6)
     {
         IIPResolver.NethermindIp ip = new(
             IPAddress.Loopback,
             IPAddress.Parse(externalIp),
-            externalIpV4: null,
+            externalIpV4 is null ? null : IPAddress.Parse(externalIpV4),
             externalIpV6 is null ? null : IPAddress.Parse(externalIpV6));
 
         using (Assert.EnterMultipleScope())
@@ -147,22 +152,28 @@ public class IPResolverTests
         }
     }
 
-    [Test]
-    public void NethermindIp_preserves_explicit_ipv6_override_after_with_expression()
+    [TestCase("2001:db8::1", "192.0.2.1", null, "2001:db8::2", "192.0.2.1", "2001:db8::2")]
+    [TestCase("192.0.2.1", null, "2001:db8::1", "198.51.100.1", "198.51.100.1", "2001:db8::1")]
+    public void NethermindIp_preserves_explicit_family_override_after_with_expression(
+        string externalIp,
+        string? externalIpV4,
+        string? externalIpV6,
+        string changedExternalIp,
+        string expectedIpV4,
+        string expectedIpV6)
     {
-        IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
         IIPResolver.NethermindIp original = new(
             IPAddress.Loopback,
-            IPAddress.Parse("192.0.2.1"),
-            externalIpV4: null,
-            externalIpV6);
+            IPAddress.Parse(externalIp),
+            externalIpV4 is null ? null : IPAddress.Parse(externalIpV4),
+            externalIpV6 is null ? null : IPAddress.Parse(externalIpV6));
 
-        IIPResolver.NethermindIp changed = original with { ExternalIp = IPAddress.Parse("198.51.100.1") };
+        IIPResolver.NethermindIp changed = original with { ExternalIp = IPAddress.Parse(changedExternalIp) };
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(changed.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.1")));
-            Assert.That(changed.ExternalIpV6, Is.EqualTo(externalIpV6));
+            Assert.That(changed.ExternalIpV4, Is.EqualTo(IPAddress.Parse(expectedIpV4)));
+            Assert.That(changed.ExternalIpV6, Is.EqualTo(IPAddress.Parse(expectedIpV6)));
         }
     }
 
@@ -181,8 +192,13 @@ public class IPResolverTests
         Assert.That(overridden.GetHashCode(), Is.EqualTo(derived.GetHashCode()));
     }
 
-    [Test]
-    public async Task Warns_when_primary_and_family_override_disagree()
+    [TestCase("192.0.2.1", "192.0.2.2", null, nameof(NetworkConfig.ExternalIpV4))]
+    [TestCase("2001:db8::1", null, "2001:db8::2", nameof(NetworkConfig.ExternalIpV6))]
+    public async Task Warns_when_primary_and_family_override_disagree(
+        string externalIp,
+        string? externalIpV4,
+        string? externalIpV6,
+        string familyConfigName)
     {
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
         underlyingLogger.IsWarn.Returns(true);
@@ -192,15 +208,16 @@ public class IPResolverTests
         IPResolver ipResolver = new(
             new NetworkConfig
             {
-                ExternalIp = "2001:db8::1",
-                ExternalIpV6 = "2001:db8::2"
+                ExternalIp = externalIp,
+                ExternalIpV4 = externalIpV4,
+                ExternalIpV6 = externalIpV6
             },
             logManager);
 
         await ipResolver.Resolve();
 
         underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
-            message.Contains($"disagrees with {nameof(NetworkConfig.ExternalIpV6)}")));
+            message.Contains($"disagrees with {familyConfigName}")));
     }
 
     [Test]

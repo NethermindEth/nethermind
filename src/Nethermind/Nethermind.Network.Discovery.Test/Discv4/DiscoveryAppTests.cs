@@ -60,6 +60,8 @@ public class DiscoveryAppTests
         NodeRecord record = CreateAsymmetricDualStackRecord();
         Assert.That(Node.TryFromEnr(record, out Node? genericNode), Is.True);
         Assert.That(genericNode!.HasDiscoveryEndpoint, Is.False);
+        genericNode.SetVerifiedEnr(record);
+        genericNode.ObserveEnrSequence(record.EnrSequence + 1);
 
         bool result = DiscoveryApp.TryCreateReachableNode(
             genericNode,
@@ -73,6 +75,8 @@ public class DiscoveryAppTests
             Assert.That(reachableNode!.Host, Is.EqualTo("2001:db8::1"));
             Assert.That(reachableNode.Port, Is.EqualTo(30303));
             Assert.That(reachableNode.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(reachableNode.IsVerifiedEnr(record), Is.True);
+            Assert.That(reachableNode.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence + 1));
         }
     }
 
@@ -89,7 +93,6 @@ public class DiscoveryAppTests
             IsBootnode = true,
             IsStatic = true,
         };
-
         bool result = DiscoveryApp.TryCreateReachableNode(callerNode, IPAddress.Any, out Node? reachableNode);
 
         Assert.That(result, Is.True);

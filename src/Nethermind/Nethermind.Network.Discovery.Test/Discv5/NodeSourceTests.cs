@@ -190,6 +190,54 @@ public class NodeSourceTests
 
     [Test]
     [CancelAfter(10000)]
+    public async Task DiscoverNodes_ShouldSkipRetainedEnrAfterNewerRecordWasObserved(CancellationToken token)
+    {
+        Node staleNode = CreateNode(1);
+        staleNode.ObserveEnrSequence(staleNode.Enr.EnrSequence + 1);
+        Node currentNode = CreateNode(2);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns([staleNode, currentNode]);
+        NodeSource source = CreateSource(kademlia);
+
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        Assert.That(enumerator.Current.Id, Is.EqualTo(currentNode.Id));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_ShouldPreserveProvenanceAndObservedSequence(bool isVerified, CancellationToken token)
+    {
+        Node discoveryNode = CreateNode(1);
+        NodeRecord record = discoveryNode.Enr;
+        if (isVerified)
+        {
+            discoveryNode.SetVerifiedEnr(record);
+        }
+        else
+        {
+            discoveryNode.ObserveEnrSequence(record.EnrSequence);
+        }
+
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns([discoveryNode]);
+        NodeSource source = CreateSource(kademlia);
+
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enumerator.Current.Enr, Is.SameAs(record));
+            Assert.That(enumerator.Current.IsVerifiedEnr(record), Is.EqualTo(isVerified));
+            Assert.That(enumerator.Current.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
     public async Task DiscoverNodes_ShouldEmitPeerCandidateFromActiveKademliaDiscovery(CancellationToken token)
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();

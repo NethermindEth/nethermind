@@ -136,6 +136,12 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         try
         {
+            if (record.EnrSequence < node.HighestObservedEnrSequence)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node:s}.");
+                return;
+            }
+
             if (!TryGetAcceptableNodeFromEnr(record, out Node? enrNode))
             {
                 return;
@@ -147,7 +153,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
                 return;
             }
 
-            Kademlia.AddOrRefresh(enrNode);
+            if (node.IsVerifiedEnr(record))
+            {
+                enrNode.SetVerifiedEnr(record);
+            }
+
+            enrNode.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            _discv5Adapter.AddOrRefresh(enrNode);
         }
         catch (Exception e)
         {
@@ -167,9 +179,15 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
-        => TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node)
-            ? AddReachableBootNode(bootNodes, seen, node)
-            : BootNodeAddResult.Skipped;
+    {
+        if (!TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
+        {
+            return BootNodeAddResult.Skipped;
+        }
+
+        node.SetVerifiedEnr(nodeRecord);
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {
@@ -216,7 +234,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     {
         if (networkNode.IsEnr)
         {
-            return TryGetAcceptableNodeFromEnr(networkNode.Enr, out Node? node) ? node : null;
+            if (TryGetAcceptableNodeFromEnr(networkNode.Enr, out Node? node))
+            {
+                node.SetVerifiedEnr(networkNode.Enr);
+                return node;
+            }
+
+            return null;
         }
 
         Node enode = new(networkNode);

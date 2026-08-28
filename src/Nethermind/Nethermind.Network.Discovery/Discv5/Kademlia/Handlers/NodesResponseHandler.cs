@@ -123,6 +123,7 @@ internal sealed class NodesResponseHandler(
                 continue;
             }
 
+            node.SetVerifiedEnr(record);
             _nodes[_nodeCount++] = node;
         }
     }

@@ -104,8 +104,7 @@ namespace Nethermind.Network
             internal static bool IsUnspecified(IPAddress ipAddress)
                 => ipAddress.Equals(IPAddress.Any)
                    || ipAddress.Equals(IPAddress.IPv6Any)
-                   || ipAddress.Equals(IPAddress.None)
-                   || ipAddress.Equals(IPAddress.IPv6None);
+                   || ipAddress.Equals(IPAddress.None);
         }
     }
 }

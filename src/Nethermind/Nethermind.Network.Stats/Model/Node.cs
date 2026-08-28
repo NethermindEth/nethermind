@@ -24,11 +24,26 @@ namespace Nethermind.Stats.Model
         private string _enodeHost;
         private string _paddedHost;
         private string _paddedPort;
-        private ulong _highestObservedEnrSequence;
-        private ulong _requestingEnrSequence;
-        private NodeRecord _enr;
+        private EnrCacheState _enrState;
         private int? _discoveryPort;
         private IPEndPoint _discoveryAddress;
+        private static long _nextEnrCacheStateId;
+
+        private sealed class EnrCacheState
+        {
+            public long Id { get; } = Interlocked.Increment(ref _nextEnrCacheStateId);
+            public Lock Sync { get; } = new();
+            public EnrCacheState Redirect;
+            public EnrRecordState RecordState;
+            public ulong HighestObservedSequence;
+            public ulong RequestingSequence;
+        }
+
+        private sealed class EnrRecordState(NodeRecord record, bool isVerified)
+        {
+            public NodeRecord Record { get; } = record;
+            public bool IsVerified { get; } = isVerified;
+        }
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -118,30 +133,315 @@ namespace Nethermind.Stats.Model
         public long CurrentReputation { get; set; }
         public NodeRecord Enr
         {
-            get => _enr;
+            get
+            {
+                while (true)
+                {
+                    EnrCacheState state = GetEnrState();
+                    if (state is null)
+                    {
+                        return null;
+                    }
+
+                    EnrRecordState recordState = Volatile.Read(ref state.RecordState);
+                    if (Volatile.Read(ref state.Redirect) is null)
+                    {
+                        return recordState?.Record;
+                    }
+                }
+            }
             set
             {
-                _enr = value;
-                if (value is { Signature: not null })
+                EnrCacheState state = Volatile.Read(ref _enrState);
+                if (state is null && value is null)
                 {
-                    ObserveEnrSequence(value.EnrSequence);
+                    return;
                 }
-                else if (value is not null)
+
+                EnrRecordState replacement = value is null ? null : new EnrRecordState(value, isVerified: false);
+                while (true)
                 {
-                    TryClearEnrRequest(value.EnrSequence);
+                    state = GetOrCreateEnrState();
+                    lock (state.Sync)
+                    {
+                        if (Volatile.Read(ref state.Redirect) is not null)
+                        {
+                            continue;
+                        }
+
+                        Volatile.Write(ref state.RecordState, replacement);
+                        return;
+                    }
                 }
             }
         }
 
         /// <summary>
+        /// Whether <paramref name="value"/> is the ENR stored after its signature and node identity were verified.
+        /// </summary>
+        public bool IsVerifiedEnr(NodeRecord value)
+        {
+            while (true)
+            {
+                EnrCacheState state = GetEnrState();
+                if (state is null)
+                {
+                    return false;
+                }
+
+                EnrRecordState recordState = Volatile.Read(ref state.RecordState);
+                if (Volatile.Read(ref state.Redirect) is null)
+                {
+                    return recordState?.IsVerified == true && ReferenceEquals(recordState.Record, value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Atomically stores an ENR whose signature and node identity have been verified by the caller,
+        /// unless a higher authenticated sequence is already known.
+        /// </summary>
+        /// <returns><see langword="true"/> when the record was stored; otherwise <see langword="false"/>.</returns>
+        public bool SetVerifiedEnr(NodeRecord value)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            ulong sequence = value.EnrSequence;
+            EnrRecordState replacement = null;
+
+            while (true)
+            {
+                EnrCacheState state = GetOrCreateEnrState();
+                lock (state.Sync)
+                {
+                    if (Volatile.Read(ref state.Redirect) is not null)
+                    {
+                        continue;
+                    }
+
+                    ulong highestObservedSequence = Volatile.Read(ref state.HighestObservedSequence);
+                    if (highestObservedSequence < sequence)
+                    {
+                        Volatile.Write(ref state.HighestObservedSequence, sequence);
+                    }
+
+                    ClearSatisfiedEnrRequest(state, sequence);
+                    if (highestObservedSequence > sequence)
+                    {
+                        return false;
+                    }
+
+                    EnrRecordState current = Volatile.Read(ref state.RecordState);
+                    if (current?.IsVerified == true)
+                    {
+                        if (ReferenceEquals(current.Record, value))
+                        {
+                            return true;
+                        }
+
+                        if (current.Record.EnrSequence >= sequence)
+                        {
+                            return false;
+                        }
+                    }
+
+                    replacement ??= new EnrRecordState(value, isVerified: true);
+                    Volatile.Write(ref state.RecordState, replacement);
+                    return true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Shares ENR cache and request state with another node instance of the same identity.
+        /// </summary>
+        /// <remarks>
+        /// Discovery uses this when replacing a routing entry with a fresh endpoint object so concurrent
+        /// packet handlers cannot publish an older record or lose a newly observed sequence.
+        /// </remarks>
+        public void ShareEnrStateFrom(Node source)
+        {
+            ValidateEnrStateSource(source);
+            EnrCacheState sourceState = source.GetOrCreateEnrState();
+            if (Volatile.Read(ref _enrState) is null &&
+                Interlocked.CompareExchange(ref _enrState, sourceState, null) is null)
+            {
+                return;
+            }
+
+            MergeEnrStateFrom(source);
+        }
+
+        /// <summary>
+        /// Merges this node's ENR record, authenticated high-water mark, and request into an existing routing entry's state,
+        /// then shares that state, including the highest in-flight request sequence.
+        /// </summary>
+        public void MergeEnrStateFrom(Node existingNode)
+        {
+            ValidateEnrStateSource(existingNode);
+            while (true)
+            {
+                EnrCacheState candidateState = GetOrCreateEnrState();
+                EnrCacheState existingState = existingNode.GetOrCreateEnrState();
+                if (ReferenceEquals(candidateState, existingState))
+                {
+                    Volatile.Write(ref _enrState, existingState);
+                    return;
+                }
+
+                EnrCacheState first = candidateState.Id < existingState.Id ? candidateState : existingState;
+                EnrCacheState second = ReferenceEquals(first, candidateState) ? existingState : candidateState;
+                lock (first.Sync)
+                {
+                    lock (second.Sync)
+                    {
+                        if (Volatile.Read(ref candidateState.Redirect) is not null ||
+                            Volatile.Read(ref existingState.Redirect) is not null)
+                        {
+                            continue;
+                        }
+
+                        MergeEnrStates(candidateState, existingState);
+                        Volatile.Write(ref candidateState.Redirect, existingState);
+                        Volatile.Write(ref _enrState, existingState);
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void ValidateEnrStateSource(Node source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            if (!Id.Equals(source.Id))
+            {
+                throw new ArgumentException("ENR state can only be shared by nodes with the same identity.", nameof(source));
+            }
+        }
+
+        private static void MergeEnrStates(EnrCacheState candidate, EnrCacheState existing)
+        {
+            ulong existingHighWater = Volatile.Read(ref existing.HighestObservedSequence);
+            EnrRecordState candidateRecord = Volatile.Read(ref candidate.RecordState);
+            EnrRecordState existingRecord = Volatile.Read(ref existing.RecordState);
+            if (candidateRecord?.IsVerified == true)
+            {
+                ulong candidateSequence = candidateRecord.Record.EnrSequence;
+                if (existingRecord?.IsVerified != true || existingRecord.Record.EnrSequence < candidateSequence)
+                {
+                    existingRecord = candidateRecord;
+                }
+            }
+            else if (candidateRecord is not null &&
+                     existingRecord?.IsVerified != true &&
+                     (existingRecord is null || existingRecord.Record.EnrSequence < candidateRecord.Record.EnrSequence))
+            {
+                existingRecord = candidateRecord;
+            }
+
+            ulong highestObservedSequence = Math.Max(
+                existingHighWater,
+                Volatile.Read(ref candidate.HighestObservedSequence));
+            ulong requestingSequence = Math.Max(
+                Volatile.Read(ref existing.RequestingSequence),
+                Volatile.Read(ref candidate.RequestingSequence));
+            if (requestingSequence <= highestObservedSequence)
+            {
+                requestingSequence = 0;
+            }
+
+            Volatile.Write(ref existing.HighestObservedSequence, highestObservedSequence);
+            Volatile.Write(ref existing.RecordState, existingRecord);
+            Volatile.Write(ref existing.RequestingSequence, requestingSequence);
+        }
+
+        private EnrCacheState GetEnrState()
+        {
+            EnrCacheState state = Volatile.Read(ref _enrState);
+            if (state is null)
+            {
+                return null;
+            }
+
+            EnrCacheState current = FollowEnrState(state);
+            if (!ReferenceEquals(state, current))
+            {
+                Volatile.Write(ref _enrState, current);
+            }
+
+            return current;
+        }
+
+        private EnrCacheState GetOrCreateEnrState()
+        {
+            EnrCacheState state = GetEnrState();
+            if (state is not null)
+            {
+                return state;
+            }
+
+            EnrCacheState created = new();
+            state = Interlocked.CompareExchange(ref _enrState, created, null) ?? created;
+            return FollowEnrState(state);
+        }
+
+        private static EnrCacheState FollowEnrState(EnrCacheState state)
+        {
+            EnrCacheState redirect;
+            while ((redirect = Volatile.Read(ref state.Redirect)) is not null)
+            {
+                state = redirect;
+            }
+
+            return state;
+        }
+
+        /// <summary>
         /// Highest sequence of a valid Ethereum Node Record observed for this node, including records without a locally reachable endpoint.
         /// </summary>
-        public ulong HighestObservedEnrSequence => Volatile.Read(ref _highestObservedEnrSequence);
+        public ulong HighestObservedEnrSequence
+        {
+            get
+            {
+                while (true)
+                {
+                    EnrCacheState state = GetEnrState();
+                    if (state is null)
+                    {
+                        return 0;
+                    }
+
+                    ulong sequence = Volatile.Read(ref state.HighestObservedSequence);
+                    if (Volatile.Read(ref state.Redirect) is null)
+                    {
+                        return sequence;
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Highest advertised ENR sequence currently being requested for this node; <c>0</c> means no request is active.
         /// </summary>
-        public ulong RequestingEnrSequence => Volatile.Read(ref _requestingEnrSequence);
+        public ulong RequestingEnrSequence
+        {
+            get
+            {
+                while (true)
+                {
+                    EnrCacheState state = GetEnrState();
+                    if (state is null)
+                    {
+                        return 0;
+                    }
+
+                    ulong sequence = Volatile.Read(ref state.RequestingSequence);
+                    if (Volatile.Read(ref state.Redirect) is null)
+                    {
+                        return sequence;
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Stores the highest advertised ENR sequence that should be fetched.
@@ -157,14 +457,21 @@ namespace Nethermind.Stats.Model
 
             while (true)
             {
-                ulong current = Volatile.Read(ref _requestingEnrSequence);
-                if (current >= sequence)
+                EnrCacheState state = GetOrCreateEnrState();
+                lock (state.Sync)
                 {
-                    return false;
-                }
+                    if (Volatile.Read(ref state.Redirect) is not null)
+                    {
+                        continue;
+                    }
 
-                if (Interlocked.CompareExchange(ref _requestingEnrSequence, sequence, current) == current)
-                {
+                    ulong current = Volatile.Read(ref state.RequestingSequence);
+                    if (current >= sequence || Volatile.Read(ref state.HighestObservedSequence) >= sequence)
+                    {
+                        return false;
+                    }
+
+                    Volatile.Write(ref state.RequestingSequence, sequence);
                     return current == 0;
                 }
             }
@@ -179,14 +486,22 @@ namespace Nethermind.Stats.Model
         {
             while (true)
             {
-                ulong current = Volatile.Read(ref _highestObservedEnrSequence);
-                if (current >= sequence || Interlocked.CompareExchange(ref _highestObservedEnrSequence, sequence, current) == current)
+                EnrCacheState state = GetOrCreateEnrState();
+                lock (state.Sync)
                 {
-                    break;
+                    if (Volatile.Read(ref state.Redirect) is not null)
+                    {
+                        continue;
+                    }
+
+                    if (Volatile.Read(ref state.HighestObservedSequence) < sequence)
+                    {
+                        Volatile.Write(ref state.HighestObservedSequence, sequence);
+                    }
+
+                    return ClearSatisfiedEnrRequest(state, sequence);
                 }
             }
-
-            return TryClearEnrRequest(sequence);
         }
 
         /// <summary>
@@ -198,17 +513,34 @@ namespace Nethermind.Stats.Model
         {
             while (true)
             {
-                ulong current = Volatile.Read(ref _requestingEnrSequence);
-                if (current == 0 || current > sequence)
+                EnrCacheState state = GetEnrState();
+                if (state is null)
                 {
                     return false;
                 }
 
-                if (Interlocked.CompareExchange(ref _requestingEnrSequence, 0, current) == current)
+                lock (state.Sync)
                 {
-                    return true;
+                    if (Volatile.Read(ref state.Redirect) is not null)
+                    {
+                        continue;
+                    }
+
+                    return ClearSatisfiedEnrRequest(state, sequence);
                 }
             }
+        }
+
+        private static bool ClearSatisfiedEnrRequest(EnrCacheState state, ulong sequence)
+        {
+            ulong current = Volatile.Read(ref state.RequestingSequence);
+            if (current == 0 || current > sequence)
+            {
+                return false;
+            }
+
+            Volatile.Write(ref state.RequestingSequence, 0);
+            return true;
         }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
@@ -216,9 +548,8 @@ namespace Nethermind.Stats.Model
         {
             if (networkNode.IsEnr)
             {
-                Enr = networkNode.Enr;
-                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
-                    discoveryEndpoint.Address.Equals(Address.Address))
+                SetVerifiedEnr(networkNode.Enr);
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(Address.AddressFamily, out IPEndPoint discoveryEndpoint))
                 {
                     DiscoveryPort = discoveryEndpoint.Port;
                 }

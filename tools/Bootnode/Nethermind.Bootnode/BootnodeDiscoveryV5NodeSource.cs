@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Core.Crypto;
@@ -147,8 +148,7 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
     private bool TryCreateDiscoveryCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? discoveryCandidate)
     {
         discoveryCandidate = null;
-        NodeRecord? record = discoveryNode.Enr;
-        if (record is null)
+        if (discoveryNode.Enr is not { Signature: not null } record)
         {
             if (_logger.IsTrace) _logger.Trace($"Ignoring bootnode discv5 discovered node without an ENR: {discoveryNode:s}.");
             return false;
@@ -156,7 +156,26 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
 
         try
         {
-            return Node.TryFromDiscoveryEnr(record, out discoveryCandidate);
+            if (record.EnrSequence < discoveryNode.HighestObservedEnrSequence)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping stale bootnode discv5 ENR candidate for {discoveryNode:s}.");
+                return false;
+            }
+
+            AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
+            if (!Node.TryFromDiscoveryEnr(record, addressFamily, out discoveryCandidate) &&
+                !Node.TryFromDiscoveryEnr(record, out discoveryCandidate))
+            {
+                return false;
+            }
+
+            if (discoveryNode.IsVerifiedEnr(record))
+            {
+                discoveryCandidate.SetVerifiedEnr(record);
+            }
+
+            discoveryCandidate.ObserveEnrSequence(discoveryNode.HighestObservedEnrSequence);
+            return true;
         }
         catch (Exception e)
         {

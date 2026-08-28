@@ -141,7 +141,7 @@ public sealed class KademliaAdapter(
         Node[] nodes = responseHandler.GetNodes();
         for (int i = 0; i < nodes.Length; i++)
         {
-            kademlia.Value.AddOrRefresh(nodes[i]);
+            AddOrRefreshRemoteNode(nodes[i]);
         }
 
         if (Logger.IsTrace) Logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {nodes.Length} nodes.");
@@ -467,7 +467,8 @@ public sealed class KademliaAdapter(
             return;
         }
 
-        TryGetKnownSignedRecord(nodeId, out NodeRecord? knownRecord);
+        TryGetKnownNode(nodeId, out Node? knownNode);
+        NodeRecord? knownRecord = knownNode?.Enr is { Signature: not null } signedRecord ? signedRecord : null;
         if (!PacketCodec.TryDecode(sentChallenge.Packet, nodeId.Bytes, out Packet challengePacket))
         {
             if (Logger.IsTrace) Logger.Trace($"Unable to decode matching discv5 WHOAREYOU challenge for {endpoint}.");
@@ -487,7 +488,7 @@ public sealed class KademliaAdapter(
             }
         }
 
-        await HandleHandshakeMessage(endpoint, nodeId, session, message, nodeRecord, knownRecord, token);
+        await HandleHandshakeMessage(endpoint, nodeId, session, message, nodeRecord, token);
     }
 
     private async Task SendWhoAreYou(IPEndPoint endpoint, Packet requestPacket, ValueHash256 nodeId, CancellationToken token)
@@ -516,14 +517,16 @@ public sealed class KademliaAdapter(
         RecordSent("WhoAreYou");
     }
 
-    private ulong GetChallengeEnrSequence(ValueHash256 nodeId, IPEndPoint endpoint)
+    internal ulong GetChallengeEnrSequence(ValueHash256 nodeId, IPEndPoint endpoint)
     {
-        if (!TryGetKnownSignedRecord(nodeId, out NodeRecord? record))
+        if (!TryGetKnownNode(nodeId, out Node? knownNode) ||
+            knownNode.Enr is not { Signature: not null } record ||
+            !knownNode.IsVerifiedEnr(record))
         {
             return 0UL;
         }
 
-        return HasDiscoveryEndpoint(record, endpoint) ? record.EnrSequence : 0UL;
+        return HasDiscoveryEndpoint(record, endpoint) ? knownNode.HighestObservedEnrSequence : 0UL;
     }
 
     private static void RecordSent(Discv5Message message) => RecordSent(FastEnum.GetName(message.MessageType)!);
@@ -537,13 +540,13 @@ public sealed class KademliaAdapter(
         Session session,
         Discv5Message message,
         NodeRecord? nodeRecord,
-        NodeRecord? knownRecord,
         CancellationToken token)
     {
         bool sessionStored = false;
         try
         {
-            NodeRecord? messageRecord = knownRecord;
+            NodeRecord? messageRecord = null;
+            ulong observedEnrSequence = 0;
             if (nodeRecord is not null)
             {
                 if (!HasExpectedNodeId(nodeRecord, nodeId))
@@ -552,7 +555,15 @@ public sealed class KademliaAdapter(
                     return;
                 }
 
-                if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal))
+                // PacketCodec verified the ENR signature and handshake identity. Preserve its
+                // sequence even when this listener cannot use the record's endpoint.
+                observedEnrSequence = nodeRecord.EnrSequence;
+                if (TryGetAcceptableNode(
+                    nodeRecord,
+                    endpoint.Address.IsLoopbackOrPrivateOrLinkLocal,
+                    LocalIp,
+                    endpoint,
+                    out _))
                 {
                     messageRecord = nodeRecord;
                 }
@@ -561,7 +572,7 @@ public sealed class KademliaAdapter(
             SetSession(new SessionKey(nodeId, endpoint), session);
             sessionStored = true;
             if (Logger.IsTrace) Logger.Trace($"Received discv5 handshake message {message.MessageType} {message.RequestId} from {endpoint}, ENR included: {nodeRecord is not null}.");
-            await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord);
+            await HandleMessage(session.RemotePublicKey, endpoint, message, token, messageRecord, observedEnrSequence);
         }
         finally
         {
@@ -574,23 +585,40 @@ public sealed class KademliaAdapter(
         }
     }
 
-    private async Task HandleMessage(PublicKey remotePublicKey, IPEndPoint endpoint, Discv5Message message, CancellationToken token, NodeRecord? nodeRecord = null)
+    private async Task HandleMessage(
+        PublicKey remotePublicKey,
+        IPEndPoint endpoint,
+        Discv5Message message,
+        CancellationToken token,
+        NodeRecord? nodeRecord = null,
+        ulong observedEnrSequence = 0)
     {
         ValueHash256 remoteNodeId = remotePublicKey.Hash.ValueHash256;
         Node remoteNode = Node.FromDiscoveryEndpoint(remotePublicKey, endpoint);
-        if (nodeRecord?.Signature is not null)
+        TryGetKnownNode(remoteNodeId, out Node? knownNode);
+        if (knownNode is not null)
         {
-            remoteNode.Enr = nodeRecord;
+            // Routing refreshes replace Node objects. Sharing this identity's ENR state keeps
+            // concurrent packet workers and an awaiting record refresh on one atomic cache.
+            remoteNode.ShareEnrStateFrom(knownNode);
         }
-        else if (TryGetKnownSignedRecord(remoteNodeId, out NodeRecord? knownRecord))
+
+        if (observedEnrSequence > remoteNode.HighestObservedEnrSequence)
         {
-            remoteNode.Enr = knownRecord;
+            // Keep verified sequence state on an existing routing entry even for request messages
+            // that intentionally do not admit a new node to the table.
+            remoteNode.ObserveEnrSequence(observedEnrSequence);
+        }
+
+        if (nodeRecord is { Signature: not null } verifiedHandshakeRecord)
+        {
+            remoteNode.SetVerifiedEnr(verifiedHandshakeRecord);
         }
 
         if (HandleResponse(remoteNodeId, message))
         {
             if (Logger.IsTrace) Logger.Trace($"Handled discv5 response {message.MessageType} {message.RequestId} from {endpoint}.");
-            kademlia.Value.AddOrRefresh(remoteNode);
+            AddOrRefreshRemoteNode(remoteNode);
             return;
         }
 
@@ -603,7 +631,7 @@ public sealed class KademliaAdapter(
                     await SendResponse(remoteNode, pong, token);
                 }
 
-                kademlia.Value.AddOrRefresh(remoteNode);
+                AddOrRefreshRemoteNode(remoteNode);
                 StartRemoteRecordRefresh(remoteNode, ping.EnrSequence, token);
                 if (remoteNode.Enr is not null)
                 {
@@ -657,6 +685,8 @@ public sealed class KademliaAdapter(
             currentNode.DiscoveryAddress,
             out refreshedNode);
 
+    public void AddOrRefresh(Node node) => AddOrRefreshRemoteNode(node);
+
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 
@@ -683,7 +713,7 @@ public sealed class KademliaAdapter(
             }
         }
 
-        table.AddOrRefresh(node);
+        AddOrRefreshRemoteNode(node);
     }
 
     private static bool TryRemoveStaleNonStaticNode(IKademlia<PublicKey, Node> table, Node[] nodes)
@@ -822,10 +852,12 @@ public sealed class KademliaAdapter(
         }
     }
 
-    private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
+    internal static NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
         NodeRecord? record = node.Enr;
-        return record is not null && IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays)
+        return record is not null &&
+               record.EnrSequence >= node.HighestObservedEnrSequence &&
+               IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays)
             ? record
             : null;
     }
@@ -893,7 +925,7 @@ public sealed class KademliaAdapter(
     private void SetSession(SessionKey sessionKey, Session session)
         => _sessions.Set(sessionKey, session);
 
-    internal bool TryGetKnownSignedRecord(ValueHash256 nodeId, [NotNullWhen(true)] out NodeRecord? record)
+    internal bool TryGetKnownNode(ValueHash256 nodeId, [NotNullWhen(true)] out Node? knownNode)
     {
         int distance = _distance.CalculateLogDistance(_currentNodeHash, nodeId.ToHash256());
         Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
@@ -905,17 +937,11 @@ public sealed class KademliaAdapter(
                 continue;
             }
 
-            if (node.Enr is { Signature: not null } signedRecord)
-            {
-                record = signedRecord;
-                return true;
-            }
-
-            record = null;
-            return false;
+            knownNode = node;
+            return true;
         }
 
-        record = null;
+        knownNode = null;
         return false;
     }
 
@@ -985,9 +1011,6 @@ public sealed class KademliaAdapter(
                discoveryEndpoint.Address.Equals(normalizedAddress) &&
                discoveryEndpoint.Port == endpoint.Port;
     }
-
-    internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
-        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
 
     private void SetSentChallenge(ChallengeKey challengeKey, byte[] packet)
     {

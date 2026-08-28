@@ -25,9 +25,10 @@ public interface INetworkConfig : IConfig
     /// </summary>
     /// <remarks>
     /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
-    /// Set this together with <see cref="ExternalIpV6"/> to advertise both address families.
+    /// This address is only advertised when the node listens on IPv4. Set this together with
+    /// <see cref="ExternalIpV6"/> and set <see cref="LocalIp"/> to <c>::</c> to advertise both families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. Use with `{nameof(ExternalIpV6)}` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. Only advertised when the node listens on IPv4. Use with `{nameof(ExternalIpV6)}` and set `{nameof(LocalIp)}` to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
@@ -35,7 +36,7 @@ public interface INetworkConfig : IConfig
     /// through <c>IIPResolver.Resolve</c>. When unset, the resolved <see cref="ExternalIp"/> is used
     /// if it is an IPv6 address.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node listens on IPv6. Use with `{nameof(ExternalIpV4)}` when the node should advertise both IPv4 and IPv6 addresses, and set `{nameof(LocalIp)}` to `::`.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node listens on IPv6. Use with `{nameof(ExternalIpV4)}` when the node should advertise both IPv4 and IPv6 addresses, and set `{nameof(LocalIp)}` to `::`. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 
     /// <remarks>

@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -25,6 +26,9 @@ public abstract class KademliaAdapterBase(
     protected abstract void AddOrRefreshRemoteNode(Node node);
 
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
+
+    internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
+        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
 
     protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
         => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
@@ -56,10 +60,15 @@ public abstract class KademliaAdapterBase(
                     return;
                 }
 
-                if (node.Enr is { Signature: not null } signedRecord && signedRecord.EnrSequence >= requestedSequence)
+                ulong observedSequence = node.HighestObservedEnrSequence;
+                if (observedSequence >= requestedSequence)
                 {
-                    node.TryClearEnrRequest(signedRecord.EnrSequence);
-                    return;
+                    if (node.TryClearEnrRequest(observedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
                 }
 
                 NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
@@ -87,6 +96,8 @@ public abstract class KademliaAdapterBase(
 
                 if (!IsEnrValidForNode(node, record))
                 {
+                    // Do not observe a sequence from a record that is not authenticated for this node;
+                    // doing so could suppress a later valid refresh.
                     if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record is not valid for the node.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
@@ -107,13 +118,13 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                node.Enr = record;
-                ulong requestingSequence = node.RequestingEnrSequence;
-                if (requestingSequence > record.EnrSequence)
+                refreshedNode.ShareEnrStateFrom(node);
+                if (!refreshedNode.SetVerifiedEnr(record))
                 {
-                    refreshedNode.TryRequestEnrSequence(requestingSequence);
+                    continue;
                 }
 
+                ulong requestingSequence = refreshedNode.RequestingEnrSequence;
                 node = refreshedNode;
                 AddOrRefreshRemoteNode(refreshedNode);
                 if (requestingSequence == 0)

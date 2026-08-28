@@ -184,6 +184,7 @@ public sealed class NodeRecordProvider(
         if (state.ExternalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
+            // Some ENR consumers do not implement EIP-778's fallback from tcp6/udp6 to tcp/udp.
             selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
             selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
         }

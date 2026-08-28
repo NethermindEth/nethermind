@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Kademlia;
@@ -59,4 +59,13 @@ public class KademliaConfig<TNode>
     /// Starting boot nodes.
     /// </summary>
     public IReadOnlyList<TNode> BootNodes { get; set; } = [];
+
+    /// <summary>
+    /// Merges the previously stored value into an incoming value with the same routing key.
+    /// The function returns the value to store and runs while the routing table is locked.
+    /// </summary>
+    /// <remarks>
+    /// The merge must be bounded, non-blocking, and must not mutate the routing table that invoked it.
+    /// </remarks>
+    public Func<TNode, TNode, TNode>? MergeOnRefresh { get; set; }
 }

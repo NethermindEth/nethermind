@@ -153,6 +153,12 @@ public sealed class NodeSource(
 
         try
         {
+            if (record.EnrSequence < discoveryNode.HighestObservedEnrSequence)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping stale discv5 ENR peer candidate for {discoveryNode:s}.");
+                return false;
+            }
+
             if (recordFilter.Excludes(record))
             {
                 return false;
@@ -167,8 +173,19 @@ public sealed class NodeSource(
             AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
             // EIP-778 endpoints are independent: prefer the proven discovery family without
             // discarding a record whose only usable RLPx endpoint belongs to the other family.
-            return Node.TryFromEnr(record, addressFamily, out peerCandidate) ||
-                   Node.TryFromEnr(record, out peerCandidate);
+            if (!Node.TryFromEnr(record, addressFamily, out peerCandidate) &&
+                !Node.TryFromEnr(record, out peerCandidate))
+            {
+                return false;
+            }
+
+            if (discoveryNode.IsVerifiedEnr(record))
+            {
+                peerCandidate.SetVerifiedEnr(record);
+            }
+
+            peerCandidate.ObserveEnrSequence(discoveryNode.HighestObservedEnrSequence);
+            return true;
         }
         catch (Exception e)
         {

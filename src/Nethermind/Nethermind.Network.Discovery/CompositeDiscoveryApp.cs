@@ -124,13 +124,18 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     /// <summary>
     /// Returns the effective address family, treating IPv4-mapped IPv6 addresses as IPv4.
     /// </summary>
-    internal static AddressFamily GetAddressFamily(IPAddress address)
+    /// <param name="address">The address whose effective family is required.</param>
+    /// <returns>The effective IPv4 or IPv6 address family.</returns>
+    public static AddressFamily GetAddressFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
     /// <summary>
     /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
     /// </summary>
-    internal static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
+    /// <param name="localIp">The address used to bind the socket.</param>
+    /// <param name="addressFamily">The remote address family to test.</param>
+    /// <returns><see langword="true"/> when the bound socket can serve the address family.</returns>
+    public static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
         => addressFamily switch
         {
             AddressFamily.InterNetwork =>
@@ -146,6 +151,10 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     /// <summary>
     /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
     /// </summary>
+    /// <param name="localIp">The address used to bind the local socket.</param>
+    /// <param name="preferredEndpoint">The endpoint whose family should be written first, when supported.</param>
+    /// <param name="addressFamilies">The destination span, which must have room for at least two entries.</param>
+    /// <returns>The number of families written, at most two.</returns>
     internal static int GetSupportedAddressFamilies(
         IPAddress localIp,
         IPEndPoint? preferredEndpoint,

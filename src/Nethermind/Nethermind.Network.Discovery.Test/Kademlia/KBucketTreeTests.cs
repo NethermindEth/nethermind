@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Kademlia;
 using NUnit.Framework;
 
@@ -12,8 +14,17 @@ public class KBucketTreeTests
 {
     private const int SelfHash = 0;
 
-    private static KBucketTree<int, int> CreateTree(int k = 4, int beta = 0) => new(
-        new KademliaConfig<int> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
+    private static KBucketTree<int, int> CreateTree(
+        int k = 4,
+        int beta = 0,
+        Func<int, int, int>? mergeOnRefresh = null) => new(
+        new KademliaConfig<int>
+        {
+            CurrentNodeId = SelfHash,
+            KSize = k,
+            Beta = beta,
+            MergeOnRefresh = mergeOnRefresh
+        },
         IntNodeHashProvider.Instance,
         Int32KademliaDistance.Instance);
 
@@ -71,6 +82,68 @@ public class KBucketTreeTests
         // The bucket is full, so admitting a node at another distance splits it and grows the reported capacity.
         Add(tree, KeyAtDistance(30, 0x20));
         Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(3, 6)));
+    }
+
+    [Test]
+    public async Task TryAddOrRefresh_should_atomically_merge_concurrent_same_hash_values()
+    {
+        KBucketTree<int, int> tree = CreateTree(
+            k: 1,
+            mergeOnRefresh: static (incoming, existing) => Math.Max(incoming, existing));
+        using Barrier start = new(3);
+        using ManualResetEventSlim higherValueAdded = new();
+
+        Task higherValueAdmission = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            tree.TryAddOrRefresh(1, 2, out _);
+            higherValueAdded.Set();
+        });
+        Task lowerValueAdmission = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            higherValueAdded.Wait();
+            tree.TryAddOrRefresh(1, 1, out _);
+        });
+
+        start.SignalAndWait();
+        await Task.WhenAll(higherValueAdmission, lowerValueAdmission);
+
+        Assert.That(tree.GetByHash(1), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void TryAddOrRefresh_should_merge_same_hash_values_in_replacement_cache()
+    {
+        KBucketTree<int, int> tree = CreateTree(
+            k: 1,
+            mergeOnRefresh: static (incoming, existing) => Math.Max(incoming, existing));
+        int activeHash = int.MinValue;
+        int replacementHash = int.MinValue + 1;
+        tree.TryAddOrRefresh(activeHash, 0, out _);
+        tree.TryAddOrRefresh(replacementHash, 2, out _);
+        tree.TryAddOrRefresh(replacementHash, 1, out _);
+
+        tree.Remove(activeHash);
+
+        Assert.That(tree.GetByHash(replacementHash), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void TryAddOrRefresh_should_reject_mutating_reentry_from_merge()
+    {
+        KBucketTree<int, int>? tree = null;
+        tree = CreateTree(mergeOnRefresh: (incoming, _) =>
+        {
+            tree!.TryAddOrRefresh(2, 2, out _);
+            return incoming;
+        });
+        tree.TryAddOrRefresh(1, 1, out _);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => tree.TryAddOrRefresh(1, 2, out _))!;
+
+        Assert.That(exception.Message, Does.Contain("must not mutate"));
     }
 
     private static int KeyAtDistance(int distance, int suffix)

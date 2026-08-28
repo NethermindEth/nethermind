@@ -61,13 +61,16 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             ?? configuredExternalIpV4
             ?? await ResolveExternalIp(cancellationToken);
 
-        if (configuredExternalIp?.AddressFamily == AddressFamily.InterNetworkV6 &&
-            configuredExternalIpV6 is not null &&
-            !configuredExternalIp.Equals(configuredExternalIpV6) &&
-            _logger.IsWarn)
-        {
-            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {nameof(NetworkConfig.ExternalIpV6)} = {configuredExternalIpV6}. The ENR advertises {nameof(NetworkConfig.ExternalIpV6)} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
-        }
+        WarnIfPrimaryAndFamilyOverrideDisagree(
+            configuredExternalIp,
+            configuredExternalIpV4,
+            AddressFamily.InterNetwork,
+            nameof(NetworkConfig.ExternalIpV4));
+        WarnIfPrimaryAndFamilyOverrideDisagree(
+            configuredExternalIp,
+            configuredExternalIpV6,
+            AddressFamily.InterNetworkV6,
+            nameof(NetworkConfig.ExternalIpV6));
 
         if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
         {
@@ -75,6 +78,21 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         }
 
         return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
+    }
+
+    private void WarnIfPrimaryAndFamilyOverrideDisagree(
+        IPAddress? configuredExternalIp,
+        IPAddress? configuredFamilyIp,
+        AddressFamily addressFamily,
+        string familyConfigName)
+    {
+        if (configuredExternalIp?.AddressFamily == addressFamily &&
+            configuredFamilyIp is not null &&
+            !configuredExternalIp.Equals(configuredFamilyIp) &&
+            _logger.IsWarn)
+        {
+            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {familyConfigName} = {configuredFamilyIp}. {familyConfigName} takes precedence when that address family is advertised in the ENR, while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+        }
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
