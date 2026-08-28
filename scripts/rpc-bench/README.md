@@ -330,7 +330,7 @@ gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermind
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f rps="50 100 300"
 
 # Two images on a json-bench workload instead of the corpus (timed cells)
-gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60 \n  -f baseline_image=nethermindeth/nethermind:master
 
 # Single node: json-bench curated workload / flood / EthCallChaos
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f rps=50 -f duration=60 \

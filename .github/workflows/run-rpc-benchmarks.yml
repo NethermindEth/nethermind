@@ -42,8 +42,9 @@ on:
         default: ""
       baseline_image:
         description: >-
-          Sweep baseline and parity reference. cache = the master baseline recorded by the last master push (only docker_image
-          runs; falls back to running nethermindeth/nethermind:master when no cache exists yet). Any image = a real A/B in this job.
+          Sweep baseline and parity reference. cache (the default) = the master baseline recorded by the last master push (only
+          docker_image runs; falls back to running nethermindeth/nethermind:master when no cache exists yet); resolved for
+          corpus-ab/corpus-baseline only, so jsonbench-sweep needs a real image. Any image = a real A/B in this job.
         required: false
         default: cache
       rps:
@@ -1111,7 +1112,7 @@ jobs:
           body="${RUNNER_TEMP}/rpcbench-corpus-comment-body.md"
           { printf '%s\n\n' "${marker}"; cat "${COMMENT_FILE}"; } > "${body}"
           existing="$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" 2>/dev/null | tail -1 || true)"
+            --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"${marker}\"))) | .id" 2>/dev/null | tail -1 || true)"
           # The lookup runs under errexit, hence '|| true': a transient gh failure must degrade to posting a
           # new comment, not kill the step and leave the PR with no comparison. Same for the update itself
           # (comment deleted, PATCH refused).

@@ -322,7 +322,10 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("not co-run", cached)
         self.assertIn(f"is therefore {corpus_results.CACHED_NOISE_FLOOR_PCT:g}%, not the in-run "
                       f"{corpus_results.NOISE_FLOOR_PCT:g}%", cached)
-        self.assertIn(f"~{corpus_results.CACHED_NOISE_FLOOR_PCT:g}% when no repeat ran", cached)
+        # The footer must not describe an A/A control on this path; that clause belongs to the co-run one.
+        self.assertIn(f"No A/A control ran, so a delta within {corpus_results.CACHED_NOISE_FLOOR_PCT:g}% is noise", cached)
+        self.assertNotIn("master against its own repeat", cached)
+        self.assertIn("master against its own repeat", in_run)
         self.assertNotIn("not co-run", in_run)
 
     def test_a_cached_baselines_own_repeat_cannot_tighten_the_floor(self):

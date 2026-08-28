@@ -28,6 +28,12 @@ apply() {
   # A run killed between apply and restore leaves the box capped; restoring first keeps the cap from being
   # recorded as the "original" and made permanent.
   [[ -s "$SAVED" ]] && { log "::warning::stale saved cpu state from an earlier run — restoring it first"; restore; }
+  # restore keeps the file when it could not write every value back, so truncating here would record the
+  # still-capped values as the originals - the same failure it just prevented, one step along.
+  if [[ -s "$SAVED" ]]; then
+    log "::error::refusing to apply over unrestored cpu state in $SAVED — the box is still capped; restore it by hand first"
+    return 1
+  fi
   : > "$SAVED"
   local path off governors freqs
   read -r path off <<< "$(turbo_path)"

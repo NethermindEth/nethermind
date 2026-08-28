@@ -582,9 +582,12 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_b
         _render_timings(lines, corpus)
         _render_parity(lines, corpus["parity"])
         lines.append("")
-    lines.append("<sub>Fixed corpus, seeded request sequence, arms interleaved. A/A spread is master against its own repeat: "
-                 f"a delta within twice it (min 1%; ~{floor:g}% when no repeat ran) is noise. A PR that changes "
-                 "results is a correctness regression regardless of latency.</sub>")
+    # On the cached path no repeat can act as a control, so describing one contradicts the paragraph below.
+    control_note = ("A/A spread is master against its own repeat: a delta within twice it (min 1%; "
+                    f"~{floor:g}% when no repeat ran) is noise. " if not cached_baseline
+                    else f"No A/A control ran, so a delta within {floor:g}% is noise. ")
+    lines.append("<sub>Fixed corpus, seeded request sequence, arms interleaved. " + control_note +
+                 "A PR that changes results is a correctness regression regardless of latency.</sub>")
     if cached_baseline:
         lines.append("")
         lines.append(f"<sub>⚠️ master was **not co-run** here: its numbers come from the cached master baseline, so this run "
