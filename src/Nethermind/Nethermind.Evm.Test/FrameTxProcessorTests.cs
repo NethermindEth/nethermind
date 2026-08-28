@@ -2515,6 +2515,139 @@ public class FrameTxProcessorTests
         Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
+    /// <summary>The rollback shapes that keep a frame transaction valid, so the touch must outlive them.</summary>
+    public enum RipemdRollback
+    {
+        FrameRevert,
+        BatchUnroll,
+        PostTxFailure,
+        ApprovalFailure,
+    }
+
+    // EIP-161 keeps the RIPEMD-160 touch alive for the rest of the transaction, so the empty account is
+    // still deleted at commit however the frame that touched it is rolled back.
+    [TestCase(RipemdRollback.FrameRevert, TestName = "Execute_FrameRevertsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    [TestCase(RipemdRollback.BatchUnroll, TestName = "Execute_BatchUnrollsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    [TestCase(RipemdRollback.PostTxFailure, TestName = "Execute_PostTxFailsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    [TestCase(RipemdRollback.ApprovalFailure, TestName = "Execute_ApprovalFailsAfterTouchingRipemd_StillDeletesTheEmptyAccount")]
+    public void Execute_FrameTouchingRipemdThenRollingBack_MatchesTheAbsentAccountRoot(RipemdRollback rollback)
+    {
+        Hash256 touched = RunRipemdTouchScenario(createRipemd: true, rollback);
+        Hash256 absent = RunRipemdTouchScenario(createRipemd: false, rollback);
+
+        Assert.That(touched, Is.EqualTo(absent),
+            "the rolled-back RIPEMD-160 touch must still delete the empty account");
+    }
+
+    /// <summary>
+    /// Runs a frame that makes a zero-value call to RIPEMD-160 and is then rolled back by
+    /// <paramref name="rollback"/>, and returns the committed state root. With
+    /// <paramref name="createRipemd"/> the account starts present and empty.
+    /// </summary>
+    private Hash256 RunRipemdTouchScenario(bool createRipemd, RipemdRollback rollback)
+    {
+        Address ripemd = Address.FromNumber(3);
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable closer = state.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(state);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance, _specProvider, state, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        bool approvalFailure = rollback == RipemdRollback.ApprovalFailure;
+        if (!approvalFailure)
+        {
+            state.CreateAccount(Sender, 1.Ether);
+            state.InsertCode(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), Spec);
+        }
+
+        // A POST_TX assertion observes the finished body, so the frame that touches RIPEMD-160 has to
+        // succeed for its touch to reach the rollback; every other shape rolls the touching frame back.
+        byte[] touchCode = rollback is RipemdRollback.PostTxFailure
+            ? Prepare.EvmCode.Call(ripemd, 50_000).Op(Instruction.STOP).Done
+            : approvalFailure
+                ? Bytes.Concat(Prepare.EvmCode.Call(ripemd, 50_000).Done, ApproveCode(TxFrame.ApprovePayment))
+                : Prepare.EvmCode.Call(ripemd, 50_000).Revert(0, 0).Done;
+        state.CreateAccount(Observer, approvalFailure ? 1.Ether : UInt256.Zero);
+        state.InsertCode(Observer, touchCode, Spec);
+        if (rollback is RipemdRollback.PostTxFailure)
+        {
+            state.CreateAccount(Recipient, UInt256.Zero);
+            state.InsertCode(Recipient, Prepare.EvmCode.Revert(0, 0).Done, Spec);
+        }
+        else if (approvalFailure)
+        {
+            // Sets the payer the failed approval never did, so the transaction still commits.
+            state.CreateAccount(Recipient, 1.Ether);
+            state.InsertCode(Recipient, ApproveCode(TxFrame.ApprovePayment), Spec);
+        }
+
+        if (createRipemd)
+        {
+            state.CreateAccount(ripemd, UInt256.Zero);
+        }
+
+        // Committed under a pre-EIP-158 spec so the empty account reaches the trie rather than being
+        // cleared by the very rule under test.
+        state.Commit(Frontier.Instance);
+
+        Transaction tx = BuildRipemdTx(rollback);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        // Neither direction the root comparison can see on its own: a transaction that stopped
+        // committing, and a rollback that stopped happening, both leave the two arms matching.
+        Assert.That(result.TransactionExecuted, Is.True, "the scenario must commit, or the two arms match trivially");
+        if (rollback is RipemdRollback.PostTxFailure)
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the touching frame must succeed, or its touch never reaches the POST_TX rollback");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the POST_TX assertion must fail, or nothing is rolled back");
+        }
+        else
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the touching frame must be rolled back, or the touch is never at risk");
+        }
+
+        // The processor commits without roots, as it does per transaction in block processing; the
+        // block-level commit is what flushes the EIP-158 deletions into the trie.
+        state.Commit(Spec);
+        state.CommitTree(1);
+        return state.StateRoot;
+    }
+
+    private static Transaction BuildRipemdTx(RipemdRollback rollback)
+    {
+        switch (rollback)
+        {
+            case RipemdRollback.BatchUnroll:
+                return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer));
+            case RipemdRollback.PostTxFailure:
+                return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer),
+                    Frame(TxFrame.ModePostTx, target: Recipient));
+            case RipemdRollback.ApprovalFailure:
+                {
+                    // A codeless sender approves execution through the default code, leaving the payer unset so a
+                    // payment-only APPROVE is admissible; a zero state-gas limit then starves its new-account charge.
+                    TxFrame verify = new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default);
+                    Transaction tx = FrameTx(nonce: 0, verify,
+                        new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, Observer, 200_000, 0, UInt256.Zero, default),
+                        Frame(TxFrame.ModeDefault, TxFrame.ApprovePayment, target: Recipient));
+                    tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+                    SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+                    return tx;
+                }
+            default:
+                return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        }
+    }
+
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 

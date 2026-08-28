@@ -2573,7 +2573,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_not_evict_same_hash_replacement_for_stale_unpersistable_update()
+        public void should_not_evict_same_hash_replacement_for_stale_unpersistable_update()
         {
             TxPoolConfig txPoolConfig = new()
             {
@@ -2583,11 +2583,12 @@ namespace Nethermind.TxPool.Test
                 Size = 4,
             };
             IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            using BlockingPersistentBlobTxDistinctSortedPool blobPool = new(
+            using InterceptingPersistentBlobTxDistinctSortedPool blobPool = new(
                 new FailingBlobTxUpdateStorage(),
                 txPoolConfig,
                 comparer,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new ManualTimeProvider());
             Transaction template = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
@@ -2605,21 +2606,15 @@ namespace Nethermind.TxPool.Test
                 blobPool.MergeCells(retainedTx.Hash!.ValueHash256, updateMask, updateCells),
                 Is.EqualTo(BlobCellMergeResult.Accepted));
 
-            blobPool.BlockNextUpdate();
-            Task<BlobCellMergeResult> staleUpdate = RunOnDedicatedThread(() =>
-                blobPool.MergeCells(replacementTx.Hash!.ValueHash256, updateMask, updateCells));
-            Assert.That(blobPool.WaitForBlockedUpdate(TimeSpan.FromSeconds(5)), Is.True);
-            try
+            blobPool.InterceptNextUpdate(replacementTx.Hash!.ValueHash256, () =>
             {
                 Assert.That(blobPool.TryRemove(replacementTx.Hash!.ValueHash256), Is.True);
                 Assert.That(blobPool.TryInsert(replacementTx.Hash, replacementTx, out _), Is.True);
-            }
-            finally
-            {
-                blobPool.ReleaseBlockedUpdate();
-            }
+            });
 
-            Assert.That(await staleUpdate, Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(
+                blobPool.MergeCells(replacementTx.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
             Assert.That(blobPool.TryGetValue(replacementTx.Hash!.ValueHash256, out _), Is.True);
         }
 
@@ -3460,47 +3455,28 @@ namespace Nethermind.TxPool.Test
             public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
         }
 
-        private sealed class BlockingPersistentBlobTxDistinctSortedPool(
+        private sealed class InterceptingPersistentBlobTxDistinctSortedPool(
             ITxStorage blobTxStorage,
             ITxPoolConfig txPoolConfig,
             IComparer<Transaction> comparer,
-            ILogManager logManager)
-            : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager)
+            ILogManager logManager,
+            TimeProvider timeProvider)
+            : PersistentBlobTxDistinctSortedPool(blobTxStorage, txPoolConfig, comparer, logManager, timeProvider)
         {
-            private readonly TaskCompletionSource _updateEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            private readonly TaskCompletionSource _releaseUpdate = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            private int _blockNextUpdate;
+            private Action _nextUpdate;
+            private ValueHash256 _nextUpdateHash;
 
-            public void BlockNextUpdate() => Volatile.Write(ref _blockNextUpdate, 1);
-
-            public bool WaitForBlockedUpdate(TimeSpan timeout)
+            public void InterceptNextUpdate(in ValueHash256 hash, Action action)
             {
-                try
-                {
-                    _updateEntered.Task.WaitAsync(timeout).GetAwaiter().GetResult();
-                    return true;
-                }
-                catch (TimeoutException)
-                {
-                    return false;
-                }
+                _nextUpdateHash = hash;
+                Volatile.Write(ref _nextUpdate, action);
             }
-
-            public void ReleaseBlockedUpdate() => _releaseUpdate.TrySetResult();
 
             protected override void OnBlobTransactionUpdated(ValueHash256 hash, in UInt256 timestamp)
             {
-                if (Interlocked.Exchange(ref _blockNextUpdate, 0) != 0)
+                if (hash == _nextUpdateHash)
                 {
-                    _updateEntered.TrySetResult();
-                    try
-                    {
-                        _releaseUpdate.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-                    }
-                    catch (TimeoutException)
-                    {
-                        throw new TimeoutException("Timed out waiting to release the sparse blob update callback.");
-                    }
+                    Interlocked.Exchange(ref _nextUpdate, null)?.Invoke();
                 }
 
                 base.OnBlobTransactionUpdated(hash, timestamp);

@@ -306,12 +306,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
 
-    public override bool IsStorageEmpty(Address address)
-    {
-        AddAccountRead(address);
-        return base.IsStorageEmpty(address);
-    }
-
     public override bool IsDeadAccount(Address address)
     {
         if (_generatingBlockAccessList is null) return base.IsDeadAccount(address);
