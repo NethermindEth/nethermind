@@ -99,7 +99,7 @@ public class IndexedLogFinderTests
     }
 
     [Test]
-    public void Should_UseTheFullIndexRange_WhenTheIndexDoesNotReachBelowTheOldestStoredBlock()
+    public void Should_UseTheFullIndexRange_WhenTheQueryDoesNotReachBelowTheOldestStoredBlock()
     {
         _blockFinder.GetLowestBlock().Returns(1UL);
 
@@ -107,5 +107,24 @@ public class IndexedLogFinderTests
 
         Assert.That(logs, Is.Empty);
         _logIndexStorage.Received().GetEnumerator(TestItem.AddressA, From, To);
+    }
+
+    [Test]
+    public void Should_AnswerAFromGenesisQueryUnchanged_OnANodeThatNeverPrunedHistory()
+    {
+        _blockFinder.GetLowestBlock().Returns(1UL);
+        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _blockFinder.FindHeader(0UL).Returns(genesis);
+        LogFilter filter = new(
+            0,
+            new BlockParameter(0UL),
+            new BlockParameter(To),
+            new AddressFilter(TestItem.AddressA),
+            new SequenceTopicsFilter());
+
+        FilterLog[] logs = GetFinder(prunedLogsRetention: null).FindLogs(filter, genesis, _toHeader, CancellationToken.None).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        _logIndexStorage.Received().GetEnumerator(TestItem.AddressA, 1, To);
     }
 }
