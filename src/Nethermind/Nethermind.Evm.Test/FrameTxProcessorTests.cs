@@ -1917,16 +1917,20 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>
-    /// The address a precompile was moved <em>away</em> from is no longer one, so a designation to it runs
-    /// whatever code the override left there instead of being suppressed to empty.
+    /// A code override on a precompile's address makes it dispatch as code, so a designation to it runs that
+    /// code instead of being suppressed to empty — whether or not the precompile was also moved away.
     /// </summary>
-    [Test]
-    public void Execute_FrameTargetDesignatesAVacatedPrecompileAddress_RunsTheCodeLeftThere()
+    /// <remarks>The two override fields apply independently, so the plain code override needs no move.</remarks>
+    [TestCase(true, TestName = "Execute_FrameTargetDesignatesAnOverriddenPrecompile_RunsTheCode(moved away too)")]
+    [TestCase(false, TestName = "Execute_FrameTargetDesignatesAnOverriddenPrecompile_RunsTheCode(code override only)")]
+    public void Execute_FrameTargetDesignatesAnOverriddenPrecompile_RunsTheCode(bool alsoMovedAway)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. IdentityPrecompile.Address.Bytes]);
 
-        OverridableCodeInfoRepository repository = MovedPrecompile(IdentityPrecompile.Address, TestItem.AddressF);
+        OverridableCodeInfoRepository repository = alsoMovedAway
+            ? MovedPrecompile(IdentityPrecompile.Address, TestItem.AddressF)
+            : new OverridableCodeInfoRepository(new EthereumCodeInfoRepository(_stateProvider), _stateProvider);
         repository.SetCodeOverride(Spec, IdentityPrecompile.Address,
             new CodeInfo(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
 
@@ -1937,7 +1941,7 @@ public class FrameTxProcessorTests
 
         // Empty code cannot revert, so the failure is the override code having run.
         Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
-            "the vacated address must dispatch as code, not as a precompile");
+            "an overridden precompile address must dispatch as code");
     }
 
     /// <summary>A repository whose precompile, unlike the spec's, has been moved to another address.</summary>
