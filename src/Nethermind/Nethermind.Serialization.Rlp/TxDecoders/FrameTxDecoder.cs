@@ -278,6 +278,7 @@ public static class FrameTxNonceCalldata
         writer.Encode(transaction.Nonce);
     }
 
+    /// <summary>Writes <c>nonce_keys</c> as a list of integers.</summary>
     public static void EncodeKeys<TWriter>(UInt256[] nonceKeys, ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
@@ -288,6 +289,7 @@ public static class FrameTxNonceCalldata
         }
     }
 
+    /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
     /// <remarks>Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire bytes
     /// <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.</remarks>
     public static UInt256[] DecodeKeys(ref RlpReader decoderContext)

@@ -208,7 +208,7 @@ namespace Nethermind.TxPool
                 new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider), // the three above skip keyed sets, this one owns them
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
-                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: its signature list is uncapped, so let the cheap filters reject first
+                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
             ];
 
             if (incomingTxFilters is not null)

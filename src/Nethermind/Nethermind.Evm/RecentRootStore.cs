@@ -49,7 +49,8 @@ public static class RecentRootStore
     public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
         IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
 
-    /// <summary>As above, for a caller that has already derived the cell (the key costs a Keccak per reference).</summary>
+    /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already
+    /// derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.</summary>
     public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
         ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
