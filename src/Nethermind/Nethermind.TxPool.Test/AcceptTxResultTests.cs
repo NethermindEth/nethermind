@@ -68,7 +68,8 @@ public class AcceptTxResultTests
         {
             bool isAccepted = result;
 
-            Assert.That(isAccepted, Is.EqualTo(result == AcceptTxResult.Accepted), name);
+            // Named, not re-derived: `result == Accepted` compares ids, which is what operator bool does.
+            Assert.That(isAccepted, Is.EqualTo(name == nameof(AcceptTxResult.Accepted)), name);
         }
     }
 

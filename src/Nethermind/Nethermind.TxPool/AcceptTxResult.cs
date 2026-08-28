@@ -18,7 +18,7 @@ namespace Nethermind.TxPool
     public readonly struct AcceptTxResult : IEquatable<AcceptTxResult>
     {
         // Deliberately uninitialized: an initializer would make the ids depend on where this field sits in the file.
-        private static int _lastId;
+        private static int _nextId;
 
         /// <summary>
         /// The transaction has been accepted. This is the only 'success' outcome.
@@ -185,7 +185,7 @@ namespace Nethermind.TxPool
         /// <param name="code">The short code reported to the submitter.</param>
         /// <param name="message">An optional detail appended to <paramref name="code"/>.</param>
         public AcceptTxResult(string code, string? message = null)
-            : this(Interlocked.Increment(ref _lastId) - 1, code, message)
+            : this(Interlocked.Increment(ref _nextId) - 1, code, message)
         {
         }
 
