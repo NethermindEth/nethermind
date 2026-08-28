@@ -34,8 +34,6 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        // MAX_BODIES_REQUEST is the SSZ list limit on BodiesByHashRequest.block_hashes, so an
-        // over-limit request fails decode as 400 ssz-decode-error before reaching this point.
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
         if (result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)

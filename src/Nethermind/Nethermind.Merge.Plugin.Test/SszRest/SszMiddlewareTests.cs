@@ -1411,16 +1411,47 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
     }
 
-    [Test]
-    public async Task GetPayload_with_unacceptable_accept_returns_415()
+    [TestCase("text/html", TestName = "Get_accept_unrelated_type_returns_415")]
+    [TestCase("*/*;q=0", TestName = "Get_accept_wildcard_refused_by_q0_returns_415")]
+    [TestCase("application/octet-stream;q=0.0", TestName = "Get_accept_octet_refused_by_q0_returns_415")]
+    [TestCase("application/octet-stream;q=0, text/html", TestName = "Get_accept_octet_refused_but_html_offered_returns_415")]
+    public async Task GetPayload_with_unacceptable_accept_returns_415(string accept)
     {
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "paris");
-        ctx.Request.Headers.Accept = "text/html";
+        ctx.Request.Headers.Accept = accept;
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType));
         await _engineModule.DidNotReceive().engine_getPayloadV2(Arg.Any<byte[]>());
+    }
+
+    [Test]
+    public async Task GetPayload_accept_with_nonzero_quality_is_served()
+    {
+        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(MakeMinimalBlock(), UInt256.One)));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "paris");
+        ctx.Request.Headers.Accept = "text/html;q=0.9, application/octet-stream;q=0.1";
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+    }
+
+    [Test]
+    public async Task Duplicate_fork_header_returns_invalid_request()
+    {
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", BuildMinimalV1NewPayloadRequest());
+        ctx.Request.Headers[SszMiddleware.ForkHeaderName] = new StringValues(["paris", "shanghai"]);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(body, Does.Contain("invalid-request"));
+        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
     [Test]
