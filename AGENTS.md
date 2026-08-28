@@ -236,7 +236,10 @@ on the runner under `<expb data dir>/rpc-bench/baselines/`. A PR run therefore e
 comment names the master image, date and run the baseline came from; with no cache yet it runs `nethermind:master`
 itself. `<cell>` is a hash of every knob that shapes the cell (request count, warm-up, seed, replay passes, rps,
 `node_env_vars`, cpu cap/cpuset/memory, …), so changing any of them misses the cache on purpose and the run measures
-master in-job — never compare a cached baseline across cell shapes.
+master in-job — never compare a cached baseline across cell shapes. Only **amd64** baselines refresh automatically
+(the `workflow_run` path takes the default `arch`), so an `arch=arm64` corpus-ab always takes that two-arm fallback at
+~2x the runtime unless you record an arm64 baseline by hand (`-f benchmark_tool=corpus-baseline -f arch=arm64`).
+Cached aggregates and on-runner parity responses are separate state and can come from different master vintages.
 `baseline_image=<image>` forces a real two-arm A/B in one job; `rounds=2` (A B B A) adds an in-run A/A control at
 twice the cost — the frequency cap and seeded requests make single rounds land within ~1–1.5%, so 1 is the default.
 More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrides the derived list.

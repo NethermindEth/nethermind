@@ -377,6 +377,25 @@ use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-fil
 that master push) or measured on another cell — with a `::warning::`; the sweep then measures master
 in this job, so a schema bump costs a slower run rather than an empty comment.
 
+Three limits worth knowing before trusting a cached comparison:
+
+- **Only amd64 refreshes itself.** The `workflow_run` trigger takes the default `arch`, so every
+  automatic baseline is an amd64 one. An `arch=arm64` corpus-ab therefore misses the cache and runs
+  master in-job at roughly twice the runtime, every time. Record an arm64 one by hand after a master
+  push — `-f benchmark_tool=corpus-baseline -f arch=arm64 -f docker_image=nethermindeth/nethermind:master-<sha7>`
+  — or pass `baseline_image=<master image>` and take the two-arm run deliberately.
+- **The two halves of a baseline live in different places.** The aggregates are in the Actions cache,
+  which is repo-global and outlives any box; the parity responses are a file on one runner. So they can
+  disagree: a box whose `baselines/` dir was cleaned still restores cached aggregates (the run then
+  captures parity against its own arm and says so in the step summary), and the amd64 cache says
+  nothing about what the arm box holds. The comment names the vintage of the aggregates; the step
+  summary's parity table names the label of the saved responses. Read both.
+- **The default cell is a warm-compute signal.** The 60 s warm-up at 400 rps delivers ~24k requests
+  before a 20k-request cell, so both arms measure a node whose caches are hot — the analogue of expb's
+  `EXPB_EVM_WARMUP=1`. That is the right default for compute changes and weak for storage-layer ones;
+  for those pass `warmup=0` (cold, at the cost of ~2% failures and p99 reading ~60% high) or size a
+  much longer cell.
+
 `tool_config` templates (all keys optional; the inputs above already set the common ones):
 
 ```json
@@ -441,7 +460,9 @@ serializes every other job behind it. What makes the number trustworthy:
   records moved by more than 5%, and the closed-loop throughput at `timings_concurrency`
   (default 16) — the capacity signal an unsaturated 100 rps cell cannot show.
 - **CPU-ms/request** from the node's cgroup, printed first: rate-independent and more sensitive to
-  compute changes than p50 at an unsaturated rate.
+  compute changes than p50 at an unsaturated rate. Its window brackets the json-bench container, so it
+  also covers container start and k6's fixture parse, when the node is near idle: comparable between
+  arms (same window shape), but not an absolute per-request cost.
 - **Selector classes**: the corpus is split by 4-byte selector into `class_1..N` (ranked by record
   count) and the comment breaks p50/p99 down per class, so "p99 moved" becomes "class 2 moved".
 - **CPU frequency cap** (`node_config.cpu_max_freq_khz`, default 3.8 GHz on amd64): turbo boost is
