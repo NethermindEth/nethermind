@@ -347,10 +347,7 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
-        IndexedLogFinder logFinder = new(
-            _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
-            new ReceiptConfig(), logIndexStorage, minBlocksToUseIndex: 1
-        );
+        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage);
         _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
         if (exTo is not null && exFrom is not null)
@@ -388,12 +385,25 @@ public class LogFinderTests
 
         LogFilter filter = FilterBuilder.New().FromBlock(from).ToBlock(to).WithAddress(TestItem.AddressA).Build();
 
-        IndexedLogFinder logFinder = new(
-            _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
-            new ReceiptConfig { MaxBlockDepth = 1 }, logIndexStorage, minBlocksToUseIndex: 1
-        );
+        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage, new ReceiptConfig { MaxBlockDepth = 1 });
 
         Assert.That(() => logFinder.FindLogs(filter).ToArray(), Throws.Nothing);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindLogs_enforces_max_block_depth_when_index_is_opted_out()
+    {
+        SetUp(true, chainLength: 10);
+
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(4, 6);
+
+        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(9).WithAddress(TestItem.AddressA).Build();
+        filter.UseIndex = false;
+
+        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage, new ReceiptConfig { MaxBlockDepth = 1 });
+
+        Assert.That(() => logFinder.FindLogs(filter).ToArray(),
+            Throws.TypeOf<ArgumentException>().With.Message.Contains(nameof(IReceiptConfig.MaxBlockDepth)));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -436,6 +446,9 @@ public class LogFinderTests
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null, IReceiptConfig? receiptConfig = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, receiptConfig ?? new ReceiptConfig());
+
+    private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage, IReceiptConfig? receiptConfig = null) =>
+        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, receiptConfig ?? new ReceiptConfig(), logIndexStorage, minBlocksToUseIndex: 1);
 
     private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
     {

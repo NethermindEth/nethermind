@@ -61,12 +61,12 @@ namespace Nethermind.Facade.Find
 
         public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
-            EnsureBlockRangeWithinLimit(fromBlock, toBlock);
+            EnsureBlockRangeWithinLimit(filter, fromBlock, toBlock);
             return FindLogsUnbounded(filter, fromBlock, toBlock, cancellationToken);
         }
 
         // cap block range of a logs query against unbounded sequential scans
-        protected virtual void EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+        protected virtual void EnsureBlockRangeWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             if (_maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
                 return;
