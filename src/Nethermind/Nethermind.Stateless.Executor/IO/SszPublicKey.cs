@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Stateless.Execution.IO;
 
@@ -16,7 +17,7 @@ namespace Nethermind.Stateless.Execution.IO;
 /// input is decoded.
 /// </remarks>
 [InlineArray(PublicKeyLength)]
-public struct SszPublicKey
+public struct SszPublicKey : IEquatable<SszPublicKey>
 {
     public const int PublicKeyLength = PublicKey.PrefixedLengthInBytes;
 
@@ -36,4 +37,12 @@ public struct SszPublicKey
 
     [UnscopedRef]
     public readonly ReadOnlySpan<byte> AsSpan() => this;
+
+    // The built-in ValueType members throw on InlineArray-backed structs, so a public value type
+    // must provide them explicitly or any comparison of one fails at runtime.
+    public readonly bool Equals(SszPublicKey other) => AsSpan().SequenceEqual(other.AsSpan());
+
+    public override readonly bool Equals(object? obj) => obj is SszPublicKey other && Equals(other);
+
+    public override readonly int GetHashCode() => AsSpan().FastHash();
 }

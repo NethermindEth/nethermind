@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -90,10 +89,6 @@ public class StatelessSchemaTests
     private const ulong BlockNumber = 30_000_000;
     private const ulong Timestamp = 2_000_000_000;
 
-    // Wire bytes of a current-fork input carrying DeterministicPublicKeys(5); see Public_key_vector_encoding_is_pinned.
-    private const int PinnedPublicKeyInputLength = 951;
-    private const string PinnedPublicKeyInputHash = "926d9f2ddf31daf7182e5bea35a3732a8b8d232682e950ce748ea39f8a15bb86";
-
     [TestCase(InputDecoder.CurrentForkSchemaId)]
     [TestCase(InputDecoder.AmsterdamSchemaId)]
     public void Revision_1_schema_roundtrips(ushort schemaId)
@@ -116,8 +111,10 @@ public class StatelessSchemaTests
     /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
     /// </summary>
     /// <remarks>
-    /// The hash is the guard that matters: a round-trip alone passes when
+    /// The write-side assertion is the guard that matters: a round-trip alone passes when
     /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
+    /// It is expressed against the region under test rather than a hash of the whole input, so
+    /// unrelated schema churn cannot send a reader off to re-derive a baseline.
     /// </remarks>
     [Test]
     public void Public_key_vector_encoding_is_pinned()
@@ -127,15 +124,38 @@ public class StatelessSchemaTests
         byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
         ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
 
+        // PublicKeys is the container's last variable-size field and a list of fixed-size items is a
+        // bare concatenation, so the keys occupy exactly the trailing count * 65 bytes.
+        byte[] expectedTail = new byte[publicKeys.Length * SszPublicKey.PublicKeyLength];
+        for (int i = 0; i < publicKeys.Length; i++)
+            publicKeys[i].AsSpan().CopyTo(expectedTail.AsSpan(i * SszPublicKey.PublicKeyLength));
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded, Has.Length.EqualTo(PinnedPublicKeyInputLength));
-            Assert.That(SHA256.HashData(encoded).ToHexString(), Is.EqualTo(PinnedPublicKeyInputHash));
+            Assert.That(encoded[^expectedTail.Length..], Is.EqualTo(expectedTail));
             Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
         }
 
         for (int i = 0; i < publicKeys.Length; i++)
             Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
+    }
+
+    /// <remarks>
+    /// The inherited <see cref="ValueType"/> members throw on <c>[InlineArray]</c>-backed structs,
+    /// so equality has to be declared for <see cref="SszPublicKey"/> to be usable as a value.
+    /// </remarks>
+    [Test]
+    public void Public_keys_compare_by_value()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(2);
+        SszPublicKey copy = SszPublicKey.FromSpan(publicKeys[0].AsSpan());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.EqualTo(publicKeys[0]));
+            Assert.That(copy.GetHashCode(), Is.EqualTo(publicKeys[0].GetHashCode()));
+            Assert.That(publicKeys[1], Is.Not.EqualTo(publicKeys[0]));
+        }
     }
 
     private static SszPublicKey[] DeterministicPublicKeys(int count)
