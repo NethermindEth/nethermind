@@ -28,6 +28,7 @@ namespace Nethermind.Stats.Model
         private NodeRecord _enr;
         private int? _discoveryPort;
         private IPEndPoint _discoveryAddress;
+        private readonly Lock _alternateLock = new();
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -405,7 +406,10 @@ namespace Nethermind.Stats.Model
 
             IPEndPoint oldPrimary = Address;
             SetIPEndPoint(successfulEndpoint);
-            V6Address = oldPrimary;
+            lock (_alternateLock)
+            {
+                V6Address = oldPrimary;
+            }
 
             if (Enr is not null)
             {
@@ -427,6 +431,25 @@ namespace Nethermind.Stats.Model
                     DiscoveryPort = expectedDiscovery.Port;
                 }
             }
+        }
+
+        internal bool TryMergeAlternate(Node other)
+        {
+            if (other.V6Address is null || V6Address is not null)
+            {
+                return false;
+            }
+
+            lock (_alternateLock)
+            {
+                if (V6Address is null)
+                {
+                    V6Address = other.V6Address;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string FormatHost(IPAddress address)

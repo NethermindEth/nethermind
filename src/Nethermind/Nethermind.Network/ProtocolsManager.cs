@@ -111,17 +111,7 @@ namespace Nethermind.Network
                 if (removed.Node?.Id is not null)
                 {
                     handlerKey = removed.Node.Id;
-                    bool hasOtherSyncPeer = false;
-                    foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
-                    {
-                        if (pair.Value.Node?.Id == handlerKey)
-                        {
-                            hasOtherSyncPeer = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasOtherSyncPeer)
+                    if (!HasSyncPeer(handlerKey))
                     {
                         _txPool.RemovePeer(handlerKey);
                     }
@@ -129,22 +119,9 @@ namespace Nethermind.Network
             }
 
             PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
+            if (sessionKey is not null && sessionKey != handlerKey && !HasSyncPeer(sessionKey))
             {
-                bool hasActiveSyncPeer = false;
-                foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
-                {
-                    if (pair.Value.Node?.Id == sessionKey)
-                    {
-                        hasActiveSyncPeer = true;
-                        break;
-                    }
-                }
-
-                if (!hasActiveSyncPeer)
-                {
-                    _txPool.RemovePeer(sessionKey);
-                }
+                _txPool.RemovePeer(sessionKey);
             }
         }
 
@@ -426,6 +403,19 @@ namespace Nethermind.Network
 
                 return _cachedCapabilities!;
             }
+        }
+
+        private bool HasSyncPeer(PublicKey nodeId)
+        {
+            foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
+            {
+                if (pair.Value.Node?.Id == nodeId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

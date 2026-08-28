@@ -1196,20 +1196,16 @@ namespace Nethermind.Network
                 if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
                 {
                     bool isStaleSession = activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId;
+                    if (!isStaleSession || session.Direction != ConnectionDirection.Out || session.BestStateReached != SessionState.New)
+                    {
+                        _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
+                    }
+
                     if (isStaleSession)
                     {
-                        if (session.Direction == ConnectionDirection.Out && session.BestStateReached == SessionState.New)
-                        {
-                            if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
-                            return;
-                        }
-
-                        _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
                         if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
                         return;
                     }
-
-                    _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
 
                     DeactivatePeerIfDisconnected(activePeer, "session disconnected");
                     SignalPeerUpdateNeeded();
