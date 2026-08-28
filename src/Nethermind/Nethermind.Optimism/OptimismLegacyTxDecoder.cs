@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -9,6 +10,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.TxPool;
+
+[assembly: InternalsVisibleTo("Nethermind.Optimism.Test")]
 
 namespace Nethermind.Optimism;
 
@@ -50,4 +53,20 @@ public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
 
         return _postBedrockValidator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
     }
+}
+
+internal sealed class OptimismSpecChangeTxValidator(ulong chainId) : ITxValidator, ILightTxValidator, ISpecChangeTxValidator
+{
+    private readonly SpecChangeTxValidator _ethereumValidator = new(chainId);
+
+    public string PersistenceFingerprint { get; } =
+        FormattableString.Invariant($"1|{typeof(OptimismSpecChangeTxValidator).Module.ModuleVersionId:N}|{chainId}");
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.Type == TxType.Legacy && !releaseSpec.IsEip1559Enabled
+            ? ValidationResult.Success
+            : _ethereumValidator.IsWellFormed(transaction, releaseSpec);
+
+    public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
+        _ethereumValidator.IsWellFormedLight(transaction, releaseSpec);
 }

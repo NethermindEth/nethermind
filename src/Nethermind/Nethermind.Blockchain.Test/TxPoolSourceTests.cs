@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -8,6 +9,8 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Eip2930;
+using Nethermind.Consensus.Validators;
 using Nethermind.Specs;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -19,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
 
@@ -27,6 +31,35 @@ namespace Nethermind.Consensus.Producers.Test;
 [Parallelizable(ParallelScope.All)]
 public class TxPoolSourceTests
 {
+    // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
+    private const ulong UnderGassedTransactionGasLimit = 42_400;
+
+    private static AccessList BuildUnderGassedAccessList()
+    {
+        AccessList.Builder accessListBuilder = new();
+        accessListBuilder.AddAddress(TestItem.AddressC);
+        for (int i = 0; i < 10; i++)
+        {
+            accessListBuilder.AddStorage((UInt256)i);
+        }
+
+        return accessListBuilder.Build();
+    }
+
+    private static ITxValidator CreateSpecChangeTxValidator(ISpecProvider specProvider) =>
+        new SpecChangeTxValidator(specProvider.ChainId);
+
+    private static void SetPendingForProduction(
+        ITxPool txPool,
+        IDictionary<AddressAsKey, Transaction[]>? transactions = null,
+        IDictionary<AddressAsKey, Transaction[]>? blobTransactions = null,
+        bool isRevalidated = false) =>
+        txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+            .Returns(new PendingTransactionsView(
+                transactions ?? new Dictionary<AddressAsKey, Transaction[]>(),
+                blobTransactions ?? new Dictionary<AddressAsKey, Transaction[]>(),
+                isRevalidated));
+
     [TestCaseSource(nameof(BlobTransactionsWithBlobGasLimitPerBlockCombinations))]
     public void GetTransactions_should_respect_customizable_blob_gas_limit(int[] blobCountPerTx, ulong customMaxBlobGasPerBlock, int? customBlobLimit)
     {
@@ -40,14 +73,16 @@ public class TxPoolSourceTests
                 pair => new AddressAsKey(new Address(new byte[19].Concat(new[] { (byte)pair.index }).ToArray())),
                 pair => new[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
         txPool.GetPendingTransactions().Returns([]);
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
+        SetPendingForProduction(txPool, blobTransactions: transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
-        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
+        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit }, CreateSpecChangeTxValidator(specProvider));
 
-        IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        IEnumerable<Transaction> txs = transactionSelector.GetTransactions(parent, targetBlock, long.MaxValue);
         ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
 
         Assert.That(blobsCount, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
@@ -124,10 +159,9 @@ public class TxPoolSourceTests
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>())
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressB, [lowerPriorityRegularTx] } });
-        txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [highPriorityBlobTx] } });
+        SetPendingForProduction(txPool,
+            new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressB, [lowerPriorityRegularTx] } },
+            new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [highPriorityBlobTx] } });
         txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == highPriorityBlobTx.Hash), out Arg.Any<Transaction?>())
             .Returns(x =>
             {
@@ -140,14 +174,441 @@ public class TxPoolSourceTests
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
 
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 });
+            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         // Act
-        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_filter_transactions_that_are_under_gassed_for_next_fork()
+    {
+        TestSpecProvider specProvider = new(Osaka.Instance)
+        {
+            NextForkSpec = Amsterdam.Instance,
+            ForkOnBlockNumber = 1
+        };
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+
+        Transaction underGassedTransaction = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithAccessList(BuildUnderGassedAccessList())
+            .WithGasLimit(UnderGassedTransactionGasLimit)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(underGassedTransaction.SenderAddress!), [underGassedTransaction] }
+        });
+
+        ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
+            .WithHeadTxFilter()
+            .Build;
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void GetTransactions_should_use_injected_fork_sensitive_validator_when_pool_is_not_revalidated()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction transaction = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(transaction.SenderAddress!), [transaction] }
+        });
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+        specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>())
+            .Returns(new ValidationResult("chain-specific rejection"));
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), specChangeTxValidator);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
+
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.Empty);
+        specChangeTxValidator.Received(1).IsWellFormed(transaction, Osaka.Instance);
+    }
+
+    [Test]
+    public void Default_pending_view_does_not_expose_a_mutable_shared_dictionary()
+    {
+        PendingTransactionsView view = default;
+
+        Action mutate = () => view.Transactions.Add(TestItem.AddressA, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mutate, Throws.TypeOf<NotSupportedException>());
+            Assert.That(default(PendingTransactionsView).Transactions, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void GetTransactions_should_not_let_an_invalid_blob_displace_a_valid_blob()
+    {
+        TestSpecProvider specProvider = new(Osaka.Instance)
+        {
+            NextForkSpec = Amsterdam.Instance,
+            ForkOnBlockNumber = 1
+        };
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+
+        Transaction invalidBlob = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
+            .WithAccessList(BuildUnderGassedAccessList())
+            .WithGasLimit(UnderGassedTransactionGasLimit)
+            .WithMaxFeePerGas(2.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction validBlob = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
+            .WithAccessList(BuildUnderGassedAccessList())
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(invalidBlob.SenderAddress!), [new LightTransaction(invalidBlob)] },
+            { new AddressAsKey(validBlob.SenderAddress!), [new LightTransaction(validBlob)] }
+        });
+        txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == invalidBlob.Hash), out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = invalidBlob;
+                return true;
+            });
+        txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == validBlob.Hash), out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = validBlob;
+                return true;
+            });
+        txPool.SupportsBlobs.Returns(true);
+
+        ITxFilterPipeline realTxFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
+            .WithHeadTxFilter()
+            .Build;
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
+            realTxFilterPipeline.Execute(
+                callInfo.ArgAt<Transaction>(0),
+                callInfo.ArgAt<BlockHeader>(1),
+                callInfo.ArgAt<IReleaseSpec>(2)));
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 }, CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+            txPool.Received(1).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
+            txFilterPipeline.DidNotReceive().Execute(invalidBlob, parent, Amsterdam.Instance);
+            txFilterPipeline.DidNotReceive().Execute(validBlob, parent, Amsterdam.Instance);
+        }
+    }
+
+    [Test]
+    public void GetTransactions_should_skip_full_fork_validation_when_pool_is_safe_for_target_block()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Cancun.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerGas(2.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(blobTx.SenderAddress!), [new LightTransaction(blobTx)] }
+        }, isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash), out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+        txPool.SupportsBlobs.Returns(true);
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { blobTx }).UsingTransactionComparer());
+        }
+
+        txPool.Received(1).GetPendingForProduction(targetBlock, Arg.Any<bool>(), Arg.Any<UInt256>());
+        txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
+    }
+
+    [Test]
+    public void GetTransactions_should_not_resolve_blob_when_blob_fee_is_too_low()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Cancun.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerBlobGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(blobTx.SenderAddress!), [new LightTransaction(blobTx)] }
+        });
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Empty);
+            txPool.DidNotReceiveWithAnyArgs().TryGetPendingBlobTransaction(Arg.Any<Hash256>(), out _);
+        }
+    }
+
+    [Test]
+    public void GetTransactions_should_skip_sampled_blob_txs()
+    {
+        Transaction sparseBlobTx = CreateSparseBlobTransaction();
+
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx);
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void GetTransactions_should_include_reconstructed_blob_txs()
+    {
+        Transaction sparseBlobTx = CreateSparseBlobTransaction(new BlobCellMask((UInt128)ulong.MaxValue));
+        ShardBlobNetworkWrapper sparseWrapper = (ShardBlobNetworkWrapper)sparseBlobTx.NetworkWrapper!;
+        Assert.That(BlobCellsHelper.ValidateCells(sparseWrapper), Is.True);
+        Assert.That(BlobCellsHelper.TryRecoverBlobsFromVerifiedCells(sparseWrapper, out ShardBlobNetworkWrapper recoveredWrapper), Is.True);
+        sparseBlobTx.NetworkWrapper = recoveredWrapper;
+
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx);
+
+        Assert.That(result, Is.EqualTo(new[] { sparseBlobTx }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_not_let_sampled_tx_crowd_out_complete_tx()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider comparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction sampled = CreateSparseBlobTransaction();
+        Transaction complete = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressB)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(100.GWei)
+            .WithMaxPriorityFeePerGas(50.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            [TestItem.AddressA] = [new LightTransaction(sampled)],
+            [TestItem.AddressB] = [new LightTransaction(complete)]
+        }, isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(complete.Hash!, out Arg.Any<Transaction?>())
+            .Returns(call =>
+            {
+                call[1] = complete;
+                return true;
+            });
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource source = new(
+            txPool,
+            specProvider,
+            comparerProvider,
+            LimboLogs.Instance,
+            filterPipeline,
+            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 1 },
+            CreateSpecChangeTxValidator(specProvider));
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+
+        Transaction[] result = source.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.EqualTo(new[] { complete }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_not_select_blob_transaction_after_sender_nonce_gap()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider comparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction ready = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .WithMaxFeePerGas(1000.GWei)
+            .WithMaxPriorityFeePerGas(1000.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction gap = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(2UL)
+            .WithMaxFeePerGas(900.GWei)
+            .WithMaxPriorityFeePerGas(900.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction otherReady = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .WithMaxFeePerGas(800.GWei)
+            .WithMaxPriorityFeePerGas(800.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        Dictionary<ValueHash256, Transaction> fullTransactions = new()
+        {
+            [ready.Hash!.ValueHash256] = ready,
+            [gap.Hash!.ValueHash256] = gap,
+            [otherReady.Hash!.ValueHash256] = otherReady,
+        };
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            [TestItem.AddressA] = [new LightTransaction(ready), new LightTransaction(gap)],
+            [TestItem.AddressB] = [new LightTransaction(otherReady)],
+        }, isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction?>())
+            .Returns(call =>
+            {
+                bool found = fullTransactions.TryGetValue(call.ArgAt<Hash256>(0).ValueHash256, out Transaction? transaction);
+                call[1] = transaction;
+                return found;
+            });
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline filterPipeline = Substitute.For<ITxFilterPipeline>();
+        filterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource source = new(
+            txPool,
+            specProvider,
+            comparerProvider,
+            LimboLogs.Instance,
+            filterPipeline,
+            new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = 2 },
+            CreateSpecChangeTxValidator(specProvider));
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+
+        Transaction[] result = source.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.EqualTo(new[] { ready, otherReady }).UsingTransactionComparer());
+    }
+
+    private static Transaction[] SelectSingleBlobTransaction(Transaction blobTx)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            [TestItem.AddressA] = [new LightTransaction(blobTx)]
+        }, isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(blobTx.Hash!, out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+        txPool.SupportsBlobs.Returns(true);
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(
+            txPool,
+            specProvider,
+            transactionComparerProvider,
+            LimboLogs.Instance,
+            txFilterPipeline,
+            new BlocksConfig { SecondsPerSlot = 12 },
+            CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        return txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+    }
+
+    private static Transaction CreateSparseBlobTransaction(BlobCellMask cellMask = default)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(1000.GWei)
+            .WithMaxPriorityFeePerGas(500.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        cellMask = cellMask.IsEmpty ? BlobCellMask.FromIndices([4, 9]) : cellMask;
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < emptyBlobs.Length; i++)
+        {
+            emptyBlobs[i] = [];
+        }
+
+        tx.NetworkWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = cellMask,
+            Cells = cells
+        };
+        tx.ClearLengthCache();
+        return tx;
     }
 }

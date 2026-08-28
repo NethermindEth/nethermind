@@ -109,6 +109,20 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        /// <summary>Takes the transaction index with it, for the same reason as <see cref="RemoveReceiptsRange"/>. The
+        /// number is not needed here: this store is keyed by hash alone.</summary>
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+            _blockNumbers.TryRemove(blockHash, out _);
+            if (_receipts.TryRemove(blockHash, out TxReceipt[]? removed))
+            {
+                foreach (TxReceipt receipt in removed)
+                {
+                    _transactions.TryRemove(receipt.TxHash, out _);
+                }
+            }
+        }
+
         /// <summary>Takes the transaction index with it: unlike the persistent store, nothing sweeps behind this one.
         /// </summary>
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)

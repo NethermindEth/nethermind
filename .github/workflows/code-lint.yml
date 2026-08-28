@@ -84,3 +84,22 @@ jobs:
       # synthetic mount tables and fails if the copies drift apart.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
+
+  sync-scripts:
+    name: Test sync workflow scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Covers the network selection and L1 mapping the sync workflows depend on; both
+      # were production bugs, and nothing else exercises them without a multi-hour run.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/sync -p 'test*.py' -v

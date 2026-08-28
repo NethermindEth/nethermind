@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -284,6 +285,7 @@ public class HistoryPrunerTests
             Substitute.For<IBlockAccessListStore>(),
             specProvider,
             Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IHeaderStore>(),
             dbProvider,
             historyConfig,
             BlocksConfig,
@@ -291,6 +293,7 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
+            NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
 
         if (shouldThrow)
@@ -527,12 +530,150 @@ public class HistoryPrunerTests
         }
     }
 
-    private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain) => new(
+    [Test]
+    public async Task Cleanup_reclaims_a_height_a_bounded_slice_retained_once_its_window_has_moved_past_it()
+    {
+        const int blocks = 100;
+        const ulong retainedHeight = 10;
+
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        MutableRetention retention = new();
+        retention.Retained.Add(retainedHeight);
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+        Assert.That(testBlockchain.BlockTree.FindBlock(retainedHeight, BlockTreeLookupOptions.None), Is.Not.Null,
+            "while inside the slice window the height keeps its body");
+
+        retention.Retained.Clear();
+        retention.ExpiredUpperBound = 20;
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock(retainedHeight, BlockTreeLookupOptions.None), Is.Null,
+                "once the slice window has moved past it, the cleanup cursor reclaims what the main cursor never revisits");
+            IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+            Assert.That(metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor), Is.Not.Null,
+                "the cleanup cursor survives a restart or it re-tombstones the same ground forever");
+        }
+    }
+
+    [Test]
+    public async Task Sweep_lookup_falls_back_to_the_header_bloom_where_the_retention_cannot_answer()
+    {
+        const int blocks = 20;
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: blocks);
+
+        NeverAnsweringRetention retention = new(retainedHeight: 5);
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        pruner.TryPruneHistory(CancellationToken.None);
+        Func<ulong, bool> lookup = pruner.SweepRetentionLookup();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lookup(5), Is.True, "an unanswered height falls back to the header check instead of being retained wholesale");
+            Assert.That(lookup(6), Is.False, "an unanswered height the header check declines is swept, not kept forever");
+        }
+    }
+
+    private sealed class NeverAnsweringRetention(ulong retainedHeight) : IPrunedReceiptRetention
+    {
+        public bool ShouldRetainReceipts(BlockHeader header) => header.Number == retainedHeight;
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = fromInclusive;
+            return new HashSet<ulong>();
+        }
+    }
+
+    [Test]
+    public async Task Pruning_hands_the_retention_the_receipts_frontier_not_the_bodies_one()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
+
+        IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+
+        FrontierCapturingRetention retention = new();
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(retention.OldestStoredReceipts, Is.EqualTo(60UL),
+            "the stamp floor must follow the receipt backfill's own pointer, not the bodies frontier the delete pointer measures");
+    }
+
+    [Test]
+    public async Task Stamps_are_validated_on_the_first_call_after_startup_not_the_first_interval_boundary()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 1000 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, 100, syncPivot: 100);
+
+        IDb receiptsDefault = testBlockchain.Container.Resolve<IDbProvider>().ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
+        receiptsDefault.Set(Keccak.Zero, Rlp.Encode(60UL).Bytes);
+
+        FrontierCapturingRetention retention = new();
+        HistoryPruner pruner = NewPrunerOver(testBlockchain, retention);
+        _ = pruner.OldestBlockHeader;
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(retention.OldestStoredReceipts, Is.EqualTo(60UL),
+            "the read side refuses every sliced address until the stamps are validated, so this must run on the first tick even when another caller loaded the pointers first and no interval boundary has work");
+    }
+
+    private sealed class FrontierCapturingRetention : IPrunedReceiptRetention
+    {
+        public ulong OldestStoredReceipts;
+
+        public bool ShouldRetainReceipts(BlockHeader header) => false;
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = toExclusive;
+            return new HashSet<ulong>();
+        }
+
+        public void OnPruningPassStarting(ulong oldestStoredReceipts, ulong reclaimedThrough, ulong sliceCleanupThrough)
+            => OldestStoredReceipts = oldestStoredReceipts;
+    }
+
+    private sealed class MutableRetention : IPrunedReceiptRetention
+    {
+        public readonly HashSet<ulong> Retained = [];
+        public ulong ExpiredUpperBound;
+
+        public bool ShouldRetainReceipts(BlockHeader header) => Retained.Contains(header.Number);
+
+        public IReadOnlySet<ulong> RetainedHeights(ulong fromInclusive, ulong toExclusive, out ulong answeredFrom, out ulong answeredTo)
+        {
+            answeredFrom = fromInclusive;
+            answeredTo = toExclusive;
+            HashSet<ulong> answer = [];
+            foreach (ulong height in Retained)
+            {
+                if (height >= fromInclusive && height < toExclusive) answer.Add(height);
+            }
+
+            return answer;
+        }
+
+        public ulong ExpiredRetentionUpperBound() => ExpiredUpperBound;
+    }
+
+    private static HistoryPruner NewPrunerOver(BasicTestBlockchain testBlockchain, IPrunedReceiptRetention retention = null) => new(
         testBlockchain.Container.Resolve<IBlockTree>(),
         testBlockchain.Container.Resolve<IReceiptStorage>(),
         testBlockchain.Container.Resolve<IBlockAccessListStore>(),
         testBlockchain.Container.Resolve<ISpecProvider>(),
         testBlockchain.Container.Resolve<IChainLevelInfoRepository>(),
+        testBlockchain.Container.Resolve<IHeaderStore>(),
         testBlockchain.Container.Resolve<IDbProvider>(),
         testBlockchain.Container.Resolve<IHistoryConfig>(),
         testBlockchain.Container.Resolve<IBlocksConfig>(),
@@ -540,6 +681,7 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IProcessExitSource>(),
         testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
         testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
+        retention ?? testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
         LimboLogs.Instance);
 
     [Test]

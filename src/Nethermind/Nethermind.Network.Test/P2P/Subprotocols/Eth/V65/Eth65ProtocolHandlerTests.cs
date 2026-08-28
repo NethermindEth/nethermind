@@ -168,16 +168,65 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
-            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            int numberOfTxsInOneMsg = Math.Min(Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1), 256);
             _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            Hash256[] hashes = GenerateHashes(2048);
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
+        }
+
+        [Test]
+        public async Task should_serve_at_most_256_unique_pooled_transaction_hashes_per_request()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+
+            Hash256[] uniqueHashes = GenerateHashes(300);
+            Hash256[] hashes = new Hash256[uniqueHashes.Length * 2];
+            for (int i = 0; i < uniqueHashes.Length; i++)
+            {
+                hashes[i * 2] = uniqueHashes[i];
+                hashes[i * 2 + 1] = uniqueHashes[i];
+            }
+
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions.Count, Is.EqualTo(256));
+            _transactionPool.Received(256).TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+        }
+
+        [Test]
+        public async Task should_find_first_available_transaction_after_soft_request_limit()
+        {
+            Hash256[] hashes = GenerateHashes(257);
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    bool found = x.ArgAt<Hash256>(0) == hashes[^1];
+                    x[1] = found ? tx : null;
+                    return found;
+                });
+
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions, Has.Count.EqualTo(1));
+            Assert.That(response.Transactions[0], Is.SameAs(tx));
+            _transactionPool.Received(257).TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
         }
 
         [Test]
@@ -225,6 +274,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             }
 
             return txHashes;
+        }
+
+        private static Hash256[] GenerateHashes(int count)
+        {
+            Hash256[] hashes = new Hash256[count];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = new Hash256(i.ToString("X64"));
+            }
+
+            return hashes;
         }
 
         private void HandleIncomingStatusMessage()

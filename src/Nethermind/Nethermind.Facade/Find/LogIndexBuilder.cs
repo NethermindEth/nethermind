@@ -369,6 +369,15 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
+                    ulong lowestStored = _blockTree.GetLowestBlock();
+                    if (!isForward && (ulong)start < lowestStored)
+                    {
+                        if (_logger.IsDebug) _logger.Debug(
+                            $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
+                        MarkCompleted(isForward: false);
+                        return;
+                    }
+
                     // TODO: stop waiting immediately when receipts become available
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;

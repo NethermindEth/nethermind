@@ -799,6 +799,13 @@ namespace Nethermind.Blockchain
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
             => _blockStore.DeleteRange(fromInclusive, toExclusive);
 
+        /// <inheritdoc/>
+        public void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+            => _blockStore.DeleteRanges(ranges);
+
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
+            => _blockStore.Delete(blockNumber, blockHash);
+
         private void DeleteBlocks(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -944,14 +951,15 @@ namespace Nethermind.Blockchain
 
         public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         {
-            // The head itself must have a body to be moved onto the main chain (the walk below checks every
-            // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
-            if (!_blockStore.HasBlock(newHead.Number, newHead.Hash!))
+            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
+
+            // The head must have a body to be moved onto the main chain - preloaded by the caller or already in
+            // the store (the walk below checks every ancestor the same way). Fail fast here rather than throwing
+            // later when GetBlock can't load it.
+            if (!cache.TryGet(newHead.Hash!, out _) && !_blockStore.HasBlock(newHead.Number, newHead.Hash!))
             {
                 return false;
             }
-
-            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
             // Walk back from the new head, collecting the branch of headers down to the current main chain.
             // Only headers are loaded here, so this stays cheap regardless of reorg depth. A missing
