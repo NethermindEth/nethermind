@@ -232,13 +232,19 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
             Assert.That(poSSwitcher.GetBlockConsensusInfo(alternativeTerminalBlock.Header), Is.EqualTo((true, false)));
 
+            // A competing lower-difficulty branch crosses TTD one height later, so its own parent is still pre-TTD.
+            Block laterBranchParent = CreatePreTerminalBlock(4);
             Block laterTerminalBlock = Build.A.Block
                 .WithTotalDifficulty(5000000L)
-                .WithNumber(5)
-                .WithParent(blockTree.Head!)
+                .WithParent(laterBranchParent.Header)
                 .WithDifficulty(1000000L)
                 .TestObject;
-            Assert.That(poSSwitcher.GetBlockConsensusInfo(laterTerminalBlock.Header), Is.EqualTo((true, false)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(laterTerminalBlock.Number, Is.EqualTo(blockTree.Head!.Number + 1));
+                Assert.That(laterTerminalBlock.TotalDifficulty, Is.EqualTo(laterBranchParent.TotalDifficulty + laterTerminalBlock.Difficulty));
+                Assert.That(poSSwitcher.GetBlockConsensusInfo(laterTerminalBlock.Header), Is.EqualTo((true, false)));
+            }
         }
 
         [Test]
@@ -352,17 +358,23 @@ namespace Nethermind.Merge.Plugin.Test
         public void Best_suggested_header_is_not_durable_ttd_evidence()
         {
             TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            Block terminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
 
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+            // Suggested but not processed, so the candidate can still be invalidated or reorged away.
+            blockTree.SuggestBlock(terminalBlock);
 
-            blockTree.BestSuggestedHeader.Returns(CreateTerminalBlock(4).Header);
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(terminalBlock.Hash));
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+            }
 
-            blockTree.BestSuggestedHeader.Returns(CreatePreTerminalBlock(4).Header);
-            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+            blockTree.TryUpdateMainChain(terminalBlock.Header, true, preloadedBlocks: new[] { terminalBlock });
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
         }
 
         [Test]
@@ -387,6 +399,24 @@ namespace Nethermind.Merge.Plugin.Test
                 Assert.That(MatchesTerminalBlock(ReadTerminalMetadata(metadataDb), terminalBlock), Is.True);
                 Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock.Number + 1));
                 Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+            }
+        }
+
+        [Test]
+        public void Terminal_metadata_keys_are_persisted_in_a_single_write_batch()
+        {
+            using BatchTrackingTerminalMetadataDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), metadataDb, Substitute.For<IBlockTree>(), specProvider, new ChainSpec(), LimboLogs.Instance);
+
+            bool updated = poSSwitcher.TryUpdateTerminalBlock(CreateTerminalBlock(4).Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updated, Is.True);
+                Assert.That(metadataDb.WriteBatchCount, Is.EqualTo(1));
+                Assert.That(metadataDb.TerminalMetadataWritesInsideBatch, Is.EqualTo(2));
+                Assert.That(metadataDb.TerminalMetadataWritesOutsideBatch, Is.Zero);
             }
         }
 
@@ -579,6 +609,12 @@ namespace Nethermind.Merge.Plugin.Test
         private static Block CreatePostTerminalBlock(ulong number) =>
             Build.A.Block.WithNumber(number).WithTotalDifficulty(6000000L).WithDifficulty(1000000L).TestObject;
 
+        private static bool IsTerminalMetadataKey(ReadOnlySpan<byte> key) =>
+            IsTerminalNumberKey(key) || key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWHash;
+
+        private static bool IsTerminalNumberKey(ReadOnlySpan<byte> key) =>
+            key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWNumber;
+
         private static (ulong Number, Hash256? Hash) ReadTerminalMetadata(IDb metadataDb)
         {
             RlpReader persistedNumberReader = new(metadataDb.Get(MetadataDbKeys.TerminalPoWNumber));
@@ -656,12 +692,37 @@ namespace Nethermind.Merge.Plugin.Test
 
                 base.Set(key, value, flags);
             }
+        }
 
-            private static bool IsTerminalMetadataKey(ReadOnlySpan<byte> key) =>
-                IsTerminalNumberKey(key) || key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWHash;
+        private sealed class BatchTrackingTerminalMetadataDb : MemDb
+        {
+            private int _openBatches;
 
-            private static bool IsTerminalNumberKey(ReadOnlySpan<byte> key) =>
-                key.Length == 1 && key[0] == MetadataDbKeys.TerminalPoWNumber;
+            public int WriteBatchCount { get; private set; }
+
+            public int TerminalMetadataWritesInsideBatch { get; private set; }
+
+            public int TerminalMetadataWritesOutsideBatch { get; private set; }
+
+            public override IWriteBatch StartWriteBatch()
+            {
+                WriteBatchCount++;
+                _openBatches++;
+                return new FakeWriteBatch(this, () => _openBatches--);
+            }
+
+            public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                if (IsTerminalMetadataKey(key))
+                {
+                    if (_openBatches > 0)
+                        TerminalMetadataWritesInsideBatch++;
+                    else
+                        TerminalMetadataWritesOutsideBatch++;
+                }
+
+                base.Set(key, value, flags);
+            }
         }
 
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
