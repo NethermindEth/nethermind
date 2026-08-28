@@ -249,8 +249,8 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
     }
 
     /// <summary>Only a stamp this process has validated counts: a record on disk may predate a config change
-    /// whose lapse only the next pruning pass can detect, so until <see cref="OnPruningPassStarting"/> has run,
-    /// every address refuses - that costs minutes, not correctness.</summary>
+    /// whose lapse only the next pruning pass can detect, so until <see cref="OnPruningPassStarting"/> has run -
+    /// one pruning tick after startup - every address refuses.</summary>
     private ulong StampedRetainedFrom(AddressAsKey address) =>
         _stampCache.TryGetValue(address, out ulong cached) ? cached : ulong.MaxValue;
 
