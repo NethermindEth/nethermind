@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -154,18 +154,15 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase maxTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
                 maxTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 maxTransactionsSelected.BaseFee = 1;
-                maxTransactionsSelected.Transactions.ForEach(static tx =>
-                {
-                    tx.Type = TxType.Blob;
-                    tx.BlobVersionedHashes = new byte[1][];
-                    tx.MaxFeePerBlobGas = 1;
-                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
-                });
-                maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
-                maxTransactionsSelected.Transactions[1].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[5][], new byte[5][], new byte[5][], ProofVersion.V0);
-                maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    maxTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).Take(2));
+                int maxBlobCount = checked((int)maxTransactionsSelected.ReleaseSpec.MaxBlobCount);
+                maxTransactionsSelected.Transactions =
+                [
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 3),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: maxBlobCount - 1, nonce: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 2),
+                ];
+                maxTransactionsSelected.ExpectedSelectedTransactions.Add(maxTransactionsSelected.Transactions[1]);
+                maxTransactionsSelected.ExpectedSelectedTransactions.Add(maxTransactionsSelected.Transactions[2]);
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
 
                 ProperTransactionsSelectedTestCase enoughTransactionsSelected =
@@ -173,24 +170,21 @@ namespace Nethermind.Blockchain.Test
                 enoughTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 enoughTransactionsSelected.BaseFee = 1;
 
-                ulong maxBlobCount = enoughTransactionsSelected.ReleaseSpec.MaxBlobCount;
-                Transaction[] expectedSelectedTransactions =
-                    enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
-                expectedSelectedTransactions[0].Type = TxType.Blob;
-                expectedSelectedTransactions[0].BlobVersionedHashes = new byte[maxBlobCount][];
-                expectedSelectedTransactions[0].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[maxBlobCount][], new byte[maxBlobCount][], new byte[maxBlobCount][], ProofVersion.V0);
-                expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
-                expectedSelectedTransactions[1].Type = TxType.Blob;
-                expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
-                expectedSelectedTransactions[1].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
-                expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
-                enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    expectedSelectedTransactions.Where(static (_, index) => index != 1));
+                int fullBlockBlobCount = checked((int)enoughTransactionsSelected.ReleaseSpec.MaxBlobCount);
+                Transaction regularTransactionAfterBlobGap = enoughTransactionsSelected.Transactions[0];
+                enoughTransactionsSelected.Transactions =
+                [
+                    regularTransactionAfterBlobGap,
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: fullBlockBlobCount, nonce: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 2),
+                ];
+                enoughTransactionsSelected.ExpectedSelectedTransactions.Add(enoughTransactionsSelected.Transactions[1]);
+                enoughTransactionsSelected.ExpectedSelectedTransactions.Add(regularTransactionAfterBlobGap);
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
                     "Enough shard blob transactions and others selected");
 
                 ProperTransactionsSelectedTestCase higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
-                IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> accounts = higherPriorityTransactionsSelected.AccountStates;
+                IDictionary<Address, (UInt256 Balance, ulong Nonce)> accounts = higherPriorityTransactionsSelected.AccountStates;
                 accounts[TestItem.AddressA] = (1000, 0);
                 accounts[TestItem.AddressB] = (1000, 0);
                 accounts[TestItem.AddressC] = (1000, 0);
@@ -231,7 +225,7 @@ namespace Nethermind.Blockchain.Test
             => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
 
         private static Transaction CreateBlobTransaction(
-            Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1) =>
+            Address address, PrivateKey key, UInt256 maxFee, int blobCount, ulong nonce, uint priority = 1) =>
             Build.A.Transaction
                 .WithSenderAddress(address)
                 .WithShardBlobTxTypeAndFields(blobCount)
@@ -255,7 +249,7 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce = 1;
+                    ulong nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
                     AddTxs(txCount: 7, blobsPerTx: 1, account: 0, txs, ref nonce);
 
@@ -269,7 +263,7 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce = 1;
+                    ulong nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
                     AddTxs(txCount: 1, blobsPerTx: 2, account: 0, txs, ref nonce);
                     AddTxs(txCount: 5, blobsPerTx: 1, account: 0, txs, ref nonce);
@@ -284,7 +278,7 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce = 1;
+                    ulong nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);
                     nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 1, account: 1, txs, ref nonce);
@@ -300,9 +294,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce0);
-                    UInt256 nonce1 = 2;
+                    ulong nonce1 = 2;
                     AddTxs(txCount: 5, blobsPerTx: 3, account: 1, txs, ref nonce1);
                     AddTxs(txCount: 5, blobsPerTx: 1, account: 0, txs, ref nonce0);
 
@@ -316,9 +310,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 5, blobsPerTx: 4, account: 1, txs, ref nonce1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0);
 
@@ -333,9 +327,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 2, account: 0, txs, ref nonce0, priority: 1);
 
@@ -349,9 +343,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
 
@@ -365,10 +359,10 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 2, blobsPerTx: 2, account: 1, txs, ref nonce1, priority: 1);
 
                     blobTxs.Transactions = txs;
@@ -381,9 +375,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 2, blobsPerTx: 2, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 1, txs, ref nonce1, priority: 1);
 
@@ -397,9 +391,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
 
@@ -414,9 +408,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 1, txs, ref nonce1, priority: 1);
 
@@ -429,9 +423,9 @@ namespace Nethermind.Blockchain.Test
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
                     List<Transaction> txs = [];
 
-                    UInt256 nonce1 = 1;
+                    ulong nonce1 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 1, txs, ref nonce1, priority: 1);
-                    UInt256 nonce0 = 1;
+                    ulong nonce0 = 1;
                     AddTxs(txCount: 1, blobsPerTx: 5, account: 0, txs, ref nonce0, priority: 1);
                     AddTxs(txCount: 3, blobsPerTx: 1, account: 0, txs, ref nonce0, priority: 1);
 
@@ -444,7 +438,7 @@ namespace Nethermind.Blockchain.Test
                 static ProperTransactionsSelectedTestCase CreateTestCase()
                 {
                     ProperTransactionsSelectedTestCase higherPriorityTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
-                    IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> accounts = higherPriorityTransactionsSelected.AccountStates;
+                    IDictionary<Address, (UInt256 Balance, ulong Nonce)> accounts = higherPriorityTransactionsSelected.AccountStates;
                     accounts[TestItem.AddressA] = (1000000, 0);
                     accounts[TestItem.AddressB] = (1000000, 0);
                     higherPriorityTransactionsSelected.ReleaseSpec = Cancun.Instance;
@@ -452,7 +446,7 @@ namespace Nethermind.Blockchain.Test
                     return higherPriorityTransactionsSelected;
                 }
 
-                void AddTxs(int txCount, int blobsPerTx, int account, List<Transaction> txs, ref UInt256 nonce, int priority = -1)
+                void AddTxs(int txCount, int blobsPerTx, int account, List<Transaction> txs, ref ulong nonce, int priority = -1)
                 {
                     (Address address, PrivateKey key) eoa = accounts[account];
                     for (int i = 0; i < txCount; i++)
@@ -514,11 +508,11 @@ namespace Nethermind.Blockchain.Test
 
                 using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
-                foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
+                foreach (KeyValuePair<Address, (UInt256 Balance, ulong Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
                     stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                    for (int i = 0; i < accountState.Value.Nonce; i++)
+                    for (ulong i = 0; i < accountState.Value.Nonce; i++)
                     {
                         stateProvider.IncrementNonce(accountState.Key);
                     }
@@ -585,11 +579,11 @@ namespace Nethermind.Blockchain.Test
 
         public class ProperTransactionsSelectedTestCase
         {
-            public IDictionary<Address, (UInt256 Balance, UInt256 Nonce)> AccountStates { get; } =
-                new Dictionary<Address, (UInt256 Balance, UInt256 Nonce)>();
+            public IDictionary<Address, (UInt256 Balance, ulong Nonce)> AccountStates { get; } =
+                new Dictionary<Address, (UInt256 Balance, ulong Nonce)>();
 
             public List<Transaction> Transactions { get; set; } = [];
-            public long GasLimit { get; set; }
+            public ulong GasLimit { get; set; }
             public List<Transaction> ExpectedSelectedTransactions { get; } = [];
             public UInt256 MinGasPriceForMining { get; set; } = 1;
 

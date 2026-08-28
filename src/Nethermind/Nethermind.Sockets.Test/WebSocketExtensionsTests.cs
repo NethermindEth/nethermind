@@ -155,9 +155,12 @@ public class WebSocketExtensionsTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
 
-        Assert.That(Metrics.JsonRpcBytesReceivedWebSockets - receivedBefore, Is.EqualTo(1024));
-        Assert.That(Metrics.JsonRpcBytesSentWebSockets - sentBefore, Is.EqualTo(mock.SentBytes));
-        Assert.That(mock.SentEndMessages, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.JsonRpcBytesReceivedWebSockets - receivedBefore, Is.EqualTo(1024));
+            Assert.That(Metrics.JsonRpcBytesSentWebSockets - sentBefore, Is.EqualTo(mock.SentBytes));
+            Assert.That(mock.SentEndMessages, Is.EqualTo(2));
+        }
         localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
         localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
         localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
@@ -256,7 +259,10 @@ public class WebSocketExtensionsTests
     [Test]
     public void Correct_isnull_on_result()
     {
-        Assert.That(new ReceiveResult().IsNull, Is.False);
-        Assert.That(default(ReceiveResult).IsNull, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ReceiveResult().IsNull, Is.False);
+            Assert.That(default(ReceiveResult).IsNull, Is.True);
+        }
     }
 }

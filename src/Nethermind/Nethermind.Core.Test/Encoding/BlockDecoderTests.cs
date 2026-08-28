@@ -3,14 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -23,17 +21,17 @@ public class BlockDecoderTests
     private static Block[] BuildScenarios()
     {
         Transaction[] transactions = new Transaction[100];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithData(new byte[] { (byte)i })
-                .WithNonce((UInt256)i)
+                .WithData([(byte)i])
+                .WithNonce(i)
                 .WithValue((UInt256)i)
                 .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA, true)
                 .TestObject;
         }
 
-        BlockHeader[] uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[2];
 
         for (int i = 0; i < uncles.Length; i++)
         {
@@ -96,6 +94,21 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            // This scenario sets every optional tail field, with a distinct value per field. This makes the field comparisons discriminating.
+            Build.A.Block.WithNumber(1)
+                .WithBaseFeePerGas(3)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithBloom(new Bloom([Build.A.LogEntry.TestObject]))
+                .WithBlobGasUsed(1)
+                .WithExcessBlobGas(2)
+                .WithParentBeaconBlockRoot(TestItem.KeccakA)
+                .WithRequestsHash(TestItem.KeccakB)
+                .WithBlockAccessListHash(TestItem.KeccakC)
+                .WithSlotNumber(7)
+                .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         ];
     }
@@ -122,10 +135,32 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
 
         byte[] bytes = Bytes.FromHexString(regression5644);
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
-        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+
+        // An independent pyrlp decode of the fixed bytes produced the expected values.
+        // Only this test decodes canonical wire. Only these asserts can find a self-canceling encode/decode error.
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Transactions, Has.Length.EqualTo(1));
+        Transaction tx = decoded.Transactions[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+            Assert.That(decoded.Header.Number, Is.EqualTo(5644UL));
+            Assert.That(decoded.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(decoded.Header.Beneficiary, Is.EqualTo(Address.Zero));
+            Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000UL));
+            Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000UL));
+            Assert.That(decoded.Header.Timestamp, Is.EqualTo(1549034638UL));
+            Assert.That(decoded.Header.StateRoot, Is.EqualTo(new Hash256("0xfe77dd4ad7c2a3fa4c11868a00e4d728adcdfef8d2e3c13b256b06cbdbb02ec9")));
+            Assert.That(tx.Nonce, Is.EqualTo(0UL));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)1_000_000_000));
+            Assert.That(tx.GasLimit, Is.EqualTo(21_000UL));
+            Assert.That(tx.To, Is.EqualTo(new Address("0x22ea9f6b28db76a7162054c05ed812deb2f519cd")));
+            Assert.That(tx.Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
+            Assert.That(decoded.Uncles, Is.Empty);
+        }
     }
 
     [Test]
@@ -134,17 +169,61 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp encoded = decoder.Encode(block);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
-        Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
-    }
 
-    [TestCase("0xf902cef9025ba055870e2f3ef77a9e6163ee5c005dc51d648a2eead382b9044b1a5ad2ee69b0c6a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa0b77e3b74c6c8af85408677375183385a2e55446bd071bf193a4958f7417dc8fba056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800188016345785d8a0000800c80a0000000000000000000000000000000000000000000000000000000000000000088000000000000000007a0cc3b10b54dc4e97c01f1df20e8b95874cd5fe83bf6eae64935a16cb08db85fa98080a00000000000000000000000000000000000000000000000000000000000000000a0e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855c0c0f86ce08080946389e7f33ce3b1e94e4325ef02829cd12297ef7188ffffffffffffffffd80180948a0a19589531694250d570040a0c4b74576919b801d8028094000000000000000000000000000000000000100080d8038094a94f5374fce5edbc8e2a8697c15331677e6ebf0b80")]
-    [Ignore("The test is useful for debugging hive - shouldn't be executed on CI")]
-    public void Write_rlp_of_blocks_to_file(string rlp) =>
-        // the test is useful for debugging hive
-        File.WriteAllBytes("chains\\block1.rlp".GetApplicationResourcePath(), Bytes.FromHexString(rlp));
+        // A re-encode comparison cannot find a decode error that the matching encode hides. The field
+        // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
+        // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
+            // The hash pins the embedded header bytes against the standalone header encoding. It cannot find decode errors.
+            Assert.That(decoded.Hash, Is.EqualTo(block.Hash));
+
+            BlockHeader actual = decoded.Header;
+            BlockHeader expected = block.Header;
+            Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
+            Assert.That(actual.UnclesHash, Is.EqualTo(expected.UnclesHash));
+            Assert.That(actual.Beneficiary, Is.EqualTo(expected.Beneficiary));
+            Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
+            Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
+            Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
+            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
+            Assert.That(actual.Difficulty, Is.EqualTo(expected.Difficulty));
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+            Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
+            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
+            Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
+            Assert.That(actual.ExtraData, Is.EqualTo(expected.ExtraData));
+            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual.BaseFeePerGas, Is.EqualTo(expected.BaseFeePerGas));
+            Assert.That(actual.WithdrawalsRoot, Is.EqualTo(expected.WithdrawalsRoot));
+            Assert.That(actual.BlobGasUsed, Is.EqualTo(expected.BlobGasUsed));
+            Assert.That(actual.ExcessBlobGas, Is.EqualTo(expected.ExcessBlobGas));
+            Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
+            Assert.That(actual.ParentBeaconBlockRoot, Is.EqualTo(expected.ParentBeaconBlockRoot));
+            Assert.That(actual.RequestsHash, Is.EqualTo(expected.RequestsHash));
+            Assert.That(actual.BlockAccessListHash, Is.EqualTo(expected.BlockAccessListHash));
+            Assert.That(actual.SlotNumber, Is.EqualTo(expected.SlotNumber));
+
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Assert.That(decoded.Transactions[i].Hash, Is.EqualTo(block.Transactions[i].Hash), $"transaction {i}");
+            }
+
+            for (int i = 0; i < block.Uncles.Length; i++)
+            {
+                Assert.That(decoded.Uncles[i].Hash, Is.EqualTo(block.Uncles[i].Hash), $"uncle {i}");
+            }
+
+            Assert.That(decoded.Withdrawals?.Length, Is.EqualTo(block.Withdrawals?.Length));
+        }
+    }
 
     [Test]
     public void Encode_with_pre_encoded_transactions_produces_same_rlp(
@@ -201,6 +280,92 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Receipt_recovery_hashes_encoded_legacy_and_typed_transactions_without_decoding()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(transactions)
+            .WithWithdrawals(2)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithMixHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(block).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1)
+            .Signed()
+            .TestObject;
+        Hash256 expectedHash = transaction.CalculateHash();
+        transaction.Hash = null;
+        ReceiptRecoveryBlock recovery = new(Build.A.Block.WithTransactions(transaction).TestObject);
+        Hash256 actualHash = recovery.GetNextTransactionHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualHash, Is.EqualTo(expectedHash));
+            Assert.That(transaction.Hash, Is.EqualTo(expectedHash), "the calculated hash should be cached on the transaction");
+        }
+    }
+
+    public static byte[][] MalformedRecoveryTransactions =
+    [
+        [],
+        [0xc0],
+        [0x80],
+        [0x01],
+        [0x81, 0x01],
+        [0x82, 0x00, 0xc0],
+        [0x82, 0x80, 0xc0],
+        [0x82, 0x01],
+        [0xc2, 0x80],
+        [0xb8, 0x38],
+        [0xb8, 0x01, 0x01],
+    ];
+
+    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    {
+        ReceiptRecoveryBlock recovery = new(
+            null,
+            Build.A.BlockHeader.TestObject,
+            transactionData,
+            transactionCount: 1);
+
+        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+    }
+
+    [Test]
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
@@ -224,7 +389,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
         Assert.Throws<RlpException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(input);
+            RlpReader ctx = new(input);
             decoder.Decode(ref ctx);
         });
     }

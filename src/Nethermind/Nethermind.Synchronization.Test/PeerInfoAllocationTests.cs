@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Test
             return headers;
         }
 
-        private static PeerInfo SetupPeerInfo(string versionString, long headNumber, byte protocolVersion, int port)
+        private static PeerInfo SetupPeerInfo(string versionString, ulong headNumber, byte protocolVersion, int port)
         {
             ISyncPeer peer = SetupSyncPeer(versionString);
             peer.Node.Returns(new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", port));

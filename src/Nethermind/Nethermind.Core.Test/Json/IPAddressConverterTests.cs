@@ -29,8 +29,11 @@ public class IPAddressConverterTests
         string json = JsonSerializer.Serialize<IPAddress?>(null, Options);
         IPAddress? result = JsonSerializer.Deserialize<IPAddress?>(json, Options);
 
-        Assert.That(json, Is.EqualTo("null"));
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("null"));
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]

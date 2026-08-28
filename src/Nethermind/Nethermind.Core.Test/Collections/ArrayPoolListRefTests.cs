@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
@@ -15,9 +16,12 @@ public class ArrayPoolListRefTests
     public void Empty_list()
     {
         using ArrayPoolListRef<int> list = new(1024);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -46,9 +50,12 @@ public class ArrayPoolListRefTests
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, 50)));
-        Assert.That(list.Count, Is.EqualTo(50));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, 50)));
+            Assert.That(list.Count, Is.EqualTo(50));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [Test]
@@ -57,9 +64,12 @@ public class ArrayPoolListRefTests
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Clear();
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [TestCase(0, ExpectedResult = true)]
@@ -131,8 +141,11 @@ public class ArrayPoolListRefTests
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
-        Assert.That(list.Remove(item), Is.EqualTo(removed));
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Remove(item), Is.EqualTo(removed));
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
+        }
     }
 
     [TestCase(0, new[] { 1, 2, 3, 4, 5, 6, 7 })]
@@ -251,8 +264,25 @@ public class ArrayPoolListRefTests
     {
         using ArrayPoolListRef<int> list = new(16, 0, 1);
         list.AddRange(Enumerable.Range(2, items));
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, items + 2)));
-        Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, items + 2)));
+            Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+        }
+    }
+
+    [Test]
+    public void AddRange_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a List<T>, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolListRef<int> list = new(source.Count);
+        list.AddRange(source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.ToArray(), Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
+        }
     }
 
     [Test]

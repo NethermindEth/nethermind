@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -19,7 +20,7 @@ public class TrieNodeCacheTests
     [SetUp]
     public void SetUp()
     {
-        _config = new FlatDbConfig { TrieCacheMemoryBudget = 1024 * 1024 };
+        _config = new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB };
         _cache = new TrieNodeCache(_config, LimboLogs.Instance);
         _resourcePool = new ResourcePool(_config);
     }
@@ -228,18 +229,19 @@ public class TrieNodeCacheTests
     {
         Hash256 address1 = new("0x1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 address2 = new("0x2000000000000000000000000000000000000000000000000000000000000000");
-        TreePath path = TreePath.FromHexString("abcd");
+        TreePath path1 = TreePath.FromHexString("1000");
+        TreePath path2 = TreePath.FromHexString("2000");
         Hash256 hash1 = Keccak.Compute([1]);
         Hash256 hash2 = Keccak.Compute([2]);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(address2, in path, new TrieNode(NodeType.Leaf, hash2));
+        transientResource.Nodes.Set(address1, in path1, new TrieNode(NodeType.Leaf, hash1));
+        transientResource.Nodes.Set(address2, in path2, new TrieNode(NodeType.Leaf, hash2));
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(address1, in path, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(address2, in path, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(address1, in path1, hash1, out _), Is.True);
+        Assert.That(_cache.TryGet(address2, in path2, hash2, out _), Is.True);
     }
 
     [Test]

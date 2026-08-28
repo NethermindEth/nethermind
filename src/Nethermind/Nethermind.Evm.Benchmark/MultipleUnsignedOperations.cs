@@ -91,7 +91,7 @@ public class MultipleUnsignedOperations
             inputData: default
         );
 
-        _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(100_000_000L), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+        _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(100_000_000UL), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
     }
 
     [GlobalCleanup]
@@ -99,7 +99,7 @@ public class MultipleUnsignedOperations
     {
         _evmState.Dispose();
         _environment.Dispose();
-        _stateScope?.Dispose();
+        _stateScope.Dispose();
     }
 
     [Benchmark]

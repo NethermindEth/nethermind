@@ -108,7 +108,7 @@ public class SszMultiSegmentDecodeTests
         BitConverter.TryWriteBytes(encoded.AsSpan(0, 8), startVal);
         BitConverter.TryWriteBytes(encoded.AsSpan(8, 8), countVal);
 
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
+        (ulong start, ulong count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
 
         Assert.That(start, Is.EqualTo((long)startVal));
         Assert.That(count, Is.EqualTo((long)countVal));
@@ -118,13 +118,11 @@ public class SszMultiSegmentDecodeTests
     public void NewPayloadV3RequestWire_decodes_correctly_across_segments(int segSize)
     {
         // The most schema-rich path: nested struct (SszExecutionPayloadV3 with
-        // variable transactions/withdrawals lists) + a list of fixed Hash256 + a
-        // trailing fixed Hash256. Exercises offset reads, recursive Decode, and
-        // multi-segment primitive reads in roughly that order.
+        // variable transactions/withdrawals lists) + a trailing fixed Hash256.
+        // Exercises offset reads, recursive Decode, and multi-segment primitive reads.
         NewPayloadV3RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV3(SszTestData.MakeV3Payload()),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
         };
         byte[] encoded = NewPayloadV3RequestWire.Encode(wire);
@@ -132,10 +130,6 @@ public class SszMultiSegmentDecodeTests
         NewPayloadV3RequestWire.Decode(Multi(encoded, segSize), out NewPayloadV3RequestWire decoded);
 
         Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakC));
-        Assert.That(decoded.ExpectedBlobVersionedHashes, Is.Not.Null);
-        Assert.That(decoded.ExpectedBlobVersionedHashes!.Length, Is.EqualTo(2));
-        Assert.That(decoded.ExpectedBlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA));
-        Assert.That(decoded.ExpectedBlobVersionedHashes[1], Is.EqualTo(TestItem.KeccakB));
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
         Assert.That(payload.BlockNumber, Is.EqualTo(100));
         Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));

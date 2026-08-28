@@ -6,11 +6,17 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:acee0ec11a2bb2199e941380ae0336caa429cdea@sha256:ede3b4bc5f751e0acb21341bc6a75b2ac4a0bfa49a89f91f99d8a450364f04a1
+ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
+# ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
+# the guest - fail at build time instead.
+ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
   -r {std}/System.Memory.dll \
   -r {std}/System.Runtime.dll \
+  -r {std}/System.Runtime.InteropServices.dll \
   -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
@@ -43,14 +49,16 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:e2d315d20de25edcd4ec8ef2da91647ff0671db1 \
+		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
+		--substitution $(SRC_DIR)/substitutions.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
+		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
@@ -59,7 +67,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:0.18.0 \
+		$(ZISK_IMAGE) \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run

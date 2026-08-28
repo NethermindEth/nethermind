@@ -16,7 +16,7 @@ namespace Nethermind.Core.Crypto;
 /// <summary>
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
-/// It allocates only 16MB of memory to store 128k of entries.
+/// It allocates only 64MB of memory to store 512k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
 /// Uses seqlock pattern for lock-free reads: read sequence, speculatively read data, verify sequence unchanged.
 /// Requires a single CAS to lock on writes and <see cref="Volatile.Write(ref int,int)"/> to unlock.
@@ -29,7 +29,7 @@ public static unsafe class KeccakCache
     /// </summary>
     public const nuint Count = BucketMask + 1;
 
-    private const int BucketMask = 0x0001_FFFF;
+    private const int BucketMask = 0x0007_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
     private const uint LockMarker = 0x0000_8000;
     private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
@@ -40,39 +40,37 @@ public static unsafe class KeccakCache
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
 
-#if ZK_EVM
-    // zkEVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
-    private static readonly byte[] ManagedBuffer;
-    private static readonly GCHandle ManagedHandle;
-#endif
+#if !ZK_EVM
     private static readonly Entry* Memory;
 
     static KeccakCache()
     {
         const nuint size = Count * Entry.Size;
 
-#if ZK_EVM
-        ManagedBuffer = GC.AllocateArray<byte>((int)size, pinned: true);
-        ManagedHandle = GCHandle.Alloc(ManagedBuffer, GCHandleType.Pinned);
-        Memory = (Entry*)ManagedHandle.AddrOfPinnedObject();
-#else
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
         Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(Memory, size);
         GC.AddMemoryPressure((long)size);
-#endif
     }
+#endif
 
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
+#if ZK_EVM
+        return input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#else
         ComputeTo(input, out ValueHash256 keccak256);
         return keccak256;
+#endif
     }
 
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
+#if ZK_EVM
+        keccak256 = input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#else
         // Special cases jump forward as unpredicted
         if (input.Length is 0 or > Entry.MaxPayloadLength)
         {
@@ -207,6 +205,7 @@ public static unsafe class KeccakCache
 
     Uncommon:
         keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#endif
     }
 
     /// <summary>

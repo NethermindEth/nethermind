@@ -20,13 +20,15 @@ public class CompositeNodeSource : INodeSource, IDisposable
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken feedToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
 
         using ArrayPoolList<Task> feedTasks = _nodeSources.Select(async innerSource =>
         {
-            await foreach (Node node in innerSource.DiscoverNodes(cancellationToken))
+            await foreach (Node node in innerSource.DiscoverNodes(feedToken))
             {
-                await ch.Writer.WriteAsync(node, cancellationToken);
+                await ch.Writer.WriteAsync(node, feedToken);
             }
         }).ToPooledList(_nodeSources.Length * 16);
 
@@ -39,7 +41,15 @@ public class CompositeNodeSource : INodeSource, IDisposable
         }
         finally
         {
-            await Task.WhenAll(feedTasks.AsSpan());
+            await disposeCts.CancelAsync();
+            ch.Writer.TryComplete();
+            try
+            {
+                await Task.WhenAll(feedTasks.AsSpan());
+            }
+            catch (OperationCanceledException) when (feedToken.IsCancellationRequested)
+            {
+            }
         }
     }
 

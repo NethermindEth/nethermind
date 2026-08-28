@@ -3,6 +3,8 @@
 
 using System.Net;
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Monitoring.Config;
@@ -19,7 +21,8 @@ namespace Nethermind.HealthChecks.Test
 
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
             byte[] ip = { 1, 2, 3, 4 };
-            ipResolver.ExternalIp.Returns(new IPAddress(ip));
+            ipResolver.Resolve(Arg.Any<CancellationToken>())
+                .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, new IPAddress(ip))));
 
             IMetricsConfig metricsConfig = new MetricsConfig() { NodeName = "nodeName" };
 

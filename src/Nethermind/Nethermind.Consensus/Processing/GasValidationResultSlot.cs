@@ -6,14 +6,12 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
-using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Consensus.Processing;
 
 public readonly record struct GasValidationResult(
-    long BlockGasUsed,
-    long BlockStateGasUsed,
-    IntrinsicGas<EthereumGasPolicy> IntrinsicGas,
+    ulong BlockGasUsed,
+    ulong BlockStateGasUsed,
     InvalidBlockException? Exception);
 
 public sealed class GasValidationResultSlot

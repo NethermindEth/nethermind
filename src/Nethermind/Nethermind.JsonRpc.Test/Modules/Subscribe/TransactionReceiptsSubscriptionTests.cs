@@ -139,7 +139,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
@@ -153,21 +153,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain(subscriptionId));
-            Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain(subscriptionId));
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain(subscriptionId));
-            Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain(subscriptionId));
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_single_hash_filter()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
@@ -193,7 +196,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_multiple_hashes_filter()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
@@ -210,19 +213,22 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_non_matching_hashes()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
@@ -244,7 +250,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_partial_match()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionHashesFilter filter = new()
@@ -271,7 +277,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_receipt_includes_all_fields()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).WithHash(TestItem.KeccakF).WithTimestamp(1000000).TestObject;
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
@@ -294,23 +300,26 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             Assert.That(result.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(result.Response);
 
-            Assert.That(serialized, Does.Contain("transactionHash"));
-            Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
-            Assert.That(serialized, Does.Contain("blockHash"));
-            Assert.That(serialized, Does.Contain(TestItem.KeccakF.ToString()));
-            Assert.That(serialized, Does.Contain("blockNumber"));
-            Assert.That(serialized, Does.Contain("0xd903")); // 55555 in hex
-            Assert.That(serialized, Does.Contain("transactionIndex"));
-            Assert.That(serialized, Does.Contain("0x5")); // index 5
-            Assert.That(serialized, Does.Contain("logs"));
-            Assert.That(serialized, Does.Contain("status"));
-            Assert.That(serialized, Does.Contain("0x1")); // status code 1
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("transactionHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+                Assert.That(serialized, Does.Contain("blockHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakF.ToString()));
+                Assert.That(serialized, Does.Contain("blockNumber"));
+                Assert.That(serialized, Does.Contain("0xd903")); // 55555 in hex
+                Assert.That(serialized, Does.Contain("transactionIndex"));
+                Assert.That(serialized, Does.Contain("0x5")); // index 5
+                Assert.That(serialized, Does.Contain("logs"));
+                Assert.That(serialized, Does.Contain("status"));
+                Assert.That(serialized, Does.Contain("0x1")); // status code 1
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_logs_have_correct_indices()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             LogEntry log1 = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
@@ -325,22 +334,25 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            // First receipt should have logs with indices 0 and 1
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
-            Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
+                // First receipt should have logs with indices 0 and 1
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
 
-            // Second receipt should have log with index 2 (cumulative)
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
+                // Second receipt should have log with index 2 (cumulative)
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
+            }
         }
 
         [Test]
         public void TransactionReceiptsSubscription_empty_block_no_notification()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt[] receipts = [];
@@ -354,7 +366,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_failed_tx_still_delivered()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt receipt = Build.A.Receipt
@@ -379,7 +391,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_reorg_skipped()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TxReceipt receipt = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakA).WithIndex(0).TestObject;
@@ -395,7 +407,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         [Test]
         public void TransactionReceiptsSubscription_dispose_stops_delivery()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
             TransactionReceiptsSubscription subscription = new(

@@ -17,7 +17,7 @@ public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBloc
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV1Handler));
 
-    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(ulong start, ulong count)
     {
         if (start < 1 || count < 1)
         {
@@ -36,14 +36,14 @@ public sealed class GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, IBloc
         return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));
     }
 
-    private PayloadBodiesV1DirectResponse GetRequests(long start, long count)
+    private PayloadBodiesV1DirectResponse GetRequests(ulong start, ulong count)
     {
-        long headNumber = blockTree.Head?.Number ?? 0;
-        long end = Math.Min(start + count - 1, headNumber);
+        ulong headNumber = blockTree.Head?.Number ?? 0UL;
+        ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV1DirectResponse(Array.Empty<PayloadBodiesV1DirectResponse.PayloadBody?>());
 
         PayloadBodiesV1DirectResponse.PayloadBody?[] results = new PayloadBodiesV1DirectResponse.PayloadBody?[end - start + 1];
-        for (long i = start; i <= end; i++)
+        for (ulong i = start; i <= end; i++)
         {
             results[i - start] = PayloadBodiesHandlerHelper.CreatePayloadBodyV1(
                 blockStore,

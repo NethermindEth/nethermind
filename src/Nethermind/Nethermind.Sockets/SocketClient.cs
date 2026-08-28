@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Sockets;
@@ -18,7 +19,7 @@ public class SocketClient<TStream>(
     : ISocketsClient
     where TStream : Stream, IMessageBorderPreservingStream
 {
-    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * 1024 * 1024;
+    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * MemorySizes.MiB;
 
     protected readonly TStream _stream = stream;
     protected readonly IJsonSerializer _jsonSerializer = jsonSerializer;

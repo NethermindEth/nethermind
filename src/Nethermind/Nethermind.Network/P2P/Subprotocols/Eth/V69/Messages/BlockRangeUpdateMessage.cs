@@ -18,12 +18,12 @@ public class BlockRangeUpdateMessage : P2PMessage
     /// <summary>
     /// Number of the earliest available full block.
     /// </summary>
-    public long EarliestBlock { get; set; }
+    public ulong EarliestBlock { get; set; }
 
     /// <summary>
     /// Number of the latest available full block number.
     /// </summary>
-    public long LatestBlock { get; set; }
+    public ulong LatestBlock { get; set; }
 
     /// <summary>
     /// Hash of the latest available full block.

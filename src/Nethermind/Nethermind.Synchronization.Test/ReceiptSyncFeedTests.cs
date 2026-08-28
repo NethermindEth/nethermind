@@ -51,7 +51,7 @@ public class ReceiptSyncFeedTests
         _syncingToBlockTree = Build.A.BlockTree()
             .TestObject;
 
-        for (int i = 1; i < 100; i++)
+        for (ulong i = 1; i < 100; i++)
         {
             Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);

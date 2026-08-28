@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Utilities;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Benchmarks
 {
@@ -361,7 +362,7 @@ namespace Nethermind.Network.Benchmarks
         public int MaxWritableBytes { get; } = int.MaxValue;
         public int IoBufferCount { get; }
         public bool HasArray { get; }
-        public byte[] Array { get; } = new byte[1024 * 1024];
+        public byte[] Array { get; } = new byte[MemorySizes.MiB];
         public bool HasMemoryAddress { get; }
         public int ArrayOffset { get; }
     }

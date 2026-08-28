@@ -41,6 +41,22 @@ public class GenesisBuilderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_load_plataberget_genesis()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json");
+        ChainSpec chainSpec = LoadChainSpec(path);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        GenesisBuilder genesisBuilder = new(chainSpec, specProvider, stateProvider, transactionProcessor);
+
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        Block block = genesisBuilder.Build();
+
+        Assert.That(block.Hash!.ToString(), Is.EqualTo("0xee33ef92bbabcf07bcf44fea1d18a7925c5f7f9da8f81334ea19b0f3cb892b31"));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Remove_ChainSpecAllocation_AfterPostProcessor()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");

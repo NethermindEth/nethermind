@@ -29,8 +29,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
-        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
+        internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
+        internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -40,7 +41,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
@@ -110,7 +111,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -149,15 +150,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            Hash256? requestedHash = hash ?? _remoteHeadBlockHash;
+            if (requestedHash is null) return null;
+
             GetBlockHeadersMessage msg = new();
-            msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
+            msg.StartBlockHash = requestedHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
 
             using IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            return headersSpan.Length > 0 ? headersSpan[0] : null;
+
+            // A peer without the block answers with an empty list, or with an item that decodes to a null header.
+            BlockHeader? header = headersSpan.Length == 0 ? null : headersSpan[0];
+            if (header is null) return null;
+
+            if (header.Hash != requestedHash)
+            {
+                Disconnect(DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");
+                return null;
+            }
+
+            return header;
         }
 
         async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
@@ -183,11 +198,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        private bool ShouldNotifyTransaction(Hash256? hash) => hash is not null && NotifiedTransactions.Set(hash.ValueHash256);
+        private bool ShouldNotifyTransaction(Transaction tx, bool sendFullTx)
+            => sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx));
+
+        protected virtual bool ShouldNotifyTransactionCore(Transaction tx)
+            => NotifiedTransactions.Set(tx.Hash!.ValueHash256);
 
         public void SendNewTransaction(Transaction tx)
         {
-            if (ShouldNotifyTransaction(tx.Hash))
+            if (ShouldNotifyTransaction(tx, sendFullTx: false))
             {
                 SendNewTransactionCore(tx);
             }
@@ -207,7 +226,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             foreach (Transaction tx in txs)
             {
-                if (sendFullTx || ShouldNotifyTransaction(tx.Hash))
+                if (ShouldNotifyTransaction(tx, sendFullTx))
                 {
                     yield return tx;
                 }
@@ -341,14 +360,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     continue;
                 }
 
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+                ulong blockSize = MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                // Cap the message size; return the prefix (bodies match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingBodiesMessageSizeLimit)
                 {
                     break;
                 }
 
                 blocks.Add(block);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));

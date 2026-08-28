@@ -51,7 +51,7 @@ public interface ISyncConfig : IConfig
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    long PivotNumber { get; set; }
+    ulong PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
@@ -62,6 +62,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client. Set to `-1` to retry forever (recommended for nodes that may start before the consensus client is available).", DefaultValue = "-1")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Whether to snap-sync state for a fixed, pre-configured pivot (`PivotNumber`/`PivotHash`) served by a peer sitting at that pivot, without requiring a live forkchoice head above the pivot. Used to clone the exact state root of a frozen source node. Requires `SnapSync` to be enabled and `PivotNumber`/`PivotHash` to be set.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool StaticSnapPivot { get; set; }
+
     [ConfigItem(Description = $$"""
         The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
@@ -71,10 +74,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBodiesBarrier { get; set; }
+    public ulong AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
+    public ulong AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -85,10 +88,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientReceiptsBarrier { get; set; }
+    public ulong AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public ulong AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = $$"""
         The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
@@ -100,10 +103,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBlockAccessListsBarrier { get; set; }
+    public ulong AncientBlockAccessListsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
+    public ulong AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
@@ -111,17 +114,23 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
-    [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
+    [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
+
+    [ConfigItem(Description = "The first block (inclusive) to verify/fix receipts for. When not set, defaults to the ancient receipts barrier, which depends on the pivot number; in that case the pivot number must be the same one used originally as it's the cut-off point.", DefaultValue = "null")]
+    public ulong? FixReceiptsStartingBlock { get; set; }
+
+    [ConfigItem(Description = "The last block (inclusive) to verify/fix receipts for. When not set, defaults to the chain head minus 2, to which it's always clamped.", DefaultValue = "null")]
+    public ulong? FixReceiptsLastBlock { get; set; }
 
     [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
     public bool FixTotalDifficulty { get; set; }
 
     [ConfigItem(Description = "The first block to recalculate the total difficulty for.", DefaultValue = "1")]
-    public long FixTotalDifficultyStartingBlock { get; set; }
+    public ulong FixTotalDifficultyStartingBlock { get; set; }
 
     [ConfigItem(Description = "The last block to recalculate the total difficulty for. If not specified, the best known block is used.\n", DefaultValue = "null")]
-    public long? FixTotalDifficultyLastBlock { get; set; }
+    public ulong? FixTotalDifficultyLastBlock { get; set; }
 
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }
@@ -155,7 +164,7 @@ public interface ISyncConfig : IConfig
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
-    int SnapServingMaxDepth { get; set; }
+    ulong SnapServingMaxDepth { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
     int SnapServingMaxPathsPerGroup { get; set; }
@@ -179,16 +188,16 @@ public interface ISyncConfig : IConfig
     bool VerifyTrieOnStateSyncFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
-    int StateMaxDistanceFromHead { get; set; }
+    ulong StateMaxDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
-    int StateMinDistanceFromHead { get; set; }
+    ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
     bool GCOnFeedFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
-    int HeaderStateDistance { get; set; }
+    ulong HeaderStateDistance { get; set; }
 
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }

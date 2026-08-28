@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
@@ -15,10 +14,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -29,21 +29,26 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), CreateBloomStorageFileStoreFactory)
-            .AddSingleton<IBloomStorage, BloomStorage>()
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
-            .AddSingleton<IBlockStore, BlockStore>()
+            .AddSingleton<IBlockStore, IDb, IHeaderDecoder, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
+            .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
-            .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
-            .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
+            .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder>(CreateBadBlockStore)
+            .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
+            .AddSingleton<IBlobCustodyTracker, BlobCustodyTracker>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
             )
-            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddSingleton<FullInfoReceiptFinder>()
+            .Bind<IReceiptFinder, FullInfoReceiptFinder>()
+            // Defaults to whatever the unkeyed finder is (not FullInfoReceiptFinder directly), so an override of
+            // IReceiptFinder — a plugin's or a test's — propagates here. With derivation on,
+            // ReceiptRegenerationModule replaces this registration with a wrapper around the same unkeyed finder.
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
@@ -77,18 +82,25 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         }
     }
 
-    private IFileStoreFactory CreateBloomStorageFileStoreFactory(IComponentContext ctx)
+    // Activate the DBs the writer targets before the writer itself, so Autofac's reverse-activation-order
+    // disposal drains the writer (flushing queued writes) before it closes those DBs.
+    private IDeferredBlockDataWriter CreateDeferredWriter(IComponentContext ctx)
     {
-        IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-        return initConfig.DiagnosticMode == DiagnosticMode.MemDb
-            ? new InMemoryDictionaryFileStoreFactory()
-            : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom,
-                Bloom.ByteLength);
+        if (receiptConfig.DeferredPersistence)
+        {
+            ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+            ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
+            ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
+        }
+        return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
-        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
+    private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockStore(blocksDb, headerDecoder, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
-    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
-        new BlockAccessListStore(balDb);
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig, IHeaderDecoder headerDecoder) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100, headerDecoder);
+
+    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 }

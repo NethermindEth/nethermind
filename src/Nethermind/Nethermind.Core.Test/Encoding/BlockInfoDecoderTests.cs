@@ -45,11 +45,14 @@ public class BlockInfoDecoderTests
         Rlp rlp = Rlp.Encode(blockInfo);
         BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
 
-        Assert.That(decoded.WasProcessed, Is.True, "0 processed");
-        Assert.That((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, Is.True, "metadata finalized");
-        Assert.That((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, Is.True, "metadata invalid");
-        Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WasProcessed, Is.True, "0 processed");
+            Assert.That((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, Is.True, "metadata finalized");
+            Assert.That((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, Is.True, "metadata invalid");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
     }
 
     private static void RoundtripBackwardsCompatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
@@ -61,10 +64,13 @@ public class BlockInfoDecoderTests
         Rlp rlp = BlockInfoEncodeDeprecated(blockInfo, chainWithFinalization);
         BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
 
-        Assert.That(decoded.WasProcessed, Is.True, "0 processed");
-        Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
-        Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WasProcessed, Is.True, "0 processed");
+            Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
     }
 
     public static Rlp BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)
@@ -83,17 +89,18 @@ public class BlockInfoDecoderTests
             contentLength += Rlp.LengthOf(item.IsFinalized);
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(item.BlockHash);
-        stream.Encode(item.WasProcessed);
-        stream.Encode(item.TotalDifficulty);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(item.BlockHash);
+        writer.Encode(item.WasProcessed);
+        writer.Encode(item.TotalDifficulty);
 
         if (chainWithFinalization)
         {
-            stream.Encode(item.IsFinalized);
+            writer.Encode(item.IsFinalized);
         }
 
-        return new Rlp(stream.Data.ToArray()!);
+        return new Rlp(bytes);
     }
 }

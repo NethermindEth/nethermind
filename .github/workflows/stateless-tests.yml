@@ -4,14 +4,17 @@ on:
   merge_group:
     types: [checks_requested]
   pull_request:
-    branches: [master]
   push:
     branches: [master]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -19,13 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Run zkVM unit tests
+        run: dotnet test --project src/Nethermind/Nethermind.Core.ZkEvm.Test/Nethermind.Core.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
 
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
@@ -47,23 +50,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - input: 150026.ssz
-            hash: 35b017badd31a71a27b174ecc5088c513324ff66f94b591c5d069325228f6a4e
-          - input: 24721542.ssz
-            hash: 10df0db9fc2f00e2475e7694d9b888f8b91671fc2701ae550d33e8a9e878cdb3
-          - input: 24723632.ssz
-            hash: c598c1a7938287da8c811e763b7576050c92af190d9b8d2662fbc39d0a694572
-          - input: 24723668.ssz
-            hash: f6aaf72032e8c9703aa820cb006d215c5adfc8749094f26c1200be2a5c08b615
-          - input: 24772857.ssz
-            hash: 6f9d6224a33d023ca982b3faf9118e46d07a8cdbe513d2efa5a4408cb2734915
-          - input: 24777027.ssz
-            hash: a159d8cfe2d8cd12a03e725ab607373b92e7fa0e005f51d2bf8a2081b0a50015
-          - input: 24777988.ssz
-            hash: 18c75b1a179bd1aaa09c02011b4c8cd7ab6bef55a56ffb797ca3a0360f2287e7
+          - input: 25526356.ssz
+            hash: 93dcf5b1b46c811371e26e99f975bb2e4e6294717abc2d050320839bd855233c
+            output: 018cc34e1eb14c42412dc26aeca8e7e1bf540f216753c7431568985b66ecca1f
+          - input: 25532382.ssz
+            hash: 1706a8838f8cbb36f78bfdca3d83f8c9779a06dc0e50541172f099b9107c6a2a
+            output: d38ffa0643d60c76a25c4ab4ffeeb40d99f2dbedf240b3854b23a9d50233a833
+          - input: 25532442.ssz
+            hash: d226fd9a75388fa455e305da180cf6637f4663b9bb64f56a92800da97e8bcb0c
+            output: a88d5bd033c480258a436756fc8949313faf557deb9dc5dbe912ae7865d5d1f5
+          - input: 25532454.ssz
+            hash: d75dc30142d089ccdcc226d61e1a4f496f329fc71dd188d87fec9857ef483fa7
+            output: efbd3959d821214a3e6f8342548a0574e6eca68958c2ddae579921b2c6ccdc59
+          - input: 25532471.ssz
+            hash: 315dce051c8509c204c68d99c3ea9790e1369aa1e29838428c7cc9a86caff498
+            output: 03a85934149babe2bb198c8f9aed24abbdad3eb1e959ff62249a20e0798aaef6
+          - input: 25532480.ssz
+            hash: e80386d5dc016a4b63bc6c24bf89ab636995c335dfcfdbea4df3554251c341d4
+            output: 0bdd918dd79095dd95e5c68657ed418dee6043e4e4a1d5d5974d4824e24be8f7
+          - input: 25532553.ssz
+            hash: 7c2ec0703bb1fba9760d9f9f9ff0c0409bf9bd52f3b3c0d166cf2f55f0f5ff45
+            output: 9ffd288195959be5fc9bb414b8cd83968a1a653234e25811693950afcfcda880
+          - input: 25532642.ssz
+            hash: c3d82df9b4a68c0348ffb003fd5e8d5e3d45de7fcda5b7f6e4e4fdc64a33c2db
+            output: 0a7fe08924c2e0feaeccfdf7541f80333cfe687f8be7c73bb4fbc88c27db6159
+          - input: 25532711.ssz
+            hash: 19e76df2e2c4439e1dbec2ab075560d4e17817c2194deb119097ec1fae28331d
+            output: adf8830ca4fc0fc93d4e0968d84a6a4007081b67bbe6de68d3d6c177f2e812dd
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download guest binary
         uses: actions/download-artifact@v8
@@ -74,15 +90,20 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
         run: |
-          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/${{ matrix.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.input }}" \
             -o "${{ matrix.input }}"
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
-            { echo "Checksum failed"; exit 1; }
+            { echo "::error::Checksum failed"; exit 1; }
 
       - name: Run Nethermind guest
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: make run INPUT="${{ matrix.input }}"
+        run: |
+          set -euo pipefail
+          suffix=0101000000000000000100
+          make run INPUT="${{ matrix.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          grep -q "${{ matrix.output }}$suffix" "$RUNNER_TEMP/run.log" || \
+            { echo "::error::Output mismatch"; exit 1; }
 
   status:
     name: Status

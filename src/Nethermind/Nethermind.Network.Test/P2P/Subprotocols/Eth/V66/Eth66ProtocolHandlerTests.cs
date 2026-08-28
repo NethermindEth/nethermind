@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
@@ -111,14 +112,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Metadata_correct()
         {
-            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-            Assert.That(_handler.Name, Is.EqualTo("eth66"));
-            Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
-            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
-            Assert.That(_handler.IncludeInTxPool, Is.True);
-            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-            Assert.That(_handler.HeadHash, Is.Null);
-            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+                Assert.That(_handler.Name, Is.EqualTo("eth66"));
+                Assert.That(_handler.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+                Assert.That(_handler.IncludeInTxPool, Is.True);
+                Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+                Assert.That(_handler.HeadHash, Is.Null);
+                Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -238,9 +242,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(firstMessage, Eth66MessageCode.GetPooledTransactions);
             HandleZeroMessage(secondMessage, Eth66MessageCode.GetPooledTransactions);
 
-            Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(2));
-            Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs[1], Is.SameAs(backgroundTaskScheduler.ScheduledFulfillFuncs[0]));
-            Assert.That(backgroundTaskScheduler.ScheduledRequestsHaveDelegateFields, Is.EqualTo(new[] { false, false }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(2));
+                Assert.That(backgroundTaskScheduler.ScheduledFulfillFuncs[1], Is.SameAs(backgroundTaskScheduler.ScheduledFulfillFuncs[0]));
+                Assert.That(backgroundTaskScheduler.ScheduledRequestsHaveDelegateFields, Is.EqualTo(new[] { false, false }));
+            }
         }
 
         [Test]
@@ -385,6 +392,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
                     m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
                 ));
+        }
+
+        [Test]
+        public void Should_send_single_retry_without_registering_another_retry()
+        {
+            _transactionPool.ClearReceivedCalls();
+
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+
+            _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage66>(m =>
+                m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
+            _transactionPool.DidNotReceive().NotifyAboutTx(
+                Arg.Any<Hash256>(),
+                Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

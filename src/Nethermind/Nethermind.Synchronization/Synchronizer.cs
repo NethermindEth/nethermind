@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -32,6 +33,8 @@ namespace Nethermind.Synchronization
         ISyncModeSelector syncModeSelector,
         ISyncReport syncReport,
         ISyncConfig syncConfig,
+        IBlockTree blockTree,
+        ISyncPivotResolver syncPivotResolver,
         ILogManager logManager,
         INodeStatsManager nodeStatsManager,
         [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> fullSyncComponent,
@@ -53,6 +56,8 @@ namespace Nethermind.Synchronization
         private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
         private CancellationTokenSource? _syncCancellation = new();
+
+        private bool _disposed;
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
@@ -91,8 +96,29 @@ namespace Nethermind.Synchronization
                 SyncModeSelector.Changed += GCOnFeedFinished;
             }
 
-            // Make unit test faster.
-            SyncModeSelector.Update();
+            // Mode selection only begins once startup prerequisites are met: the DB block load has finished
+            // and the starting sync pivot has been resolved. Until then the feeds wired above stay dormant.
+            _ = StartModeSelectorAfterGates(_syncCancellation!.Token);
+        }
+
+        private async Task StartModeSelectorAfterGates(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Gate 1: the block tree cannot accept new blocks while a bulk DB load holds it, so wait for
+                // that to finish (the old DbLoad sync mode polled the same flag every selector tick).
+                while (!blockTree.CanAcceptNewBlocks)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(syncConfig.MultiSyncModeSelectorLoopTimerMs), cancellationToken);
+                }
+                await syncPivotResolver.EnsureSyncPivot(cancellationToken);
+                await SyncModeSelector.StartAsync();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Failed to start sync mode selector", e);
+            }
         }
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
@@ -243,6 +269,13 @@ namespace Nethermind.Synchronization
 
         public async ValueTask DisposeAsync()
         {
+            // Container teardown can dispose this more than once, and a repeat run would wait on
+            // the feed tasks again - the full termination timeout when any feed failed to finish.
+            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            {
+                return;
+            }
+
             _syncCancellation?.Cancel();
 
             using CancellationTokenSource timeoutCts = new();
@@ -306,6 +339,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<ISyncPivotResolver>(No.SyncPivot)
             .AddSingleton<IPivot, Pivot>() // Used by sync report
             .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)

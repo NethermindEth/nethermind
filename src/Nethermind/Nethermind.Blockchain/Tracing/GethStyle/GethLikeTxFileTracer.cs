@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
     private readonly Action<GethTxFileTraceEntry> _dumpCallback;
-    private long? _startGas;
+    private ulong? _startGas;
 
     public GethLikeTxFileTracer(Action<GethTxFileTraceEntry> dumpCallback, GethTraceOptions options) : base(options)
     {

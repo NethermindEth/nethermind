@@ -38,6 +38,16 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    protected override void ReleaseUnmanagedResources()
+    {
+        foreach (KeyValuePair<T, ColumnDb> column in _columnDbs)
+        {
+            column.Value.Dispose();
+        }
+
+        base.ReleaseUnmanagedResources();
+    }
+
     protected override long FetchTotalPropertyValue(string propertyName)
     {
         long total = 0;
@@ -58,6 +68,25 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         foreach (T key in ColumnKeys)
         {
             _columnDbs[key].Compact();
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base implementation flushes only the WAL and the default column family. On a full flush this
+    /// additionally materializes every named column family's memtable into SST, which is required for
+    /// <see cref="WriteFlags.DisableWAL"/> writes: they have no WAL entry, so unless their memtable is
+    /// flushed they are lost on restart.
+    /// </remarks>
+    public override void Flush(bool onlyWal = false)
+    {
+        base.Flush(onlyWal);
+        if (!onlyWal)
+        {
+            foreach (T key in ColumnKeys)
+            {
+                _columnDbs[key].Flush(onlyWal);
+            }
         }
     }
 

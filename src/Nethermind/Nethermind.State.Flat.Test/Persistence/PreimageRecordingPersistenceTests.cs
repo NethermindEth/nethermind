@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NSubstitute;
@@ -103,13 +106,13 @@ public class PreimageRecordingPersistenceTests
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        byte[] rlpValue = Rlp.Encode((ReadOnlySpan<byte>)new byte[] { 0xff }).Bytes;
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
             batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
             batch.SetStorageTrieNode(addrHash, path, node.FullRlp.AsSpan());
-            batch.SetStorageRaw(addrHash, slotHash, value);
+            batch.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
             batch.SetAccountRaw(addrHash, account);
         }
 
@@ -120,8 +123,8 @@ public class PreimageRecordingPersistenceTests
         // Without preimage, raw operations stay raw
         ValueHash256 addrHashValue = addrHash.ValueHash256;
         ValueHash256 slotHashValue = slotHash.ValueHash256;
-        Assert.That(innerBatch.SetStorageRawCalls, Has.One.Matches<(ValueHash256 AddrHash, ValueHash256 SlotHash, SlotValue? Value)>(c =>
-            c.AddrHash == addrHashValue && c.SlotHash == slotHashValue && c.Value is not null));
+        Assert.That(innerBatch.SetStorageRawEncodedCalls, Has.One.Matches<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)>(c =>
+            c.AddrHash == addrHashValue && c.SlotHash == slotHashValue && c.RlpValue.SequenceEqual(rlpValue)));
         Assert.That(innerBatch.SetAccountRawCalls, Has.One.EqualTo((addrHashValue, account)));
 
         // No preimages should be recorded for trie/raw operations
@@ -134,7 +137,7 @@ public class PreimageRecordingPersistenceTests
         Address address = TestItem.AddressA;
         UInt256 slot = 42;
         Account account = TestItem.GenerateIndexedAccount(0);
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        byte[] rlpValue = Rlp.Encode((ReadOnlySpan<byte>)new byte[] { 0xff }).Bytes;
 
         // Pre-populate preimage database with address and slot preimages
         ValueHash256 addrHash = address.ToAccountPath;
@@ -146,30 +149,32 @@ public class PreimageRecordingPersistenceTests
 
         StateId from = StateId.PreGenesis;
         StateId to = new(1, TestItem.KeccakA);
-        IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch innerBatch = new();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
-            batch.SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), value);
+            batch.SetStorageRawEncoded(new Hash256(addrHash), new Hash256(slotHash), rlpValue);
             batch.SetAccountRaw(new Hash256(addrHash), account);
         }
 
         // With preimage available, raw operations are translated to non-raw
-        innerBatch.Received(1).SetStorage(address, slot, Arg.Is<SlotValue?>(v => v != null));
-        innerBatch.Received(1).SetAccount(address, account);
+        Assert.That(innerBatch.SetStorageCalls, Has.One.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c =>
+            c.Addr == address && c.Slot == slot && c.Value is not null));
+        Assert.That(innerBatch.SetAccountCalls, Has.One.Matches<(Address Addr, Account? Account)>(c =>
+            c.Addr == address && c.Account == account));
 
         // Raw operations should NOT be called
-        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<SlotValue?>());
-        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<ValueHash256>(), Arg.Any<Account>());
+        Assert.That(innerBatch.SetStorageRawEncodedCalls, Is.Empty);
+        Assert.That(innerBatch.SetAccountRawCalls, Is.Empty);
     }
 
     [Test]
-    public void SetStorageRaw_WithOnlyAddressPreimage_FallsBackToRaw()
+    public void SetStorageRawEncoded_WithOnlyAddressPreimage_FallsBackToRaw()
     {
         Address address = TestItem.AddressA;
         UInt256 slot = 42;
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0xff]);
+        byte[] rlpValue = Rlp.Encode((ReadOnlySpan<byte>)new byte[] { 0xff }).Bytes;
 
         // Pre-populate only address preimage (missing slot preimage)
         ValueHash256 addrHash = address.ToAccountPath;
@@ -181,17 +186,18 @@ public class PreimageRecordingPersistenceTests
 
         StateId from = StateId.PreGenesis;
         StateId to = new(1, TestItem.KeccakA);
-        IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch innerBatch = new();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
-            batch.SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), value);
+            batch.SetStorageRawEncoded(new Hash256(addrHash), new Hash256(slotHash), rlpValue);
         }
 
-        // Without slot preimage, storage stays raw
-        innerBatch.Received(1).SetStorageRaw(new Hash256(addrHash), new Hash256(slotHash), Arg.Is<SlotValue?>(v => v != null));
-        innerBatch.DidNotReceive().SetStorage(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<SlotValue?>());
+        // Without slot preimage, storage stays raw (encoded)
+        Assert.That(innerBatch.SetStorageRawEncodedCalls, Has.One.Matches<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)>(c =>
+            c.AddrHash == addrHash && c.SlotHash == slotHash && c.RlpValue.SequenceEqual(rlpValue)));
+        Assert.That(innerBatch.SetStorageCalls, Is.Empty);
     }
 
     [Test]

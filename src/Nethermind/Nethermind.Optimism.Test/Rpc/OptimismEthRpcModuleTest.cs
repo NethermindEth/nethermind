@@ -10,7 +10,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.History;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db.LogIndex;
@@ -18,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -25,6 +28,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -72,6 +76,33 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
+    private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
+    {
+        public ulong ChainId => signer.ChainId;
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => signer.Sign(privateKey, in message);
+
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => signer.RecoverPublicKey(signature, in message);
+
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) =>
+            signer.RecoverCompressedPublicKey(signature, in message);
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
+    }
+
+    private sealed class NullSenderTransactionForRpc(Transaction transaction) : SignableTransactionForRpc
+    {
+        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+        {
+            Transaction tx = new();
+            transaction.CopyTo(tx);
+            tx.SenderAddress = null;
+            return tx;
+        }
+
+        public override bool ShouldSetBaseFee() => false;
+    }
+
     [Test]
     public async Task Sequencer_send_transaction_with_signature_will_not_try_to_sign()
     {
@@ -100,6 +131,38 @@ public class OptimismEthRpcModuleTest
 
         await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
+    }
+
+    [Test]
+    public async Task Send_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        EthereumEcdsa signingEcdsa = new(chainId: TestBlockchainIds.ChainId);
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithBlockchainBridge(bridge)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: null /* explicitly using null to behave as Sequencer */,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: new NoRecoveryEthereumEcdsa(signingEcdsa),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        Transaction tx = Build.A.Transaction
+            .Signed(ecdsa: signingEcdsa, privateKey: TestItem.PrivateKeyA)
+            .TestObject;
+        SignableTransactionForRpc rpcTx = new NullSenderTransactionForRpc(tx);
+
+        ResultWrapper<Hash256> result = await rpcBlockchain.EthRpcModule.eth_sendTransaction(rpcTx);
+
+        sealer.DidNotReceive().TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(result.Result.Error, Is.EqualTo(TxPoolErrorMessages.FailedToRecoverSender));
+        }
     }
 
     [Test]
@@ -300,12 +363,12 @@ public class OptimismEthRpcModuleTest
                          """;
         {
             // By block hash
-            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, "0x0");
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
-            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, "0x0");
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
@@ -361,12 +424,12 @@ public class OptimismEthRpcModuleTest
                          """;
         {
             // By block hash
-            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, "0x0");
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
         {
             // By block number
-            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
+            string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, "0x0");
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
         }
     }
@@ -638,14 +701,15 @@ internal static class TestRpcBlockchainExt
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
-            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper,
+            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), new ReceiptConfig(), opSpecHelper,
             new HeadBlockSignal(blockchain.BlockTree),
             new EthCapabilitiesProvider(
                 blockchain.BlockTree.AsReadOnly(),
-                blockchain.WorldStateManager,
+                blockchain.Container.Resolve<IStateBoundary>(),
                 blockchain.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>())
+                Substitute.For<IHistoryPruner>()),
+            new BlockForRpcFactory()
         ));
 }

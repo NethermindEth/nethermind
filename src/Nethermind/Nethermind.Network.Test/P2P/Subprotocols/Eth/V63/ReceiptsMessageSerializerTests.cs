@@ -44,20 +44,23 @@ public class ReceiptsMessageSerializerTests
                 {
                     for (int j = 0; j < txReceipts[i].Length; j++)
                     {
-                        Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
-                        Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
-                        Assert.That(deserialized.TxReceipts[i][j].Error, Is.Null, $"receipts[{i}][{j}].Error");
-                        Assert.That(deserialized.TxReceipts[i][j].Index, Is.EqualTo(0), $"receipts[{i}][{j}].Index");
-                        Assert.That(deserialized.TxReceipts[i][j].Logs.Length, Is.EqualTo(txReceipts[i][j].Logs.Length), $"receipts[{i}][{j}].Logs.Length");
-                        Assert.That(deserialized.TxReceipts[i][j].Recipient, Is.Null, $"receipts[{i}][{j}].Recipient");
-                        Assert.That(deserialized.TxReceipts[i][j].Sender, Is.Null, $"receipts[{i}][{j}].Sender");
-                        Assert.That(deserialized.TxReceipts[i][j].BlockHash, Is.Null, $"receipts[{i}][{j}].BlockHash");
-                        Assert.That(deserialized.TxReceipts[i][j].BlockNumber, Is.EqualTo(0L), $"receipts[{i}][{j}].BlockNumber");
-                        Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
-                        Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
-                        Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
-                        Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
-                        Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
+                            Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
+                            Assert.That(deserialized.TxReceipts[i][j].Error, Is.Null, $"receipts[{i}][{j}].Error");
+                            Assert.That(deserialized.TxReceipts[i][j].Index, Is.EqualTo(0), $"receipts[{i}][{j}].Index");
+                            Assert.That(deserialized.TxReceipts[i][j].Logs.Length, Is.EqualTo(txReceipts[i][j].Logs.Length), $"receipts[{i}][{j}].Logs.Length");
+                            Assert.That(deserialized.TxReceipts[i][j].Recipient, Is.Null, $"receipts[{i}][{j}].Recipient");
+                            Assert.That(deserialized.TxReceipts[i][j].Sender, Is.Null, $"receipts[{i}][{j}].Sender");
+                            Assert.That(deserialized.TxReceipts[i][j].BlockHash, Is.Null, $"receipts[{i}][{j}].BlockHash");
+                            Assert.That(deserialized.TxReceipts[i][j].BlockNumber, Is.EqualTo(0L), $"receipts[{i}][{j}].BlockNumber");
+                            Assert.That(deserialized.TxReceipts[i][j].ContractAddress, Is.Null, $"receipts[{i}][{j}].ContractAddress");
+                            Assert.That(deserialized.TxReceipts[i][j].GasUsed, Is.EqualTo(0L), $"receipts[{i}][{j}].GasUsed");
+                            Assert.That(deserialized.TxReceipts[i][j].GasUsedTotal, Is.EqualTo(txReceipts[i][j].GasUsedTotal), $"receipts[{i}][{j}].GasUsedTotal");
+                            Assert.That(deserialized.TxReceipts[i][j].StatusCode, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode), $"receipts[{i}][{j}].StatusCode");
+                            Assert.That(deserialized.TxReceipts[i][j].PostTransactionState, Is.EqualTo(txReceipts[i][j].BlockNumber < MainnetSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null), $"receipts[{i}][{j}].PostTransactionState");
+                        }
                     }
                 }
             }
@@ -79,7 +82,7 @@ public class ReceiptsMessageSerializerTests
         ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        Rlp.ValueDecoderContext context = encoded.AsRlpValueContext();
+        RlpReader context = new(encoded);
         TxReceipt decoded = decoder.Decode(ref context);
 
         TxReceipt expectedDecoded = new()

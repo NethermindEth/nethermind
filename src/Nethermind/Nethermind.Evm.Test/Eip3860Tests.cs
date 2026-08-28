@@ -9,16 +9,15 @@ using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
     public class Eip3860Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-        private readonly long _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;
+        private readonly ulong _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;
 
         [TestCase("0x61013860006000f0", false, 32039)] //length 312
         [TestCase("0x61013860006000f0", true, 32059)] //extra 20 cost
@@ -67,7 +66,7 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
             Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
-            Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo((UInt256)0));
+            Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0));
             Assert.That(tracer.GasSpent, Is.EqualTo(_transactionCallCost + contractCreationGasLimit));
         }
 

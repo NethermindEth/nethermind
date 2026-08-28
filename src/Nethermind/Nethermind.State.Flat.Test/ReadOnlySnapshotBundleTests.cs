@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,7 +28,8 @@ public class ReadOnlySnapshotBundleTests
         FlatTestHelpers.MakeSnapshot(_pool, populate);
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
-        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics);
+        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
+            PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
     [TestCase(true)]
     [TestCase(false)]

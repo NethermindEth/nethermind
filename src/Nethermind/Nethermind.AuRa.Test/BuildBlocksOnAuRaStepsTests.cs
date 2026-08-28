@@ -69,24 +69,24 @@ namespace Nethermind.AuRa.Test
 
         private class TestAuRaStepCalculator : IAuRaStepCalculator
         {
-            public const long StepDuration = 10;
+            public const ulong StepDuration = 10;
             public static readonly TimeSpan StepDurationTimeSpan = TimeSpan.FromMilliseconds(StepDuration);
 
-            public long CurrentStep => UnixTime.MillisecondsLong / StepDuration;
+            public ulong CurrentStep => UnixTime.Milliseconds / StepDuration;
 
             public TimeSpan TimeToNextStep
             {
                 get
                 {
-                    long milliseconds = UnixTime.MillisecondsLong;
+                    ulong milliseconds = UnixTime.Milliseconds;
                     return TimeSpan.FromMilliseconds(((milliseconds / StepDuration) + 1) * StepDuration - milliseconds);
                 }
             }
 
-            public TimeSpan TimeToStep(long step) =>
+            public TimeSpan TimeToStep(ulong step) =>
                 throw new NotImplementedException();
 
-            public long CurrentStepDuration => throw new NotImplementedException();
+            public ulong CurrentStepDuration => throw new NotImplementedException();
 
             private UnixTime UnixTime => new(DateTimeOffset.UtcNow);
         }

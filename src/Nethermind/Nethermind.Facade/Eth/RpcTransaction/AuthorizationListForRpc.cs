@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -29,7 +30,9 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         public ulong Nonce { get; set; }
         public Address Address { get; set; }
         public ulong? YParity { get; set; }
+        [JsonConverter(typeof(UInt256Converter))]
         public UInt256 S { get; set; }
+        [JsonConverter(typeof(UInt256Converter))]
         public UInt256 R { get; set; }
 
         public RpcAuthTuple() { }

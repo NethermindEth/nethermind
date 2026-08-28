@@ -25,13 +25,10 @@ namespace Nethermind.Blockchain.Receipts
                 if (needRecover)
                 {
                     using IReceiptsRecovery.IRecoveryContext ctx = CreateRecoveryContext(block, forceRecoverSender);
-                    for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
+                    for (int receiptIndex = 0; receiptIndex < receipts.Length; receiptIndex++)
                     {
-                        if (receipts.Length > receiptIndex)
-                        {
-                            TxReceipt receipt = receipts[receiptIndex];
-                            ctx.RecoverReceiptData(receipt);
-                        }
+                        TxReceipt receipt = receipts[receiptIndex];
+                        ctx.RecoverReceiptData(receipt);
                     }
 
                     if (_reinsertReceiptOnRecover)
@@ -70,7 +67,7 @@ namespace Nethermind.Blockchain.Receipts
             private readonly bool _forceRecoverSender = forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa = ecdsa;
 
-            private long _gasUsedBefore = 0;
+            private ulong _gasUsedBefore = 0;
             private int _transactionIndex = 0;
 
             public void RecoverReceiptData(TxReceipt receipt)
@@ -137,7 +134,7 @@ namespace Nethermind.Blockchain.Receipts
                 IncrementContext(receipt.GasUsedTotal);
             }
 
-            private void IncrementContext(long gasUsedTotal)
+            private void IncrementContext(ulong gasUsedTotal)
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;

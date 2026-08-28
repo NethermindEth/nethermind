@@ -205,7 +205,7 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas")
+            "max fee per blob gas less than block blob gas fee")
         { TestName = "InsufficientMaxFeePerBlobGas" };
 
         yield return new TestCaseData(
@@ -263,9 +263,10 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
@@ -300,7 +301,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000)
+            .WithGasLimit(10_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -326,7 +327,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(0)
+            .WithGasLimit(0ul)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -339,9 +340,9 @@ public class BlockValidatorTests
         AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    [TestCase(30_000ul, true)]
+    [TestCase(29_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(ulong gasLimit, bool expectedValid)
     {
         // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
         // (BlockDecoder does not decode BAL). The pre-execution check in
@@ -412,7 +413,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000ul)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)

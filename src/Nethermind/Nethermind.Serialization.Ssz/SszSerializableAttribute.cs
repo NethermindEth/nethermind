@@ -33,9 +33,9 @@ public class SszFieldAttribute(int index) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Property)]
-public class SszListAttribute(int limit) : Attribute
+public class SszListAttribute(ulong limit) : Attribute
 {
-    public int Limit { get; } = limit;
+    public ulong Limit { get; } = limit;
 }
 
 [AttributeUsage(AttributeTargets.Property)]

@@ -23,14 +23,14 @@ public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
     internal void SetOverride(IReleaseSpec spec) => _override = spec;
     internal void ResetOverride() => _override = null;
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         => inner.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
     public ForkActivation? MergeBlockNumber => inner.MergeBlockNumber;
     public ulong TimestampFork => inner.TimestampFork;
     public UInt256? TerminalTotalDifficulty => inner.TerminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => inner.GenesisSpec;
-    public long? DaoBlockNumber => inner.DaoBlockNumber;
+    public ulong? DaoBlockNumber => inner.DaoBlockNumber;
     public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
     public ulong NetworkId => inner.NetworkId;
     public ulong ChainId => inner.ChainId;

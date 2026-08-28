@@ -3,13 +3,15 @@
 
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
+public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
-    private readonly WriteBufferAdjuster _adjuster = new(db);
+    private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
 
     public void Flush() => db.Flush();
 
@@ -34,7 +36,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     new BaseFlatPersistence.Reader(
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
-                        isPreimageMode: false
+                        isPreimageMode: false,
+                        rlpWrapSlots: _rlpWrapSlots
                     )
                 ),
                 trieReader,
@@ -92,7 +95,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                     accountBatch,
                     storageBatch,
-                    flags
+                    flags,
+                    rlpWrapSlots: _rlpWrapSlots
                 )
             ),
             trieWriteBatch,
@@ -100,7 +104,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                if (_rlpWrapSlots)
+                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();

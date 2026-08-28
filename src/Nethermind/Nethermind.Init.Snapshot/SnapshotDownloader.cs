@@ -11,18 +11,15 @@ namespace Nethermind.Init.Snapshot;
 
 /// <summary>
 /// Downloads a snapshot file from a URL with resumable download support.
-/// Manually follows HTTP redirects to preserve the Range header, which standard
-/// HttpClient strips on auto-redirect.
 /// </summary>
 internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
 {
     private const int BufferSize = 65536;
-    private const int MaxRedirects = 10;
     private const int ResumeWarningDelaySeconds = 5;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan StallTimeout = SnapshotHttpClient.DefaultStallTimeout;
 
-    // A single HttpClient is shared for all retries to preserve the connection pool.
-    private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
+    private readonly SnapshotHttpClient _client = new();
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotDownloader>();
 
     /// <summary>
@@ -49,7 +46,8 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(ResumeWarningDelaySeconds), cancellationToken).ConfigureAwait(false);
         }
 
-        using HttpResponseMessage response = await SendWithRangeAsync(_httpClient, url, existingSize, cancellationToken).ConfigureAwait(false);
+        using HttpResponseMessage response = await _client.GetAsync(
+            url, existingSize > 0 ? new RangeHeaderValue(existingSize, null) : null, ifRange: null, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
             _logger.Info($"Server response: {response.StatusCode}, ETag: {response.Headers.ETag}, Last-Modified: {response.Content.Headers.LastModified}");
@@ -69,13 +67,13 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
-        long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
-        using ProgressReporter progress = new("Snapshot download", logManager, totalSize ?? 0, ProgressInterval);
-        progress.Logger.SetFormat(FormatBytes(totalSize));
+        ulong initialProgress = fileMode == FileMode.Append ? (ulong)existingSize : 0UL;
+        using ProgressReporter progress = new("Snapshot download", logManager, (ulong)(totalSize ?? 0), ProgressInterval);
+        progress.Logger.SetFormat(SnapshotProgress.FormatBytes("Snapshot download", totalSize));
         progress.Update(initialProgress);
 
         if (bytesToSkip > 0)
-            await SkipBytesAsync(contentStream, bytesToSkip, cancellationToken).ConfigureAwait(false);
+            await SnapshotHttpClient.SkipAsync(contentStream, bytesToSkip, StallTimeout, cancellationToken).ConfigureAwait(false);
 
         await CopyWithProgressAsync(contentStream, fileStream, progress, cancellationToken).ConfigureAwait(false);
 
@@ -83,7 +81,10 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
             _logger.Info($"Snapshot downloaded to {destinationPath}.");
     }
 
-    public void Dispose() => _httpClient.Dispose();
+    public Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken) =>
+        _client.ProbeAsync(url, cancellationToken);
+
+    public void Dispose() => _client.Dispose();
 
     private static (FileMode fileMode, long bytesToSkip, long? totalSize) ResolveCopyStrategy(
         HttpStatusCode statusCode, long existingSize, long? contentLength) =>
@@ -99,98 +100,21 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
             _ => throw new IOException($"Unexpected HTTP status: {statusCode}")
         };
 
-    private static async Task SkipBytesAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
-    {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
-        {
-            long remaining = bytesToSkip;
-            while (remaining > 0)
-            {
-                int chunk = (int)Math.Min(buffer.Length, remaining);
-                await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
-                remaining -= chunk;
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    private static async Task<HttpResponseMessage> SendWithRangeAsync(
-        HttpClient httpClient, string url, long existingSize, CancellationToken cancellationToken)
-    {
-        Uri currentUri = new(url);
-
-        for (int redirects = 0; redirects < MaxRedirects; redirects++)
-        {
-            using HttpRequestMessage request = new(HttpMethod.Get, currentUri);
-            if (existingSize > 0)
-                request.Headers.Range = new RangeHeaderValue(existingSize, null);
-
-            HttpResponseMessage response = await httpClient.SendAsync(
-                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-
-            switch (response.StatusCode)
-            {
-                case HttpStatusCode.MovedPermanently
-                    or HttpStatusCode.Found
-                    or HttpStatusCode.SeeOther
-                    or HttpStatusCode.TemporaryRedirect
-                    or HttpStatusCode.PermanentRedirect:
-                    {
-                        Uri? location = response.Headers.Location;
-                        response.Dispose();
-                        if (location is null)
-                            throw new IOException("Redirect response missing Location header.");
-                        currentUri = new Uri(currentUri, location); // resolve relative redirects
-                        continue;
-                    }
-                // Let the caller handle 416 — it means the file is already complete.
-                case HttpStatusCode.RequestedRangeNotSatisfiable:
-                    return response;
-                default:
-                    return response.EnsureSuccessStatusCode();
-            }
-        }
-
-        throw new IOException("Too many redirects while downloading snapshot.");
-    }
-
     private static async Task CopyWithProgressAsync(
         Stream source, FileStream destination, ProgressReporter progress, CancellationToken cancellationToken)
     {
+        using StallGuardedReader reader = new(StallTimeout, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
+        ulong downloaded = progress.Logger.CurrentValue;
+        int bytesRead;
+        while ((bytesRead = await reader.ReadAsync(source, buffer.AsMemory(0, BufferSize)).ConfigureAwait(false)) > 0)
         {
-            long downloaded = progress.Logger.CurrentValue;
-            int bytesRead;
-            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-                downloaded += bytesRead;
-                progress.Update(downloaded);
-            }
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+            downloaded += (ulong)bytesRead;
+            progress.Update(downloaded);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>
-        totalBytes is null
-            ? static logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)}"
-            : logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)} out of {HumanReadableSize(totalBytes.Value)}";
-
-    private static string HumanReadableSize(long byteCount) =>
-        byteCount switch
-        {
-            < 0 => throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative"),
-            < 1024 => $"{byteCount:0.##}B",
-            < 1024 * 1024 => $"{(float)byteCount / 1024:0.##}KB",
-            < 1024 * 1024 * 1024 => $"{(float)byteCount / (1024 * 1024):0.##}MB",
-            _ => $"{(float)byteCount / (1024 * 1024 * 1024):0.##}GB",
-        };
 }

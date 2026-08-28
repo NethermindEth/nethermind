@@ -20,5 +20,9 @@ public class Cancun() : NamedReleaseSpec<Cancun>(Shanghai.Instance)
         spec.MaxBlobCount = 6;
         spec.TargetBlobCount = 3;
         spec.BlobBaseFeeUpdateFraction = 3338477;
+        spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V3;
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V3;
+        spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V3;
+        // bodies/hash + bodies/range versions inherit V1 from Shanghai
     }
 }

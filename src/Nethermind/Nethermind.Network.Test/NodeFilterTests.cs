@@ -134,18 +134,6 @@ public class NodeFilterTests
         Assert.That(acceptedCount, Is.LessThan(threadCount * attemptsPerThread), "not all concurrent attempts should be accepted for the same address");
     }
 
-    [TestCase("192.0.2.1", "10.0.0.1", 0, 0, Description = "IPv4 /0 prefix - all match")]
-    [TestCase("192.0.2.1", "192.0.2.1", 32, 128, Description = "IPv4 /32 prefix - exact match")]
-    [TestCase("2001:db8::1", "fe80::1", 0, 0, Description = "IPv6 /0 prefix - all match")]
-    [TestCase("2001:db8::1", "2001:db8::1", 32, 128, Description = "IPv6 /128 prefix - exact match")]
-    public void SubnetMasking_EdgeCase_PrefixBoundary(string addr1, string addr2, byte v4Prefix, byte v6Prefix)
-    {
-        NodeFilter.IpSubnetKey key1 = new(IPAddress.Parse(addr1), v4PrefixBits: v4Prefix, v6PrefixBits: v6Prefix);
-        NodeFilter.IpSubnetKey key2 = new(IPAddress.Parse(addr2), v4PrefixBits: v4Prefix, v6PrefixBits: v6Prefix);
-
-        Assert.That(key1, Is.EqualTo(key2));
-    }
-
     [Test]
     public void CapacityBounded_EvictsOldEntries()
     {
@@ -181,40 +169,6 @@ public class NodeFilterTests
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
     }
 
-    [TestCase("192.0.2.1", "192.0.2.1", true, Description = "Same address - equal")]
-    [TestCase("192.0.2.1", "192.0.2.2", false, Description = "Different address - not equal")]
-    public void IpSubnetKey_Equality_Exact(string addr1, string addr2, bool expectEqual)
-    {
-        NodeFilter.IpSubnetKey key1 = NodeFilter.IpSubnetKey.Exact(IPAddress.Parse(addr1));
-        NodeFilter.IpSubnetKey key2 = NodeFilter.IpSubnetKey.Exact(IPAddress.Parse(addr2));
-
-        if (expectEqual)
-        {
-            Assert.That(key1, Is.EqualTo(key2));
-            Assert.That(key1.GetHashCode(), Is.EqualTo(key2.GetHashCode()));
-        }
-        else
-        {
-            Assert.That(key1, Is.Not.EqualTo(key2));
-        }
-    }
-
-    [TestCase("192.0.2.1", "192.0.2.50", true, Description = "Same /24 subnet matches")]
-    [TestCase("192.0.2.1", "192.0.3.1", false, Description = "Different /24 subnet does not match")]
-    public void IpSubnetKey_Matches(string bucketAddr, string testAddr, bool expected)
-    {
-        NodeFilter.IpSubnetKey key = NodeFilter.IpSubnetKey.Bucket(IPAddress.Parse(bucketAddr), v4PrefixBits: 24, v6PrefixBits: 64);
-        Assert.That(key.Matches(IPAddress.Parse(testAddr)), Is.EqualTo(expected));
-    }
-
-    [TestCase("192.0.2.1", "192.0.2.50", true, Description = "Same /24 IPv4")]
-    [TestCase("192.0.2.1", "192.0.3.1", false, Description = "Different /24 IPv4")]
-    [TestCase("2001:db8::1", "2001:db8::ffff", true, Description = "Same /64 IPv6")]
-    [TestCase("2001:db8::1", "2001:db8:0:1::1", false, Description = "Different /64 IPv6")]
-    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected) => Assert.That(NodeFilter.IpSubnetKey.AreInSameSubnet(
-            IPAddress.Parse(a), IPAddress.Parse(b),
-            v4PrefixBits: 24, v6PrefixBits: 64), Is.EqualTo(expected));
-
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
     [TestCase("::1", true, Description = "IPv6 loopback")]
     [TestCase("10.0.0.1", true, Description = "RFC1918 10.x")]
@@ -227,20 +181,54 @@ public class NodeFilterTests
     [TestCase("fe80::1", true, Description = "IPv6 link-local")]
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)), Is.EqualTo(expected));
+    public void IPAddressExtensions_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsLoopbackOrPrivateOrLinkLocal, Is.EqualTo(expected));
+
+    [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
+    [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]
+    [TestCase("192.0.2.1", true, Description = "IPv4 documentation TEST-NET-1")]
+    [TestCase("192.31.196.1", true, Description = "IPv4 AS112")]
+    [TestCase("192.52.193.1", true, Description = "IPv4 AMT")]
+    [TestCase("198.18.0.1", true, Description = "IPv4 benchmarking")]
+    [TestCase("192.175.48.1", true, Description = "IPv4 direct delegation AS112")]
+    [TestCase("198.51.100.1", true, Description = "IPv4 documentation TEST-NET-2")]
+    [TestCase("203.0.113.1", true, Description = "IPv4 documentation TEST-NET-3")]
+    [TestCase("224.0.0.1", true, Description = "IPv4 multicast")]
+    [TestCase("240.0.0.1", true, Description = "IPv4 reserved")]
+    [TestCase("::ffff:224.0.0.1", true, Description = "IPv4-mapped multicast")]
+    [TestCase("64:ff9b::1", true, Description = "IPv6 IPv4/IPv6 translation")]
+    [TestCase("64:ff9b:1::1", true, Description = "IPv6 local-use translation")]
+    [TestCase("100::1", true, Description = "IPv6 discard-only")]
+    [TestCase("2001::1", true, Description = "IPv6 IETF protocol assignments")]
+    [TestCase("2001:db8::1", true, Description = "IPv6 documentation")]
+    [TestCase("2002::1", true, Description = "IPv6 6to4")]
+    [TestCase("3fff::1", true, Description = "IPv6 documentation")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressExtensions_IsSpecialUseAddress(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsSpecialUseAddress, Is.EqualTo(expected));
+
+    [TestCase("224.0.0.1", true, Description = "IPv4 multicast")]
+    [TestCase("ff02::1", true, Description = "IPv6 multicast")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressExtensions_IsMulticast(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsMulticast, Is.EqualTo(expected));
 
     [TestCase("192.168.1.10", "192.168.1.20", "203.0.113.1", false, Description = "Private addresses use exact keying")]
     [TestCase("203.0.113.1", "203.0.113.50", "198.51.100.1", true, Description = "Public addresses in same /24 use subnet bucketing")]
     [TestCase("192.168.1.10", "192.168.1.20", "192.168.1.1", false, Description = "Same local subnet uses exact keying")]
-    public void CreateNodeFilterKey_KeyingBehavior(string remote1, string remote2, string current, bool expectEqual)
+    public void TryAccept_UsesExpectedKeyingBehavior(string remote1, string remote2, string current, bool expectEqual)
     {
-        NodeFilter.IpSubnetKey key1 = NodeFilter.IpSubnetKey.CreateNodeFilterKey(IPAddress.Parse(remote1), IPAddress.Parse(current));
-        NodeFilter.IpSubnetKey key2 = NodeFilter.IpSubnetKey.CreateNodeFilterKey(IPAddress.Parse(remote2), IPAddress.Parse(current));
+        NodeFilter filter = CreateFilter(currentIp: IPAddress.Parse(current));
 
         if (expectEqual)
-            Assert.That(key1, Is.EqualTo(key2));
+        {
+            Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+            Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.False);
+        }
         else
-            Assert.That(key1, Is.Not.EqualTo(key2));
+        {
+            Assert.That(filter.TryAccept(IPAddress.Parse(remote1)), Is.True);
+            Assert.That(filter.TryAccept(IPAddress.Parse(remote2)), Is.True);
+        }
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Exact match reaccepts after timeout")]

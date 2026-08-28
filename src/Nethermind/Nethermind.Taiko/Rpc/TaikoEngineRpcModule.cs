@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
@@ -11,6 +10,7 @@ using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,7 +31,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
-using Nethermind.Taiko.ZkGas;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -50,9 +49,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+        IInclusionListTxSource inclusionListTxSource,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
+        IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
         IEngineRequestsTracker engineRequestsTracker,
+        IBlobCustodyTracker blobCustodyTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
@@ -76,13 +82,92 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 capabilitiesHandler,
                 getBlobsHandler,
                 getBlobsHandlerV2,
+                getBlobsHandlerV4,
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
+                getInclusionListTransactionsHandler,
+                inclusionListTxSource,
+                newPayloadWithWitnessHandlerV4,
+                newPayloadWithWitnessHandlerV5,
+                newPayloadWithWitnessHandlerV6,
                 engineRequestsTracker,
+                blobCustodyTracker,
                 specProvider,
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
+    /// <summary>Initializes the module with module-local blob custody tracking.</summary>
+    /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
+    public TaikoEngineRpcModule(
+        IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
+        IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
+        IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
+        IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
+        IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
+        IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
+        IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
+        IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+        IInclusionListTxSource inclusionListTxSource,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
+        IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
+        IEngineRequestsTracker engineRequestsTracker,
+        ISpecProvider specProvider,
+        GCKeeper gcKeeper,
+        ILogManager logManager,
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        IShareableTxProcessorSource txProcessorSource,
+        IRlpDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore,
+        ISurgeConfig surgeConfig)
+        : this(
+            getPayloadHandlerV1,
+            getPayloadHandlerV2,
+            getPayloadHandlerV3,
+            getPayloadHandlerV4,
+            getPayloadHandlerV5,
+            getPayloadHandlerV6,
+            newPayloadV1Handler,
+            forkchoiceUpdatedV1Handler,
+            executionGetPayloadBodiesByHashV1Handler,
+            executionGetPayloadBodiesByRangeV1Handler,
+            transitionConfigurationHandler,
+            capabilitiesHandler,
+            getBlobsHandler,
+            getBlobsHandlerV2,
+            getBlobsHandlerV4,
+            getPayloadBodiesByHashV2Handler,
+            getPayloadBodiesByRangeV2Handler,
+            getInclusionListTransactionsHandler,
+            inclusionListTxSource,
+            newPayloadWithWitnessHandlerV4,
+            newPayloadWithWitnessHandlerV5,
+            newPayloadWithWitnessHandlerV6,
+            engineRequestsTracker,
+            new BlobCustodyTracker(),
+            specProvider,
+            gcKeeper,
+            logManager,
+            txPool,
+            blockFinder,
+            txProcessorSource,
+            txDecoder,
+            l1OriginStore,
+            surgeConfig)
+    {
+    }
+
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
     /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.
@@ -121,7 +206,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     /// any resolved batch-lookup block id strictly less than this value is reported as null.
     /// </summary>
     private readonly UInt256? _batchLookupThreshold =
-        ZkGasSchedule.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+        BatchLookupThresholds.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
             ? new UInt256(t)
             : (UInt256?)null;
 
@@ -198,7 +283,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 beneficiary,
                 UInt256.Zero,
                 head!.Number + 1,
-                (long)blockMaxGasLimit,
+                blockMaxGasLimit,
                 head.Timestamp + 1,
                 [])
         {
@@ -220,7 +305,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         void CommitAndDisposeBatch(Batch batch)
         {
             Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => TransactionForRpc.FromTransaction(tx)).ToArray(),
-                                            (ulong)blockHeader.GasUsed,
+                                            blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
             batch.Dispose();
@@ -230,7 +315,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
-        void Restore(Snapshot snapshot, long gasUsed)
+        void Restore(Snapshot snapshot, ulong gasUsed)
         {
             worldState.Restore(snapshot);
             blockHeader.GasUsed = gasUsed;
@@ -242,7 +327,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
-                long gasUsedBefore = blockHeader.GasUsed;
+                ulong gasUsedBefore = blockHeader.GasUsed;
 
                 try
                 {
@@ -348,53 +433,36 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
+            writer.StartSequence(contentLength);
+            foreach (Transaction tx in Transactions.AsSpan())
             {
-                RlpStream rlpStream = new(data);
-
-                rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions.AsSpan())
-                {
-                    txDecoder.Encode(rlpStream, tx);
-                }
-
-                return GetCompressedLength(data, rlpStream.Position);
-
+                txDecoder.Encode(ref writer, tx);
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
         private readonly ulong EstimateTxLength(Transaction tx)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
-            {
-                RlpStream rlpStream = new(data);
+            writer.StartSequence(contentLength);
+            txDecoder.Encode(ref writer, tx);
 
-                rlpStream.StartSequence(contentLength);
-                txDecoder.Encode(rlpStream, tx);
-
-                return GetCompressedLength(data, rlpStream.Position);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private static ulong GetCompressedLength(byte[] data, int length)
+        private static ulong GetCompressedLength(ReadOnlySpan<byte> data)
         {
             using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(Batch));
             using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
 
-            compressingStream.Write(data, 0, length);
+            compressingStream.Write(data);
             compressingStream.Flush();
             return (ulong)stream.Position;
         }

@@ -58,6 +58,10 @@ public class BlockchainProcessorTests
 
             internal readonly HashSet<Hash256> Processed = [];
 
+            // The instance actually handed to the branch processor, so tests can assert that transient
+            // non-RLP data survived recovery-queue resolution.
+            internal readonly ConcurrentDictionary<Hash256, Block> ProcessedBlockByHash = new();
+
             private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
             private readonly HashSet<Hash256> _rootProcessed = [];
@@ -99,50 +103,69 @@ public class BlockchainProcessorTests
                 }
 
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
+                foreach (Block suggested in suggestedBlocks) ProcessedBlockByHash[suggested.Hash!] = suggested;
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
-                while (true)
+                BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                int processedBlocksCount = 0;
+                Exception? processingException = null;
+
+                try
                 {
-                    lock (_gate)
+                    while (true)
                     {
-                        bool notYet = false;
-                        for (int i = nextBlock; i < suggestedBlocks.Count; i++)
+                        lock (_gate)
                         {
-                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                            Block suggestedBlock = suggestedBlocks[i];
-                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                            Hash256 hash = suggestedBlock.Hash!;
-                            if (!_allowed.Contains(hash))
+                            bool done = true;
+                            for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                             {
-                                if (_allowedToFail.TryRemove(hash))
+                                Block suggestedBlock = suggestedBlocks[i];
+                                BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                                Hash256 hash = suggestedBlock.Hash!;
+                                if (!_allowed.Contains(hash))
                                 {
-                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    if (_allowedToFail.TryRemove(hash))
+                                    {
+                                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                        throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    }
+
+                                    done = false;
+                                    break;
                                 }
 
-                                notYet = true;
-                                break;
+                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                processedBlocksCount = i + 1;
+                                nextBlock = i + 1;
                             }
 
-                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                            nextBlock = i + 1;
-                        }
+                            if (done)
+                            {
+                                _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
+                                return suggestedBlocks.ToArray();
+                            }
 
-                        if (notYet)
-                        {
                             Monitor.Wait(_gate, MockRecheckInterval);
                         }
-                        else
-                        {
-                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                            return suggestedBlocks.ToArray();
-                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    processingException = ex;
+                    throw;
+                }
+                finally
+                {
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(suggestedBlocks, processedBlocksCount, processingException));
                 }
             }
 
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+            public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
@@ -224,7 +247,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -254,6 +277,16 @@ public class BlockchainProcessorTests
         public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
         {
             _processor.SoftMaxRecoveryQueueSizeInTx = 0;
+            return this;
+        }
+
+        public ProcessingTestContext InclusionListPreservedFor(Block block)
+        {
+            Assert.That(_branchProcessor.ProcessedBlockByHash.TryGetValue(block.Hash!, out Block? processed), Is.True,
+                $"Block {block.ToString(Block.Format.Short)} was not processed");
+            Assert.That(processed!.InclusionListTransactions, Is.Not.Null,
+                "Inclusion list was dropped before validation (recovery-queue re-resolve stripped it)");
+            Assert.That(processed.InclusionListTransactions!, Has.Length.EqualTo(block.InclusionListTransactions!.Length));
             return this;
         }
 
@@ -398,7 +431,7 @@ public class BlockchainProcessorTests
                 Assert.Fail($"Block {block} was expected to be added");
             }
 
-            _blockTree.UpdateMainChain(new[] { block }, false);
+            _blockTree.TryUpdateMainChain(block.Header, false, preloadedBlocks: new[] { block });
             _branchProcessor.Allow(block.Hash!);
             _recoveryStep.Allow(block.Hash!);
 
@@ -759,6 +792,21 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
+
+    // A hash-only BlockRef re-resolved from the DB would lose the non-RLP inclusion list before validation.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Inclusion_list_survives_recovery_queue_backlog()
+    {
+        Transaction ilTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block ilBlock = Build.A.Block.WithNumber(1).WithNonce(111).WithParent(_block0).WithDifficulty(2)
+            .WithInclusionListTransactions([ilTx]).TestObject;
+
+        When.ProcessingBlocks
+            .AndRecoveryQueueLimitHasBeenReached()
+            .FullyProcessed(_block0).BecomesGenesis()
+            .FullyProcessed(ilBlock).BecomesNewHead()
+            .InclusionListPreservedFor(ilBlock);
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]

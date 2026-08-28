@@ -22,16 +22,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0L);
+    private static readonly ResourceAvailability Available = new(Disabled: false, OldestBlock: 0UL);
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
     private static EthCapabilities GetCaps(
-        long? retentionWindow = null,
-        long headNumber = 1000,
-        long? oldestStateBlock = null,
+        ulong? retentionWindow = null,
+        ulong headNumber = 1000,
+        ulong? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
-        long? lowestInsertedBody = null,
-        long? lowestInsertedReceipt = null,
+        ulong? lowestInsertedBody = null,
+        ulong? lowestInsertedReceipt = null,
         IHistoryConfig? historyConfig = null,
         IHistoryPruner? historyPruner = null)
     {
@@ -57,11 +57,11 @@ public partial class EthRpcModuleTests
             historyPruner ?? Substitute.For<IHistoryPruner>()).GetCapabilities();
     }
 
-    private static IHistoryPruner MockHistoryPruner(long oldestBlockNumber)
+    private static IHistoryPruner MockHistoryPruner(ulong oldestBlockNumber)
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
-        pruner.GetRetentionBlocks(Arg.Any<long>()).Returns(call => (long)call[0] * 32);
+        pruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(call => (ulong)call[0] * 32UL);
         return pruner;
     }
 
@@ -72,11 +72,11 @@ public partial class EthRpcModuleTests
         ResourceAvailability ExpectedReceipts,
         ResourceAvailability ExpectedBlocks)
     {
-        public long? RetentionWindow { get; init; }
-        public long HeadNumber { get; init; } = 1000;
-        public long? OldestStateBlock { get; init; }
-        public long? LowestInsertedBody { get; init; }
-        public long? LowestInsertedReceipt { get; init; }
+        public ulong? RetentionWindow { get; init; }
+        public ulong HeadNumber { get; init; } = 1000;
+        public ulong? OldestStateBlock { get; init; }
+        public ulong? LowestInsertedBody { get; init; }
+        public ulong? LowestInsertedReceipt { get; init; }
         public SyncConfig? SyncConfig { get; init; }
         public IHistoryConfig? HistoryConfig { get; init; }
         public IHistoryPruner? HistoryPruner { get; init; }
@@ -106,7 +106,7 @@ public partial class EthRpcModuleTests
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
         };
 
-        const long bodiesBarrier = 5_000_000;
+        const ulong bodiesBarrier = 5_000_000;
         ResourceAvailability barrierBound = new(Disabled: false, OldestBlock: bodiesBarrier);
         yield return new CapabilitiesScenario(
             Name: "fast_sync_with_ancient_bodies_barrier_caps_blocks_and_receipts",
@@ -126,8 +126,8 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
         { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
 
-        const long bodiesBarrierLow = 3_000_000;
-        const long receiptsBarrierHigh = 6_000_000;
+        const ulong bodiesBarrierLow = 3_000_000;
+        const ulong receiptsBarrierHigh = 6_000_000;
         ResourceAvailability blocksAtBodiesBarrier = new(Disabled: false, OldestBlock: bodiesBarrierLow);
         ResourceAvailability receiptsAtReceiptsBarrier = new(Disabled: false, OldestBlock: receiptsBarrierHigh);
         yield return new CapabilitiesScenario(
@@ -151,12 +151,12 @@ public partial class EthRpcModuleTests
         // Mid-sync: bodies/receipts caught up to block 12M from pivot 18M; blocks/receipts oldest
         // tracks the actual progress, not the eventual barrier. State sync is finished
         // (OldestStateBlock = pivot) but historical block sync continues.
-        const long midSyncBody = 12_000_000;
-        const long midSyncReceipt = 12_500_000;
-        const long midSyncStateFloor = 18_000_000;
+        const ulong midSyncBody = 12_000_000;
+        const ulong midSyncReceipt = 12_500_000;
+        const ulong midSyncStateFloor = 18_000_000UL;
         ResourceAvailability midSyncBlocks = new(Disabled: false, OldestBlock: midSyncBody);
         ResourceAvailability midSyncReceipts = new(Disabled: false, OldestBlock: midSyncReceipt);
-        ResourceAvailability midSyncState = new(Disabled: false, OldestBlock: midSyncStateFloor);
+        ResourceAvailability midSyncState = new(Disabled: false, OldestBlock: (long)midSyncStateFloor);
         yield return new CapabilitiesScenario(
             Name: "fast_sync_mid_progress_reports_actual_lowest_inserted",
             ExpectedState: midSyncState, ExpectedStateproofs: midSyncState,
@@ -191,8 +191,8 @@ public partial class EthRpcModuleTests
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = 5_000_000 },
         };
 
-        const long fastSyncFloor = 18_000_000;
-        ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: fastSyncFloor);
+        const ulong fastSyncFloor = 18_000_000UL;
+        ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: (long)fastSyncFloor);
         yield return new CapabilitiesScenario(
             Name: "archive_after_fast_sync_reports_pivot_floor",
             ExpectedState: fastSyncedState, ExpectedStateproofs: fastSyncedState,
@@ -205,16 +205,16 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = fullSync };
 
-        const long fullPruneFloor = 500;
-        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: fullPruneFloor);
+        const ulong fullPruneFloor = 500UL;
+        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: (long)fullPruneFloor);
         yield return new CapabilitiesScenario(
             Name: "full_pruning_after_run_reports_copied_state_floor",
             ExpectedState: fullPruned, ExpectedStateproofs: fullPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { OldestStateBlock = fullPruneFloor, SyncConfig = fullSync };
 
-        const long retention = 128;
-        const long memoryHead = 1000;
+        const ulong retention = 128;
+        const ulong memoryHead = 1000;
         ResourceAvailability memoryPruned = new(
             Disabled: false,
             OldestBlock: memoryHead - retention,
@@ -226,8 +226,8 @@ public partial class EthRpcModuleTests
         { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
 
         // Floor dominates window — DeleteStrategy is suppressed so oldestBlock and head-retentionBlocks stay consistent.
-        const long recentPivot = 950;
-        ResourceAvailability postSyncMemory = new(Disabled: false, OldestBlock: recentPivot);
+        const ulong recentPivot = 950UL;
+        ResourceAvailability postSyncMemory = new(Disabled: false, OldestBlock: (long)recentPivot);
         yield return new CapabilitiesScenario(
             Name: "memory_pruning_floor_dominates_window",
             ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,
@@ -251,7 +251,7 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = false } };
 
-        const long rollingFloor = 1000;
+        const ulong rollingFloor = 1000;
         const uint retentionEpochs = 200;
         ResourceAvailability rollingPruned = new(
             Disabled: false,
@@ -267,7 +267,7 @@ public partial class EthRpcModuleTests
             HistoryPruner = MockHistoryPruner(rollingFloor),
         };
 
-        const long ancientFloor = 500;
+        const ulong ancientFloor = 500;
         ResourceAvailability ancientPruned = new(Disabled: false, OldestBlock: ancientFloor);
         yield return new CapabilitiesScenario(
             Name: "ancient_barriers_history_pruning_advances_floor",
@@ -294,13 +294,16 @@ public partial class EthRpcModuleTests
             Substitute.For<IHistoryConfig>(),
             Substitute.For<IHistoryPruner>()).GetCapabilities();
 
-        Assert.That(caps.Head, Is.EqualTo(new ChainHead(0, Hash256.Zero)));
-        Assert.That(caps.State, Is.EqualTo(Disabled));
-        Assert.That(caps.Stateproofs, Is.EqualTo(Disabled));
-        Assert.That(caps.Receipts, Is.EqualTo(Disabled));
-        Assert.That(caps.Blocks, Is.EqualTo(Disabled));
-        Assert.That(caps.Tx, Is.EqualTo(Disabled));
-        Assert.That(caps.Logs, Is.EqualTo(Disabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caps.Head, Is.EqualTo(new ChainHead(0, Hash256.Zero)));
+            Assert.That(caps.State, Is.EqualTo(Disabled));
+            Assert.That(caps.Stateproofs, Is.EqualTo(Disabled));
+            Assert.That(caps.Receipts, Is.EqualTo(Disabled));
+            Assert.That(caps.Blocks, Is.EqualTo(Disabled));
+            Assert.That(caps.Tx, Is.EqualTo(Disabled));
+            Assert.That(caps.Logs, Is.EqualTo(Disabled));
+        }
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
@@ -309,14 +312,17 @@ public partial class EthRpcModuleTests
         EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
             s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);
 
-        Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
-        Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
-        Assert.That(caps.State, Is.EqualTo(s.ExpectedState), nameof(caps.State));
-        Assert.That(caps.Stateproofs, Is.EqualTo(s.ExpectedStateproofs), nameof(caps.Stateproofs));
-        Assert.That(caps.Tx, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Tx));
-        Assert.That(caps.Logs, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Logs));
-        Assert.That(caps.Receipts, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Receipts));
-        Assert.That(caps.Blocks, Is.EqualTo(s.ExpectedBlocks), nameof(caps.Blocks));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
+            Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
+            Assert.That(caps.State, Is.EqualTo(s.ExpectedState), nameof(caps.State));
+            Assert.That(caps.Stateproofs, Is.EqualTo(s.ExpectedStateproofs), nameof(caps.Stateproofs));
+            Assert.That(caps.Tx, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Tx));
+            Assert.That(caps.Logs, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Logs));
+            Assert.That(caps.Receipts, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Receipts));
+            Assert.That(caps.Blocks, Is.EqualTo(s.ExpectedBlocks), nameof(caps.Blocks));
+        }
     }
 
     /// <summary>
@@ -360,7 +366,7 @@ public partial class EthRpcModuleTests
                   "required": ["type", "retentionBlocks"],
                   "properties": {
                     "type": { "type": "string", "enum": ["window"] },
-                    "retentionBlocks": { "type": "integer", "minimum": 0 }
+                    "retentionBlocks": { "type": "string", "pattern": "^0x[0-9a-fA-F]+$" }
                   }
                 }
               }
