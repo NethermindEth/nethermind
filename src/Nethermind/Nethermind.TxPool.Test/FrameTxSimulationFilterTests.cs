@@ -3,7 +3,6 @@
 
 #nullable enable
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -52,34 +51,61 @@ public class FrameTxSimulationFilterTests
         }
     }
 
-    [TestCaseSource(nameof(OpaquePrefixCases))]
-    public void Accept_OpaquePrefix_FollowsTheSimulatorsVerdict(FrameTxSimulationResult simulation, AcceptTxResult expected, Address? expectedPayer)
+    // The pre-validated assertion has to come from what actually ran: a filter chain that has not
+    // verified the signatures must make the simulation verify them rather than trust a stranger's.
+    [TestCase(true, TestName = "Verified signatures are not re-verified by the simulation")]
+    [TestCase(false, TestName = "Unverified signatures are re-verified by the simulation")]
+    public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer(bool signaturesVerified)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(simulation);
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
+            simulator.Received(1).Simulate(tx, signaturesPreValidated: signaturesVerified);
+        }
+    }
+
+    [Test]
+    public void Accept_OpaquePrefixFailsSimulation_Rejected()
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(tx.PayerAddress, Is.EqualTo(expectedPayer));
-            simulator.Received(1).Simulate(tx);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
+            Assert.That(tx.PayerAddress, Is.Null);
         }
     }
 
-    public static IEnumerable<TestCaseData> OpaquePrefixCases()
+    [Test]
+    public void Accept_OpaquePrefixUndecidedBySimulator_DefersInsteadOfChargingTheSender()
     {
-        yield return new TestCaseData(FrameTxSimulationResult.Accept(TestItem.AddressB), AcceptTxResult.Accepted, TestItem.AddressB)
-            .SetName("Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer");
-        yield return new TestCaseData(FrameTxSimulationResult.Reject("banned opcode"), AcceptTxResult.FrameSimulationFailed, null)
-            .SetName("Accept_OpaquePrefixFailsSimulation_Rejected");
-        // An undecided verdict is a node-side fault, so it must not produce a non-accepting result: the
-        // peer's flood counter would charge that and eventually disconnect over it.
-        yield return new TestCaseData(FrameTxSimulationResult.Undecided("simulation unavailable"), AcceptTxResult.Accepted, null)
-            .SetName("Accept_OpaquePrefixUndecidedBySimulator_DefersInsteadOfChargingTheSender");
+        // A node-side fault must not produce a non-accepting result, which the peer's flood counter
+        // would charge and eventually disconnect over.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.Null);
+        }
     }
 
     [Test]
@@ -120,10 +146,10 @@ public class FrameTxSimulationFilterTests
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

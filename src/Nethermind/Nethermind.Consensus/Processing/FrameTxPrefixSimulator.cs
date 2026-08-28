@@ -32,7 +32,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -63,7 +63,9 @@ public sealed class FrameTxPrefixSimulator(
 
                 IReleaseSpec spec = specProvider.GetSpec(head);
                 FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec);
-                TransactionResult result = processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+                ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
+                if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
+                TransactionResult result = processor.Process(tx, tracer, opts);
 
                 // The EVM ran, so any fault episode has ended and the next one warns again.
                 _nodeFaultReported = false;
