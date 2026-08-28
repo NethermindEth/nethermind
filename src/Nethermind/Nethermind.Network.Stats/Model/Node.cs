@@ -62,7 +62,6 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// The alternate TCP endpoint of the other address family when the node advertises dual-stack
         /// endpoints, e.g. via the <c>ip6</c>/<c>tcp6</c> ENR entries; otherwise <see langword="null"/>.
-        /// When <see cref="Address"/> is the IPv6 endpoint this is <see langword="null"/>.
         /// After a successful fallback dial this holds the previously tried primary endpoint so the
         /// next dial can retry the other family.
         /// </summary>
