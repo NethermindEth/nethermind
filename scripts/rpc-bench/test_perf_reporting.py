@@ -897,13 +897,16 @@ esac
             env=environment,
         )
 
-    def test_every_rpc_bench_script_with_a_shebang_is_committed_executable(self) -> None:
+    def test_every_script_with_a_shebang_is_committed_executable(self) -> None:
         # The workflow, run-rpc-sweep.sh and run_jsonbench above all run these by path rather than
         # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
         # checkout's mode bits are honoured. The index mode is the only platform-independent record
         # of the bit — a Windows working tree reports nothing useful about it.
+        # rpc-bench plus the two perf-flow scripts one level up, which AGENTS.md documents as commands to
+        # run by path. Deliberately not the whole scripts/ tree: unrelated scripts there predate this flow.
         listing = subprocess.run(
-            ["git", "ls-files", "-s", "--", "scripts/rpc-bench"],
+            ["git", "ls-files", "-s", "--", "scripts/rpc-bench",
+             "scripts/perf-report.sh", "scripts/validate-folded-profile.sh"],
             cwd=ROOT,
             check=False,
             text=True,
@@ -1107,6 +1110,22 @@ esac
             "&& (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' "
             "|| needs.resolve.outputs.dotnet_trace == 'true')",
         )
+
+    def test_a_failed_warmup_fails_the_run_when_a_profiler_will_attach(self) -> None:
+        """The deferred profiler start is what makes "the measured phase only" true. A warm-up that dies
+        before writing the reuse marker puts the clone, image build and corpus conversion back inside the
+        window, and nettrace-report reports GC and contention as a share of it - so the numbers would be
+        silently deflated. Unprofiled, a cold cell is still a valid measurement and stays a warning."""
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        warmup = rpc_workflow[rpc_workflow.index("- name: Warm up node"):rpc_workflow.index("- name: Start profilers")]
+        self.assertIn("PROFILED:", warmup)
+        self.assertIn("if ! ./scripts/rpc-bench/run-jsonbench.sh; then", warmup)
+        self.assertIn('if [[ "${PROFILED}" == "true" ]]; then', warmup)
+        self.assertIn("::error::warm-up failed with profiling enabled", warmup)
+        self.assertIn("exit 1", warmup)
+        # The unprofiled path must still only warn.
+        self.assertIn("::warning::warm-up failed", warmup)
 
     def test_dotnet_trace_sidecar_is_stopped_before_the_node_and_shipped_as_its_own_artifact(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")

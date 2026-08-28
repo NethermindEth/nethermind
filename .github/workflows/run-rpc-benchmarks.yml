@@ -906,6 +906,8 @@ jobs:
           WARMUP_RPS: ${{ needs.resolve.outputs.warmup_rps }}
           # Leave the json-bench checkout, runner image and corpus fixture for the measured cell.
           JB_REUSE_PREPARED: "true"
+          # The profilers attach after this step, so its success is what keeps their window the measured cell.
+          PROFILED: ${{ needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.dotnet_trace == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -930,8 +932,18 @@ jobs:
           export JB_MODE="benchmark" JB_RPS="${WARMUP_RPS}" JB_DURATION="${WARMUP_SECONDS}s"
           export JB_DEEP_CHECK="false" JB_HTML_REPORT="false" JB_MAX_FAIL_RATE_PCT="100"
           echo "-- WARMUP @ rps=${WARMUP_RPS} for ${WARMUP_SECONDS}s (discarded) --"
-          ./scripts/rpc-bench/run-jsonbench.sh \
-            || echo "::warning::warm-up failed — the measured cell and its profiles may be cold"
+          if ! ./scripts/rpc-bench/run-jsonbench.sh; then
+            # A failed warm-up may not have written the reuse marker, so the measured cell re-clones, rebuilds
+            # the runner image and re-converts the corpus - all inside the profiler window that the deferred
+            # start exists to keep clear. nettrace-report states GC pause and lock contention as a share of that
+            # window, so the profile would silently understate both. A cold cell is still a valid measurement;
+            # a profile whose window is not the one three docs describe is not.
+            if [[ "${PROFILED}" == "true" ]]; then
+              echo "::error::warm-up failed with profiling enabled - the profiler window would cover json-bench preparation, not just the measured cell"
+              exit 1
+            fi
+            echo "::warning::warm-up failed — the measured cell and its profiles may be cold"
+          fi
 
       - name: Start profilers
         # Only after the warm-up: without one, start-node.sh started them when RPC became ready.

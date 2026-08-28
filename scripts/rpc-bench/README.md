@@ -569,7 +569,9 @@ between the warm-up and the measured cell, which is why that is the one accepted
 dispatch setting no `corpus_warmup_duration` is given the canonical 60s: attached at RPC-ready
 instead, the window would also hold json-bench's clone, image build and corpus conversion, and the
 report's per-window percentages (GC pause share, contention share) would be diluted by exactly
-that padding. It records no CPU samples, so it can run next to `dottrace` and `perf` without
+that padding. A warm-up that fails is therefore fatal whenever a profiler is enabled, since it may
+not have written the reuse marker and the measured cell would redo that preparation inside the
+window; unprofiled, a failed warm-up only warns and the cell is measured cold. It records no CPU samples, so it can run next to `dottrace` and `perf` without
 double-sampling the node; its providers are `gc+contention+threading+exception` at level
 **verbose**, which is required because informational `Contention` events carry no stacks and
 lock-owner attribution is the point.
