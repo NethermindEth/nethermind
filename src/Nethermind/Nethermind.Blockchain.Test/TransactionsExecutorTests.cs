@@ -473,7 +473,7 @@ namespace Nethermind.Blockchain.Test
             frameTx.Hash = frameTx.CalculateHash();
 
             Block block = Build.A.Block.WithGasLimit(130_000).WithTransactions([frameTx]).TestObject;
-            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
 
             BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
@@ -492,7 +492,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void CanAddTransaction_admits_blob_carrying_frame_transaction()
         {
-            // The picker no longer skips blob carriers; the sidecar guard is ResolveBlob, upstream of it.
+            // Blob carriers are not the picker's concern: the sidecar guard is ResolveBlob, upstream of it.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -525,10 +525,8 @@ namespace Nethermind.Blockchain.Test
 
         public enum FramePrefix { Approves, NeverApproves, BelowBaseFee }
 
-        // EIP-8141: a frame transaction pays only once a frame approves payment, so a prefix that never
-        // approves burns its whole budget for free. Nothing else evicts it, so without this the producer
-        // repeats that work on every block it builds. A fee cap under the base fee must survive: it clears
-        // on its own once the base fee falls.
+        // A prefix that never approves burns its whole budget for free and nothing else evicts it. A fee cap
+        // under the base fee must survive instead: it clears on its own once the base fee falls.
         [TestCase(FramePrefix.NeverApproves, true, TestName = "A prefix that can never approve is evicted after one attempt")]
         [TestCase(FramePrefix.Approves, false, TestName = "A prefix that approves is included, not evicted")]
         [TestCase(FramePrefix.BelowBaseFee, false, TestName = "A fee cap under the base fee is not an eviction reason")]
@@ -569,8 +567,8 @@ namespace Nethermind.Blockchain.Test
                 new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
             CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(transactionProcessor));
 
-            // Stands in for the pool feeding block production: once the executor evicts the transaction,
-            // the source stops offering it, which is what turns one eviction into one execution.
+            // Stands in for the pool: once evicted, the source stops offering the transaction, which is
+            // what turns one eviction into one execution.
             bool evicted = false;
             ITxPool txPool = Substitute.For<ITxPool>();
             txPool.EvictTransaction(frameTx).Returns(_ => evicted = true);
@@ -608,8 +606,8 @@ namespace Nethermind.Blockchain.Test
                 Assert.That(adapter.Attempts, Is.GreaterThan(0), "the transaction never reached execution");
                 Assert.That(evicted, Is.EqualTo(expectedEvicted));
                 Assert.That(included, Is.EqualTo(prefix == FramePrefix.Approves ? 1 : 0));
-                // One attempt after an eviction, one after an inclusion (the nonce has moved on), and one
-                // per block for the transaction that stays pooled: that last one is the cost being fixed.
+                // One attempt after an eviction or an inclusion (the nonce has moved on), but one per block
+                // for a transaction that stays pooled — that last one is the cost being fixed.
                 Assert.That(adapter.Attempts, Is.EqualTo(prefix == FramePrefix.BelowBaseFee ? blocks : 1));
             }
         }

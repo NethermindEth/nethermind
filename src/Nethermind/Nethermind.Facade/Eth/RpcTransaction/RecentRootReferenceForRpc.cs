@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,8 +32,18 @@ public class RecentRootReferenceForRpc
     /// <remarks>Reach this through <see cref="TryToReferences"/>, which is what rules out the null hashes.</remarks>
     public RecentRootReference ToReference() => new(SourceId!.ValueHash256, Slot, Root!.ValueHash256);
 
-    public static RecentRootReferenceForRpc[]? FromReferences(RecentRootReference[]? references) =>
-        references?.Select(static r => new RecentRootReferenceForRpc(r)).ToArray();
+    public static RecentRootReferenceForRpc[]? FromReferences(RecentRootReference[]? references)
+    {
+        if (references is null) return null;
+
+        RecentRootReferenceForRpc[] result = new RecentRootReferenceForRpc[references.Length];
+        for (int i = 0; i < references.Length; i++)
+        {
+            result[i] = new RecentRootReferenceForRpc(references[i]);
+        }
+
+        return result;
+    }
 
     /// <summary>Maps the deserialized <c>recentRootReferences</c> list onto the transaction's references.</summary>
     /// <param name="references">The deserialized list, or <c>null</c> when the request omitted it.</param>

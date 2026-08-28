@@ -1,17 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-/// <summary>
-/// JSON-RPC view of an EIP-8141 signature entry: <c>[scheme, signer, msg, signature]</c>. The raw
-/// signature bytes of protocol-validated schemes are still surfaced here for observability; EVM
-/// introspection restrictions apply only inside the VM, not to the RPC representation.
-/// </summary>
+/// <summary>JSON-RPC view of an EIP-8141 signature entry: <c>[scheme, signer, msg, signature]</c>.</summary>
+/// <remarks>Raw signature bytes are surfaced here deliberately: the EIP-8141 introspection limits bind the EVM, not RPC.</remarks>
 public class FrameSignatureForRpc
 {
     public byte Scheme { get; set; }
@@ -32,8 +28,18 @@ public class FrameSignatureForRpc
 
     public TxFrameSignature ToSignature() => new(Scheme, Signer, Msg, Signature);
 
-    public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures) =>
-        signatures?.Select(static s => new FrameSignatureForRpc(s)).ToArray();
+    public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures)
+    {
+        if (signatures is null) return null;
+
+        FrameSignatureForRpc[] result = new FrameSignatureForRpc[signatures.Length];
+        for (int i = 0; i < signatures.Length; i++)
+        {
+            result[i] = new FrameSignatureForRpc(signatures[i]);
+        }
+
+        return result;
+    }
 
     /// <summary>Maps the deserialized <c>signatures</c> list onto the transaction's frame signatures.</summary>
     /// <param name="signatures">The deserialized list, or <c>null</c> when the request omitted it.</param>

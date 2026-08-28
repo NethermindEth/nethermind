@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
-        private const int CODES_BATCH_SIZE = 1_000;
+        public const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
 
@@ -321,28 +321,8 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
-        public void ReportFullStorageRequestFinished(int originalStorageCount, IEnumerable<PathWithAccount>? storages = null)
-        {
-            if (storages is not null)
-            {
-                foreach (PathWithAccount pathWithAccount in storages)
-                {
-                    EnqueueAccountStorage(pathWithAccount);
-                }
-            }
-
-            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
-        }
-
-        public void ReportFullStorageRequestFinished(int originalStorageCount, ReadOnlySpan<PathWithAccount> storages)
-        {
-            foreach (PathWithAccount pathWithAccount in storages)
-            {
-                EnqueueAccountStorage(pathWithAccount);
-            }
-
-            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
-        }
+        public void ReportStorageRequestFinished(int accountCount) =>
+            Interlocked.Add(ref _activeStorageRequests, -accountCount);
 
         public void EnqueueNextSlot(StorageRange? storageRange)
         {
@@ -407,25 +387,21 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RetryStorageRange(StorageRange storageRange)
+        public void RequeueStorageRange(StorageRange storageRange)
         {
-            bool dispose = false;
+            // A single account is a continuation, so it keeps its starting hash and limit.
             if (storageRange.Accounts.Count == 1)
             {
                 EnqueueNextSlot(storageRange);
+                return;
             }
-            else
+
+            foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
             {
-                foreach (PathWithAccount account in storageRange.Accounts.AsSpan())
-                {
-                    EnqueueAccountStorage(account);
-                }
-
-                dispose = true;
+                EnqueueAccountStorage(account);
             }
 
-            Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
-            if (dispose) storageRange.Dispose();
+            storageRange.Dispose();
         }
 
         public void ReportAccountRangePartitionFinished(in ValueHash256 hashLimit)

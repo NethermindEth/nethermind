@@ -93,13 +93,8 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [frame_receipt, ...]],
-        // frame_receipt = [status, gas_used, logs]. Spec-literal — no top-level status and no bloom
-        // on the wire (receipts-root parity with other clients).
-        // EIP8141-GAP: the spec receipt has no top-level status or bloom; StatusCode is derived from
-        // the frame statuses (see TxFrameReceipt.AggregateStatus) so a receipt taken off the wire
-        // reads the same as one produced by executing the block, and Logs holds the union of frame
-        // logs so bloom calculation and log indexing keep working.
+        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [[status, gas_used, logs], ...]], gas_used = [execution, state].
+        // EIP8141-GAP: the spec receipt has no top-level status or bloom; both are derived from the frame receipts.
         private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
         {
             int sequenceLength = ctx.ReadSequenceLength();
@@ -186,7 +181,15 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, framesLength);
         }
 
-        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt)
+        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
+            Rlp.LengthOf((ulong)frameReceipt.Status)
+            + Rlp.LengthOfSequence(GetFrameGasUsedLength(frameReceipt))
+            + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
+
+        private static int GetFrameGasUsedLength(TxFrameReceipt frameReceipt) =>
+            Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
+
+        private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)
         {
             int logsLength = 0;
             for (int i = 0; i < frameReceipt.Logs.Length; i++)
@@ -194,38 +197,24 @@ namespace Nethermind.Serialization.Rlp
                 logsLength += Rlp.LengthOf(frameReceipt.Logs[i]);
             }
 
-            return Rlp.LengthOf((ulong)frameReceipt.Status)
-                   + Rlp.LengthOfSequence(Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed))
-                   + Rlp.LengthOfSequence(logsLength);
+            return logsLength;
         }
 
-        private static void EncodeFrameTxReceipt<TWriter>(ref TWriter writer, TxReceipt item)
+        private static void EncodeFrameTxReceipt<TWriter>(ref TWriter writer, TxReceipt item, int totalContentLength, int framesLength)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            (int totalContentLength, _) = GetFrameTxContentLength(item);
             writer.StartSequence(totalContentLength);
             writer.Encode(item.GasUsedTotal);
             writer.Encode(item.Payer);
 
             TxFrameReceipt[] frameReceipts = item.FrameReceipts ?? [];
-            int framesLength = 0;
-            for (int i = 0; i < frameReceipts.Length; i++)
-            {
-                framesLength += Rlp.LengthOfSequence(GetFrameReceiptContentLength(frameReceipts[i]));
-            }
-
             writer.StartSequence(framesLength);
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < frameReceipts.Length; i++)
             {
                 TxFrameReceipt frameReceipt = frameReceipts[i];
-                int logsLength = 0;
-                for (int j = 0; j < frameReceipt.Logs.Length; j++)
-                {
-                    logsLength += Rlp.LengthOf(frameReceipt.Logs[j]);
-                }
-
-                int gasUsedLength = Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
+                int logsLength = GetFrameLogsLength(frameReceipt);
+                int gasUsedLength = GetFrameGasUsedLength(frameReceipt);
                 writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
                 writer.Encode((ulong)frameReceipt.Status);
                 writer.StartSequence(gasUsedLength);
@@ -239,7 +228,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
+        /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
+        private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -248,8 +239,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                (int frameTxTotal, _) = GetFrameTxContentLength(item);
-                return (frameTxTotal, 0);
+                return GetFrameTxContentLength(item);
             }
 
             int contentLength = 0;
@@ -322,7 +312,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -339,7 +329,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                EncodeFrameTxReceipt(ref writer, item);
+                EncodeFrameTxReceipt(ref writer, item, totalContentLength, innerLength);
                 return;
             }
 
@@ -360,7 +350,7 @@ namespace Nethermind.Serialization.Rlp
             if (!skipBloom)
                 writer.Encode(item.Bloom);
 
-            writer.StartSequence(logsLength);
+            writer.StartSequence(innerLength);
             LogEntry[] logs = item.Logs;
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)

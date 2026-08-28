@@ -665,9 +665,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Test_CallTrace_ReportLog_EmptyCallStack_DoesNotThrow()
     {
-        // A frame transaction running entirely through default code (an EOA sender's codeless
-        // SENDER transfer) emits an EIP-7708 transfer log without any ReportAction, so the call
-        // stack is empty. debug_traceTransaction with callTracer and withLog must not throw.
+        // A frame transaction running entirely through default code emits an EIP-7708 transfer log
+        // without any ReportAction, so callTracer sees an empty call stack.
         Transaction tx = Build.A.Transaction.TestObject;
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -36,8 +35,18 @@ public class FrameForRpc
 
     public TxFrame ToFrame() => new(Mode, Flags, Target, ExecutionGasLimit, StateGasLimit, Value, Data);
 
-    public static FrameForRpc[]? FromFrames(TxFrame[]? frames) =>
-        frames?.Select(static f => new FrameForRpc(f)).ToArray();
+    public static FrameForRpc[]? FromFrames(TxFrame[]? frames)
+    {
+        if (frames is null) return null;
+
+        FrameForRpc[] result = new FrameForRpc[frames.Length];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            result[i] = new FrameForRpc(frames[i]);
+        }
+
+        return result;
+    }
 
     /// <summary>Maps the deserialized <c>frames</c> list onto the transaction's frames.</summary>
     /// <param name="frames">The deserialized list, or <c>null</c> when the request omitted it.</param>

@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -103,6 +104,126 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(foundPrecompileCall, Is.True);
             Assert.That(precompileCallGas, Is.EqualTo(954_604));
+        }
+    }
+
+    [Test]
+    public void Eip8037_nested_exceptional_halts_burn_spilled_state_gas()
+    {
+        // Byte-exact reproduction of the recursive contract from nethermind#12964. Every frame:
+        //   PUSH0 PUSH0                    ; zeros reserved for the trailing CALL
+        //   PUSH1 0x0b SLOAD NOT           ; value = ~storage[11]
+        //   PUSH1 0x0b DUP2 DUP2 SSTORE    ; storage[11] = value, alternating 0 <-> 2^256-1
+        //                                  ; across nesting depths: fresh non-zero sets spill
+        //                                  ; their state charge when the reservoir is empty,
+        //                                  ; restorations to the original zero credit it back
+        //   CALLDATASIZE DUP2 DUP2         ; small constants reused as call operands
+        //   ADDRESS ADDRESS DELEGATECALL   ; nest one frame deeper
+        //   DUP4 CALLER CALLER CALL        ; trailing CALL reuses the all-ones value as a
+        //                                  ; memory-size operand, so its expansion overflows
+        //                                  ; and the frame halts exceptionally on unwind
+        byte[] code = Convert.FromHexString("5f5f600b5419600b8181553681813030f4833333f1");
+        const ulong gasLimit = 200_000;
+
+        TestAllTracerWithOutput tracer = Execute(
+            Activation,
+            gasLimit,
+            code,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
+            AssertStorage(new StorageCell(Recipient, 11), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_top_level_halt_refunds_reservoir_funded_new_account_state_gas()
+    {
+        // Empty BLAKE2F input fails after the value transfer charges NEW_ACCOUNT from the reservoir.
+        Address precompile = Blake2FPrecompile.Address;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.NewAccountState;
+        Transaction transaction = Build.A.Transaction
+            .WithTo(precompile)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithValue(1)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            // A failed top-level precompile surfaces as PrecompileOutOfGasException (VirtualMachine.ExecutePrecompile
+            // maps any failed precompile result to it), so the tracer reports OutOfGas.
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(TestState.AccountExists(precompile), Is.False);
+        }
+    }
+
+    [Test]
+    public void Eip8037_reservoir_funded_sstore_burns_on_halt_while_unspent_reservoir_refunds()
+    {
+        // Gas above the EIP-7825 cap funds the reservoir with exactly one SSTORE_SET state charge;
+        // the contract spends it on an SSTORE and then INVALIDs. The halt restores the reservoir to
+        // its frame-entry value: the reservoir-funded write burns with the halt and the user is
+        // charged only the execution dimension (the capped amount).
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + (ulong)GasCostOf.SSetState;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            AssertStorage(new StorageCell(Recipient, 1), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_failed_create_credit_does_not_survive_top_level_halt()
+    {
+        // The failing inner CREATE refunds its NEW_ACCOUNT state charge to this frame's reservoir;
+        // a subsequent exceptional halt must burn that credit instead of letting it reduce spent gas.
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.Op(Instruction.INVALID).Done, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.INVALID)
+            .Done;
+
+        const ulong gasLimit = 200_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
     }
 
@@ -298,8 +419,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Eip8037_top_level_create_on_balance_only_target_does_not_charge_create_state_gas()
+    [TestCase(false, TestName = "Eip8037_top_level_create_on_existing_target_clears_storage_without_charging_create_state_gas")]
+    [TestCase(true, TestName = "Eip8037_top_level_create_on_pruned_storage_target_clears_stale_storage")]
+    public void Eip8037_top_level_create_clears_storage(bool pruneTarget)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -315,10 +437,17 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         transaction.Data = initCode;
 
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
-        TestState.CreateAccount(contractAddress, 1);
+        TestState.CreateAccount(contractAddress, pruneTarget ? UInt256.Zero : (UInt256)1);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        if (pruneTarget)
+        {
+            TestState.Commit(Spec, commitRoots: false);
+            Assert.That(TestState.AccountExists(contractAddress), Is.False);
+        }
 
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        transaction.GasLimit = intrinsicGas.MinimalGas;
+        if (!pruneTarget)
+            transaction.GasLimit = intrinsicGas.MinimalGas;
         block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
 
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -327,9 +456,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo((UInt256)1));
+            if (!pruneTarget)
+                Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(pruneTarget ? (ulong)GasCostOf.CreateState : 0));
+            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(pruneTarget ? UInt256.Zero : (UInt256)1));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
         }
     }
 
@@ -600,19 +731,21 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE")]
-    [TestCase(true, TestName = "Eip8037_nested_storage_only_collision_refunds_create_state_gas_CREATE2")]
-    public void Eip8037_nested_storage_only_collision_refunds_create_state_gas(bool create2)
+    [TestCase(false, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE2")]
+    public void Eip8037_nested_pruned_storage_only_target_charges_create_state_gas(bool create2)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
             .Done;
         byte[] salt = [0x01];
-        Address collisionAddress = create2
+        Address createAddress = create2
             ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
             : ContractAddress.From(Recipient, 0);
-        TestState.CreateAccount(collisionAddress, 0);
-        TestState.Set(new StorageCell(collisionAddress, 0), [0x01]);
+        TestState.CreateAccount(createAddress, 0);
+        TestState.Set(new StorageCell(createAddress, 0), [1]);
+        TestState.Commit(Spec, commitRoots: false);
+        Assert.That(TestState.AccountExists(createAddress), Is.False);
 
         Prepare codeBuilder = create2
             ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
@@ -621,16 +754,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
-        ulong creatorNonceBefore = TestState.GetNonce(Recipient);
 
         TestAllTracerWithOutput tracer = Execute(Activation, 600_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
-            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(creatorNonceBefore + 1));
-            AssertStorage(new StorageCell(collisionAddress, 0), (UInt256)1);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo((ulong)GasCostOf.CreateState));
+            AssertStorage(new StorageCell(createAddress, 0), UInt256.Zero);
         }
     }
 

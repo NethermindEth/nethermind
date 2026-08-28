@@ -8,22 +8,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-/// <summary>
-/// JSON-RPC view of an EIP-8141 frame transaction (TxType 0x06): the EIP-1559 fee fields plus the
-/// frame list and the hoisted signature list. Without this converter frame txs would serialize as
-/// a generic transaction, dropping their frame-specific fields.
-/// </summary>
+/// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and hoisted signature lists.</summary>
 public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<FrameTransactionForRpc>
 {
     public new static TxType TxType => TxType.FrameTx;
 
     public override TxType? Type => TxType;
 
-    /// <summary><c>nonce_keys</c>, sharing the sequence number reported as <c>nonce</c>.</summary>
-    /// <remarks>
-    /// Absent for an envelope nonce, which is a different signing payload from the key set <c>[0]</c>.
-    /// See <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>.
-    /// </remarks>
+    /// <summary>EIP-8250 <c>nonce_keys</c>, sharing the sequence number reported as <c>nonce</c>.</summary>
+    /// <remarks>Absent for an envelope nonce, which is a different signing payload from the key set <c>[0]</c>.</remarks>
     public UInt256[]? NonceKeys { get; set; }
 
     [JsonDiscriminator]
