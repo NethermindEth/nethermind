@@ -4,9 +4,11 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -289,6 +291,57 @@ public class FrameTxBlockGasTests
                 Is.EqualTo(tracer.GasConsumedResult.SpentGas - expectedStateGas),
                 "the two dimensions must together account for the gas the transaction spent");
         }
+    }
+
+    [Test]
+    public void Execute_WritingFrameTxAcrossTheFrameLimitsBoundary_KeepsTheConsensusHashAndMetersStateOnlyAfterActivation()
+    {
+        Address laterWriter = TestItem.AddressF;
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        Deploy(laterWriter, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        TestSpecProvider provider = (TestSpecProvider)_specProvider;
+        OverridableReleaseSpec specAfterFork = (OverridableReleaseSpec)provider.GenesisSpec;
+        OverridableReleaseSpec specBeforeFork = new(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8037Enabled = false };
+
+        Transaction sample = FrameTx(nonce: 7, laterWriter);
+        Hash256 hashAfterFork = ConsensusHash(sample);
+        provider.GenesisSpec = specBeforeFork;
+        Hash256 hashBeforeFork = ConsensusHash(sample);
+        provider.GenesisSpec = specAfterFork;
+
+        Transaction afterFork = FrameTx(nonce: 0, laterWriter);
+        TestAllTracerWithOutput after = new();
+        Assert.That(Process(afterFork, after).TransactionExecuted, Is.True);
+
+        provider.GenesisSpec = specBeforeFork;
+        Transaction beforeFork = FrameTx(nonce: 1, Writer);
+        TestAllTracerWithOutput before = new();
+        Assert.That(Process(beforeFork, before).TransactionExecuted, Is.True);
+
+        const ulong stateCharge = (ulong)GasCostOf.SSetState;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashAfterFork, Is.EqualTo(hashBeforeFork),
+                "the frame envelope is two-dimensional in both eras, so re-encoding keeps the consensus hash");
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the fresh slot is written before the fork");
+            Assert.That(_state.Get(new StorageCell(laterWriter, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the fresh slot is written after the fork");
+            Assert.That(before.GasConsumedResult.BlockStateGas, Is.Zero,
+                "before frameLimitsTime the state dimension is inert, so a fresh slot owes no state gas");
+            Assert.That(after.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
+                "after frameLimitsTime the same fresh-slot write is billed in the state dimension");
+        }
+    }
+
+    private static Hash256 ConsensusHash(Transaction tx)
+    {
+        byte[] bytes = new byte[TxDecoder.Instance.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
+        RlpWriter writer = new(bytes);
+        TxDecoder.Instance.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+        return Keccak.Compute(bytes);
     }
 
     private static byte[] ApproveCode(byte scope) =>

@@ -689,6 +689,31 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_FrameTxWhenEip8141Disabled_ReturnsInvalidTxType()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+        };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Prague.Instance.Name)));
+        }
+    }
+
+    [Test]
     public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
     {
         Transaction tx = Build.A.Transaction

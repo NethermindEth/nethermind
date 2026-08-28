@@ -50,6 +50,8 @@ public class FrameTxValidationTests
         // assert frame.mode < 4 (EIP-7906 widened it from 3)
         yield return Case("FrameModeFour_InvalidMode",
             static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
+        yield return Case("FrameModeFive_InvalidMode",
+            static tx => tx.Frames = [Frame(mode: 5)], FrameTxValidation.InvalidMode);
 
         // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
         // opcode, so an unexercised permission bit is not an envelope defect.
