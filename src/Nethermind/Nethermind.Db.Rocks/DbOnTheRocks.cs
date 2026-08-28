@@ -360,6 +360,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
 
+    /// <summary>Counts a batched read as <paramref name="count"/> reads, so batching does not deflate <c>Db.*.Reads</c>.</summary>
+    protected internal void UpdateReadMetrics(int count) => Interlocked.Add(ref _totalReads.Value, count);
+
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
@@ -743,6 +746,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
 
+    void IReadOnlyKeyValueStore.MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags) =>
+        _reader.MultiGet(keys, keyLength, values, flags);
+
     bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key) => _reader.KeyExists(key);
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _reader.DangerousReleaseMemory(span);
@@ -945,14 +951,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
         if (values.Length == 0) return;
 
+        UpdateReadMetrics(values.Length);
+
         if (cf is null)
         {
             for (int i = 0; i < values.Length; i++)
                 values[i] = Get(keys.Slice(i * keyLength, keyLength), null, readOptions);
             return;
         }
-
-        UpdateReadMetrics();
 
         using ArrayPoolListRef<RocksDbSlice> keySlices = new(values.Length, values.Length);
         using ArrayPoolListRef<IntPtr> valueHandles = new(values.Length, values.Length);

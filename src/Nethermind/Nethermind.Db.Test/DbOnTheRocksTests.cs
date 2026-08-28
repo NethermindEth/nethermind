@@ -494,6 +494,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void MultiGet_through_the_read_only_interface_reads_and_counts_every_key()
+        {
+            _db[[1]] = [10];
+            _db[[3]] = [30];
+            long before = _db.GatherMetric().TotalReads;
+            byte[]?[] values = new byte[]?[3];
+
+            ((IReadOnlyKeyValueStore)_db).MultiGet([1, 2, 3], 1, values);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(values, Is.EqualTo(new byte[]?[] { [10], null, [30] }));
+                Assert.That(_db.GatherMetric().TotalReads - before, Is.EqualTo(3));
+            }
+        }
+
+        [Test]
         public void Snapshot_dispose_cleans_up_read_options()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;

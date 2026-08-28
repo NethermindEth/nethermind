@@ -98,6 +98,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         if (keys.Length != values.Length * keyLength)
             throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
 
+        // Only HintCacheMiss maps onto a batched read; HintReadAhead selects a sequential iterator, per the interface.
         ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
         _mainDb.MultiGet(keys, keyLength, values, _columnFamily, readOptions);
     }
