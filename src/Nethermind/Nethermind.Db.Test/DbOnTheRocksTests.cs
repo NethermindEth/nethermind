@@ -478,17 +478,17 @@ namespace Nethermind.Db.Test
         public void Snapshot_multiget_uses_point_in_time_view()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
-            byte[][] keys = [[1], [2], [3]];
-            _db[keys[0]] = [10];
-            _db[keys[1]] = [20];
+            byte[] keys = [1, 2, 3];
+            _db[[1]] = [10];
+            _db[[2]] = [20];
 
             using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
-            _db[keys[0]] = [11];
-            _db[keys[1]] = null;
-            _db[keys[2]] = [30];
+            _db[[1]] = [11];
+            _db[[2]] = null;
+            _db[[3]] = [30];
             byte[]?[] values = new byte[]?[keys.Length];
 
-            snapshot.MultiGet(keys, values);
+            snapshot.MultiGet(keys, 1, values);
 
             Assert.That(values, Is.EqualTo(new byte[]?[] { [10], [20], null }));
         }
