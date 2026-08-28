@@ -73,6 +73,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
     private int _stalledBelowBoundary = -1;
+    private bool _stallWarned;
 
     public string Description => "log index builder";
 
@@ -384,11 +385,17 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                             return;
                         }
 
-                        if (start != _stalledBelowBoundary && _logger.IsWarn)
+                        if (start != _stalledBelowBoundary)
                         {
+                            // First empty tick at a height is routinely the pruner mid-reclaim (receipts dropped,
+                            // body not yet) and resolves itself - only a second consecutive tick is worth a Warn.
                             _stalledBelowBoundary = start;
-                            _logger.Warn(
-                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} has a body but no readable receipts - waiting for the pruner to finish reclaiming it before the descent can continue.");
+                        }
+                        else if (!_stallWarned)
+                        {
+                            _stallWarned = true;
+                            if (_logger.IsWarn) _logger.Warn(
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} still has a body but no readable receipts - the descent is stalled until it is reclaimed.");
                         }
                     }
 
@@ -398,6 +405,14 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 }
 
                 _stats.LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                if (!isForward && _stallWarned)
+                {
+                    _stallWarned = false;
+                    if (_logger.IsInfo) _logger.Info(
+                        $"{GetLogPrefix(isForward)}: the descent moved past block {_stalledBelowBoundary}.");
+                    _stalledBelowBoundary = -1;
+                }
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);

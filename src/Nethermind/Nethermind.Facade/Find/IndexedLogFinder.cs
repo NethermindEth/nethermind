@@ -9,7 +9,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 using Autofac.Features.AttributeFilters;
@@ -30,15 +29,13 @@ public class IndexedLogFinder(
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
-    IPrunedLogsRetention? prunedLogsRetention = null,
-    IFlatDbConfig? flatDbConfig = null)
+    IPrunedLogsRetention? prunedLogsRetention = null)
     : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
-    // Direct parameter use in a method body is CS9107 for parameters that also flow to the base constructor,
-    // so the boundary guard reads these initializer-copied members instead.
+    // Direct parameter use in a method body is CS9107 for a parameter that also flows to the base constructor,
+    // so the boundary guard reads this initializer-copied member instead.
     private readonly IBlockFinder _blockFinder = blockFinder;
-    private readonly bool _servesRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
 
     public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
@@ -89,16 +86,14 @@ public class IndexedLogFinder(
             Math.Min((int)toBlock.Number, indexTo)
         );
 
-        // Below the pruned boundary the index holds only the receipt islands slice retention kept, and those
-        // blocks also carry other addresses' logs - complete for the sliced addresses, a partial answer for any
-        // other filter. A filter the retention does not cover starts at the boundary instead, so its below-boundary
-        // prefix falls back to the endpoint probe and fails closed rather than answering short.
-        if (_servesRetainedSlices)
-        {
-            ulong lowestStored = _blockFinder.GetLowestBlock();
-            if ((ulong)range.from < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
-                range.from = (int)lowestStored;
-        }
+        // Below the oldest stored block the index can only answer short: on a pruning node its entries point at
+        // receipts that are gone, and on a sliced node it holds just the receipt islands the retention kept - and
+        // an index entry does not say which it is, so this cannot be gated on today's config. Any filter the
+        // retention does not vouch for starts at the boundary instead, and its below-boundary prefix falls back to
+        // the endpoint probe and fails closed rather than answering short.
+        ulong lowestStored = _blockFinder.GetLowestBlock();
+        if ((ulong)range.from < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+            range.from = (int)lowestStored;
 
         if (range.from > range.to)
             return null;

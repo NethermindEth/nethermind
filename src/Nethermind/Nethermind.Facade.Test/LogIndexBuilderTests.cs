@@ -357,6 +357,64 @@ public class LogIndexBuilderTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_WaitInsteadOfCompletingOrFabricating_WhenABelowBoundaryHeightHasABodyButNoReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int stalledHeight = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number is stalledHeight)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        bool reclaimed = false;
+        _receiptStorage
+            .Get(Arg.Is<Block>(b => b.Number == stalledHeight))
+            .Returns(_ => reclaimed ? [new TxReceipt()] : []);
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>());
+
+        Task stalled = WaitMinBlockAsync(storage, stalledHeight + 1, cancellation);
+        await builder.StartAsync();
+        await stalled;
+
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
+            "a below-boundary height with a body but no readable receipts is either mid-reclaim or a retained height that lost its data - the descent must wait, not complete and not fabricate an empty entry");
+
+        reclaimed = true;
+
+        Task completion = WaitMinBlockAsync(storage, 0, cancellation);
+        await completion;
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(0));
+            Assert.That(storage.ReceiptCountAt(stalledHeight), Is.EqualTo(1));
+        }
+    }
+
     // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
     // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
     private IBlockTree CreateFailingBlockTree(Exception exception)
