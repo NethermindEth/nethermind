@@ -142,15 +142,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
             }
 
-            bool isNewerEnr = incoming.Enr is not null && (pooled.Enr is null || incoming.Enr.EnrSequence > pooled.Enr.EnrSequence);
-            if (isNewerEnr)
-            {
-                pooled.TryMergeAlternate(incoming, allowOverwrite: true);
-            }
-            else if (incoming.V6Address is not null && pooled.V6Address is null && incoming.Enr is not null)
-            {
-                pooled.TryMergeAlternate(incoming);
-            }
+            pooled.TryMergeAlternate(incoming);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

@@ -7,7 +7,7 @@ GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:acee0ec11a2bb2199e941380ae0336caa429cdea@sha256:ede3b4bc5f751e0acb21341bc6a75b2ac4a0bfa49a89f91f99d8a450364f04a1
-ZISK_IMAGE ?= nethermindeth/zisk:1.1.0-alpha@sha256:ded53e7e25f759e477d3bec34056da403716a957cfbd22a6d01c893da0f83368
+ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
 # ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
 # the guest - fail at build time instead.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic

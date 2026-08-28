@@ -208,6 +208,25 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
         }
 
+        [TestCase(NodeFromEnrMode.PeerCandidate)]
+        [TestCase(NodeFromEnrMode.Discovery)]
+        public void TryFromEnr_accepts_dual_stack_endpoint_entries(NodeFromEnrMode mode)
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+
+            bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+                Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
+        }
+
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
         public void TryRequestEnrSequence_tracks_active_request(
             ulong initialSequence,

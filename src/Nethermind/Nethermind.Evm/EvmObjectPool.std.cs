@@ -3,12 +3,61 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Evm;
+
+/// <summary>
+/// The per-thread local tiers of every <see cref="EvmObjectPool{T}"/>, one reserved slot each.
+/// </summary>
+/// <remarks>
+/// A <see cref="ThreadStaticAttribute"/> field on the generic pool is per closed generic type, so each
+/// pooled type costs its own out-of-line base lookup. One call frame touches the state, environment and
+/// stack pools, so renting and returning a frame paid one lookup per pool rather than one in total.
+/// Hanging every tier off a single non-generic thread-static leaves one base for all of them.
+/// </remarks>
+internal static class EvmPoolTiers
+{
+    // Slots are reserved per pool instance and never released, so this bounds the pools that may exist,
+    // not the live ones. It costs one reference per slot per thread that has run an EVM frame.
+    private const int MaxPools = 32;
+
+    [ThreadStatic] private static object?[]? _current;
+
+    private static int _reserved = -1;
+
+    internal static object?[] Current
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _current ?? Create();
+    }
+
+    /// <summary>Reserves a caller-owned slot index for the lifetime of the process.</summary>
+    /// <exception cref="InvalidOperationException">More than <c>MaxPools</c> pools were constructed.</exception>
+    internal static int Reserve()
+    {
+        int index = Interlocked.Increment(ref _reserved);
+        if (index >= MaxPools)
+        {
+            // Throws rather than growing: a slot index must stay a constant offset on the hot path.
+            ThrowTooManyPools();
+        }
+
+        return index;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static object?[] Create() => _current = new object?[MaxPools];
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowTooManyPools() =>
+        throw new InvalidOperationException(
+            $"More than {MaxPools} {nameof(EvmObjectPool<object>)} instances were constructed; raise the slot count.");
+}
 
 /// <summary>
 /// Object pool for the EVM call machinery: a per-thread free list in front of a shared queue.
@@ -19,15 +68,16 @@ namespace Nethermind.Evm;
 /// A single <see cref="ConcurrentQueue{T}"/> instead funnelled every thread through one segment head,
 /// where the contended CAS dominates - markedly worse on arm64 under LL/SC than on x64 under TSO.
 /// <para>
-/// The local tier is static per closed generic type, so a second pool over the same
-/// <typeparamref name="T"/> would hand out this one's items; the constructor rejects that.
+/// Each instance reserves its own <see cref="EvmPoolTiers"/> slot, so it is the only writer of the tier
+/// it reads back. One pool per pooled type stays a design rule the constructor enforces: a second pool
+/// over the same <typeparamref name="T"/> would split that type's items across two free lists.
 /// </para>
 /// </remarks>
 internal sealed class EvmObjectPool<T>
 {
     private const int DefaultLocalCapacity = 16;
 
-    /// <summary>Items and count in one object, so a pool operation costs one thread-static lookup.</summary>
+    /// <summary>Items and count in one object, so a pool operation costs one tier lookup.</summary>
     /// <remarks>
     /// Two <see cref="ThreadStaticAttribute"/> fields would be a GC and a non-GC thread-static, which
     /// live in separate per-thread blocks: the JIT cannot share a base between them, so each of
@@ -40,7 +90,8 @@ internal sealed class EvmObjectPool<T>
         public int Count;
     }
 
-    [ThreadStatic] private static LocalTier? _local;
+    /// <summary>This pool's slot in the per-thread tier array, reserved for the process lifetime.</summary>
+    private readonly int _tierIndex;
 
     // Never decremented: the pools are singletons built in static field initialisers, so this is a
     // construct-once count, not a live one. A test needing a second pool needs a distinct T.
@@ -68,18 +119,29 @@ internal sealed class EvmObjectPool<T>
         // Throws rather than asserts: Debug.Assert is erased from Release and CI runs -c release, so an
         // assertion would guard the type's most dangerous property in neither the node nor the build.
         // Every pool is a static field initialiser, so a violation fails at type init instead of
-        // silently handing one thread's items to two renters.
+        // silently splitting one type's items across two free lists.
         if (Interlocked.Increment(ref _instanceCount) != 1)
         {
-            throw new InvalidOperationException(
-                $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; they would share one " +
-                "per-thread free list and hand each other's items out. Hoist the pool to a single instance.");
+            ThrowDuplicatePool();
         }
+
+        // Reserved after the uniqueness check so a rejected pool does not consume a slot.
+        _tierIndex = EvmPoolTiers.Reserve();
     }
+
+    /// <summary>Reads this pool's local tier for the calling thread.</summary>
+    /// <remarks>
+    /// The slot is reserved to this instance, which is therefore its only writer, so whatever it holds is
+    /// this instantiation's tier. That makes the cast a reinterpret; a checked one would put a helper call
+    /// back on the per-frame path.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private LocalTier? GetLocalTier() => Unsafe.As<LocalTier>(
+        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(EvmPoolTiers.Current), (uint)_tierIndex));
 
     public bool TryDequeue([MaybeNullWhen(false)] out T item)
     {
-        LocalTier? local = _local;
+        LocalTier? local = GetLocalTier();
         if (local is not null)
         {
             int count = local.Count - 1;
@@ -99,7 +161,7 @@ internal sealed class EvmObjectPool<T>
 
     public void Enqueue(T item)
     {
-        LocalTier local = _local ?? CreateLocalTier();
+        LocalTier local = GetLocalTier() ?? CreateLocalTier();
         T[] items = local.Items;
         int count = local.Count;
         if ((uint)count < (uint)items.Length)
@@ -118,9 +180,15 @@ internal sealed class EvmObjectPool<T>
     }
 
     // Out of line so the array allocation and its generic-dictionary lookup stay off the per-frame
-    // return path, as TryDequeueShared and EnqueueShared already are.
+    // return path, as TryDequeueShared and EnqueueShared already are. Runs once per thread per pool, so
+    // re-reading the tier array and taking its bounds check costs nothing measurable.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private LocalTier CreateLocalTier() => _local = new LocalTier { Items = new T[_localCapacity] };
+    private LocalTier CreateLocalTier()
+    {
+        LocalTier local = new() { Items = new T[_localCapacity] };
+        EvmPoolTiers.Current[_tierIndex] = local;
+        return local;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool TryDequeueShared([MaybeNullWhen(false)] out T item)
@@ -147,4 +215,10 @@ internal sealed class EvmObjectPool<T>
 
         _shared.Enqueue(item);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDuplicatePool() =>
+        throw new InvalidOperationException(
+            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; each would keep its own " +
+            "per-thread free list, halving reuse and doubling retention. Hoist the pool to a single instance.");
 }

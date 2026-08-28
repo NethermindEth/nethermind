@@ -13,6 +13,22 @@ namespace Nethermind.Network.Discovery.Test;
 public class IPResolverTests
 {
     [Test]
+    public void Nethermind_ip_preserves_positional_api()
+    {
+        IPAddress localIp = IPAddress.Loopback;
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp ip = new(LocalIp: localIp, ExternalIp: externalIp);
+
+        (IPAddress deconstructedLocalIp, IPAddress deconstructedExternalIp) = ip;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deconstructedLocalIp, Is.SameAs(localIp));
+            Assert.That(deconstructedExternalIp, Is.SameAs(externalIp));
+        }
+    }
+
+    [Test]
     public async Task Can_resolve_ip_without_override()
     {
         IPResolver ipResolver = new(new NetworkConfig(), LimboLogs.Instance);
@@ -21,14 +37,41 @@ public class IPResolverTests
         Assert.That(ip.ExternalIp, Is.Not.Null);
     }
 
-    [TestCase("99.99.99.99")]
-    [TestCase("10.50.50.50")]
-    public async Task Can_resolve_external_ip_with_override(string ipOverride)
+    [TestCase("99.99.99.99", "99.99.99.99", null)]
+    [TestCase("10.50.50.50", "10.50.50.50", null)]
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
+    [TestCase("2001:db8::1", null, "2001:db8::1")]
+    public async Task Can_resolve_external_ip_with_override(string ipOverride, string? expectedExternalIpV4, string? expectedExternalIpV6)
     {
         INetworkConfig networkConfig = new NetworkConfig { ExternalIp = ipOverride };
         IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
-        Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(expectedExternalIpV4 is null ? null : IPAddress.Parse(expectedExternalIpV4)));
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(expectedExternalIpV6 is null ? null : IPAddress.Parse(expectedExternalIpV6)));
+        }
+    }
+
+    [Test]
+    public async Task Can_resolve_dual_stack_external_ip_overrides()
+    {
+        INetworkConfig networkConfig = new NetworkConfig
+        {
+            ExternalIpV4 = "192.0.2.1",
+            ExternalIpV6 = "2001:db8::1"
+        };
+        IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(IPAddress.Parse("2001:db8::1")));
+        }
     }
 
     [Test]

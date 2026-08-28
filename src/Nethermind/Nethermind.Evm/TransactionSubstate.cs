@@ -54,6 +54,7 @@ public readonly ref struct TransactionSubstate
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
+    internal bool ShouldRestoreRipemdTouch { get; init; }
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
