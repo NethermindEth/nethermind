@@ -11,9 +11,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -132,7 +134,30 @@ public class LightTxDecoderTests
         Assert.That(loaded[0].Hash, Is.EqualTo(readable.Hash));
     }
 
-    // GetAllValues walks the column in key order, so the unreadable record is reached first.
+    // A record layout change leaves every record unreadable at once, so the skips have to collapse into one line
+    // rather than one per blob transaction in the pool.
+    [Test]
+    public void Unreadable_records_are_reported_as_one_warning()
+    {
+        const int unreadableCount = 5;
+        MemColumnsDb<BlobTxsColumns> database = new();
+        IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        for (int i = 0; i < unreadableCount; i++)
+        {
+            lightBlobTxs.Set([(byte)i], EncodeWithBlobFieldsLast(BlobCarryingTx(TxType.FrameTx)));
+        }
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+
+        List<LightTransaction> loaded = [.. new BlobTxStorage(database, new OneLoggerLogManager(new ILogger(logger))).GetAll()];
+
+        Assert.That(loaded, Is.Empty);
+        logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString())));
+    }
+
+    // GetAllValues does not promise an order, and none is needed: an unskipped decode failure would escape the
+    // enumeration from either position.
     private static readonly byte[] UnreadableRecordKey = [0];
     private static readonly byte[] ReadableRecordKey = [1];
 

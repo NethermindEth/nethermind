@@ -105,24 +105,37 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     /// <summary>Enumerates every persisted light blob transaction record this build can read.</summary>
     /// <remarks>
     /// The blob pool is a cache, so a record this build cannot read — one left by another build's record layout —
-    /// is skipped rather than allowed to abort the load and with it node startup.
+    /// is skipped rather than allowed to abort the load and with it node startup. A record layout change makes
+    /// every record unreadable at once, so the skipped records are reported as a single summary rather than one
+    /// line each; the first failure is quoted so a lone corrupt record is still diagnosable.
     /// </remarks>
     public IEnumerable<LightTransaction> GetAll()
     {
-        foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
+        int skipped = 0;
+        string? firstFailure = null;
+        try
         {
-            LightTransaction? transaction;
-            try
+            foreach (byte[] txBytes in _lightBlobTxsDb.GetAllValues())
             {
-                if (!TryDecodeLightTx(txBytes, out transaction)) continue;
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Ignoring an unreadable persisted blob transaction: {e.Message}");
-                continue;
-            }
+                LightTransaction? transaction;
+                try
+                {
+                    if (!TryDecodeLightTx(txBytes, out transaction)) continue;
+                }
+                catch (Exception e)
+                {
+                    skipped++;
+                    firstFailure ??= e.Message;
+                    continue;
+                }
 
-            yield return transaction!;
+                yield return transaction!;
+            }
+        }
+        finally
+        {
+            if (skipped > 0 && _logger.IsWarn)
+                _logger.Warn($"Ignoring {skipped} unreadable persisted blob transaction(s). First failure: {firstFailure}");
         }
     }
 

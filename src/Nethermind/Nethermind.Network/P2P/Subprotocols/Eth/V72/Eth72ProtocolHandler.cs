@@ -824,6 +824,10 @@ public class Eth72ProtocolHandler(
         try
         {
             bool isTrace = Logger.IsTrace;
+
+            // Resolved on the first type-6 transaction, so a batch without one does no head lookup.
+            bool? frameTxsEnabled = null;
+
             while (currentIdx < transactionsSpan.Length)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -845,7 +849,7 @@ public class Eth72ProtocolHandler(
                 }
 
                 Transaction tx = transactionsSpan[currentIdx];
-                if (!ValidateAnnouncedPooledTransaction(tx))
+                if (!ValidateAnnouncedPooledTransaction(tx, ref frameTxsEnabled))
                 {
                     throw new SubprotocolException("invalid pooled tx type or size");
                 }
@@ -1571,9 +1575,9 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private bool ValidateAnnouncedPooledTransaction(Transaction tx)
+    private bool ValidateAnnouncedPooledTransaction(Transaction tx, ref bool? frameTxsEnabled)
     {
-        if (!CanRequestPooledTransaction(tx.Type))
+        if (!CanRequestPooledTransaction(tx.Type, ref frameTxsEnabled))
         {
             return false;
         }

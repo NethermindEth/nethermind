@@ -270,12 +270,6 @@ public class Eth68ProtocolHandler(ISession session,
         && (txType is not TxType.Blob || _blobSupportEnabled)
         && (txType is not TxType.FrameTx || (frameTxsEnabled ??= FrameTxsEnabled()));
 
-    private protected bool CanRequestPooledTransaction(TxType txType)
-    {
-        bool? frameTxsEnabled = null;
-        return CanRequestPooledTransaction(txType, ref frameTxsEnabled);
-    }
-
     private static bool CanDecodeTransactionType(TxType txType) => txType switch
     {
         TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode or TxType.FrameTx => true,

@@ -27,6 +27,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -521,6 +522,25 @@ public class Eth72ProtocolHandlerTests
         _specProvider.Received(1).GetCurrentHeadSpec();
         _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
             m.EthMessage.Hashes.Count == hashes.Length));
+    }
+
+    // Delivery validates every transaction in the packet, so the same gate has to be resolved once there too.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_delivered_packet()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+
+        Transaction[] transactions = [FrameTx(TestItem.PrivateKeyA), FrameTx(TestItem.PrivateKeyB), FrameTx(TestItem.PrivateKeyC)];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
@@ -4741,6 +4761,15 @@ public class Eth72ProtocolHandlerTests
         BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(28), value);
         return new Hash256(bytes);
     }
+
+    private static Transaction FrameTx(PrivateKey signer) => Build.A.Transaction
+        .WithType(TxType.FrameTx)
+        .WithNonce(0)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithGasLimit(100_000)
+        .WithTo(TestItem.AddressB)
+        .SignedAndResolved(signer).TestObject;
 
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,
