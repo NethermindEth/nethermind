@@ -11,12 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// EIP-8141 frame transaction introspection and approval opcodes, plus the EIP-8272 reference reader,
-/// which is additionally gated on <c>IsEip8272Enabled</c>. Each exceptional-halts when executed outside
-/// a frame transaction (i.e. when the transaction-scoped <see cref="FrameTxContext"/> is absent).
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </summary>
+/// <summary>EIP-8141 frame introspection and approval opcodes, plus the EIP-8272 reference reader.
+/// Each exceptional-halts outside a frame transaction, where <see cref="FrameTxContext"/> is absent.</summary>
 public static unsafe partial class EvmInstructions
 {
     /// <summary>APPROVE (0xaa): terminate the frame successfully and record the approval scope for the outer loop.</summary>
@@ -45,7 +41,6 @@ public static unsafe partial class EvmInstructions
 
         byte scopeByte = (byte)scope.u0;
         byte allowed = frame.AllowedApproveScope;
-        // scope != 0 and every requested bit permitted by the frame flags.
         if (scope > TxFrame.ApproveScopeMask || scopeByte == 0 || (scopeByte & ~allowed) != 0)
             return EvmExceptionType.Revert;
 
@@ -54,15 +49,13 @@ public static unsafe partial class EvmInstructions
 
         if (approvesExecution)
         {
-            // Re-approval and non-sender targets revert the frame.
             if (ctx.SenderApproved || resolvedTarget != ctx.Sender) return EvmExceptionType.Revert;
         }
 
         if (approvesPayment)
         {
-            // A second payer, payment before execution approval (unless this APPROVE grants both),
-            // and an underfunded payer all revert the frame.
             if (ctx.Payer is not null) return EvmExceptionType.Revert;
+            // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
             if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
             if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
 
@@ -74,9 +67,7 @@ public static unsafe partial class EvmInstructions
             }
         }
 
-        // Load the return data region (RETURN semantics). The outer loop applies the approval effects.
-        // EIP8141-ISSUE: the spec does not define what happens to APPROVE's return data; loaded like
-        // RETURN and left to the outer loop. Propose the spec state its disposition explicitly.
+        // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
         {
@@ -91,7 +82,7 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
-    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0C, 0x0D, 0x0E and 0x10.</typeparam>
+    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D, 0x0E, 0x10 and 0x11.</typeparam>
     /// <typeparam name="TEip8272">Whether the fork defines the recent-root reference count at index 0x0F.</typeparam>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
@@ -105,7 +96,7 @@ public static unsafe partial class EvmInstructions
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x10U) return EvmExceptionType.BadInstruction;
+        if (param > 0x11U) return EvmExceptionType.BadInstruction;
 
         byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -124,20 +115,19 @@ public static unsafe partial class EvmInstructions
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
             // The two extensions claim disjoint indices, so each is gated on its own fork rather than
             // on one shared ceiling: 0x0F must stay undefined on a chain with EIP-8250 but not EIP-8272.
-            0x0C when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
+            0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
             0x0E when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
             0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
+            0x11 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
             0x0F when TEip8272.IsActive => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
             _ => EvmExceptionType.BadInstruction,
         };
     }
 
-    /// <summary>RECENTROOTREFLOAD (0xb5): read one field of a declared recent-root reference.</summary>
-    /// <remarks>
-    /// Reads the signed envelope, not the predeploy's storage: the references were checked against the
-    /// pre-state before any frame ran, so the opcode is legal in every frame mode, <c>VERIFY</c> included.
-    /// </remarks>
+    /// <summary>RECENTROOTREFLOAD (0xb6): read one field of a declared recent-root reference.</summary>
+    /// <remarks>Reads the signed envelope, not the predeploy's storage, and it was checked against the
+    /// pre-state before any frame ran, so the opcode is legal in every frame mode including <c>VERIFY</c>.</remarks>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -217,14 +207,14 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: frameIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x08) return EvmExceptionType.BadInstruction;
+        if (param > 0x0B) return EvmExceptionType.BadInstruction;
 
         int index = (int)frameIndex.u0;
         TxFrame frame = ctx.Frames[index];
         return param.u0 switch
         {
             0x00 => stack.PushAddress<TTracingInst>(ctx.ResolvedTarget(index)),
-            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.GasLimit),
+            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.ExecutionGasLimit),
             0x02 => stack.PushUInt32<TTracingInst>(frame.Mode),
             0x03 => stack.PushUInt32<TTracingInst>(frame.Flags),
             0x04 => stack.PushUInt256<TTracingInst>((UInt256)frame.Data.Length),
@@ -232,21 +222,37 @@ public static unsafe partial class EvmInstructions
             0x06 => stack.PushUInt32<TTracingInst>(frame.AllowedApproveScope),
             0x07 => stack.PushUInt32<TTracingInst>((uint)(frame.IsAtomicBatch ? 1 : 0)),
             0x08 => stack.PushUInt256<TTracingInst>(frame.Value),
+            0x09 => stack.PushUInt256<TTracingInst>((UInt256)frame.StateGasLimit),
+            0x0A => FrameExecutionGasUsed<TTracingInst>(ctx, index, ref stack),
+            0x0B => FrameStateGasUsed<TTracingInst>(ctx, index, ref stack),
             _ => EvmExceptionType.BadInstruction,
         };
+    }
+
+    private static EvmExceptionType FrameExecutionGasUsed<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>((UInt256)ctx.ExecutionGasUsedFor(index));
+    }
+
+    private static EvmExceptionType FrameStateGasUsed<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>((UInt256)ctx.StateGasUsedFor(index));
     }
 
     private static EvmExceptionType FrameStatus<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
-        // Reading the status of the current or a future frame is an exceptional halt.
         if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
-        // 0 failure, 1 success, 2 skipped by a failed atomic batch (ethereum/EIPs#11953).
+        // 0 failure, 1 success, 2 skipped by a failed atomic batch.
         uint status = ctx.WasFrameSkipped(index) ? 2u : ctx.HasFrameSucceeded(index) ? 1u : 0u;
         return stack.PushUInt32<TTracingInst>(status);
     }
 
-    /// <summary>SIGPARAM (0xb4): read a signature-scoped field, or copy ARBITRARY signature bytes.</summary>
+    /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -258,18 +264,10 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: signatureIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x04) return EvmExceptionType.BadInstruction;
+        if (param > 0x03) return EvmExceptionType.BadInstruction;
 
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
-
-        if (param.u0 == 0x04)
-        {
-            if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
-                return EvmExceptionType.StackUnderflow;
-            return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
-        }
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         return param.u0 switch
@@ -281,8 +279,30 @@ public static unsafe partial class EvmInstructions
             0x02 => signature.Msg.IsEmpty
                 ? stack.PushZero<TTracingInst>()
                 : stack.PushBytes<TTracingInst>(signature.Msg.Span),
-            0x03 => stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length),
+            0x03 => signature.Scheme == TxFrameSignature.SchemeArbitrary
+                ? stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length)
+                : EvmExceptionType.BadInstruction,
             _ => EvmExceptionType.BadInstruction,
         };
+    }
+
+    /// <summary>SIGDATACOPY (0xb5): copy an ARBITRARY signature's raw bytes into memory (CALLDATACOPY semantics).</summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
+        if (ctx is null) return EvmExceptionType.BadInstruction;
+
+        // Spec stack order: memOffset, dataOffset, length, signatureIndex (top to bottom, matching CALLDATACOPY).
+        if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 signatureIndex))
+            return EvmExceptionType.StackUnderflow;
+        if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
+
+        TxFrameSignature signature = ctx.Signatures[(int)signatureIndex.u0];
+        if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
+
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
     }
 }

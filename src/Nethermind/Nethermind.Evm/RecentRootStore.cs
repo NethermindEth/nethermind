@@ -5,13 +5,12 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
 /// <summary>Key/commitment derivations and the pre-state reference check for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
+/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and validates references against already-written state.</remarks>
 public static class RecentRootStore
 {
     private const int HashLength = 32;
@@ -19,8 +18,7 @@ public static class RecentRootStore
     private const int SlotLength = sizeof(ulong);
 
     /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
-    /// <remarks>Per EIP-8272 the address is hashed unpadded (20 bytes), matching the predeploy's own derivation
-    /// over memory <c>[0x0c, 0x40)</c>; a 32-byte left-padded preimage would fork from the predeploy.</remarks>
+    /// <remarks>EIP-8272 hashes the address unpadded (20 bytes); a left-padded preimage would fork from the predeploy.</remarks>
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
         Span<byte> input = stackalloc byte[AddressLength + HashLength];
@@ -51,10 +49,8 @@ public static class RecentRootStore
     public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
         IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
 
-    /// <summary>
-    /// Checks a reference against the commitment held in <paramref name="cell"/>, which the caller has
-    /// already derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.
-    /// </summary>
+    /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already
+    /// derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.</summary>
     public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
         ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
@@ -73,14 +69,6 @@ public static class RecentRootStore
         Span<byte> padded = stackalloc byte[HashLength];
         stored.CopyTo(padded.Slice(HashLength - stored.Length));
         return new ValueHash256(padded) == EntryHash(sourceId, slot, root);
-    }
-
-    public static void Write(IWorldState state, Address sourceAddress, in ValueHash256 salt, in ValueHash256 root, ulong currentSlot, IReleaseSpec spec)
-    {
-        ValueHash256 sourceId = SourceId(sourceAddress, salt);
-        StorageCell cell = RingBufferCell(sourceId, currentSlot % Eip8272Constants.RecentRootLength);
-        ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
-        state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>

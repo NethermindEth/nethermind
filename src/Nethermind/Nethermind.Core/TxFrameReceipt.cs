@@ -6,10 +6,11 @@ using System;
 namespace Nethermind.Core;
 
 /// <summary>
-/// A per-frame receipt entry of an EIP-8141 frame transaction: <c>[status, gas_used, logs]</c>.
+/// A per-frame receipt entry of an EIP-8141 frame transaction: <c>[status, gas_used, logs]</c>,
+/// where <c>gas_used = [execution, state]</c>.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
-public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
+public class TxFrameReceipt(byte status, ulong executionGasUsed, ulong stateGasUsed, LogEntry[] logs)
 {
     public const byte StatusFailure = 0;
     public const byte StatusSuccess = 1;
@@ -18,16 +19,21 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
     public const byte StatusSkipped = 2;
 
     public byte Status { get; } = status;
-    public ulong GasUsed { get; } = gasUsed;
+
+    /// <summary>Execution gas used by the frame (<c>gas_used.execution</c>), not accounting for refunds.</summary>
+    public ulong ExecutionGasUsed { get; } = executionGasUsed;
+
+    /// <summary>State gas attributed to the frame (<c>gas_used.state</c>) after all refills and rollbacks.</summary>
+    public ulong StateGasUsed { get; } = stateGasUsed;
+
+    /// <summary>The frame's combined gas: execution plus state.</summary>
+    public ulong GasUsed => ExecutionGasUsed + StateGasUsed;
+
     public LogEntry[] Logs { get; } = logs;
 
     /// <summary>The transaction-level status reported for a frame transaction with these frame receipts.</summary>
-    /// <remarks>
-    /// The EIP-8141 receipt payload carries no transaction-level status, so the value JSON-RPC reports
-    /// has to be derived. Deriving it from the frame statuses — success only when every frame
-    /// succeeded — keeps a node that executed the block and a node that only received its receipts in
-    /// agreement, which a value taken from local execution state cannot do.
-    /// </remarks>
+    /// <remarks>The EIP-8141 receipt payload carries no transaction-level status, so it is derived from the frame
+    /// statuses; a value taken from local execution state would not agree with a receipts-only node.</remarks>
     public static byte AggregateStatus(ReadOnlySpan<TxFrameReceipt> frameReceipts)
     {
         foreach (TxFrameReceipt frameReceipt in frameReceipts)

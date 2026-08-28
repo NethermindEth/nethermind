@@ -20,15 +20,8 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly
-#if ZK_EVM
-        ZkEvmQueue<VmState<TGasPolicy>>
-#else
-        System.Collections.Concurrent.ConcurrentQueue<VmState<TGasPolicy>>
-#endif
-        _statePool = new();
-
-    private static readonly StackPool _stackPool = new();
+    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
+        maxShared: VirtualMachineStatics.MaxCallDepth * 2);
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -36,6 +29,11 @@ public class VmState<TGasPolicy> : IDisposable
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
+    /// <summary>
+    /// EIP-8141 outstanding-charge/receipt journal position at this call frame's entry; the same
+    /// boundary that restores world state on revert/halt restores the journal to here.
+    /// </summary>
+    public int StateGasJournalCheckpoint;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -58,9 +56,11 @@ public class VmState<TGasPolicy> : IDisposable
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
+    private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
+    public VmState() => _memory = new(_inlineMemory, isFresh: true);
 
     /// <summary>
     /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
@@ -105,7 +105,8 @@ public class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot,
         bool isTopLevel = false,
         bool newAccountCharged = false,
-        bool isCreateStateGasCharged = false)
+        bool isCreateStateGasCharged = false,
+        int stateGasJournalCheckpoint = 0)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -120,7 +121,8 @@ public class VmState<TGasPolicy> : IDisposable
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
-            snapshot: snapshot);
+            snapshot: snapshot,
+            stateGasJournalCheckpoint: stateGasJournalCheckpoint);
         return state;
     }
 
@@ -143,7 +145,8 @@ public class VmState<TGasPolicy> : IDisposable
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        int stateGasJournalCheckpoint = 0)
     {
         _env = env;
         _snapshot = snapshot;
@@ -152,7 +155,7 @@ public class VmState<TGasPolicy> : IDisposable
         // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
         // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
         // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = default;
+        _memory = new(_inlineMemory);
 #endif
         if (executionType.IsAnyCreate())
         {
@@ -163,6 +166,7 @@ public class VmState<TGasPolicy> : IDisposable
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
         StateGasRefundAdvanced = 0;
+        StateGasJournalCheckpoint = stateGasJournalCheckpoint;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -217,7 +221,7 @@ public class VmState<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack);
+            StackPool.ReturnStacks(DataStack);
             DataStack = null;
         }
 
@@ -227,7 +231,6 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        _memory = default;
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
@@ -279,7 +282,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+    private static byte[] AllocateStacks() => StackPool.RentStacks();
 
     private static ref byte As32AlignedRef(byte[] array)
     {

@@ -23,11 +23,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// Frame transaction through the real receipts tracer: the receipt must carry Payer and the
-/// per-frame receipts, the logs union, and spec gas — the block-import readiness gate (a frame
-/// tx must not leave the receipts tracer one receipt short).
-/// </summary>
+/// <summary>Frame transaction through the real receipts tracer: the receipt must carry Payer, the
+/// per-frame receipts, the logs union and spec gas, and must not leave the tracer one receipt short.</summary>
 [TestFixture]
 public class FrameTxBlockReceiptsTests
 {
@@ -45,8 +42,7 @@ public class FrameTxBlockReceiptsTests
 
         Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
         Assert.That(receipt.Payer, Is.EqualTo(Sender));
-        // No top-level `to` and no top-level creation: naming either would invent an address, and the
-        // receipt-recovery path derives these independently, so both must answer the same.
+        // Naming either would invent an address, and the receipt-recovery path derives them independently.
         Assert.That(receipt.ContractAddress, Is.Null);
         Assert.That(receipt.Recipient, Is.Null);
         Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(2));
@@ -67,9 +63,8 @@ public class FrameTxBlockReceiptsTests
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
-    // The transaction-level status is absent from the EIP-8141 receipt payload, so it is derived from
-    // the frame statuses. A reverted frame therefore surfaces as a failed transaction even though the
-    // transaction itself executed and was charged.
+    // The EIP-8141 receipt carries no transaction-level status, so it derives from the frame statuses:
+    // a reverted frame surfaces as a failed transaction even though the transaction executed.
     [Test]
     public void Execute_FrameTxWithRevertedFrame_ReportsFailureStatus()
     {
@@ -118,10 +113,8 @@ public class FrameTxBlockReceiptsTests
         }
     }
 
-    /// <summary>
-    /// Runs a two-frame transaction (self-verify, then a SENDER frame calling <paramref name="observerCode"/>)
-    /// through the real receipts tracer and returns the single receipt it produced.
-    /// </summary>
+    /// <summary>Runs a two-frame transaction (self-verify, then a SENDER frame calling
+    /// <paramref name="observerCode"/>) through the real receipts tracer and returns its receipt.</summary>
     private static (TxReceipt Receipt, Block Block, IReleaseSpec Spec) RunFrameTx(byte[] observerCode)
     {
         ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
@@ -174,9 +167,8 @@ public class FrameTxBlockReceiptsTests
         return (receiptsTracer.TxReceipts[0], block, spec);
     }
 
-    // EIP-7906: a failed assertion drops the body's logs but keeps the validation prefix's, so the
-    // failed receipt still has to carry them — an empty log set would contradict the frame receipts
-    // it is built from and leave the prefix's logs out of the bloom.
+    // EIP-7906: a failed assertion drops the body's logs but keeps the prefix's, so an empty log set
+    // would contradict the frame receipts and leave them out of the bloom.
     [Test]
     public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
     {

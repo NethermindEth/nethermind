@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -18,8 +19,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public virtual string SealEngineType => XdcConstants.XDPoS;
     public ulong Epoch { get; set; }
     public ulong Gap { get; set; }
-    public ulong Period { get; set; }
-    public bool SkipV1Validation { get; set; }
     public Address FoundationWalletAddr { get; set; }
     public ulong Reward { get; set; }
     public ulong SwitchEpoch { get; set; }
@@ -35,11 +34,6 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
-
-    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public Address RelayerRegistrationSMC { get; set; }
-    public Address TRC21IssuerSMC { get; set; }
 
     private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs
@@ -68,8 +62,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; set; }
     public ulong MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
@@ -128,8 +125,11 @@ public sealed class V2ConfigParams
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public ulong MinePeriod { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; init; }
     public ulong MinimumMinerBlockPerEpoch { get; init; }
     public ulong LimitPenaltyEpoch { get; init; }

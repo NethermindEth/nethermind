@@ -14,16 +14,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-/// <summary>
-/// Validates the protocol-verified signatures of an EIP-8141 frame transaction (spec
-/// <c>validate_signature</c>): every entry must verify before any frame executes. SECP256K1 recovers
-/// and compares to the resolved signer; P256 checks the key-derived address then verifies through the
-/// secp256r1 (P256VERIFY) precompile; ARBITRARY entries are only structurally checked (verified later
-/// by frame code). Deterministic — reads the transaction plus the injected verification primitives.
-/// </summary>
+/// <summary>EIP-8141 <c>validate_signature</c>: every protocol-verified entry must verify before any frame
+/// executes. ARBITRARY entries are only structurally checked; their witness is verified by frame code.</summary>
 public static class FrameTxSignatureValidator
 {
     public const string InvalidSignature = "frame transaction has an invalid signature";
+    // Distinct from InvalidSignature so a signer that does not match is told apart from a signature
+    // that does not verify, as P256 already does through InvalidP256Signer.
+    public const string InvalidSecp256k1Signer = "frame transaction SECP256K1 signer does not match the recovered address";
     public const string InvalidSignatureLength = "frame transaction signature has the wrong length";
     public const string InvalidMsgLength = "frame transaction signature msg must be empty or a 32-byte digest";
     public const string NonCanonicalSignature = "frame transaction signature must use a 0/1 recovery id and a canonical low s value";
@@ -37,10 +35,8 @@ public static class FrameTxSignatureValidator
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
         => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
 
-    /// <summary>
-    /// Same validation, for callers that have no sig hash at hand: it is computed on the first entry
-    /// that needs it, so a transaction whose entries all carry an explicit digest never pays for it.
-    /// </summary>
+    /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
+    /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
         => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error);
 
@@ -58,10 +54,8 @@ public static class FrameTxSignatureValidator
                 continue; // structurally checked in FrameTxValidation; the witness is verified by frame code
             }
 
-            // Msg is either empty (canonical hash) or a 32-byte digest. FrameTxValidation enforces
-            // this for mempool/block txs, but eth_call/estimateGas/simulate reach the processor with
-            // an unvalidated FrameTx, and ValueHash256(span) reads 32 bytes unchecked — a shorter
-            // non-empty Msg would over-read. Guard the length on the untrusted input.
+            // eth_call/estimateGas/simulate arrive unvalidated, and ValueHash256(span) reads 32 bytes
+            // unchecked, so a shorter non-empty Msg would over-read.
             if (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
             {
                 return Fail(InvalidMsgLength, out error);
@@ -95,11 +89,6 @@ public static class FrameTxSignatureValidator
         ReadOnlySpan<byte> raw = signature.Signature.Span;
         if (raw.Length != TxFrameSignature.Secp256k1SignatureLength) return Fail(InvalidSignatureLength, out error);
 
-        // EIP8141-GAP: the spec passes v straight to ecrecover without pinning its encoding or the
-        // signature's canonicality. Enforced strictly — a 0/1 recovery id and a low s — so every
-        // signature has exactly one valid byte encoding (no mempool/tx-shape malleability through
-        // the explicit-digest entries, whose bytes stay in the sig-hash preimage). Upstream issue:
-        // pin the ecrecover semantics in the spec.
         ulong v = raw[0];
         if (v > 1) return Fail(NonCanonicalSignature, out error);
 
@@ -110,9 +99,13 @@ public static class FrameTxSignatureValidator
             return Fail(NonCanonicalSignature, out error);
         }
 
+        // Split as the P256 arm is: recovery failing outright is the signature not verifying, and only a
+        // recovered address that differs from the signer is a signer mismatch. The canonicality gate above
+        // bounds r but cannot make it a curve x-coordinate, so a null recovery is reachable.
         Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v + Signature.VOffset);
         Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
-        return recovered is not null && recovered == resolvedSigner || Fail(InvalidSignature, out error);
+        if (recovered is null) return Fail(InvalidSignature, out error);
+        return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
     }
 
     private static bool ValidateP256(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
@@ -121,8 +114,7 @@ public static class FrameTxSignatureValidator
         ReadOnlySpan<byte> raw = signature.Signature.Span;
         if (raw.Length != TxFrameSignature.P256SignatureLength) return Fail(InvalidSignatureLength, out error);
 
-        // P256VERIFY itself accepts a high-s signature, so the canonicality gate must run here: r and s
-        // must be in range with low-s, giving each signature exactly one encoding (no tx-hash malleability).
+        // P256VERIFY accepts high-s, so the EIP-8141 low-s gate has to run here instead.
         UInt256 r = new(raw.Slice(0, 32), isBigEndian: true);
         UInt256 s = new(raw.Slice(32, 32), isBigEndian: true);
         if (r.IsZero || r >= SecP256r1Curve.N || s.IsZero || s > SecP256r1Curve.HalfN)
@@ -134,9 +126,8 @@ public static class FrameTxSignatureValidator
         Address derived = new(ValueKeccak.Compute(publicKey).Bytes[12..]);
         if (derived != resolvedSigner) return Fail(InvalidP256Signer, out error);
 
-        // The secp256r1 primitive is packaged above Nethermind.Evm and reached through the same
-        // P256VERIFY precompile the EVM uses, so verification stays byte-identical to on-chain
-        // secp256r1 semantics. Input layout: message || r || s || qx || qy (32 + P256 signature).
+        // Verified through the EVM's own P256VERIFY so semantics stay byte-identical.
+        // Input layout: message || r || s || qx || qy.
         if (p256Precompile is null) return Fail(P256NotSupported, out error);
 
         const int InputLength = Hash256.Size + TxFrameSignature.P256SignatureLength;

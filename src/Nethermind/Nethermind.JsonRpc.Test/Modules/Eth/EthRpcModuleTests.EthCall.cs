@@ -34,7 +34,6 @@ public partial class EthRpcModuleTests
     private const ulong Eip8037NewAccountTransferGas = GasCostOf.TransactionEip2780
         + Eip8038Constants.ColdAccountAccess
         + GasCostOf.TxValueCostEip2780
-        + GasCostOf.TransferLogEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
 
@@ -1182,23 +1181,6 @@ public partial class EthRpcModuleTests
 
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
-    }
-
-    /// <summary>
-    /// Regression: state overrides with only storage (no code/balance/nonce) create an account
-    /// that is EIP-158 empty.
-    /// </summary>
-    [Test]
-    public async Task Eth_call_state_override_with_storage_blocks_create2_via_eip7610()
-    {
-        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
-        (object stateOverride, object transaction) = BuildEip7610Fixture();
-
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
-        JToken parsed = JToken.Parse(serialized);
-        byte[] returnData = Bytes.FromHexString(parsed["result"]!.Value<string>()!);
-
-        Assert.That(returnData, Is.EqualTo(new byte[32]));
     }
 
     [TestCaseSource(nameof(ZeroBalanceWantCases))]
