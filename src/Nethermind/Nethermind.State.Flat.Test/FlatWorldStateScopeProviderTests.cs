@@ -142,6 +142,25 @@ public class FlatWorldStateScopeProviderTests
     }
 
 
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void SupportsConcurrentScopes_OnlyWhenTrieVerificationIsOff(bool verifyWithTrie, bool expected)
+    {
+        // Concurrent scopes exist to give background readers (the storage stride prefetcher) an
+        // isolated view, and those readers share the scope's storage trees. VerifyWithTrie makes every
+        // flat read also traverse the storage trie, which is not thread-safe.
+        using FlatScopeProvider provider = new(
+            new MemDb(),
+            Substitute.For<IFlatDbManager>(),
+            new FlatDbConfig { VerifyWithTrie = verifyWithTrie },
+            new NoopTrieWarmer(),
+            ResourcePool.Usage.MainBlockProcessing,
+            LimboLogs.Instance,
+            isReadOnly: false);
+
+        Assert.That(provider.SupportsConcurrentScopes, Is.EqualTo(expected));
+    }
+
     #region Account and Slot Layering Tests
 
     [Test]
