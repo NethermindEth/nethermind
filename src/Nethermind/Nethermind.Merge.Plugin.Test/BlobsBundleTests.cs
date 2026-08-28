@@ -26,8 +26,7 @@ public class BlobsBundleTests
 
         BlobsBundleV1 bundle = new(block);
 
-        // The arrays are sized from the type-agnostic blob count, so only the filled entries prove the
-        // frame tx was copied in rather than skipped.
+        // Arrays are sized from the type-agnostic blob count, so only non-null entries prove the frame tx was copied in.
         Assert.That(bundle.Blobs, Has.Length.EqualTo(3).And.None.Null);
         Assert.That(bundle.Commitments, Has.Length.EqualTo(3).And.None.Null);
         Assert.That(bundle.Proofs, Has.Length.EqualTo(3).And.None.Null);

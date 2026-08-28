@@ -12,10 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
-/// <summary>
-/// Round-trips of the EIP-8141 receipt payload (no top-level status or bloom on the wire): the
-/// decoder derives StatusCode from the frame statuses and unions the frame logs into Logs.
-/// </summary>
+/// <summary>Round-trips of the EIP-8141 receipt payload (no top-level status or bloom on the wire): the decoder
+/// derives StatusCode from the frame statuses and unions the frame logs into Logs.</summary>
 [TestFixture]
 public class FrameTxReceiptDecoderTests
 {
@@ -70,8 +68,8 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
-    // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts; a frame-tx receipt
-    // used to leave the reader mid-sequence and corrupt the next one, so it sits between two regulars.
+    // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts, so a frame-tx receipt must leave
+    // the reader at its own end or corrupt the next one; it sits between two regulars here.
     [Test]
     public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours(
         [Values(true, false)] bool compactEncoding,

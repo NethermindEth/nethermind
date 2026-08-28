@@ -89,9 +89,8 @@ public sealed class FrameTxPrefixSimulator(
             }
             catch (Exception e) when (IsNodeFault(e))
             {
-                // Blaming the transaction for our own fault would feed the peer flood counter and
-                // eventually disconnect honest peers, so leave the transaction unjudged instead.
-                // A systemic fault (state still healing after sync, say) hits every submission, so warn once per episode.
+                // Blaming the transaction for our own fault feeds the peer flood counter and eventually
+                // disconnects honest peers; such faults hit every submission, so warn once per episode.
                 if (!_nodeFaultReported)
                 {
                     _nodeFaultReported = true;

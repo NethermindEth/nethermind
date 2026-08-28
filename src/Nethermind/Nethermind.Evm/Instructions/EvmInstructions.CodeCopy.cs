@@ -36,10 +36,8 @@ public static partial class EvmInstructions
         return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source);
     }
 
-    /// <summary>
-    /// Copy-to-memory core with the three copy operands (destination offset, source offset, length)
-    /// already popped, for callers that pop preceding operands first (e.g. SIGPARAM and FRAMEDATACOPY).
-    /// </summary>
+    /// <summary>Copy-to-memory core with the three copy operands already popped, for callers that pop
+    /// preceding operands first (SIGPARAM, FRAMEDATACOPY).</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmExceptionType DataCopyCore<TGasPolicy, TTracingInst>(

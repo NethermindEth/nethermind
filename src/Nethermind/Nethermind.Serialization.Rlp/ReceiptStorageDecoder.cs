@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using System;
 using System.Collections.Generic;
@@ -11,8 +12,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    // EIP-8141: frame receipts append [payer, [frame_receipt, ...]] after the standard storage
-    // fields (after Error here, after the logs sequence in CompactReceiptStorageDecoder). Only
+    // EIP-8141: frame receipts append [payer, [frame_receipt, ...]] after the standard storage fields. Only
     // TxType.FrameTx receipts carry the extension, so pre-fork data round-trips unchanged.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
@@ -195,7 +195,7 @@ namespace Nethermind.Serialization.Rlp
         private static TxFrameReceipt[] DecodeFrameReceipts(ref RlpReader decoderContext)
         {
             int framesEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<TxFrameReceipt> frameReceipts = [];
+            using ArrayPoolListRef<TxFrameReceipt> frameReceipts = new(Eip8141Constants.MaxFrames);
             while (decoderContext.Position < framesEnd)
             {
                 int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -203,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
                 FrameReceiptGasRlp.DecodeGasUsed(ref decoderContext, out ulong executionGasUsed, out ulong stateGasUsed);
 
                 int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                List<LogEntry> frameLogs = [];
+                using ArrayPoolListRef<LogEntry> frameLogs = new(4);
                 while (decoderContext.Position < logsEnd)
                 {
                     frameLogs.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
@@ -416,8 +416,8 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            // EIP-8141: always realign to the receipt's end so the next receipt in an array stays
-            // aligned; for a frame tx this skips the trailing [payer, per-frame receipts].
+            // EIP-8141: realign to the receipt's end so the next receipt in an array stays aligned; for a frame tx
+            // this skips the trailing [payer, per-frame receipts].
             if (decoderContext.Position < receiptEnd)
             {
                 decoderContext.Position = receiptEnd;
