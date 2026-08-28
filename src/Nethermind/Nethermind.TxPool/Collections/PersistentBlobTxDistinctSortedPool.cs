@@ -172,91 +172,94 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     protected override bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
         => TryGetFullBlobTransactionOutsideLock(hash, out blobTx);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A concurrent second caller reports the transaction as absent rather than waiting for the
+    /// in-progress storage read, which keeps the read de-duplicated without blocking a pool thread.
+    /// The miss is safe: callers treat it as "not in the pool yet" and retry on a later announcement.
+    /// </remarks>
     internal override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
     {
-        while (true)
+        Transaction? lightTx;
+        BlobCellMask lightCellMask;
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            Transaction? lightTx;
-            BlobCellMask lightCellMask;
-            using (McsLock.Disposable lockRelease = Lock.Acquire())
-            {
-                if (!base.TryGetValueNonLocked(hash, out lightTx))
-                {
-                    blobTx = default;
-                    return false;
-                }
-
-                if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
-                {
-                    return true;
-                }
-
-                lightCellMask = lightTx is LightTransaction lightBlobTx
-                    ? lightBlobTx.BlobCellMask
-                    : BlobCellMask.Empty;
-            }
-
-            if (lightTx.SenderAddress is null)
+            if (!base.TryGetValueNonLocked(hash, out lightTx))
             {
                 blobTx = default;
                 return false;
             }
 
-            if (_blobTxMetadataStorage?.TryGetWithoutBlobs(hash, lightTx.SenderAddress, out Transaction? loadedTx) == true
-                && loadedTx is not null)
+            if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
             {
-                return TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
+                return true;
             }
 
-            using (McsLock.Disposable lockRelease = Lock.Acquire())
+            lightCellMask = lightTx is LightTransaction lightBlobTx
+                ? lightBlobTx.BlobCellMask
+                : BlobCellMask.Empty;
+        }
+
+        if (lightTx.SenderAddress is null)
+        {
+            blobTx = default;
+            return false;
+        }
+
+        if (_blobTxMetadataStorage?.TryGetWithoutBlobs(hash, lightTx.SenderAddress, out Transaction? loadedTx) == true
+            && loadedTx is not null)
+        {
+            return TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
+        }
+
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
+        {
+            if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
             {
-                if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
-                {
-                    blobTx = default;
-                    return false;
-                }
-
-                if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
-                {
-                    return true;
-                }
-
-                if (!MatchesLightTransactionSnapshot(currentLightTx, lightTx, lightCellMask))
-                {
-                    blobTx = default;
-                    return false;
-                }
-
-                if (!_metadataFallbackReads.Add(hash))
-                {
-                    blobTx = default;
-                    return false;
-                }
+                blobTx = default;
+                return false;
             }
 
-            bool readCompleted = false;
-            try
+            if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
             {
-                if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
-                    || loadedTx is null)
-                {
-                    blobTx = default;
-                    return false;
-                }
-
-                readCompleted = TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
-                if (readCompleted)
-                {
-                    TryPersistMetadataRecord(loadedTx);
-                }
-
-                return readCompleted;
+                return true;
             }
-            finally
+
+            if (!MatchesLightTransactionSnapshot(currentLightTx, lightTx, lightCellMask))
             {
-                using McsLock.Disposable lockRelease = Lock.Acquire();
-                _metadataFallbackReads.Remove(hash);
+                blobTx = default;
+                return false;
             }
+
+            if (!_metadataFallbackReads.Add(hash))
+            {
+                blobTx = default;
+                return false;
+            }
+        }
+
+        bool readCompleted = false;
+        try
+        {
+            if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
+                || loadedTx is null)
+            {
+                blobTx = default;
+                return false;
+            }
+
+            readCompleted = TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
+            if (readCompleted)
+            {
+                TryPersistMetadataRecord(loadedTx);
+            }
+
+            return readCompleted;
+        }
+        finally
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+            _metadataFallbackReads.Remove(hash);
         }
     }
 
