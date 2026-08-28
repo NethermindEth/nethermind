@@ -79,7 +79,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager, IFlatDbConfig? flatDbConfig = null)
+        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -94,7 +94,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _receiptStorage = receiptStorage;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
-        _indexRetainedSlices = !string.IsNullOrEmpty(flatDbConfig?.HistorySliceAddresses);
+        _indexRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -373,7 +373,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                 if (batch.Length == 0)
                 {
                     ulong lowestStored = _blockTree.GetLowestBlock();
-                    if (!isForward && (ulong)start < lowestStored)
+                    if (!isForward && (ulong)start < lowestStored && !_indexRetainedSlices)
                     {
                         if (_logger.IsDebug) _logger.Debug(
                             $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
@@ -506,12 +506,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         if (receipts.Length == 0)
         {
-            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
-            {
-                blockReceipts = new((int)blockNumber, []);
-                return true;
-            }
-
             return false; // block should have transactions but nothing in storage
         }
 

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Facade.Filters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -30,11 +29,12 @@ public class IndexedLogFinder(
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
-    IPrunedLogsRetention? prunedLogsRetention = null,
-    IBlockTree? blockTree = null)
+    IPrunedLogsRetention? prunedLogsRetention = null)
     : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IPrunedLogsRetention? _prunedLogsRetention = prunedLogsRetention;
 
     public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
@@ -89,11 +89,11 @@ public class IndexedLogFinder(
         // blocks also carry other addresses' logs - complete for the sliced addresses, a partial answer for any
         // other filter. A filter the retention does not cover starts at the boundary instead, so its below-boundary
         // prefix falls back to the endpoint probe and fails closed rather than answering short.
-        if (blockTree is not null
-            && (ulong)range.from < blockTree.GetLowestBlock()
-            && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+        if (_prunedLogsRetention is not null)
         {
-            range.from = (int)ulong.Min(blockTree.GetLowestBlock(), int.MaxValue);
+            ulong lowestStored = _blockFinder.GetLowestBlock();
+            if ((ulong)range.from < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                range.from = (int)lowestStored;
         }
 
         if (range.from > range.to)

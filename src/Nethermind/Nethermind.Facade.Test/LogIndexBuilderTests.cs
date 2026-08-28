@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,7 +59,7 @@ public class LogIndexBuilderTests
 
         public string GetDbSize() => 0L.SizeToString();
 
-        public LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
+        public virtual LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
             new(batch);
 
         public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
@@ -103,6 +104,20 @@ public class LogIndexBuilderTests
         public Task StopAsync() => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private class RecordingLogIndexStorage : TestLogIndexStorage
+    {
+        private readonly ConcurrentDictionary<int, int> _receiptCounts = new();
+
+        public int ReceiptCountAt(int blockNumber) => _receiptCounts.TryGetValue(blockNumber, out int count) ? count : -1;
+
+        public override LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null)
+        {
+            foreach (BlockReceipts blockReceipts in batch)
+                _receiptCounts[blockReceipts.BlockNumber] = blockReceipts.Receipts.Length;
+            return base.Aggregate(batch, isBackwardSync, stats);
+        }
     }
 
     private class FailingLogIndexStorage(int failAfter, Exception exception) : TestLogIndexStorage
@@ -157,8 +172,8 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null) => new LogIndexBuilder(
-            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention
         ).AddTo(_testDisposables);
 
     [Test]
@@ -307,12 +322,22 @@ public class LogIndexBuilderTests
             .Returns(ci =>
             {
                 ulong number = ci.ArgAt<ulong>(0);
-                bool pruned = number < oldestStored && (number < islandLow || number > islandHigh);
+                if (number is islandLow or islandHigh)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
                 return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
             });
+        _receiptStorage
+            .Get(Arg.Is<Block>(b => b.Number == islandLow || b.Number == islandHigh))
+            .Returns([new TxReceipt()]);
 
-        TestLogIndexStorage storage = new();
-        LogIndexBuilder builder = GetService(storage, prunedTree, new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" });
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>());
 
         Task completion = WaitMinBlockAsync(storage, 0, cancellation);
         await builder.StartAsync();
@@ -324,6 +349,11 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(storage.MinBlockNumber, Is.EqualTo(0),
                 "a sliced node keeps receipt islands below the pruned boundary, so the backward sync must descend past the boundary and index them instead of completing there");
+            Assert.That(storage.ReceiptCountAt(islandLow), Is.EqualTo(1),
+                "the island's real receipts must reach the index - fabricating an empty entry for a retained height serves a lie at match cost");
+            Assert.That(storage.ReceiptCountAt(islandHigh), Is.EqualTo(1));
+            Assert.That(storage.ReceiptCountAt(islandLow - 1), Is.Zero);
+            Assert.That(storage.ReceiptCountAt(islandHigh + 1), Is.Zero);
         }
     }
 
