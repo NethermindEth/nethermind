@@ -330,9 +330,10 @@ jobs:
                   emit "$type" sequential bogota '' false false 4 2
                 fi
                 ;;
-              frameTest)
-                # One EIP's worth of engine fixtures, so the BAL toggles and the flat layout add
-                # nothing over the Amsterdam corpus the other lanes already run.
+              frameTest|frameBlockTest)
+                # One EIP's worth of fixtures, so the BAL toggles and the flat layout add nothing
+                # over the Amsterdam corpus the other lanes already run. frameTest runs the engine
+                # payloads; frameBlockTest runs the block-import path over the same subtree.
                 if run_sequential; then
                   emit "$type" sequential frames '' false false 4 1
                 fi
@@ -398,7 +399,7 @@ jobs:
             echo "Resolved FOCIL release: $RESOLVED_FOCIL"
           fi
 
-          if [[ "$TEST_TYPES" == *frameTest* ]]; then
+          if [[ "$TEST_TYPES" == *frameTest* || "$TEST_TYPES" == *frameBlockTest* ]]; then
             RESOLVED_FRAMES="$(resolve "$FRAMES_VERSION")"
             echo "frames_version=$RESOLVED_FRAMES" >> "$GITHUB_OUTPUT"
             echo "Resolved frame-transaction release: $RESOLVED_FRAMES"
@@ -454,7 +455,7 @@ jobs:
             RESOLVED_EEST_VERSION="$RESOLVED_FOCIL"
             VERSION_INPUT="$FOCIL_VERSION"
             EEST_ARCHIVE="fixtures_focil-devnet.tar.gz"
-          elif [ "$TEST_TYPE" = "frameTest" ]; then
+          elif [ "$TEST_TYPE" = "frameTest" ] || [ "$TEST_TYPE" = "frameBlockTest" ]; then
             RESOLVED_EEST_VERSION="$RESOLVED_FRAMES"
             VERSION_INPUT="$FRAMES_VERSION"
             EEST_ARCHIVE="fixtures_frames-devnet.tar.gz"
@@ -522,6 +523,8 @@ jobs:
             focilTest)  FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
             # The frame-transaction archive likewise ships engine-format fixtures.
             frameTest)  FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
+            # The same archive's block-import fixtures for the frame-transaction subtree.
+            frameBlockTest) FIXTURE_NAME=blockchain_tests;    RUNNER_FLAG=--blockTest ;;
             *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
           esac
 
@@ -905,10 +908,10 @@ jobs:
 
             # A scope that resolved to nothing reports no failures, so the narrowed lanes assert they
             # actually ran their fixtures. Only the unfiltered run has a known count.
-            if [ "$TEST_TYPE" = "frameTest" ] && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
+            if { [ "$TEST_TYPE" = "frameTest" ] || [ "$TEST_TYPE" = "frameBlockTest" ]; } && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
               RAN=$(jq 'length' "$RESULTS_FILE" 2>/dev/null || echo 0)
               if [ "$RAN" -lt "$FRAME_MIN_CASES" ]; then
-                echo "::error::frameTest ran $RAN cases, fewer than the $FRAME_MIN_CASES expected; the fixture scope or the release pin has moved"
+                echo "::error::$TEST_TYPE ran $RAN cases, fewer than the $FRAME_MIN_CASES expected; the fixture scope or the release pin has moved"
                 rc=1
               fi
             fi
