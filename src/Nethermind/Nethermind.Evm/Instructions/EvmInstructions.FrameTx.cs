@@ -55,6 +55,7 @@ public static unsafe partial class EvmInstructions
         if (approvesPayment)
         {
             if (ctx.Payer is not null) return EvmExceptionType.Revert;
+            // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
             if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
             if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
 
