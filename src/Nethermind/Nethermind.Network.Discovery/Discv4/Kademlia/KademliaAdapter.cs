@@ -283,7 +283,7 @@ public class KademliaAdapter(
 
     private void MergeKnownEnrState(Node node)
     {
-        if (kademlia.Value.TryGetNode(node, out Node? knownNode) && !ReferenceEquals(knownNode, node))
+        if (kademlia.Value.TryGetNode(node, out Node? knownNode))
         {
             node.MergeEnrStateFrom(knownNode);
         }

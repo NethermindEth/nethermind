@@ -27,6 +27,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// </summary>
 public sealed class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency: Kademlia uses this adapter as its message sender.
+    IRoutingTable<Node, ValueHash256> routingTable, // Packet headers expose a node hash before the public key is authenticated.
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
@@ -595,7 +596,7 @@ public sealed class KademliaAdapter(
     {
         ValueHash256 remoteNodeId = remotePublicKey.Hash.ValueHash256;
         Node remoteNode = Node.FromDiscoveryEndpoint(remotePublicKey, endpoint);
-        if (kademlia.Value.TryGetNode(remoteNode, out Node? knownNode) && !ReferenceEquals(knownNode, remoteNode))
+        if (kademlia.Value.TryGetNode(remoteNode, out Node? knownNode))
         {
             // Routing refreshes replace Node objects. Sharing this identity's ENR state keeps
             // concurrent packet workers and an awaiting record refresh on one atomic cache.
@@ -925,24 +926,7 @@ public sealed class KademliaAdapter(
         => _sessions.Set(sessionKey, session);
 
     internal bool TryGetKnownNode(ValueHash256 nodeId, [NotNullWhen(true)] out Node? knownNode)
-    {
-        int distance = _distance.CalculateLogDistance(_currentNodeHash, nodeId.ToHash256());
-        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
-        for (int i = 0; i < nodes.Length; i++)
-        {
-            Node node = nodes[i];
-            if (node.Id.Hash != nodeId)
-            {
-                continue;
-            }
-
-            knownNode = node;
-            return true;
-        }
-
-        knownNode = null;
-        return false;
-    }
+        => routingTable.TryGet(nodeId, out knownNode);
 
     internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
         => TryGetAcceptableDiscoveryEndpoint(record, allowNonRoutable, AnyListenerAddress, preferredEndpoint: null, out _) &&

@@ -23,6 +23,7 @@ public interface IKademlia<TKey, TNode>
     /// </summary>
     /// <param name="node">Node whose routing key should be found.</param>
     /// <param name="storedNode">The stored node when found.</param>
+    /// <returns><see langword="true"/> when the node is stored in the routing table or replacement cache.</returns>
     bool TryGetNode(TNode node, [MaybeNullWhen(false)] out TNode storedNode);
 
     /// <summary>

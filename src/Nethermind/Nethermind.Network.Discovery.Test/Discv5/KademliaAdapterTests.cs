@@ -27,10 +27,15 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 public class KademliaAdapterTests
 {
     private IKademlia<PublicKey, Node> _kademlia = null!;
+    private IRoutingTable<Node, ValueHash256> _routingTable = null!;
     private PacketCodec? _packetCodec;
 
     [SetUp]
-    public void SetUp() => _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+    public void SetUp()
+    {
+        _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        _routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+    }
 
     [TearDown]
     public void TearDown()
@@ -98,22 +103,13 @@ public class KademliaAdapterTests
     }
 
     [Test]
-    public void TryGetKnownNode_ShouldScanOnlyMatchingBucket()
+    public void TryGetKnownNode_ShouldUseExactHashLookup()
     {
-        Node current = CreateNode(TestItem.PublicKeyA, 1);
         Node target = CreateNode(TestItem.PublicKeyB, 2);
-        Node sameBucketNode = CreateNode(TestItem.PublicKeyC, 3);
-        Node otherBucketNode = CreateNode(TestItem.PublicKeyD, 4);
         target.Enr = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"));
-        int targetDistance = Hash256KademliaDistance.Instance.CalculateLogDistance(current.Id.Hash, target.Id.Hash);
-        int otherDistance = targetDistance == Hash256KademliaDistance.Instance.MaxDistance
-            ? targetDistance - 1
-            : targetDistance + 1;
-        _kademlia.GetAllAtDistance(targetDistance).Returns([sameBucketNode, target]);
-        _kademlia.GetAllAtDistance(otherDistance).Returns([otherBucketNode]);
-        _kademlia.ClearReceivedCalls();
+        ConfigureStoredNode(target);
 
-        KademliaAdapter adapter = CreateAdapter(current);
+        KademliaAdapter adapter = CreateAdapter();
 
         bool result = adapter.TryGetKnownNode(target.Id.Hash.ValueHash256, out Node? knownNode);
 
@@ -123,8 +119,8 @@ public class KademliaAdapterTests
             Assert.That(knownNode, Is.SameAs(target));
         }
 
-        _kademlia.Received(1).GetAllAtDistance(targetDistance);
-        _kademlia.DidNotReceive().GetAllAtDistance(otherDistance);
+        _routingTable.Received(1).TryGet(Arg.Is<ValueHash256>(hash => hash == target.Id.Hash), out _);
+        _kademlia.DidNotReceive().GetAllAtDistance(Arg.Any<int>());
         _kademlia.DidNotReceive().IterateNodes();
     }
 
@@ -144,8 +140,7 @@ public class KademliaAdapterTests
             target.Enr = targetRecord;
         }
 
-        int targetDistance = Hash256KademliaDistance.Instance.CalculateLogDistance(current.Id.Hash, target.Id.Hash);
-        _kademlia.GetAllAtDistance(targetDistance).Returns([target]);
+        ConfigureStoredNode(target);
         KademliaAdapter adapter = CreateAdapter(current);
 
         bool result = adapter.TryGetKnownNode(target.Id.Hash.ValueHash256, out Node? knownNode);
@@ -166,8 +161,7 @@ public class KademliaAdapterTests
         Node current = CreateNode(TestItem.PublicKeyA, 1);
         Node target = CreateNode(TestItem.PublicKeyB, 2);
         target.ObserveEnrSequence(7);
-        int targetDistance = Hash256KademliaDistance.Instance.CalculateLogDistance(current.Id.Hash, target.Id.Hash);
-        _kademlia.GetAllAtDistance(targetDistance).Returns([target]);
+        ConfigureStoredNode(target);
         KademliaAdapter adapter = CreateAdapter(current);
 
         bool result = adapter.TryGetKnownNode(target.Id.Hash.ValueHash256, out Node? knownNode);
@@ -193,8 +187,7 @@ public class KademliaAdapterTests
             tcpPort: null,
             udpPort: endpoint.Port);
         target.Enr = targetRecord;
-        int targetDistance = Hash256KademliaDistance.Instance.CalculateLogDistance(current.Id.Hash, target.Id.Hash);
-        _kademlia.GetAllAtDistance(targetDistance).Returns([target]);
+        ConfigureStoredNode(target);
         KademliaAdapter adapter = CreateAdapter(current);
 
         Assert.That(adapter.GetChallengeEnrSequence(target.Id.Hash.ValueHash256, endpoint), Is.Zero);
@@ -471,6 +464,7 @@ public class KademliaAdapterTests
 
         return new(
             new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
+            _routingTable,
             new NettyDiscoveryV5Handler(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
@@ -481,6 +475,13 @@ public class KademliaAdapterTests
             Hash256KademliaDistance.Instance,
             LimboLogs.Instance);
     }
+
+    private void ConfigureStoredNode(Node node)
+        => _routingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == node.Id.Hash), out _).Returns(callInfo =>
+        {
+            callInfo[1] = node;
+            return true;
+        });
 
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);

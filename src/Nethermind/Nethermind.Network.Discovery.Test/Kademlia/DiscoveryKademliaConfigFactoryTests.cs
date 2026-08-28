@@ -78,10 +78,10 @@ public class DiscoveryKademliaConfigFactoryTests
             currentNode,
             [],
             new DiscoveryConfig());
-        KBucketTree<Node, Hash256> tree = new(
+        KBucketTree<Node, ValueHash256> tree = new(
             config,
-            new FromKeyNodeHashProvider<PublicKey, Node, Hash256>(new PublicKeyKeyOperator()),
-            Hash256KademliaDistance.Instance);
+            new FromKeyNodeHashProvider<PublicKey, Node, ValueHash256>(new PublicKeyKeyOperator()),
+            (IKademliaDistance<ValueHash256>)Hash256KademliaDistance.Instance);
         tree.TryAddOrRefresh(existing.Id.Hash, existing, out _);
 
         tree.TryAddOrRefresh(incoming.Id.Hash, incoming, out _);

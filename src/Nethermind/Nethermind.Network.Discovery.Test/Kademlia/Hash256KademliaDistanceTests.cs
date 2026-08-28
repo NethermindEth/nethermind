@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
@@ -101,6 +102,38 @@ public class Hash256KademliaDistanceTests
         Hash256 h3 = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
         Assert.That(Distance.Compare(h1, h2, h3), Is.LessThan(0));
+    }
+
+    [Test]
+    public void ValueHash_operations_match_reference_hash_operations()
+    {
+        Hash256 left = new("0x0010000000000000000000000000000000000000000000000000000000000001");
+        Hash256 right = new("0x0110000000000000000000000000000000000000000000000000000000000002");
+        Hash256 target = new("0x0000000000000000000000000000000000000000000000000000000000000003");
+        IKademliaDistance<ValueHash256> valueDistance = Distance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valueDistance.Zero, Is.EqualTo(default(ValueHash256)));
+            Assert.That(
+                valueDistance.CalculateLogDistance(left.ValueHash256, right.ValueHash256),
+                Is.EqualTo(Distance.CalculateLogDistance(left, right)));
+            Assert.That(
+                valueDistance.Compare(left.ValueHash256, right.ValueHash256, target.ValueHash256),
+                Is.EqualTo(Distance.Compare(left, right, target)));
+        }
+
+        for (int i = 0; i < Distance.MaxDistance; i++)
+        {
+            Assert.That(valueDistance.GetBit(left.ValueHash256, i), Is.EqualTo(Distance.GetBit(left, i)));
+        }
+
+        foreach (int index in new[] { 0, 127, 255 })
+        {
+            Assert.That(
+                valueDistance.SetBit(left.ValueHash256, index),
+                Is.EqualTo(Distance.SetBit(left, index).ValueHash256));
+        }
     }
 
     private static Hash256 XorDistance(Hash256 left, Hash256 right)

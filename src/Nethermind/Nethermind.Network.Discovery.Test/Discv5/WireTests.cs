@@ -470,6 +470,21 @@ public class WireTests
         IPAddress? recordIp = null)
     {
         IKademlia<PublicKey, Node> table = kademlia ?? Substitute.For<IKademlia<PublicKey, Node>>();
+        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+        if (table is BoundedDistanceKademlia boundedTable)
+        {
+            routingTable.TryGet(Arg.Any<ValueHash256>(), out _).Returns(callInfo =>
+            {
+                if (!boundedTable.TryGetNode((ValueHash256)callInfo[0], out Node storedNode))
+                {
+                    return false;
+                }
+
+                callInfo[1] = storedNode;
+                return true;
+            });
+        }
+
         NettyDiscoveryV5Handler handler = new(new TestLogManager());
         EmbeddedChannel channel = new();
         OutboundDatagramCapture outbound = new();
@@ -487,6 +502,7 @@ public class WireTests
         Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
+            routingTable,
             handler,
             packetCodec,
             nodeRecordProvider,
@@ -673,15 +689,18 @@ public class WireTests
             }
         }
 
-        public bool TryGetNode(Node node, out Node storedNode)
+        public bool TryGetNode(Node node, out Node storedNode) => TryGetNode(node.Id.Hash, out storedNode);
+
+        public bool TryGetNode(ValueHash256 nodeHash, out Node storedNode)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ((IKademliaDistance<ValueHash256>)Hash256KademliaDistance.Instance)
+                .CalculateLogDistance(currentNodeHash.ValueHash256, nodeHash);
             lock (_lock)
             {
                 if ((_nodesByDistance.TryGetValue(distance, out List<Node>? nodes) &&
-                     TryGetNode(nodes, node.Id, out storedNode)) ||
+                     TryGetNode(nodes, nodeHash, out storedNode)) ||
                     (_replacementsByDistance.TryGetValue(distance, out List<Node>? replacements) &&
-                     TryGetNode(replacements, node.Id, out storedNode)))
+                     TryGetNode(replacements, nodeHash, out storedNode)))
                 {
                     return true;
                 }
@@ -802,11 +821,11 @@ public class WireTests
             return nodes;
         }
 
-        private static bool TryGetNode(List<Node> nodes, PublicKey id, out Node storedNode)
+        private static bool TryGetNode(List<Node> nodes, ValueHash256 nodeHash, out Node storedNode)
         {
             for (int i = 0; i < nodes.Count; i++)
             {
-                if (nodes[i].Id.Equals(id))
+                if (nodes[i].Id.Hash == nodeHash)
                 {
                     storedNode = nodes[i];
                     return true;

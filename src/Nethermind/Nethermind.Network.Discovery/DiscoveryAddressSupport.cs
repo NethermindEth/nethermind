@@ -18,19 +18,27 @@ public static class DiscoveryAddressSupport
     /// <remarks>
     /// A native IPv4 socket cannot use an endpoint that remains in IPv4-mapped IPv6 form; callers must unmap it first.
     /// </remarks>
-    public static bool Supports(IPAddress localIp, IPAddress remoteIp)
+    /// <param name="localIp">The address used to bind the socket.</param>
+    /// <param name="remoteIp">The remote address to test.</param>
+    /// <returns><see langword="true"/> when the bound socket can serve the remote address.</returns>
+    internal static bool Supports(IPAddress localIp, IPAddress remoteIp)
         => !(localIp.AddressFamily == AddressFamily.InterNetwork && remoteIp.IsIPv4MappedToIPv6) &&
            SupportsFamily(localIp, GetFamily(remoteIp));
 
     /// <summary>
     /// Returns the effective address family, treating IPv4-mapped IPv6 addresses as IPv4.
     /// </summary>
+    /// <param name="address">The address whose effective family is required.</param>
+    /// <returns>The effective IPv4 or IPv6 address family.</returns>
     public static AddressFamily GetFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
     /// <summary>
     /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
     /// </summary>
+    /// <param name="localIp">The address used to bind the socket.</param>
+    /// <param name="addressFamily">The remote address family to test.</param>
+    /// <returns><see langword="true"/> when the bound socket can serve the address family.</returns>
     public static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
         => addressFamily switch
         {
