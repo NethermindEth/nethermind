@@ -183,10 +183,10 @@ class ReapStepTestCase(unittest.TestCase):
             EXPB_DATA_DIR=self.data_dir if data_dir is None else data_dir,
         )
         proc = subprocess.run(
-            # The same options GitHub gives a `shell: bash` step (`bash --noprofile --norc -eo
-            # pipefail {0}`); the body's own `set -uo pipefail` adds `u` but cannot clear `-e`, so
-            # without these the suite would exercise a laxer shell than the runner does.
-            # `$0`, then the mount table as `$1` - the way the step itself reads it.
+            # The options GitHub gives a `shell: bash` step (`bash --noprofile --norc -eo pipefail
+            # {0}`): the body's own `set -uo pipefail` adds `u` but cannot clear `-e`, so without
+            # these the suite would exercise a laxer shell than the runner does. Then `$0` and the
+            # mount table as `$1`, the way the step reads it.
             [self.bash, "--noprofile", "--norc", "-eo", "pipefail", "-c",
              PREAMBLE + (self.bodies[0] if body is None else body),
              "reap", to_bash(mounts_file)],
