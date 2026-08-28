@@ -222,7 +222,7 @@ class CommentRenderingTests(unittest.TestCase):
         if cpu is not None:
             (cell / "resources.json").write_text(json.dumps({"cpu_ms_per_request": cpu, "requests": 12000}), encoding="utf-8")
 
-    def _timings(self, label, latencies, achieved):
+    def _timings(self, label, latencies, achieved, concurrency=16):
         d = self.root / "corpus" / "corpus-a" / label
         d.mkdir(parents=True, exist_ok=True)
         rows = ["record_index,pass_1_ms,pass_1_status,pass_2_ms,pass_2_status"]
@@ -230,7 +230,7 @@ class CommentRenderingTests(unittest.TestCase):
         (d / "timings.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
         (d / "timings.meta.json").write_text(json.dumps({
             "head": 1, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": len(latencies), "passes": 2,
-            "requests": 2 * len(latencies), "target_rps": 0, "achieved_rps": achieved, "concurrency": 16,
+            "requests": 2 * len(latencies), "target_rps": 0, "achieved_rps": achieved, "concurrency": concurrency,
             "warmup_seconds": 60, "warmup_rps": 400, "outcomes": {"ok": 2 * len(latencies)}}), encoding="utf-8")
 
     def test_reports_regression_and_improvement_directions(self):
@@ -342,6 +342,15 @@ class CommentRenderingTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(corpus_results.main(argv), 0)
         self.assertIn("not co-run", out.getvalue())
+
+    def test_mixed_replay_concurrency_is_named_not_hidden(self):
+        """The throughput line took the PR arm's concurrency as the run's; arms that differ are not comparable."""
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.0, 100.0)
+        self._timings("nethermind_master", [10.0] * 5, achieved=800.0, concurrency=8)
+        self._timings("nethermind", [10.0] * 5, achieved=880.0, concurrency=16)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("Closed-loop throughput (mixed concurrency 8/16, not comparable)", body)
 
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)

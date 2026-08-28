@@ -532,7 +532,10 @@ def _render_timings(lines: list[str], corpus: dict) -> None:
     if closed.get("master") and closed.get("PR"):
         base, cand = _mean(closed["master"]), _mean(closed["PR"])
         delta = _delta_pct(base, cand)
-        lines.append(f"Closed-loop throughput (concurrency {meta['PR'][0]['concurrency']}): master {base:.1f} req/s, "
+        levels = sorted({m["concurrency"] for metas in meta.values() for m in metas})
+        where = f"concurrency {levels[0]}" if len(levels) == 1 \
+            else "mixed concurrency " + "/".join(str(level) for level in levels) + ", not comparable"
+        lines.append(f"Closed-loop throughput ({where}): master {base:.1f} req/s, "
                      f"PR {cand:.1f} req/s, {_arrow(-delta, 1.0)} {delta:+.1f}%.")
     failed = sum(v for metas in meta.values() for m in metas for k, v in m["outcomes"].items() if k != "ok")
     if failed:
