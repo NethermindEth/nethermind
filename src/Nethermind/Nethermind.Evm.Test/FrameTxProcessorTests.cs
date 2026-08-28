@@ -1200,19 +1200,150 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: Observer));
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
-            .WithBeneficiary(Beneficiary)
-            .WithGasLimit(30_000_000).TestObject;
-
-        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
-        TransactionResult result = _transactionProcessor.CallAndRestore(tx, NullTxTracer.Instance);
+        TransactionResult result = CallAndRestore(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: Observer)));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False, "an undefined mode executed instead of being refused");
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
             Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.InvalidMode));
+        }
+    }
+
+    /// <summary>
+    /// Every EIP-8141 structural constraint is enforced by the processor, not only by <c>TxValidator</c>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ExecutionOptions.SkipValidation"/> entry points reach the processor with no static validation
+    /// behind them, so each of these frame lists executed before the check was hoisted: reserved flag bits were
+    /// handed to <c>FRAMEPARAM</c> verbatim, a non-<c>SENDER</c> frame's value was transferred out of the entry
+    /// point account, an atomic batch marked a failed <c>VERIFY</c> frame skipped instead of invalidating the
+    /// transaction, and a frame list above the cap ran every frame in it.
+    /// </remarks>
+    [TestCaseSource(nameof(StructurallyInvalidFrameLists))]
+    public void CallAndRestore_StructurallyInvalidFrameList_IsRejected(TxFrame[] frames, string expectedError)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        TransactionResult result = CallAndRestore(FrameTx(nonce: 0, frames));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "a structurally invalid frame list executed");
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Is.EqualTo(expectedError));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> StructurallyInvalidFrameLists()
+    {
+        TxFrame reserved = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag << 1, target: Observer);
+        TxFrame batched = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag, target: Observer);
+
+        yield return Case("ReservedFlagBits", FrameTxValidation.InvalidFlags, SelfVerifyFrame(), reserved);
+        yield return Case("ValueOnADefaultFrame", FrameTxValidation.ValueOutsideSenderMode,
+            SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer, value: 1));
+        yield return Case("ExecutionApprovalOffTheSender", FrameTxValidation.ExecutionApprovalWrongTarget,
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: Observer));
+        yield return Case("AtomicBatchOnTheLastFrame", FrameTxValidation.AtomicBatchOnLastFrame, SelfVerifyFrame(), batched);
+        yield return Case("AtomicBatchSwallowingAVerifyFrame", FrameTxValidation.AtomicBatchFollowedByVerifyFrame,
+            SelfVerifyFrame(), batched, Frame(TxFrame.ModeVerify, target: Observer));
+        yield return Case("FrameGasSumOverflow", FrameTxValidation.FrameGasOverflow,
+            SelfVerifyFrame(), new TxFrame(TxFrame.ModeDefault, 0, Observer, ulong.MaxValue, UInt256.Zero, default));
+        yield return Case("MalformedExpiryFrame", FrameTxValidation.InvalidExpiryFrame,
+            SelfVerifyFrame(), Frame(TxFrame.ModeVerify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[3]));
+        yield return Case("EmptyFrameList", FrameTxValidation.MissingFrames);
+
+        TxFrame[] aboveTheCap = new TxFrame[Eip8141Constants.MaxFrames + 1];
+        aboveTheCap[0] = SelfVerifyFrame();
+        Array.Fill(aboveTheCap, Frame(TxFrame.ModeDefault, target: Observer), 1, aboveTheCap.Length - 1);
+        yield return new TestCaseData(aboveTheCap, FrameTxValidation.MissingFrames).SetName("CallAndRestore_MoreFramesThanTheCap_IsRejected");
+
+        static TestCaseData Case(string name, string expectedError, params TxFrame[] frames) =>
+            new TestCaseData(frames, expectedError).SetName($"CallAndRestore_{name}_IsRejected");
+    }
+
+    /// <remarks>
+    /// A frame transaction carrying no frame list at all: reachable from <c>eth_call</c>, where the JSON view
+    /// leaves <see cref="Transaction.Frames"/> null when the request omits the field. Before the check was
+    /// hoisted this left the processor as an <see cref="NullReferenceException"/> rather than a refusal.
+    /// </remarks>
+    [Test]
+    public void CallAndRestore_FrameTransactionWithoutAFrameList_IsRejected()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.Frames = null;
+
+        TransactionResult result = CallAndRestore(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.MissingFrames));
+        }
+    }
+
+    /// <summary>
+    /// A <c>VERIFY</c> frame may only approve execution for the sender, and the codeless-target default code
+    /// is held to that too.
+    /// </summary>
+    /// <remarks>
+    /// The default code signals approval straight to the outer loop, bypassing the <c>APPROVE</c> handler's
+    /// target check, so this list previously ran: a third party's signature approved execution for the sender
+    /// and the following <c>SENDER</c> frame moved the sender's balance and consumed its nonce.
+    /// </remarks>
+    [Test]
+    public void CallAndRestore_ExecutionApprovedByAThirdPartySignature_IsRejected()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.CreateAccount(Observer, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: Observer),
+            Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: Observer),
+            Frame(TxFrame.ModeSender, target: Recipient, value: 5));
+        static TxFrameSignature Placeholder() =>
+            new(TxFrameSignature.SchemeSecp256k1, Observer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
+        tx.FrameSignatures = [Placeholder(), Placeholder()];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyB, Observer);
+        SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyB, Observer);
+
+        TransactionResult result = CallAndRestore(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "a signature the sender never produced approved execution for it");
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.ExecutionApprovalWrongTarget));
+        }
+    }
+
+    /// <remarks>
+    /// The entry point is the caller of every non-<c>SENDER</c> frame, so an unrejected value on one debits
+    /// the entry point account. Anyone may fund that address, so the balance is real: before the check was
+    /// hoisted this frame moved 3 ETH out of it and the frame observed the transfer through <c>CALLVALUE</c>.
+    /// </remarks>
+    [Test]
+    public void Execute_ValueOnANonSenderFrame_DoesNotDebitTheEntryPoint()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(Eip8141Constants.EntryPointAddress, 7.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer, value: 3.Ether));
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.ValueOutsideSenderMode));
+            Assert.That(_stateProvider.GetBalance(Eip8141Constants.EntryPointAddress), Is.EqualTo((UInt256)7.Ether));
         }
     }
 
@@ -1607,13 +1738,17 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A <c>VERIFY</c> frame targeting a precompile approves nothing.</summary>
-    /// <remarks>The precompile takes the place of the default code, and only the default code approves.</remarks>
+    /// <remarks>
+    /// The precompile takes the place of the default code, and only the default code approves. Only the
+    /// payment scope is exercised: an execution approval would have to target the sender.
+    /// </remarks>
     [Test]
     public void Execute_VerifyFrameTargetsPrecompile_ApprovesNothing()
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         Transaction tx = FrameTx(nonce: 0,
-            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: IdentityPrecompile.Address));
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution),
+            Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: IdentityPrecompile.Address));
 
         TransactionResult result = Process(tx);
 
@@ -2475,7 +2610,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False);
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(result.ErrorDescription, Does.Contain("too many"));
+        Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.TooManyRecentRootReferences));
     }
 
     /// <remarks>An empty reference list still occupies the byte <c>0xc0</c> on the wire, so it is priced:
@@ -2691,7 +2826,10 @@ public class FrameTxProcessorTests
         switch (rollback)
         {
             case RipemdRollback.BatchUnroll:
-                return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer));
+                // The flag binds a frame to its successor, so the touching frame needs one to unroll onto.
+                return FrameTx(nonce: 0, SelfVerifyFrame(),
+                    Frame(TxFrame.ModeDefault, TxFrame.AtomicBatchFlag, target: Observer),
+                    Frame(TxFrame.ModeDefault, target: Recipient));
             case RipemdRollback.PostTxFailure:
                 return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer),
                     Frame(TxFrame.ModePostTx, target: Recipient));

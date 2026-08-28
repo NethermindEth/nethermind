@@ -86,11 +86,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
-        // Structural, so it holds even where validation is skipped: the frame list is dereferenced
-        // throughout, and eth_call arrives here without a validator.
-        if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+        // eth_call and the other estimation/tracing entry points reach the processor with validation
+        // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
+        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.MissingFrames);
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
 
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
@@ -138,56 +138,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
-        // EIP-8141 forbids approval scope on an atomic-batch frame; enforced here too so unvalidated
-        // entry points (e.g. eth_call) cannot mint ETH.
-        bool prevIsAtomicBatch = false;
-        bool sawPostTx = false;
-        foreach (TxFrame frame in frames)
+        if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
         {
-            if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
-            }
-
-            // An undefined mode would otherwise fall through to DEFAULT semantics and execute.
-            if (frame.Mode > TxFrame.ModePostTx)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.InvalidMode);
-            }
-
-            // The mode is undefined until EIP-7906 defines it, so it must not run with assertion semantics.
-            if (frame.Mode == TxFrame.ModePostTx && !spec.IsEip7906Enabled)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
-            }
-
-            // The assertion opcodes share one diff view per transaction, which is only the finished
-            // transaction's while nothing after the first POST_TX frame can still change state.
-            if (sawPostTx && frame.Mode != TxFrame.ModePostTx)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotTrailing);
-            }
-
-            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.ValueOutsideSenderMode);
-            }
-
-            sawPostTx |= frame.Mode == TxFrame.ModePostTx;
-            prevIsAtomicBatch = frame.IsAtomicBatch;
-        }
-
-        if (tx.RecentRootReferences is { } references)
-        {
-            if (!spec.IsEip8272Enabled)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
-            }
-
-            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
-            }
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
         }
 
         if (tx.NonceKeys is not null)
@@ -195,7 +148,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
-        // Overflow-checked, so the processor does not depend on static validation having run.
+        // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
         tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
