@@ -13,6 +13,9 @@ benchmark runners, and it is duplicated verbatim across three checkout-less jobs
     functions and the mount table redirected via REAP_MOUNTS_FILE, so the guards that keep
     `rm -rf` inside the benchmark data dir are exercised rather than argued about.
 
+The body runs under the options GitHub gives a `shell: bash` step - `--noprofile --norc -eo
+pipefail` - because `set -e` is on there and the body cannot turn it off.
+
 Run with: python -m unittest discover -s scripts/ci -p 'test*.py'
 Runs on Linux and, via Git Bash, on Windows.
 """
@@ -179,7 +182,11 @@ class ReapStepTestCase(unittest.TestCase):
             EXPB_DATA_DIR=self.data_dir if data_dir is None else data_dir,
         )
         proc = subprocess.run(
-            [self.bash, "-c", PREAMBLE + (self.bodies[0] if body is None else body)],
+            # The same options GitHub gives a `shell: bash` step (`bash --noprofile --norc -eo
+            # pipefail {0}`); the body's own `set -uo pipefail` adds `u` but cannot clear `-e`, so
+            # without these the suite would exercise a laxer shell than the runner does.
+            [self.bash, "--noprofile", "--norc", "-eo", "pipefail", "-c",
+             PREAMBLE + (self.bodies[0] if body is None else body)],
             env=env,
             capture_output=True,
             text=True,
@@ -353,6 +360,22 @@ class Scoping(ReapStepTestCase):
         _, remaining, unmounted = self.run_step([bind])
         self.assertEqual([], unmounted)
         self.assertEqual([bind], remaining)
+
+    def test_the_drift_dump_is_capped_without_tripping_errexit(self):
+        """Capped inside awk: piping into `head` risked SIGPIPE aborting the step under errexit."""
+        many = [
+            mount_line(
+                "/srv/other/merged-{:05d}".format(i),
+                "/srv/other/upper-{:05d}".format(i),
+                "/srv/other/work",
+            )
+            for i in range(4000)
+        ]
+        out, remaining, unmounted = self.run_step(many)
+        self.assertEqual([], unmounted)
+        self.assertEqual(len(many), len(remaining))
+        dumped = [l for l in out.splitlines() if "unmatched overlay:" in l]
+        self.assertEqual(20, len(dumped))
 
     def test_nothing_to_reap_dumps_unmatched_overlays_for_drift(self):
         foreign = mount_line("/srv/other/merged", "/srv/other/upper", "/srv/other/work")

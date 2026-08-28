@@ -101,8 +101,10 @@ jobs:
           if [[ "${#targets[@]}" -eq 0 ]]; then
             echo "No stale expb overlay mounts under ${root}."
             # Surface what we did not match, so layout drift shows up in the log instead of a reassuring
-            # "clean"; docker's own overlays live under /var/lib and are not ours.
-            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 { print "  unmatched overlay: " $2 }' "${MOUNTS}" | head -n 20
+            # "clean"; docker's own overlays live under /var/lib and are not ours. Capped inside awk
+            # rather than piped into `head`, whose early exit would SIGPIPE awk and - under the errexit
+            # GitHub runs this body with - abort the step before the trailing `exit 0`.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 && ++n <= 20 { print "  unmatched overlay: " $2 }' "${MOUNTS}"
             exit 0
           fi
 
