@@ -1103,11 +1103,18 @@ namespace Nethermind.TxPool
         {
             bool isCancellationRequested = _cts.IsCancellationRequested;
             long currentGeneration = Volatile.Read(ref _headGeneration);
-            string reason = isCancellationRequested
-                ? "shutdown was requested"
-                : generation != currentGeneration
-                    ? $"head generation advanced from {generation} to {currentGeneration}"
-                    : $"the head specification changed from {spec.Name} to {_specProvider.GetCurrentHeadSpec().Name}";
+            string reason;
+            if (isCancellationRequested)
+            {
+                reason = "shutdown was requested";
+            }
+            else
+            {
+                IReleaseSpec currentSpec = _specProvider.GetCurrentHeadSpec();
+                reason = !ReferenceEquals(spec, currentSpec)
+                    ? $"the head specification changed from {spec.Name} to {currentSpec.Name}"
+                    : $"head generation advanced from {generation} to {currentGeneration}";
+            }
 
             if (_logger.IsDebug) _logger.Debug($"Abandoned transaction pool revalidation for {spec.Name} because {reason}.");
 

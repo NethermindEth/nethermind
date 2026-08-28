@@ -182,6 +182,7 @@ namespace Nethermind.Consensus.Producers
             ulong consideredBlobCount = 0UL;
             ulong rejectedBlobCount = 0UL;
             Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            ILightTxValidator? lightTxValidator = _specChangeTxValidator as ILightTxValidator;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
@@ -208,7 +209,7 @@ namespace Nethermind.Consensus.Producers
                 if (validateForkSensitiveState)
                 {
                     if (blobTx is LightTransaction lightTransaction
-                        && _specChangeTxValidator is ILightTxValidator lightTxValidator
+                        && lightTxValidator is not null
                         && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                     {
                         continue;

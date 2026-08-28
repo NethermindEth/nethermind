@@ -783,34 +783,38 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return;
         }
 
-        int deleteCount = 0;
+        using ArrayPoolList<TxLookupKey> deletes = new(_batchedDeletes.Count);
+        using ArrayPoolList<TxLookupKey> obsoleteFullTransactions = new(_batchedDeletes.Count);
         for (int i = 0; i < _batchedDeletes.Count; i++)
         {
             TxLookupKey key = _batchedDeletes[i];
-            if (!base.TryGetValueNonLocked(key.Hash, out _))
+            if (!base.TryGetValueNonLocked(key.Hash, out Transaction? liveTransaction))
             {
-                _batchedDeletes[deleteCount++] = key;
+                deletes.Add(key);
             }
-        }
-
-        if (deleteCount != _batchedDeletes.Count)
-        {
-            _batchedDeletes.RemoveRange(deleteCount, _batchedDeletes.Count - deleteCount);
-            if (deleteCount == 0)
+            else if (liveTransaction.Timestamp != key.Timestamp)
             {
-                return;
+                obsoleteFullTransactions.Add(key);
             }
         }
 
         if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
         {
-            batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
+            if (deletes.Count > 0)
+            {
+                batchStorage.DeleteMany(deletes.AsSpan());
+            }
+
+            if (obsoleteFullTransactions.Count > 0)
+            {
+                batchStorage.DeleteFullBlobTransactions(obsoleteFullTransactions.AsSpan());
+            }
         }
         else
         {
-            for (int i = 0; i < _batchedDeletes.Count; i++)
+            for (int i = 0; i < deletes.Count; i++)
             {
-                TxLookupKey key = _batchedDeletes[i];
+                TxLookupKey key = deletes[i];
                 _blobTxStorage.Delete(key.Hash, key.Timestamp);
             }
         }

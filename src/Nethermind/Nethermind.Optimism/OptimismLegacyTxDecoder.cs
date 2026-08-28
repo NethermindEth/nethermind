@@ -28,12 +28,12 @@ public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
 public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
 {
     private readonly ITxValidator _postBedrockValidator = new CompositeTxValidator([
+        GasLimitCapTxValidator.Instance,
         IntrinsicGasTxValidator.Instance,
         new LegacySignatureTxValidator(chainId),
         ContractSizeTxValidator.Instance,
         NonBlobFieldsTxValidator.Instance,
-        NonSetCodeFieldsTxValidator.Instance,
-        GasLimitCapTxValidator.Instance
+        NonSetCodeFieldsTxValidator.Instance
     ]);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
@@ -72,9 +72,12 @@ internal sealed class OptimismSpecChangeTxValidator : ITxValidator, ILightTxVali
             : _ethereumValidator.IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormedAfterFullValidation(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Type == TxType.Legacy && !releaseSpec.IsEip1559Enabled
-            ? ValidationResult.Success
-            : _ethereumValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec);
+        transaction.Type switch
+        {
+            TxType.Legacy when !releaseSpec.IsEip1559Enabled => ValidationResult.Success,
+            TxType.DepositTx => _ethereumValidator.IsWellFormed(transaction, releaseSpec),
+            _ => _ethereumValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
+        };
 
     public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
         _ethereumValidator.IsWellFormedLight(transaction, releaseSpec);

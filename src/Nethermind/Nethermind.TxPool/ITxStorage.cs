@@ -24,6 +24,8 @@ public interface ITxStorage
 internal interface IBatchDeleteTxStorage
 {
     void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys);
+
+    void DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys);
 }
 
 internal interface ISpecChangeValidationStorage

@@ -634,13 +634,14 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobPool.Count, Is.Zero);
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
             }
-
         }
 
-        [Test]
-        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted(bool changeTimestamp)
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            UInt256 originalTimestamp = transaction.Timestamp;
             FailingBatchDeleteBlobTxStorage storage = new();
             storage.Add(transaction);
             TxPoolConfig txPoolConfig = new()
@@ -656,17 +657,27 @@ namespace Nethermind.TxPool.Test
             Assert.That(
                 () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
                 Throws.TypeOf<InvalidOperationException>());
+            if (changeTimestamp)
+            {
+                transaction.Timestamp += UInt256.One;
+            }
+
             Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
             Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, KeepAllTransactions), Throws.Nothing);
             bool persisted = storage.TryGet(transaction.Hash, transaction.SenderAddress!, transaction.Timestamp, out _);
+            bool obsoleteTransactionPersisted = storage.TryGet(transaction.Hash, transaction.SenderAddress!, originalTimestamp, out _);
+            bool elidedTransactionPersisted = storage.TryGetWithoutBlobs(transaction.Hash, transaction.SenderAddress!, out _);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(blobPool.Count, Is.EqualTo(1));
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1 }));
+                Assert.That(storage.FullTransactionDeleteBatchSizes, Is.EqualTo(changeTimestamp ? new[] { 1 } : Array.Empty<int>()));
                 Assert.That(persisted, Is.True);
+                Assert.That(obsoleteTransactionPersisted, Is.EqualTo(!changeTimestamp));
+                Assert.That(elidedTransactionPersisted, Is.True);
+                Assert.That(storage.GetAll(), Is.Not.Empty);
             }
-
         }
 
         [Test]
@@ -1773,8 +1784,13 @@ namespace Nethermind.TxPool.Test
 
             public List<int> DeleteBatchSizes { get; } = [];
 
+            public List<int> FullTransactionDeleteBatchSizes { get; } = [];
+
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction) =>
+                _storage.TryGetWithoutBlobs(hash, sender, out transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
                 _storage.TryGetMany(keys, count, results);
@@ -1809,6 +1825,12 @@ namespace Nethermind.TxPool.Test
                 }
 
                 ((IBatchDeleteTxStorage)_storage).DeleteMany(keys);
+            }
+
+            void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys)
+            {
+                FullTransactionDeleteBatchSizes.Add(keys.Length);
+                ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
         }
 

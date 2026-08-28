@@ -190,7 +190,13 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
+    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
+        DeleteMany(keys, deleteSharedEntries: true);
+
+    void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
+        DeleteMany(keys, deleteSharedEntries: false);
+
+    private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
     {
         if (keys.IsEmpty)
         {
@@ -218,17 +224,22 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
             using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
             IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-            IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
+            IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
+                ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
+                : null;
             Span<byte> txHashPrefixed = stackalloc byte[64];
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
             for (int i = 0; i < keys.Length; i++)
             {
                 ref readonly TxLookupKey key = ref keys[i];
                 GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
-                GetElidedTxKey(key.Hash, elidedKey);
                 fullBlobTxsBatch.Remove(txHashPrefixed);
-                fullBlobTxsBatch.Remove(elidedKey);
-                lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
+                if (deleteSharedEntries)
+                {
+                    GetElidedTxKey(key.Hash, elidedKey);
+                    fullBlobTxsBatch.Remove(elidedKey);
+                    lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
+                }
             }
         }
         finally

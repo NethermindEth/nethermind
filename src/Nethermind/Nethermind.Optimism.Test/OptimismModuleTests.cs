@@ -78,8 +78,9 @@ public class OptimismModuleTests
         }
     }
 
-    [Test]
-    public void Full_and_delta_validation_cover_optimism_legacy_gas_limit_cap()
+    [TestCase(TxType.Legacy)]
+    [TestCase(TxType.DepositTx)]
+    public void Full_and_delta_validation_cover_optimism_gas_limit_cap(TxType transactionType)
     {
         const ulong chainId = 10;
         OptimismReleaseSpec spec = new()
@@ -87,11 +88,16 @@ public class OptimismModuleTests
             IsEip1559Enabled = true,
             IsEip7825Enabled = true
         };
-        Transaction transaction = Build.A.Transaction
+        TransactionBuilder<Transaction> transactionBuilder = Build.A.Transaction
+            .WithType(transactionType)
             .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
-            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
-            .TestObject;
-        OptimismLegacyTxValidator fullValidator = new(chainId);
+            .WithSenderAddress(TestItem.AddressA);
+        Transaction transaction = transactionType == TxType.Legacy
+            ? transactionBuilder.SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA).TestObject
+            : transactionBuilder.TestObject;
+        ITxValidator fullValidator = transactionType == TxType.DepositTx
+            ? Always.Valid
+            : new OptimismLegacyTxValidator(chainId);
         OptimismSpecChangeTxValidator specChangeValidator = new(chainId);
         ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
         ValidationResult admissionResult = fullValidator.IsWellFormed(transaction, spec);
