@@ -27,27 +27,35 @@ namespace Nethermind.Network
         /// <summary>
         /// The resolved local and external IP addresses of this node.
         /// </summary>
-        public readonly record struct NethermindIp
+        /// <param name="LocalIp">The node's local IP address.</param>
+        /// <param name="ExternalIp">The node's primary external IP address.</param>
+        public readonly record struct NethermindIp(IPAddress LocalIp, IPAddress ExternalIp)
         {
-            public NethermindIp(IPAddress localIp, IPAddress externalIp)
-                : this(localIp, externalIp, null, null)
-            {
-            }
-
+            /// <summary>
+            /// Creates resolved IP information with independently advertised IPv4 and IPv6 addresses.
+            /// </summary>
+            /// <param name="localIp">The node's local IP address.</param>
+            /// <param name="externalIp">The node's primary external IP address.</param>
+            /// <param name="externalIpV4">The external IPv4 address to advertise.</param>
+            /// <param name="externalIpV6">The external IPv6 address to advertise.</param>
             public NethermindIp(IPAddress localIp, IPAddress externalIp, IPAddress? externalIpV4, IPAddress? externalIpV6)
+                : this(localIp, externalIp)
             {
-                LocalIp = localIp;
-                ExternalIp = externalIp;
                 ExternalIpV4 = NormalizeExternalIp(externalIpV4, AddressFamily.InterNetwork)
                     ?? NormalizeExternalIp(externalIp, AddressFamily.InterNetwork);
                 ExternalIpV6 = NormalizeExternalIp(externalIpV6, AddressFamily.InterNetworkV6)
                     ?? NormalizeExternalIp(externalIp, AddressFamily.InterNetworkV6);
             }
 
-            public IPAddress LocalIp { get; init; }
-            public IPAddress ExternalIp { get; init; }
-            public IPAddress? ExternalIpV4 { get; init; }
-            public IPAddress? ExternalIpV6 { get; init; }
+            /// <summary>
+            /// Gets the external IPv4 address to advertise, if one was resolved.
+            /// </summary>
+            public IPAddress? ExternalIpV4 { get; init; } = NormalizeExternalIp(ExternalIp, AddressFamily.InterNetwork);
+
+            /// <summary>
+            /// Gets the external IPv6 address to advertise, if one was resolved.
+            /// </summary>
+            public IPAddress? ExternalIpV6 { get; init; } = NormalizeExternalIp(ExternalIp, AddressFamily.InterNetworkV6);
 
             internal static IPAddress? NormalizeExternalIp(IPAddress? ipAddress, AddressFamily? expectedFamily)
             {

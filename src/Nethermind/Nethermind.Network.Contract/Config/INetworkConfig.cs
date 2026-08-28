@@ -20,9 +20,23 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
+    /// <summary>
+    /// Gets or sets the external IPv4 address to advertise.
+    /// </summary>
+    /// <remarks>
+    /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
+    /// Set this together with <see cref="ExternalIpV6"/> to advertise both address families.
+    /// </remarks>
     [ConfigItem(Description = $"The external IPv4 address to advertise. Use with `{nameof(ExternalIpV6)}` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
+    /// <summary>
+    /// Gets or sets the external IPv6 address to advertise.
+    /// </summary>
+    /// <remarks>
+    /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv6 address.
+    /// Set this together with <see cref="ExternalIpV4"/> to advertise both address families.
+    /// </remarks>
     [ConfigItem(Description = $"The external IPv6 address to advertise. Use with `{nameof(ExternalIpV4)}` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 

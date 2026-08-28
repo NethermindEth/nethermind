@@ -104,16 +104,24 @@ internal sealed class BootnodeNodeRecordProvider(
             return null;
         }
 
+        EnrSequenceState? state;
         try
         {
             await using FileStream stream = File.OpenRead(_sequenceStatePath);
-            return await JsonSerializer.DeserializeAsync<EnrSequenceState>(stream, cancellationToken: cancellationToken);
+            state = await JsonSerializer.DeserializeAsync<EnrSequenceState>(stream, cancellationToken: cancellationToken);
         }
         catch (Exception exception) when (exception is JsonException or IOException)
         {
             if (_logger.IsWarn) _logger.Warn($"Unable to load ENR sequence state '{_sequenceStatePath}': {exception.Message}");
-            return null;
+            throw new InvalidDataException($"Unable to load ENR sequence state '{_sequenceStatePath}'.", exception);
         }
+
+        if (state is null || string.IsNullOrEmpty(state.ContentHash) || state.EnrSequence == 0)
+        {
+            throw new InvalidDataException($"ENR sequence state '{_sequenceStatePath}' is invalid.");
+        }
+
+        return state;
     }
 
     private async Task WriteSequenceStateAsync(EnrSequenceState state, CancellationToken cancellationToken)

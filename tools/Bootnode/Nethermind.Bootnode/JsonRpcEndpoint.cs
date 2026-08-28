@@ -8,6 +8,7 @@ namespace Nethermind.Bootnode;
 
 internal static class JsonRpcEndpoint
 {
+    private const string JsonRpcVersion = "2.0";
     internal const int MaxBatchSize = 16;
 
     public static IResult Handle(JsonElement payload, DiscoveredNodeStore store, BootnodeStatus status)
@@ -20,34 +21,50 @@ internal static class JsonRpcEndpoint
                 return Results.Json(JsonRpcResponse.Failure(null, -32600, $"Batch must contain between 1 and {MaxBatchSize} requests."));
             }
 
-            List<JsonRpcResponse> responses = [];
+            List<JsonRpcResponse> responses = new(requestCount);
             foreach (JsonElement request in payload.EnumerateArray())
             {
-                responses.Add(HandleSingle(request, store, status));
+                JsonRpcResponse? response = HandleSingle(request, store, status);
+                if (response is not null)
+                {
+                    responses.Add(response);
+                }
             }
 
-            return Results.Json(responses);
+            return responses.Count == 0 ? Results.NoContent() : Results.Json(responses);
         }
 
-        return Results.Json(HandleSingle(payload, store, status));
+        JsonRpcResponse? singleResponse = HandleSingle(payload, store, status);
+        return singleResponse is null ? Results.NoContent() : Results.Json(singleResponse);
     }
 
-    private static JsonRpcResponse HandleSingle(JsonElement payload, DiscoveredNodeStore store, BootnodeStatus status)
+    private static JsonRpcResponse? HandleSingle(JsonElement payload, DiscoveredNodeStore store, BootnodeStatus status)
     {
         if (payload.ValueKind != JsonValueKind.Object)
         {
             return JsonRpcResponse.Failure(null, -32600, "Invalid request");
         }
 
-        object? id = TryReadId(payload);
+        if (!TryReadId(payload, out bool hasId, out object? id))
+        {
+            return JsonRpcResponse.Failure(null, -32600, "Invalid request");
+        }
+
+        if (!payload.TryGetProperty("jsonrpc", out JsonElement versionElement) ||
+            versionElement.ValueKind != JsonValueKind.String ||
+            versionElement.GetString() != JsonRpcVersion)
+        {
+            return JsonRpcResponse.Failure(hasId ? id : null, -32600, "Invalid request");
+        }
+
         if (!payload.TryGetProperty("method", out JsonElement methodElement) ||
             methodElement.ValueKind != JsonValueKind.String)
         {
-            return JsonRpcResponse.Failure(id, -32600, "Invalid request");
+            return JsonRpcResponse.Failure(hasId ? id : null, -32600, "Invalid request");
         }
 
         string? method = methodElement.GetString();
-        return method switch
+        JsonRpcResponse response = method switch
         {
             "bootnode_activeNodes" => HandleNodes(payload, id, store, activeOnly: true),
             "bootnode_allNodes" => HandleNodes(payload, id, store, activeOnly: false),
@@ -55,6 +72,8 @@ internal static class JsonRpcEndpoint
             "bootnode_nodeInfo" => JsonRpcResponse.Success(id, status.Identity),
             _ => JsonRpcResponse.Failure(id, -32601, $"Method not found: {method}")
         };
+
+        return hasId ? response : null;
     }
 
     private static JsonRpcResponse HandleNodes(JsonElement payload, object? id, DiscoveredNodeStore store, bool activeOnly)
@@ -155,20 +174,30 @@ internal static class JsonRpcEndpoint
         return false;
     }
 
-    private static object? TryReadId(JsonElement payload)
+    private static bool TryReadId(JsonElement payload, out bool hasId, out object? id)
     {
-        if (!payload.TryGetProperty("id", out JsonElement idElement))
+        hasId = payload.TryGetProperty("id", out JsonElement idElement);
+        if (!hasId)
         {
-            return null;
+            id = null;
+            return true;
         }
 
-        return idElement.ValueKind switch
+        switch (idElement.ValueKind)
         {
-            JsonValueKind.Number when idElement.TryGetInt64(out long id) => id,
-            JsonValueKind.String => idElement.GetString(),
-            JsonValueKind.Null => null,
-            _ => idElement.GetRawText()
-        };
+            case JsonValueKind.Number:
+                id = idElement.Clone();
+                return true;
+            case JsonValueKind.String:
+                id = idElement.GetString();
+                return true;
+            case JsonValueKind.Null:
+                id = null;
+                return true;
+            default:
+                id = null;
+                return false;
+        }
     }
 }
 

@@ -157,23 +157,34 @@ internal sealed class FileNetworkStorage(string path, ILogManager logManager) : 
             return;
         }
 
+        JsonElement[] persistedNodeElements;
         try
         {
-            PersistedNetworkNode[] persistedNodes = JsonSerializer.Deserialize<PersistedNetworkNode[]>(File.ReadAllText(_path), JsonOptions) ?? [];
-            Dictionary<string, PersistedNetworkNode> nodes = new(persistedNodes.Length);
-            for (int i = 0; i < persistedNodes.Length; i++)
-            {
-                NetworkNode networkNode = new(persistedNodes[i].Node);
-                nodes[GetKey(networkNode.NodeId)] = persistedNodes[i];
-            }
-
-            _nodes = nodes;
+            persistedNodeElements = JsonSerializer.Deserialize<JsonElement[]>(File.ReadAllText(_path), JsonOptions) ?? [];
         }
         catch (Exception exception)
         {
             if (_logger.IsWarn) _logger.Warn($"Unable to load discovery storage '{_path}': {exception.Message}");
             _nodes = [];
+            return;
         }
+
+        Dictionary<string, PersistedNetworkNode> nodes = new(persistedNodeElements.Length);
+        for (int i = 0; i < persistedNodeElements.Length; i++)
+        {
+            try
+            {
+                PersistedNetworkNode persistedNode = persistedNodeElements[i].Deserialize<PersistedNetworkNode>(JsonOptions);
+                NetworkNode networkNode = new(persistedNode.Node);
+                nodes[GetKey(networkNode.NodeId)] = persistedNode;
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping invalid persisted discovery node: {exception.Message}");
+            }
+        }
+
+        _nodes = nodes;
     }
 
     private void Save()

@@ -13,6 +13,22 @@ namespace Nethermind.Network.Discovery.Test;
 public class IPResolverTests
 {
     [Test]
+    public void Nethermind_ip_preserves_positional_api()
+    {
+        IPAddress localIp = IPAddress.Loopback;
+        IPAddress externalIp = IPAddress.Parse("192.0.2.1");
+        IIPResolver.NethermindIp ip = new(LocalIp: localIp, ExternalIp: externalIp);
+
+        (IPAddress deconstructedLocalIp, IPAddress deconstructedExternalIp) = ip;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deconstructedLocalIp, Is.SameAs(localIp));
+            Assert.That(deconstructedExternalIp, Is.SameAs(externalIp));
+        }
+    }
+
+    [Test]
     public async Task Can_resolve_ip_without_override()
     {
         IPResolver ipResolver = new(new NetworkConfig(), LimboLogs.Instance);

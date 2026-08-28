@@ -108,11 +108,11 @@ public class BootnodeNodeRecordProviderTests
     }
 
     [Test]
-    public async Task Corrupt_enr_sequence_state_does_not_block_identity_creation()
+    public async Task Corrupt_existing_enr_sequence_state_blocks_identity_creation()
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
-        await File.WriteAllTextAsync(Path.Combine(dataDir, "enr-state.json"), "{");
+        string statePath = Path.Combine(dataDir, "enr-state.json");
 
         using PrivateKeyGenerator generator = new();
         using PrivateKey privateKey = generator.Generate();
@@ -123,13 +123,19 @@ public class BootnodeNodeRecordProviderTests
             P2PPort = 0
         };
 
-        NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Loopback).GetCurrentAsync();
-        string stateText = await File.ReadAllTextAsync(Path.Combine(dataDir, "enr-state.json"));
+        NodeRecord firstRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Loopback).GetCurrentAsync();
+        NodeRecord changedRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Parse("127.0.0.2")).GetCurrentAsync();
+        await File.WriteAllTextAsync(statePath, "{");
+
+        InvalidDataException? exception = Assert.ThrowsAsync<InvalidDataException>(async () =>
+            await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Parse("127.0.0.3")).GetCurrentAsync());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(nodeRecord.EnrSequence, Is.EqualTo(1));
-            Assert.That(stateText, Does.Contain(nameof(BootnodeIdentity.EnrSequence)));
+            Assert.That(changedRecord.EnrSequence, Is.EqualTo(firstRecord.EnrSequence + 1));
+            Assert.That(changedRecord.EnrSequence, Is.GreaterThan(1));
+            Assert.That(exception!.Message, Does.Contain(statePath));
+            Assert.That(await File.ReadAllTextAsync(statePath), Is.EqualTo("{"));
         }
     }
 

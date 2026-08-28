@@ -59,6 +59,103 @@ public class JsonRpcEndpointTests
         }
     }
 
+    [TestCase("""{"id":1,"method":"bootnode_status"}""")]
+    [TestCase("""{"jsonrpc":"1.0","id":1,"method":"bootnode_status"}""")]
+    [TestCase("""{"jsonrpc":2.0,"id":1,"method":"bootnode_status"}""")]
+    public async Task Invalid_json_rpc_version_returns_invalid_request(string payload)
+    {
+        using JsonDocument document = JsonDocument.Parse(payload);
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        using JsonDocument response = await ExecuteJson(result);
+
+        Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
+    }
+
+    [TestCase("true")]
+    [TestCase("{}")]
+    [TestCase("[]")]
+    public async Task Invalid_id_returns_invalid_request(string id)
+    {
+        using JsonDocument document = JsonDocument.Parse($$"""{"jsonrpc":"2.0","id":{{id}},"method":"bootnode_status"}""");
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        using JsonDocument response = await ExecuteJson(result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
+        }
+    }
+
+    [TestCase("1.5")]
+    [TestCase("1234567890123456789012345678901234567890")]
+    public async Task Numeric_id_is_echoed_without_range_or_integer_restrictions(string id)
+    {
+        using JsonDocument document = JsonDocument.Parse($$"""{"jsonrpc":"2.0","id":{{id}},"method":"bootnode_status"}""");
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        using JsonDocument response = await ExecuteJson(result);
+
+        Assert.That(response.RootElement.GetProperty("id").GetRawText(), Is.EqualTo(id));
+    }
+
+    [Test]
+    public async Task Notification_returns_no_response()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"jsonrpc":"2.0","method":"bootnode_status"}""");
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        (int statusCode, byte[] body) = await Execute(result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(body, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Batch_filters_notifications_from_responses()
+    {
+        using JsonDocument document = JsonDocument.Parse("""
+            [
+              {"jsonrpc":"2.0","method":"bootnode_status"},
+              {"jsonrpc":"2.0","id":1,"method":"bootnode_status"}
+            ]
+            """);
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        using JsonDocument response = await ExecuteJson(result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(response.RootElement[0].GetProperty("id").GetInt64(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Notification_only_batch_returns_no_response()
+    {
+        using JsonDocument document = JsonDocument.Parse("""
+            [
+              {"jsonrpc":"2.0","method":"bootnode_status"},
+              {"jsonrpc":"2.0","method":"bootnode_nodeInfo"}
+            ]
+            """);
+        IResult result = JsonRpcEndpoint.Handle(document.RootElement, new DiscoveredNodeStore(), CreateStatus());
+
+        (int statusCode, byte[] body) = await Execute(result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(body, Is.Empty);
+        }
+    }
+
     [Test]
     public async Task Node_method_applies_pagination_params()
     {
@@ -133,6 +230,12 @@ public class JsonRpcEndpointTests
 
     private static async Task<JsonDocument> ExecuteJson(IResult result)
     {
+        (int _, byte[] body) = await Execute(result);
+        return JsonDocument.Parse(body);
+    }
+
+    private static async Task<(int StatusCode, byte[] Body)> Execute(IResult result)
+    {
         DefaultHttpContext context = new();
         await using MemoryStream body = new();
         context.Response.Body = body;
@@ -144,8 +247,6 @@ public class JsonRpcEndpointTests
         context.RequestServices = serviceProvider;
 
         await result.ExecuteAsync(context);
-
-        body.Position = 0;
-        return await JsonDocument.ParseAsync(body);
+        return (context.Response.StatusCode, body.ToArray());
     }
 }
