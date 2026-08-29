@@ -358,14 +358,25 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_revalidate_when_head_spec_changes_during_construction()
+        public async Task should_revalidate_when_head_spec_changes_during_construction()
         {
+            BlobTxStorage storage = new();
+            _txPool = CreatePool(specProvider: new TestSpecProvider(Prague.Instance), txStorage: storage);
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            await _txPool.DisposeAsync();
+
             IChainHeadSpecProvider changingSpecProvider = Substitute.For<IChainHeadSpecProvider>();
+            // ObserveHeadSpec and InitializeValidatedSpec see Prague; the final startup check sees Osaka.
             changingSpecProvider.GetCurrentHeadSpec().Returns(Prague.Instance, Prague.Instance, Osaka.Instance);
             changingSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
             ChainHeadInfoProvider headInfo = new(changingSpecProvider, _blockTree, _stateProvider);
 
-            _txPool = CreatePool(specProvider: new TestSpecProvider(Prague.Instance), chainHeadInfoProvider: headInfo);
+            _txPool = CreatePool(
+                specProvider: new TestSpecProvider(Prague.Instance),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage);
 
             Assert.That(
                 () => _txPool.IsRevalidatedFor(Build.A.BlockHeader.TestObject),
