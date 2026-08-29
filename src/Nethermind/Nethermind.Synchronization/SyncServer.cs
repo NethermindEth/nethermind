@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
         private readonly ISyncConfig _syncConfig;
-        private ulong _latchedPivot;
+        private long _latchedPivot;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -137,8 +137,6 @@ namespace Nethermind.Synchronization
 
         // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
         // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
-        // An absent pointer only means "nothing downloaded" under fast sync, and the floor is then the pivot the
-        // node started from: the live tree pivot rises to the finalized head, which would withdraw held history.
         private ulong DownloadPointerFloor
         {
             get
@@ -153,14 +151,27 @@ namespace Nethermind.Synchronization
             }
         }
 
+        // An absent pointer only means "nothing downloaded" under fast sync, and the floor is then the pivot latched
+        // at first read: the live tree pivot rises to the finalized head, which would withdraw held history. After a
+        // restart the latch picks up the risen pivot, so the floor can only ever under-advertise, never over-.
         private ulong LatchedPivot
         {
             get
             {
-                if (_latchedPivot == 0)
-                    _latchedPivot = _blockTree.SyncPivot.BlockNumber;
+                long latched = Interlocked.Read(ref _latchedPivot);
+                if (latched != 0)
+                {
+                    return (ulong)latched;
+                }
 
-                return _latchedPivot;
+                long pivot = (long)_blockTree.SyncPivot.BlockNumber;
+                if (pivot == 0)
+                {
+                    return 0;
+                }
+
+                long original = Interlocked.CompareExchange(ref _latchedPivot, pivot, 0);
+                return (ulong)(original == 0 ? pivot : original);
             }
         }
 
