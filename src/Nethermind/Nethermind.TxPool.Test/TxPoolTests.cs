@@ -953,6 +953,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        [NonParallelizable]
         public async Task should_keep_submission_production_and_head_processing_responsive_during_revalidation()
         {
             Block head = _blockTree.Head;
@@ -999,17 +1000,19 @@ namespace Nethermind.TxPool.Test
                 handler => _txPool.TxPoolHeadChanged -= handler,
                 block => block.Hash == forkBlock.Hash);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
-            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-
-            Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = RunOnDedicatedThread(() =>
-            {
-                PendingTransactionsView view = _txPool.GetPendingForProduction(forkBlock.Header, filterToReadyTx: false, UInt256.Zero);
-                AcceptTxResult result = _txPool.SubmitTx(concurrentTransaction, TxHandlingOptions.None);
-                return (view, result);
-            });
 
             try
             {
+                await headProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+                await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+                Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = RunOnDedicatedThread(() =>
+                {
+                    PendingTransactionsView view = _txPool.GetPendingForProduction(forkBlock.Header, filterToReadyTx: false, UInt256.Zero);
+                    AcceptTxResult result = _txPool.SubmitTx(concurrentTransaction, TxHandlingOptions.None);
+                    return (view, result);
+                });
+
                 (PendingTransactionsView view, AcceptTxResult result) = await concurrentAccess.WaitAsync(TimeSpan.FromSeconds(5));
                 using (Assert.EnterMultipleScope())
                 {
@@ -1037,7 +1040,6 @@ namespace Nethermind.TxPool.Test
                 releaseRevalidation.Set();
             }
 
-            await headProcessed.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(
                 () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
                 Is.True.After(Timeout, 10));
