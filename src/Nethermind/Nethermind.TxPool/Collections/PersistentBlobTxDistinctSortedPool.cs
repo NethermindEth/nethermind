@@ -765,26 +765,62 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         finally
         {
             _batchStorageDeletes = false;
-            try
+        }
+
+        FlushPendingRevalidationDeletesNonLocked();
+    }
+
+    internal override void FlushPendingRevalidationDeletes()
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        FlushPendingRevalidationDeletesNonLocked();
+    }
+
+    private void FlushPendingRevalidationDeletesNonLocked()
+    {
+        if (_batchedDeletes.Count == 0)
+        {
+            return;
+        }
+
+        using ArrayPoolList<TxLookupKey> deletes = new(_batchedDeletes.Count);
+        using ArrayPoolList<TxLookupKey> obsoleteFullTransactions = new(_batchedDeletes.Count);
+        for (int i = 0; i < _batchedDeletes.Count; i++)
+        {
+            TxLookupKey key = _batchedDeletes[i];
+            if (!base.TryGetValueNonLocked(key.Hash, out Transaction? liveTransaction))
             {
-                if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
-                {
-                    batchStorage.DeleteMany(CollectionsMarshal.AsSpan(_batchedDeletes));
-                }
-                else
-                {
-                    for (int i = 0; i < _batchedDeletes.Count; i++)
-                    {
-                        TxLookupKey key = _batchedDeletes[i];
-                        _blobTxStorage.Delete(key.Hash, key.Timestamp);
-                    }
-                }
+                deletes.Add(key);
             }
-            finally
+            else if (liveTransaction.Timestamp != key.Timestamp)
             {
-                _batchedDeletes.Clear();
+                obsoleteFullTransactions.Add(key);
             }
         }
+
+        if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
+        {
+            if (deletes.Count > 0)
+            {
+                batchStorage.DeleteMany(deletes.AsSpan());
+            }
+
+            if (obsoleteFullTransactions.Count > 0)
+            {
+                batchStorage.DeleteFullBlobTransactions(obsoleteFullTransactions.AsSpan());
+            }
+        }
+        else
+        {
+            // No timestamp-only fallback exists; Delete also removes hash-keyed records owned by a reinserted transaction.
+            for (int i = 0; i < deletes.Count; i++)
+            {
+                TxLookupKey key = deletes[i];
+                _blobTxStorage.Delete(key.Hash, key.Timestamp);
+            }
+        }
+
+        _batchedDeletes.Clear();
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)

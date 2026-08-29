@@ -37,6 +37,9 @@ namespace Nethermind.Consensus.Producers
         [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator? specChangeTxValidator)
         : ITxSource
     {
+        private const ulong BlobConsiderationMultiplier = 5;
+        private const ulong RejectedBlobReadMultiplier = 10;
+
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
         private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
@@ -55,8 +58,8 @@ namespace Nethermind.Consensus.Producers
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
             bool isRevalidatedForTarget = pending.IsRevalidated;
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
@@ -68,8 +71,16 @@ namespace Nethermind.Consensus.Producers
                 : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, pendingTxFilter, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, BlobFilter, maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(
+                pendingTransactions,
+                comparer,
+                pendingTxFilter,
+                gasLimit);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                pendingBlobTransactionsEquivalences,
+                comparer,
+                BlobFilter,
+                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -163,10 +174,15 @@ namespace Nethermind.Consensus.Producers
             ulong maxBlobs,
             bool validateForkSensitiveState)
         {
-            ulong maxBlobsToConsider = maxBlobs * 5ul;
+            // Allow more rejected sidecar loads than valid candidates, but keep storage work bounded. Light-only
+            // rejections do no I/O and are bounded by the pool size instead, so they do not consume this budget.
+            ulong maxBlobsToConsider = maxBlobs * BlobConsiderationMultiplier;
+            ulong maxRejectedBlobsToConsider = maxBlobs * RejectedBlobReadMultiplier;
             ulong countOfRemainingBlobs = 0UL;
             ulong consideredBlobCount = 0UL;
+            ulong rejectedBlobCount = 0UL;
             Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            ILightTxValidator? lightTxValidator = _specChangeTxValidator as ILightTxValidator;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
@@ -190,15 +206,20 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                // Count before resolving sidecars so an invalid pool cannot make fork-transition validation unbounded.
-                consideredBlobCount += txBlobCount;
-                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
                 if (validateForkSensitiveState)
                 {
+                    if (blobTx is LightTransaction lightTransaction
+                        && lightTxValidator is not null
+                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    {
+                        continue;
+                    }
+
                     if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
                         || !IsForkSensitiveStateValid(fullBlobTx, spec))
                     {
-                        if (reachedConsiderationLimit)
+                        rejectedBlobCount += txBlobCount;
+                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
                         {
                             break;
                         }
@@ -211,6 +232,9 @@ namespace Nethermind.Consensus.Producers
                         (fullBlobTxs ??= [])[hash] = fullBlobTx;
                     }
                 }
+
+                consideredBlobCount += txBlobCount;
+                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
 
                 if (txBlobCount == 1UL && candidates is null)
                 {
@@ -463,20 +487,20 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
             Order(pendingTransactions, comparer, filter, gasLimit);
 
-        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
+        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
             OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
             OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,
