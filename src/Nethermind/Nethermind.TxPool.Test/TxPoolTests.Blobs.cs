@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -909,6 +910,51 @@ namespace Nethermind.TxPool.Test
             }
 
             Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task should_skip_obsolete_full_transaction_recovery_during_shutdown()
+        {
+            int testThreadId = Environment.CurrentManagedThreadId;
+            TaskCompletionSource recoveryCheckReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRecoveryCheck = new(false);
+            ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
+            txPoolConfig.Size.Returns(1);
+            txPoolConfig.PersistentBlobStorageSize.Returns(1);
+            txPoolConfig.BlobCacheSize.Returns(1);
+            txPoolConfig.BlobsSupport.Returns(_ =>
+            {
+                if (Environment.CurrentManagedThreadId != testThreadId)
+                {
+                    recoveryCheckReached.TrySetResult();
+                    Assert.That(
+                        releaseRecoveryCheck.Wait(TimeSpan.FromSeconds(10)),
+                        Is.True,
+                        "Timed out waiting to release the obsolete recovery check.");
+                }
+
+                return BlobsSupportMode.Storage;
+            });
+            FailingBatchDeleteBlobTxStorage storage = new();
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: storage);
+            await recoveryCheckReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            CancellationTokenSource cancellation = (CancellationTokenSource)typeof(TxPool)
+                .GetField("_cts", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(_txPool)!;
+            ValueTask disposal = _txPool.DisposeAsync();
+            try
+            {
+                Assert.That(cancellation.IsCancellationRequested, Is.True);
+            }
+            finally
+            {
+                releaseRecoveryCheck.Set();
+            }
+
+            await disposal.AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
         }
 
         [Test]

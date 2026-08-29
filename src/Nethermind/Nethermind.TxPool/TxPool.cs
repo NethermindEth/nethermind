@@ -1141,7 +1141,7 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitWriteLock();
             }
 
-            if (requiresObsoleteBlobRecovery)
+            if (requiresObsoleteBlobRecovery && !_cts.IsCancellationRequested)
             {
                 ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions();
                 // Retained revalidation deletes retry independently; a restart without a matching marker sweeps again.
