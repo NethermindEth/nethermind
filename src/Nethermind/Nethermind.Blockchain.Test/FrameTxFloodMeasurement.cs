@@ -345,10 +345,19 @@ public class FrameTxFloodMeasurement
     /// such.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// The flood rate sits below what the generator can deliver here, which is not the rate the
+    /// block-processing cases use. A production pass costs about what a rejection does, so the producer alone
+    /// nearly saturates the core and the generator gets roughly the other half of it — a ceiling near
+    /// <c>1 / (2 * t_reject)</c>, measured at about 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two
+    /// arms on one run, which compares two different loads rather than two retry policies. Staying under the
+    /// ceiling is what leaves <c>K_retry</c> as the only variable, and <c>flood_achieved_rate</c> on each row
+    /// is what lets a reader confirm it.
+    /// </remarks>
     [TestCase(1, 0)]
     [TestCase(8, 0)]
-    [TestCase(1, 200)]
-    [TestCase(8, 200)]
+    [TestCase(1, 100)]
+    [TestCase(8, 100)]
     public async Task Block_production_delay_under_flood_and_retries(int kRetry, int offeredRate)
     {
         const ulong Ceiling = 236_285;
@@ -363,12 +372,31 @@ public class FrameTxFloodMeasurement
         if (flood is not null) Thread.Sleep(FloodSettle);
 
         rig.RunFor(WarmupWindow);
+
+        // Scoped to the sampled window, like the block-processing cases: a lifetime count spans the settle and
+        // warmup phases too, so it cannot say what rate the reported production time was measured under.
+        int floodSubmittedAtStart = flood is null ? 0 : Volatile.Read(ref flood.Submitted);
+        int floodRejectedAtStart = flood is null ? 0 : Volatile.Read(ref flood.Rejected);
+        long floodWindowStart = Stopwatch.GetTimestamp();
+
         List<double> passMicros = rig.Measure(MeasureWindow);
 
+        long floodWindowEnd = Stopwatch.GetTimestamp();
+        int floodSubmitted = flood is null ? 0 : Volatile.Read(ref flood.Submitted) - floodSubmittedAtStart;
+        int floodRejected = flood is null ? 0 : Volatile.Read(ref flood.Rejected) - floodRejectedAtStart;
+
         cts.Cancel();
-        flood?.Thread.Join(TimeSpan.FromSeconds(30));
-        int floodSubmitted = flood is null ? 0 : Volatile.Read(ref flood.Submitted);
-        int floodRejected = flood is null ? 0 : Volatile.Read(ref flood.Rejected);
+        if (flood is not null)
+        {
+            Assert.That(flood.Thread.Join(TimeSpan.FromSeconds(30)), Is.True,
+                "the generator did not stop, so its counters are being read while it still writes them");
+        }
+
+        // The generator shares the pinned core with the producer, so it can be starved well below the rate
+        // the row is labelled with. Reporting what it achieved keeps the label from standing in for it.
+        double floodWindowSeconds = (floodWindowEnd - floodWindowStart) / (double)Stopwatch.Frequency;
+        double floodAchieved = floodWindowSeconds > 0 ? floodSubmitted / floodWindowSeconds : 0;
+        bool floodStarved = offeredRate > 0 && floodAchieved < offeredRate * 0.95;
 
         double p50 = Percentile(passMicros, 0.50);
         double p95 = Percentile(passMicros, 0.95);
@@ -377,6 +405,7 @@ public class FrameTxFloodMeasurement
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={passMicros.Count} "
              + $"evictions={rig.Evictions} failing_executions={rig.FailingExecutions} "
              + $"flood_submitted={floodSubmitted} flood_rejected={floodRejected} "
+             + $"flood_achieved_rate={floodAchieved:F1} flood_starved={(floodStarved ? "yes" : "no")} "
              + $"production_p50_us={p50:F1} production_p95_us={p95:F1}");
 
         using (Assert.EnterMultipleScope())
@@ -393,6 +422,13 @@ public class FrameTxFloodMeasurement
             {
                 Assert.That(floodSubmitted, Is.GreaterThan(10),
                     "the generator barely ran, so any difference against the no-flood arm is not a flood effect");
+
+                // Not an equality with the offered rate: on a saturated core the generator legitimately cannot
+                // keep up, and that is a result rather than a fault. It must still deliver a flood worth the
+                // name, and flood_achieved_rate on the row says what it actually delivered.
+                Assert.That(floodAchieved, Is.GreaterThan(offeredRate * 0.25),
+                    $"the generator delivered {floodAchieved:F1} tx/s against {offeredRate} offered, too far "
+                    + "below the label for this row to describe a flood at that rate");
             }
         }
     }
