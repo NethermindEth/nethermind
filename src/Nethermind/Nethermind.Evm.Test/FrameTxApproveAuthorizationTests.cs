@@ -17,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -39,8 +38,7 @@ public class FrameTxApproveAuthorizationTests
     private const int ObservedSlot = 0;
     private const int CallerSlot = 0;
 
-    private const ulong ExpectedSlot = 1_000;
-    private const ulong OtherSlot = 999;
+    private const ulong ReferenceSlot = 1_000;
     private const ulong HeadSlot = 1_001;
 
     private ISpecProvider _specProvider;
@@ -69,77 +67,60 @@ public class FrameTxApproveAuthorizationTests
     {
         Deploy(Account, StaticApprove(), 1.Ether);
         Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
-        SetObservedSlot();
-
-        TransactionResult result = Process(FrameTx(SelfVerify(), SenderFrameTo(Target)));
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
-    }
-
-    [Test]
-    public void AuthorizingFrame_WithholdsApprove_WhenObservedStorageIsSet()
-    {
-        Deploy(Account, StorageGatedApprove(), 1.Ether);
-        Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
-        SetObservedSlot();
-
-        TransactionResult result = Process(FrameTx(SelfVerify(), SenderFrameTo(Target)));
-
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(RecordedCaller(), Is.EqualTo(UInt256.Zero));
-    }
-
-    [Test]
-    public void AuthorizingFrame_GrantsApprove_WhenObservedStorageIsClear()
-    {
-        Deploy(Account, StorageGatedApprove(), 1.Ether);
-        Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
         _state.Commit(Spec);
 
-        TransactionResult result = Process(FrameTx(SelfVerify(), SenderFrameTo(Target)));
+        TransactionResult result = Process(FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target)));
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
     }
 
-    [Test]
-    public void AuthorizingFrame_GrantsApprove_WhenReferenceMatchesExpectedRoot()
+    [TestCase(true, false, TestName = "observed storage set withholds the approval")]
+    [TestCase(false, true, TestName = "observed storage clear grants the approval")]
+    public void AuthorizingFrame_GatesApproveOnObservedStorage(bool observedSet, bool expectedExecuted)
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Account, TestItem.KeccakA.ValueHash256);
-        ValueHash256 expected = TestItem.KeccakB.ValueHash256;
-        Deploy(Account, ReferenceGatedApprove(expected), 1.Ether);
+        Deploy(Account, StorageGatedApprove(), 1.Ether);
         Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
-        CommitRootEntry(sourceId, ExpectedSlot, expected);
+        if (observedSet) SetObservedSlot(); else _state.Commit(Spec);
 
-        Transaction tx = FrameTx(SelfVerify(), SenderFrameTo(Target));
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, ExpectedSlot, expected)];
+        TransactionResult result = Process(FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target)));
 
-        TransactionResult result = ProcessAt(tx, HeadSlot);
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+        AssertApproval(result, expectedExecuted);
     }
 
-    [Test]
-    public void AuthorizingFrame_WithholdsApprove_WhenReferenceRootDiffers()
+    [TestCase(true, true, TestName = "reference root matching the gate grants the approval")]
+    [TestCase(false, false, TestName = "reference root differing from the gate withholds the approval")]
+    public void AuthorizingFrame_GatesApproveOnReferenceRoot(bool rootMatchesGate, bool expectedExecuted)
     {
         ValueHash256 sourceId = RecentRootStore.SourceId(Account, TestItem.KeccakA.ValueHash256);
-        ValueHash256 expected = TestItem.KeccakB.ValueHash256;
-        ValueHash256 other = TestItem.KeccakC.ValueHash256;
-        Deploy(Account, ReferenceGatedApprove(expected), 1.Ether);
+        ValueHash256 gate = TestItem.KeccakB.ValueHash256;
+        ValueHash256 committed = rootMatchesGate ? gate : TestItem.KeccakC.ValueHash256;
+        Deploy(Account, ReferenceGatedApprove(gate), 1.Ether);
         Deploy(Target, TargetRecordsCaller(), UInt256.Zero);
-        CommitRootEntry(sourceId, OtherSlot, other);
+        CommitRootEntry(sourceId, ReferenceSlot, committed);
 
-        Transaction tx = FrameTx(SelfVerify(), SenderFrameTo(Target));
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, OtherSlot, other)];
+        Transaction tx = FrameTx(FrameTxTestFrames.SelfVerify(200_000), SenderFrameTo(Target));
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, ReferenceSlot, committed)];
 
-        TransactionResult result = ProcessAt(tx, HeadSlot);
+        AssertApproval(Process(tx, HeadSlot), expectedExecuted);
+    }
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(RecordedCaller(), Is.EqualTo(UInt256.Zero));
+    private void AssertApproval(TransactionResult result, bool expectedExecuted)
+    {
+        if (expectedExecuted)
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(RecordedCaller(), Is.EqualTo(AsWord(Account)));
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+            Assert.That(RecordedCaller(), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     private static byte[] StaticApprove() =>
@@ -192,11 +173,8 @@ public class FrameTxApproveAuthorizationTests
 
     private static UInt256 AsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
-    private static TxFrame SelfVerify() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
-
     private static TxFrame SenderFrameTo(Address target) =>
-        new(TxFrame.ModeSender, 0, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, Array.Empty<byte>());
+        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, Array.Empty<byte>());
 
     private static Transaction FrameTx(params TxFrame[] frames) =>
         new()
@@ -211,16 +189,7 @@ public class FrameTxApproveAuthorizationTests
             DecodedMaxFeePerGas = 1,
         };
 
-    private TransactionResult Process(Transaction tx)
-    {
-        Block block = Build.A.Block.WithNumber(1)
-            .WithBeneficiary(Beneficiary)
-            .WithTransactions(tx)
-            .WithGasLimit(30_000_000).TestObject;
-        return _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
-    }
-
-    private TransactionResult ProcessAt(Transaction tx, ulong slot)
+    private TransactionResult Process(Transaction tx, ulong? slot = null)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(Beneficiary)
