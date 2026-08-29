@@ -236,9 +236,8 @@ namespace Nethermind.TxPool
             }
 
             _revalidationProcessing = ProcessRevalidations();
-            if (Volatile.Read(ref _validatedSpec) is null
-                || Volatile.Read(ref _specChangeMarkerUnpublished)
-                || RequiresObsoleteBlobRecovery())
+            bool bucketsUpdated = ReferenceEquals(Volatile.Read(ref _validatedSpec), _specProvider.GetCurrentHeadSpec());
+            if (RequiresRevalidation(bucketsUpdated))
             {
                 RequestRevalidation(Volatile.Read(ref _headGeneration));
             }
@@ -428,9 +427,7 @@ namespace Nethermind.TxPool
                             }
 
                             bucketsUpdated = ReferenceEquals(Volatile.Read(ref _validatedSpec), _specProvider.GetCurrentHeadSpec());
-                            revalidationRequired = !bucketsUpdated
-                                || Volatile.Read(ref _specChangeMarkerUnpublished)
-                                || RequiresObsoleteBlobRecovery();
+                            revalidationRequired = RequiresRevalidation(bucketsUpdated);
                             if (bucketsUpdated)
                             {
                                 UpdateBucketsWithoutRevalidation();
@@ -462,6 +459,11 @@ namespace Nethermind.TxPool
         }
 
         private void RequestRevalidation(long generation) => _revalidationChannel.Writer.TryWrite(generation);
+
+        private bool RequiresRevalidation(bool bucketsUpdated) =>
+            !bucketsUpdated
+            || Volatile.Read(ref _specChangeMarkerUnpublished)
+            || RequiresObsoleteBlobRecovery();
 
         private async Task ProcessRevalidations()
         {

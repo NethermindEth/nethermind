@@ -358,6 +358,21 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_revalidate_when_head_spec_changes_during_construction()
+        {
+            IChainHeadSpecProvider changingSpecProvider = Substitute.For<IChainHeadSpecProvider>();
+            changingSpecProvider.GetCurrentHeadSpec().Returns(Prague.Instance, Prague.Instance, Osaka.Instance);
+            changingSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+            ChainHeadInfoProvider headInfo = new(changingSpecProvider, _blockTree, _stateProvider);
+
+            _txPool = CreatePool(specProvider: new TestSpecProvider(Prague.Instance), chainHeadInfoProvider: headInfo);
+
+            Assert.That(
+                () => _txPool.IsRevalidatedFor(Build.A.BlockHeader.TestObject),
+                Is.True.After(Timeout, 10));
+        }
+
+        [Test]
         public async Task should_remember_fork_invalidated_transaction_when_insufficient_balance_dumps_bucket()
         {
             Block head = _blockTree.Head;
