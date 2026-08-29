@@ -461,6 +461,59 @@ public class LogIndexBuilderTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_NotCompleteAtTheMovingDownloadFrontier_WhileThePrunerHoldsTheBoundary(CancellationToken cancellation)
+    {
+        const int firstFrontier = 40;
+        const int secondFrontier = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        int frontier = firstFrontier;
+        IBlockTree realTree = _blockTree;
+        IBlockTree downloadingTree = Substitute.For<IBlockTree>();
+        downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
+        downloadingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        downloadingTree.GetLowestBlock().Returns(1UL);
+        downloadingTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number >= (ulong)Volatile.Read(ref frontier)
+                    ? realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1))
+                    : null;
+            });
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(_ => (ulong)Volatile.Read(ref frontier));
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            downloadingTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            pointers);
+
+        Task firstStop = WaitMinBlockAsync(storage, firstFrontier, cancellation);
+        await builder.StartAsync();
+        await firstStop;
+
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False,
+            "the body pointer is a moving frontier while the pruner still holds the boundary at its barrier - the descent must wait there, not declare itself complete");
+
+        Volatile.Write(ref frontier, secondFrontier);
+
+        await WaitMinBlockAsync(storage, secondFrontier, cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False);
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(secondFrontier));
+        }
+    }
+
     // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
     // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
     private IBlockTree CreateFailingBlockTree(Exception exception)

@@ -266,9 +266,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         : _syncConfig.AncientReceiptsBarrierCalc;
 
     // Nothing below the lowest body the node ever downloaded can be a retained island, so the sliced
-    // descent stops there instead of fabricating down to the barrier.
+    // descent stops there instead of fabricating down to the barrier. Clamped by the published boundary:
+    // while the ancient feeds are still descending the pointer is a moving frontier, and the pruner holds
+    // the boundary at its initial barrier until the backfill is done, so the floor is inert until then.
     private ulong BackwardTargetBlockNumber => _indexRetainedSlices
-        ? ulong.Max(MinTargetBlockNumber, _syncPointers?.LowestInsertedBodyNumber ?? 0UL)
+        ? ulong.Max(MinTargetBlockNumber, ulong.Min(_syncPointers?.LowestInsertedBodyNumber ?? 0UL, _blockTree.GetLowestBlock()))
         : MinTargetBlockNumber;
 
     public bool IsRunning { get; private set; }
