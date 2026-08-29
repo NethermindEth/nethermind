@@ -11,7 +11,14 @@ on:
           - both
           - verify
           - mempool
+          - flood
+          - producer-retry
         default: both
+      groth16_artifacts:
+        description: Path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases self-ignore.
+        required: false
+        type: string
+        default: ''
 
 # Deliberately deviates from the repo default: the group carries no `github.ref`
 # and in-progress runs are not cancelled, so dispatches queue instead of
@@ -47,9 +54,21 @@ jobs:
         working-directory: src/Nethermind
         env:
           HARNESS: ${{ inputs.harness }}
+          FRAME_GROTH16_ARTIFACTS: ${{ inputs.groth16_artifacts }}
         run: |
           set -uo pipefail
+
+          # Fixed path on a persistent runner: without the wipe, a run that produces nothing republishes
+          # the previous run's report as freshly measured.
+          rm -rf "${OUTPUT_DIR}"
           mkdir -p "${OUTPUT_DIR}"
+
+          # `dotnet test` would build in-job, leaving MSBuild workers and VBCSCompiler resident through
+          # the measurement.
+          for project in Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test; do
+            dotnet build "${project}/${project}.csproj" -c release || exit 1
+          done
+          dotnet build-server shutdown || true
 
           run_harness() {
             local project=$1 fixture=$2 rc=0
@@ -58,9 +77,32 @@ jobs:
               return 1
             fi
             echo "::group::${fixture}"
-            dotnet test --project "${project}/${project}.csproj" -c release -- \
-              --no-ansi --filter "FullyQualifiedName~${fixture}" \
-              2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
+
+            # Microsoft.Testing.Platform swallows console writers, so harnesses report to a file. Unset,
+            # it defaults outside OUTPUT_DIR and is never uploaded.
+            local results="${OUTPUT_DIR}/${fixture}-results.txt"
+            export FRAME_MEMPOOL_DOS_OUT="${results}"
+            export FRAME_RETRY_OUT="${results}"
+            export FRAME_FLOOD_OUT="${results}"
+
+            # Setting ProcessorAffinity in-process reports success without confining the threads, so the
+            # single-core contention this harness measures has to be imposed from outside.
+            local -a cmd=(
+              dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore --
+              --no-ansi --filter "FullyQualifiedName~${fixture}"
+            )
+            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]] && command -v taskset >/dev/null; then
+              cmd=(taskset -c 0 "${cmd[@]}")
+            fi
+
+            "${cmd[@]}" 2>&1 | tee "${OUTPUT_DIR}/${fixture}.log" || rc=$?
+
+            # Self-ignored cases leave no RESULT lines, which would otherwise pass as a green run.
+            if [[ ! -s "${results}" ]]; then
+              echo "::error::${fixture} produced no RESULT lines. Check that its inputs are present on the runner."
+              rc=1
+            fi
+
             echo "::endgroup::"
             return "${rc}"
           }
@@ -74,6 +116,12 @@ jobs:
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
             run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement || status=1
           fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
+            run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement || status=1
+          fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
+            run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement || status=1
+          fi
 
           exit "${status}"
 
@@ -81,10 +129,10 @@ jobs:
         if: always() && env.OUTPUT_DIR != ''
         run: |
           set -uo pipefail
-          for report in "${OUTPUT_DIR}"/*.txt; do
+          for report in "${OUTPUT_DIR}"/*-results.txt; do
             [[ -f "${report}" ]] || continue
             {
-              echo "## $(basename "${report}" .txt)"
+              echo "## $(basename "${report}" -results.txt)"
               echo '```'
               # Only the reported figures, so the summary stays well inside its 1 MiB
               # cap and no stray backtick from test output breaks the fence.
