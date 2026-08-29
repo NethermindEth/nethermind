@@ -198,6 +198,109 @@ public class FrameTxProducerRetryMeasurement
         }
     }
 
+    /// <summary>
+    /// The campaign's <c>K_retry</c> sweep: how much unpaid verification work a never-approving prefix
+    /// extracts from a producer that evicts it after <paramref name="kRetry"/> failed build attempts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>K_retry</c> is a client-policy parameter, not a spec rule — <c>ethereum/EIPs#12213</c> proposed a
+    /// normative producer bound and was reframed as non-normative guidance to match this sweep. Production
+    /// today is effectively <c>K_retry = 1</c>: <c>EvictUnpaidFrameTx</c> asks the pool to evict on the first
+    /// <c>MalformedTransaction</c> result. This sweep is what makes the other values measurable without
+    /// touching production code.
+    /// </para>
+    /// <para>
+    /// The gate stands in for the pool's eviction decision, which is the only thing that ends the retry
+    /// series: nothing else removes a transaction whose prefix never approves, because it never pays and so
+    /// never advances its nonce. Once the gate reports the transaction evicted, the loop stops offering it,
+    /// which is what a real pool would do by no longer returning it to the producer.
+    /// </para>
+    /// <para>
+    /// <see cref="ProducerRetriesAFailingPrefix"/> passes <c>NullTxPool.Instance</c>, whose
+    /// <c>EvictTransaction</c> always returns <c>false</c>, so it measures the unbounded case — the same
+    /// shape as this sweep with no eviction at all. Read the two together: that case is the ceiling this one
+    /// bounds.
+    /// </para>
+    /// </remarks>
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(4)]
+    [TestCase(8)]
+    public void ProducerRetriesAreBoundedByKRetry(int kRetry)
+    {
+        const ulong VerifyGas = 236_285;
+
+        _stateProvider.CreateAccount(Sender, 100.Ether);
+        _stateProvider.InsertCode(Sender, NeverApproves(), Spec);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
+        BlockProcessor.BlockProductionTransactionPicker picker = new(_specProvider);
+        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
+        balManager.Enabled.Returns(false);
+
+        // Stands in for the pool's eviction decision: the transaction survives kRetry failed attempts and is
+        // evicted on the kRetry-th, which is what the plan's K_retry counts.
+        int evictionRequests = 0;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => ++evictionRequests >= kRetry);
+
+        BlockProcessor.BlockProductionTransactionsExecutor executor =
+            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, txPool);
+
+        Transaction tx = FrameTx(VerifyGas);
+        UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
+
+        int blocksOffered = 0;
+        for (int i = 0; i < Attempts && evictionRequests < kRetry; i++)
+        {
+            Block block = Build.A.Block
+                .WithNumber(1 + i)
+                .WithBaseFeePerGas(UInt256.Zero)
+                .WithBeneficiary(Beneficiary)
+                .WithGasLimit(BlockGasLimit)
+                .WithTransactions(tx)
+                .TestObject;
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
+            receiptsTracer.StartNewBlockTrace(block);
+            executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+            executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+            receiptsTracer.EndBlockTrace();
+            blocksOffered++;
+
+            if (block.Header.TxRoot != Keccak.EmptyTreeHash)
+            {
+                Assert.Fail($"a prefix that never approves was built into block {1 + i}");
+            }
+        }
+
+        ulong burned = 0;
+        foreach (ulong b in adapter.BurnedPerAttempt) burned += b;
+        ulong firstBurn = adapter.BurnedPerAttempt.Count > 0 ? adapter.BurnedPerAttempt[0] : 0;
+
+        Emit($"case=k_retry_sweep k_retry={kRetry} budget={VerifyGas} "
+             + $"blocks_offered={blocksOffered} execution_attempts={adapter.Attempts} "
+             + $"burn_first_attempt={firstBurn} burn_total={burned} "
+             + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} "
+             + $"beneficiary_delta={_stateProvider.GetBalance(Beneficiary) - beneficiaryBefore}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(adapter.Attempts, Is.EqualTo(kRetry),
+                "the producer must re-execute the prefix exactly K_retry times before the pool evicts it");
+            Assert.That(firstBurn, Is.GreaterThan(VerifyGas * 99 / 100),
+                "each attempt must burn the whole verification budget, or the amplification is measured against the wrong unit");
+            Assert.That(burned, Is.GreaterThan(firstBurn * (ulong)kRetry * 99 / 100),
+                "total unpaid burn must scale with K_retry, which is the quantity this sweep exists to report");
+            Assert.That(_stateProvider.GetBalance(Beneficiary) - beneficiaryBefore, Is.EqualTo(UInt256.Zero),
+                "the work was paid for after all, so it is not unpaid burn");
+        }
+    }
+
     private static Transaction FrameTx(ulong verifyGas)
     {
         Transaction tx = new()
