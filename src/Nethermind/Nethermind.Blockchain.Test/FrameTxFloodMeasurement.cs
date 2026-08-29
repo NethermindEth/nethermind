@@ -6,7 +6,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Numerics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -101,7 +103,25 @@ public class FrameTxFloodMeasurement
     /// <summary>Time the flood runs before sampling starts, so the window measures steady state.</summary>
     private static readonly TimeSpan FloodSettle = TimeSpan.FromMilliseconds(750);
 
+    /// <summary>
+    /// One-off block-processing warmup, paid by whichever case runs first in the fixture.
+    /// </summary>
+    /// <remarks>
+    /// Tiered JIT promotion of the processing path is charged to the first case that exercises it, and the
+    /// per-measurement warmup is sized for a warm process. Left unpaid it surfaces as baseline drift large
+    /// enough for the drift gate to reject the first case outright.
+    /// </remarks>
+    private static readonly TimeSpan FixtureWarmupWindow = TimeSpan.FromSeconds(15);
+
+    private static bool _fixtureWarmed;
+
     /// <summary>Distinct pre-built adversarial transactions, cycled by the generator.</summary>
+    /// <remarks>
+    /// Must exceed the highest offered rate times the generator's lifetime (<see cref="FloodSettle"/> plus
+    /// <see cref="WarmupWindow"/> plus <see cref="MeasureWindow"/>), or the cycle re-offers hashes already in
+    /// the head-scoped known cache and those submissions never reach the EVM. The rejected-equals-submitted
+    /// assertions catch it, but raising a window or adding a faster rate point should raise this too.
+    /// </remarks>
     private const int FloodPoolSize = 4_096;
 
     private static readonly UInt256 AttackerBalance = 1_000.Ether;
@@ -167,11 +187,13 @@ public class FrameTxFloodMeasurement
                 }
             }
 
-            return OperatingSystem.IsWindows()
-                ? Process.GetCurrentProcess().ProcessorAffinity.ToString()
-                : "unknown";
+            if (!OperatingSystem.IsWindows()) return "unknown";
+
+            using Process current = Process.GetCurrentProcess();
+            return $"mask:{(ulong)(nint)current.ProcessorAffinity:x}";
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                       or PlatformNotSupportedException or Win32Exception or InvalidOperationException)
         {
             return "unknown";
         }
@@ -186,6 +208,14 @@ public class FrameTxFloodMeasurement
     /// </remarks>
     private static bool IsSingleCore()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            // ProcessorAffinity is a bitmask, not a list: one allowed CPU is exactly one set bit. Parsing it
+            // as a list would read an unconfined 8-core box's mask of 255 as a single CPU.
+            using Process current = Process.GetCurrentProcess();
+            return BitOperations.PopCount((ulong)(nint)current.ProcessorAffinity) == 1;
+        }
+
         string set = ObservedCpuSet();
         return set.Length > 0
                && set != "unknown"
@@ -216,10 +246,8 @@ public class FrameTxFloodMeasurement
     /// Largest baseline drift, as a percentage, a rate point may show before its delta is untrustworthy.
     /// </summary>
     /// <remarks>
-    /// The two idle baselines bracket the flood. When they disagree by more than this the run drifted — JIT
-    /// tiering, frequency scaling, a noisy neighbour — and the measured delta is that drift as much as it is
-    /// the flood. Observed at 21% on a first-in-fixture case, which reported a flood making block processing
-    /// 19% faster.
+    /// The two idle baselines bracket the flood. Disagreement beyond this means the run drifted — JIT
+    /// tiering, frequency scaling, a noisy neighbour — and the delta is that drift as much as it is the flood.
     /// </remarks>
     private const double MaxBaselineDriftPercent = 5.0;
 
@@ -238,9 +266,8 @@ public class FrameTxFloodMeasurement
     /// sustained.
     /// </summary>
     /// <remarks>
-    /// An open-loop generator that falls behind and then fires its backlog satisfies an average-rate test —
-    /// 250 tx/s offered, 253 achieved, 243 ms of lag — while a backlog is precisely what
-    /// <c>R_max</c> is defined to exclude. Lag is the signal that survives that averaging.
+    /// An open-loop generator that falls behind and then fires its backlog satisfies an average-rate test,
+    /// while a backlog is precisely what <c>R_max</c> is defined to exclude. Lag survives that averaging.
     /// </remarks>
     private const double MaxSustainedLagPeriods = 5.0;
 
@@ -251,14 +278,18 @@ public class FrameTxFloodMeasurement
         int Submitted,
         int Rejected,
         double MaxLagUs,
+        int QueueGrowth,
         List<double> ProcessMicros);
 
+    /// <remarks>
+    /// The fixture is one instance for all its tests, so a case that skips before <see cref="BuildChain"/>
+    /// would otherwise leave the previous case's already-disposed chain for teardown to dispose again.
+    /// </remarks>
+    [SetUp]
+    public void Setup() => _chain = null!;
+
     [TearDown]
-    public async Task TearDown()
-    {
-        if (_chain is not null) _chain.Dispose();
-        await Task.CompletedTask;
-    }
+    public void TearDown() => _chain?.Dispose();
 
     /// <summary>
     /// The guard every other case in this fixture rests on: that a submitted frame transaction actually
@@ -327,7 +358,6 @@ public class FrameTxFloodMeasurement
 
         using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, Ceiling);
 
-        // Warm the production path, then measure it, with the flood either running or absent.
         using CancellationTokenSource cts = new();
         FloodHandle? flood = offeredRate > 0 ? StartFlood(Ceiling, offeredRate, cts) : null;
         if (flood is not null) Thread.Sleep(FloodSettle);
@@ -482,6 +512,7 @@ public class FrameTxFloodMeasurement
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} max_lag_us={flooded.MaxLagUs:F0} "
+             + $"queue_growth={flooded.QueueGrowth} "
              + $"saturated={(flooded.AchievedRate < offeredRate * 0.95 ? "yes" : "no")} "
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
@@ -529,14 +560,13 @@ public class FrameTxFloodMeasurement
         SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        // Two warmup windows before the ramp's single baseline. It is reused by every rate point, so a
-        // baseline still climbing down the JIT tiers would show up as a negative delta at low rates.
+        // The baseline is reused by every rate point, so one still descending the JIT tiers would surface as
+        // a negative delta at low rates.
         RunFor(WarmupWindow);
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         double w0 = Percentile(baseline, 0.50);
 
-        // Fine enough around the knee to locate it: the coarse grid only bracketed saturation between two
-        // points three-quarters of an octave apart, which reports the last sustained point, not the ceiling.
+        // Fine enough to locate the knee; a coarser grid reports the last sustained point, not the ceiling.
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
         double lastSustained = 0;
 
@@ -549,14 +579,19 @@ public class FrameTxFloodMeasurement
             double periodUs = 1_000_000.0 / rate;
             bool rateHeld = outcome.AchievedRate >= rate * 0.95;
             bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
-            bool sustained = rateHeld && lagBounded;
+
+            // An Undecided simulation outcome admits the transaction, so a growing pool is both a backlog by
+            // the plan's definition and a sign the flood stopped being the workload it claims.
+            bool queueStable = outcome.QueueGrowth == 0;
+            bool sustained = rateHeld && lagBounded && queueStable;
             double w = Percentile(outcome.ProcessMicros, 0.50);
 
             Emit($"case=rate_ramp shape=keccak-wide ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
                  + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
                  + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
-                 + $"submitted={outcome.Submitted} "
+                 + $"queue_stable={(queueStable ? "yes" : "no")} "
+                 + $"submitted={outcome.Submitted} queue_growth={outcome.QueueGrowth} "
                  + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
 
             Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
@@ -636,7 +671,7 @@ public class FrameTxFloodMeasurement
 
                 long lag = Stopwatch.GetTimestamp() - due;
                 double lagUs = lag * 1_000_000.0 / Stopwatch.Frequency;
-                if (lagUs > maxLagUs) maxLagUs = lagUs;
+                if (lagUs > Volatile.Read(ref maxLagUs)) Volatile.Write(ref maxLagUs, lagUs);
 
                 AcceptTxResult result = _chain.TxPool.SubmitTx(_floodTxs[i % _floodTxs.Length], TxHandlingOptions.None);
                 // Rejected first: the reader snapshots submitted then rejected, so this order cannot show
@@ -649,7 +684,6 @@ public class FrameTxFloodMeasurement
 
         generator.Start();
 
-        // Let the flood reach steady state, and warm the processing path, before anything is sampled.
         RunFor(FloodSettle);
         RunFor(WarmupWindow);
 
@@ -657,6 +691,12 @@ public class FrameTxFloodMeasurement
         // period the block-processing distribution came from rather than the whole thread lifetime.
         int submittedAtStart = Volatile.Read(ref submitted);
         int rejectedAtStart = Volatile.Read(ref rejected);
+        int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
+
+        // Reset rather than differenced: lag is a running maximum, and the settle and warmup phases are the
+        // slowest part of the run, so carrying their spikes into the window would understate the sustainable
+        // rate — the quantity this gate exists to protect.
+        Volatile.Write(ref maxLagUs, 0);
         long windowStart = Stopwatch.GetTimestamp();
 
         List<double> processMicros = MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero);
@@ -664,14 +704,16 @@ public class FrameTxFloodMeasurement
         long windowEnd = Stopwatch.GetTimestamp();
         int submittedInWindow = Volatile.Read(ref submitted) - submittedAtStart;
         int rejectedInWindow = Volatile.Read(ref rejected) - rejectedAtStart;
+        int queueGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
 
         cts.Cancel();
-        generator.Join(TimeSpan.FromSeconds(30));
+        Assert.That(generator.Join(TimeSpan.FromSeconds(30)), Is.True,
+            "the generator did not stop, so its counters are being read while it still writes them");
 
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, maxLagUs, processMicros);
+        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, Volatile.Read(ref maxLagUs), queueGrowth, processMicros);
     }
 
     /// <summary>
@@ -719,6 +761,12 @@ public class FrameTxFloodMeasurement
         _parent = _chain.BlockTree.Head!.Header;
         _workloadBlock = BuildWorkloadBlock();
         _saltCursor = 0;
+
+        if (!_fixtureWarmed)
+        {
+            RunFor(FixtureWarmupWindow);
+            _fixtureWarmed = true;
+        }
 
         AssertAttackerCodeIsVisible(attackCode);
     }
@@ -882,9 +930,17 @@ public class FrameTxFloodMeasurement
         private int _attemptsOnCurrent;
         private int _salt;
         private Transaction _failing;
+        private CountingAdapter _adapter = null!;
 
         public int Evictions { get; private set; }
-        public int FailingExecutions { get; private set; }
+
+        /// <summary>Transactions the executor actually handed to the processor, not passes attempted.</summary>
+        /// <remarks>
+        /// A pass counter cannot detect the failure this guards: a producer that stops re-executing the
+        /// prefix would still run its passes, so the assertion would hold while the measurement described an
+        /// ordinary empty block.
+        /// </remarks>
+        public int FailingExecutions => _adapter.Attempts;
 
         private ProducerRig(IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
         {
@@ -892,7 +948,7 @@ public class FrameTxFloodMeasurement
             _spec = spec;
             _ceiling = ceiling;
             _kRetry = kRetry;
-            _failing = NeverApprovingTx(0, ceiling);
+            _failing = FrameTx(0, ceiling);
         }
 
         public static ProducerRig Create(ISpecProvider specProvider, int kRetry, ulong ceiling)
@@ -910,6 +966,7 @@ public class FrameTxFloodMeasurement
             EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
             EthereumTransactionProcessor processor = new(
                 BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfo, LimboLogs.Instance);
+            CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(processor));
 
             // One instance, wired in two phases: the eviction gate closes over the rig that is returned, so
             // the attempt counter it drives is the same one ProduceOnce reads.
@@ -923,8 +980,9 @@ public class FrameTxFloodMeasurement
             ITxPool gate = Substitute.For<ITxPool>();
             gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
 
+            rig._adapter = adapter;
             rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
-                new BuildUpTransactionProcessorAdapter(processor),
+                adapter,
                 state,
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider),
                 LimboLogs.Instance,
@@ -973,37 +1031,14 @@ public class FrameTxFloodMeasurement
             _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
             receiptsTracer.EndBlockTrace();
 
-            FailingExecutions++;
 
-            // The gate reports eviction by returning true; replace the transaction so residency stays at one
-            // and the next pass has the same work to do.
+            // Replaced rather than retired, so residency stays at one and every pass has the same work.
             if (_attemptsOnCurrent >= _kRetry)
             {
                 Evictions++;
                 _attemptsOnCurrent = 0;
-                _failing = NeverApprovingTx(++_salt, _ceiling);
+                _failing = FrameTx(++_salt, _ceiling);
             }
-        }
-
-        private static Transaction NeverApprovingTx(int salt, ulong ceiling)
-        {
-            byte[] data = new byte[32];
-            BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(28), salt);
-
-            Transaction tx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = TestBlockchainIds.ChainId,
-                Nonce = 0,
-                SenderAddress = Attacker,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
-                FrameSignatures = [],
-                GasPrice = 1,
-                DecodedMaxFeePerGas = 1,
-                GasLimit = 1_000_000,
-            };
-            tx.Hash = tx.CalculateHash();
-            return tx;
         }
 
         public void Dispose() => _stateScope.Dispose();

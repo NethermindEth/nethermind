@@ -49,45 +49,6 @@ public class FrameTxProducerRetryMeasurement
 
     private IReleaseSpec Spec => _specProvider.GenesisSpec;
 
-    /// <summary>Counts production attempts and the gas each one burned inside the frame.</summary>
-    private sealed class CountingAdapter(ITransactionProcessorAdapter inner) : ITransactionProcessorAdapter
-    {
-        public int Attempts { get; private set; }
-        public List<ulong> BurnedPerAttempt { get; } = [];
-
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            Attempts++;
-            BudgetProbe probe = new();
-            TransactionResult result = inner.Execute(transaction, new CompositeTxTracer(txTracer, probe));
-            BurnedPerAttempt.Add(probe.Consumed);
-            return result;
-        }
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
-            inner.SetBlockExecutionContext(in blockExecutionContext);
-    }
-
-    /// <summary>Records the gas span the frame actually ran through, so a burn is never inferred.</summary>
-    private sealed class BudgetProbe : TxTracer
-    {
-        public BudgetProbe() => IsTracingInstructions = true;
-
-        private ulong _high;
-        private ulong _low = ulong.MaxValue;
-
-        public long Operations { get; private set; }
-
-        public ulong Consumed => _high >= _low && Operations > 0 ? _high - _low : 0;
-
-        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
-        {
-            if (gas > _high) _high = gas;
-            if (gas < _low) _low = gas;
-            Operations++;
-        }
-    }
-
     [SetUp]
     public void Setup()
     {

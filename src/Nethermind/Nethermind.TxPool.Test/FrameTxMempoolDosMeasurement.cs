@@ -82,11 +82,9 @@ public class FrameTxMempoolDosMeasurement
     /// Submissions discarded before sampling, enough to promote the instrumented interpreter for this shape.
     /// </summary>
     /// <remarks>
-    /// The tiered JIT promotes the traced specialisation over a shape's opcodes only after it has run them
-    /// enough times, and the cost of that promotion lands on whichever case of a shape runs first. Since the
-    /// ceiling sweep declares its ceilings in ascending order, that is always the 100k case — the plan's
-    /// control point, and the one whose whole purpose is to price the step up from it. At 100 warmup
-    /// submissions the contamination reached 3.7x, which reported raising the ceiling as making rejection
+    /// The tiered JIT promotes the traced specialisation only after a shape's opcodes have run enough times,
+    /// and charges that promotion to whichever case of the shape runs first — always the lowest ceiling, which
+    /// is the sweep's control point. Sized too low, it reports raising the ceiling as making rejection
     /// *cheaper* per gas.
     /// </remarks>
     private const int Warmup = 600;
@@ -150,14 +148,9 @@ public class FrameTxMempoolDosMeasurement
     /// How far the measured frame gas may sit from <c>gas.txt</c>, as a fraction of the expected figure.
     /// </summary>
     /// <remarks>
-    /// <c>gas.txt</c> was measured under Foundry, calling a deployed verifier through a <c>staticcall</c>.
-    /// A frame runs the same bytecode in a different environment, so the totals do not match exactly and this
-    /// is a cross-check, not an equality. Measured offsets, Nethermind consistently below Foundry:
-    /// 8 inputs -790 (0.34%), 18 inputs -2,120 (0.71%) — per-input cost 6,374 here against 6,507 there.
-    /// The gap grows with the public-input count and its cause is unresolved; the 49-input point is the test
-    /// of whether it is linear. <b>The figures this harness reports are the authoritative ones for the
-    /// campaign</b>, because they come from the layer that actually admits transactions.
-    /// The load-bearing proof that the whole proof ran is
+    /// <c>gas.txt</c> was measured under Foundry, calling a deployed verifier through a <c>staticcall</c>;
+    /// a frame runs the same bytecode in a different environment, so this is a cross-check that the payload
+    /// is the shipped one, not an equality. The load-bearing proof that the whole proof ran is
     /// <see cref="ProofInvalidSelector"/> plus <see cref="MinPairingCallGas"/>, not this bound.
     /// </remarks>
     private const double Groth16GasTolerance = 0.02;
@@ -259,13 +252,9 @@ public class FrameTxMempoolDosMeasurement
     /// per opcode rather than per gas, so flatness there does not imply flatness here.
     /// </para>
     /// <para>
-    /// <b>Read the first case of each shape with suspicion.</b> Every loop here holds its opcodes-per-gas
-    /// ratio constant across ceilings, so the tracer's per-opcode overhead cannot bend µs/Mgas within a shape
-    /// — but the first case of a shape to run pays the tiered JIT's promotion of the instrumented interpreter
-    /// over that shape's opcodes, and <see cref="Warmup"/> submissions do not always cover it. Measured on a
-    /// 4-core powersave laptop, the first case read 1.06x to 3.8x its own shape's later ceilings in four of
-    /// four runs; reversing the declaration order moved the inflation onto whichever ceiling then ran first
-    /// and left the rest flat to ±4%. Sweep the ceilings in both orders before believing a trend in this axis.
+    /// Every loop holds its opcodes-per-gas ratio constant across ceilings, so the tracer's per-opcode
+    /// overhead cannot bend µs/Mgas within a shape. <see cref="Warmup"/> is sized to absorb the tiered JIT's
+    /// promotion of the instrumented interpreter, which is otherwise charged to whichever ceiling runs first.
     /// </para>
     /// </remarks>
     [TestCase("jump", Ceiling100k)]
@@ -699,10 +688,10 @@ public class FrameTxMempoolDosMeasurement
         rows.Sort((a, b) => b.Value.Gas.CompareTo(a.Value.Gas));
         foreach (KeyValuePair<Instruction, (int Count, long Gas)> row in rows)
         {
-            Emit($"HIST {label} op={row.Key} count={row.Value.Count} gas={row.Value.Gas}");
+            Diagnostic($"HIST {label} op={row.Key} count={row.Value.Count} gas={row.Value.Gas}");
         }
 
-        Emit($"CALLS {label} " + string.Join(",", probe.CallCosts));
+        Diagnostic($"CALLS {label} " + string.Join(",", probe.CallCosts));
     }
 
     private Transaction[] BuildFrameSamples(int firstSalt, int count)
@@ -905,6 +894,9 @@ public class FrameTxMempoolDosMeasurement
 
         return root!;
     }
+
+    /// <summary>Writes a diagnostic line, kept out of the RESULT stream so that stays parseable as key=value.</summary>
+    private static void Diagnostic(string line) => TestContext.Out.WriteLine($"DEBUG {line}");
 
     private static void Emit(string line)
     {
