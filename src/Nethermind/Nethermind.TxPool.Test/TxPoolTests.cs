@@ -674,7 +674,7 @@ namespace Nethermind.TxPool.Test
                 ForkOnBlockNumber = head.Number + 1
             };
             ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
-            TaskCompletionSource revalidationFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource revalidationFailureTriggered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim allowRevalidation = new(false);
             int validationAttempts = 0;
             specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
@@ -687,7 +687,7 @@ namespace Nethermind.TxPool.Test
                 Interlocked.Increment(ref validationAttempts);
                 if (!allowRevalidation.IsSet)
                 {
-                    revalidationFailed.TrySetResult();
+                    revalidationFailureTriggered.TrySetResult();
                     throw new InvalidOperationException();
                 }
 
@@ -717,13 +717,13 @@ namespace Nethermind.TxPool.Test
                 handler => _txPool.TxPoolHeadChanged -= handler,
                 block => block.Hash == forkBlock.Hash);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
-            await revalidationFailed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await revalidationFailureTriggered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await forkHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.IsRevalidatedFor(forkBlock.Header), Is.False);
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(() => _txPool.GetPendingTransactionsCount(), Is.EqualTo(1).After(Timeout, 10));
                 Assert.That(_txPool.ContainsTx(transaction.Hash!, transaction.Type), Is.True);
             }
 

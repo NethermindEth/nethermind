@@ -41,6 +41,9 @@ internal interface IBatchDeleteTxStorage
     /// <summary>
     /// Removes timestamped full-body records that are not referenced by their hash-keyed light record.
     /// </summary>
+    /// <remarks>
+    /// This can scan the entire persisted full-transaction collection and should run outside latency-sensitive paths.
+    /// </remarks>
     void DeleteObsoleteFullBlobTransactions();
 }
 
