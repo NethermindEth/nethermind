@@ -86,6 +86,7 @@ public class OptimismModuleTests
     [TestCase(TxType.Legacy, true, false, 1ul, true)]
     [TestCase(TxType.DepositTx, true, false, 1ul, true)]
     [TestCase(TxType.Legacy, false, true, 1ul, true)]
+    [TestCase(TxType.DepositTx, false, true, 1ul, false)]
     public void Full_and_delta_validation_respect_optimism_gas_limit_cap(
         TxType transactionType,
         bool isEip1559Enabled,
@@ -122,6 +123,30 @@ public class OptimismModuleTests
         {
             Assert.That(specChangeResult.AsBool, Is.EqualTo(expected));
             Assert.That(admissionResult.AsBool, Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase(false, ulong.MaxValue, null)]
+    [TestCase(true, ulong.MaxValue - 1, null)]
+    [TestCase(true, ulong.MaxValue, TxErrorMessages.NonceTooHigh)]
+    public void Legacy_validation_respects_eip2681_nonce_cap_after_bedrock(
+        bool isEip1559Enabled,
+        ulong nonce,
+        string? expectedError)
+    {
+        const ulong chainId = 10;
+        OptimismReleaseSpec spec = new() { IsEip1559Enabled = isEip1559Enabled };
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(nonce)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        ValidationResult result = new OptimismLegacyTxValidator(chainId).IsWellFormed(transaction, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expectedError is null));
+            Assert.That(result.Error, Is.EqualTo(expectedError));
         }
     }
 

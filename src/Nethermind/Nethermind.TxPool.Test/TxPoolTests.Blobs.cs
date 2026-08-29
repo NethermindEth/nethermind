@@ -5,6 +5,7 @@ using System;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -619,7 +620,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 1 }));
-                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(recoveryCountBeforeFork + 1));
+                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(recoveryCountBeforeFork));
                 Assert.That(storage.GetAll(), Is.Empty);
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
             }
@@ -759,8 +760,9 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test]
-        public async Task should_defer_obsolete_full_transaction_recovery_from_startup()
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task should_defer_obsolete_full_transaction_recovery_from_startup(bool validatorHasFingerprint)
         {
             TestSpecProvider specProvider = new(Cancun.Instance);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
@@ -792,7 +794,14 @@ namespace Nethermind.TxPool.Test
                 throw new InvalidOperationException("Simulated interrupted obsolete blob-body recovery.");
             };
 
-            Task<TxPool> poolCreation = RunOnDedicatedThread(() => CreatePool(txPoolConfig, specProvider, txStorage: storage));
+            ITxValidator specChangeTxValidator = validatorHasFingerprint
+                ? new SpecChangeTxValidator(specProvider.ChainId)
+                : Always.Valid;
+            Task<TxPool> poolCreation = RunOnDedicatedThread(() => CreatePool(
+                txPoolConfig,
+                specProvider,
+                txStorage: storage,
+                specChangeTxValidator: specChangeTxValidator));
             await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             TxPool createdPool = null;
             bool constructionCompletedBeforeRecovery = true;
@@ -816,9 +825,17 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(constructionCompletedBeforeRecovery, Is.True, "TxPool construction waited for the recovery scan.");
             Assert.That(() => storage.ObsoleteRecoveryCount, Is.EqualTo(2).After(Timeout, 10));
-            Assert.That(
-                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
-                Is.Not.Null.After(Timeout, 10));
+            if (validatorHasFingerprint)
+            {
+                Assert.That(
+                    () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                    Is.Not.Null.After(Timeout, 10));
+            }
+            else
+            {
+                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+            }
+
             Assert.That(
                 storage.TryGet(transaction.Hash, transaction.SenderAddress!, obsoleteTimestamp, out _),
                 Is.False);

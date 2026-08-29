@@ -28,6 +28,7 @@ public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
 public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
 {
     private readonly ITxValidator _postBedrockValidator = new CompositeTxValidator([
+        NonceCapTxValidator.Instance,
         new LegacySignatureTxValidator(chainId),
         ContractSizeTxValidator.Instance,
         NonBlobFieldsTxValidator.Instance,
