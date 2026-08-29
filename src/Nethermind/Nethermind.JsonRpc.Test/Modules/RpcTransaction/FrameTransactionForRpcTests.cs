@@ -122,7 +122,8 @@ public class FrameTransactionForRpcTests
                 {
                     Mode = TxFrame.ModeVerify,
                     Flags = TxFrame.ApproveExecutionAndPayment,
-                    GasLimit = 100_000,
+                    ExecutionGasLimit = 100_000,
+                    StateGasLimit = 0,
                     Value = UInt256.Zero,
                 },
             ],
