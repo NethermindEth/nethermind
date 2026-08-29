@@ -841,6 +841,76 @@ namespace Nethermind.TxPool.Test
                 Is.False);
         }
 
+        [TestCase(BlobsSupportMode.Disabled)]
+        [TestCase(BlobsSupportMode.InMemory)]
+        public async Task should_not_recover_obsolete_full_transactions_for_non_persistent_blob_pool(BlobsSupportMode blobsSupport)
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider specProvider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            FailingBatchDeleteBlobTxStorage storage = new();
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
+        }
+
+        [Test]
+        public async Task should_recover_obsolete_full_transactions_before_revalidation_walk()
+        {
+            TestSpecProvider specProvider = new(Cancun.Instance);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            FailingBatchDeleteBlobTxStorage storage = new();
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TaskCompletionSource revalidationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRevalidation = new(false);
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+            {
+                revalidationStarted.TrySetResult();
+                Assert.That(
+                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    "Timed out waiting to release fork revalidation.");
+                return ValidationResult.Success;
+            });
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool = CreatePool(
+                txPoolConfig,
+                specProvider,
+                txStorage: storage,
+                specChangeTxValidator: specChangeTxValidator);
+            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            try
+            {
+                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                releaseRevalidation.Set();
+            }
+
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+        }
+
         [Test]
         public void should_load_full_sidecar_from_db_when_getting_blob_tx_after_cache_eviction()
         {

@@ -1141,19 +1141,19 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitWriteLock();
             }
 
+            if (requiresObsoleteBlobRecovery)
+            {
+                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions();
+                // Retained revalidation deletes retry independently; a restart without a matching marker sweeps again.
+                Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
+            }
+
             ForkRevalidation? revalidation = isEmpty || isValidated
                 ? null
                 : new ForkRevalidation(this, spec, generation, headSpecGeneration);
             if (revalidation is { IsComplete: false })
             {
                 return false;
-            }
-
-            if (requiresObsoleteBlobRecovery)
-            {
-                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions();
-                // Retained revalidation deletes retry independently; a restart without a matching marker sweeps again.
-                Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
             }
 
             _newHeadLock.EnterWriteLock();
@@ -1276,6 +1276,7 @@ namespace Nethermind.TxPool
 
         private bool RequiresObsoleteBlobRecovery() =>
             !Volatile.Read(ref _obsoleteBlobRecoveryCompleted)
+            && _txPoolConfig.BlobsSupport.IsPersistentStorage()
             && _blobTxStorage is IBatchDeleteTxStorage;
 
         private void PublishValidatedSpec(IReleaseSpec spec, string marker, bool persistMarker = true)
