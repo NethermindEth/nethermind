@@ -54,6 +54,8 @@ namespace Nethermind.Synchronization
         private readonly ISpecProvider _specProvider;
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
+        private readonly ISyncConfig _syncConfig;
+        private ulong _latchedPivot;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -86,6 +88,7 @@ namespace Nethermind.Synchronization
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncConfig = config;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -134,13 +137,32 @@ namespace Nethermind.Synchronization
 
         // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
         // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
-        // An absent pointer means the descending feed has not inserted anything: the live tree pivot is the
-        // floor then (a CL-discovered pivot lands after construction), not the barrier the feed works towards.
-        private ulong DownloadPointerFloor => _syncPointers is null
-            ? 0
-            : ulong.Max(
-                _syncPointers.LowestInsertedBodyNumber ?? _blockTree.SyncPivot.BlockNumber,
-                _syncPointers.LowestInsertedReceiptBlockNumber ?? _blockTree.SyncPivot.BlockNumber);
+        // An absent pointer only means "nothing downloaded" under fast sync, and the floor is then the pivot the
+        // node started from: the live tree pivot rises to the finalized head, which would withdraw held history.
+        private ulong DownloadPointerFloor
+        {
+            get
+            {
+                if (_syncPointers is null)
+                    return 0;
+
+                ulong fallback = _syncConfig.FastSync ? LatchedPivot : 0;
+                return ulong.Max(
+                    _syncPointers.LowestInsertedBodyNumber ?? fallback,
+                    _syncPointers.LowestInsertedReceiptBlockNumber ?? fallback);
+            }
+        }
+
+        private ulong LatchedPivot
+        {
+            get
+            {
+                if (_latchedPivot == 0)
+                    _latchedPivot = _blockTree.SyncPivot.BlockNumber;
+
+                return _latchedPivot;
+            }
+        }
 
         public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
 

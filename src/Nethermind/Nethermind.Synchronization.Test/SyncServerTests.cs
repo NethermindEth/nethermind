@@ -667,9 +667,10 @@ public class SyncServerTests
             "the eth/69 status handshake reads LowestBlock directly, so it must carry the same floor as the range broadcast");
     }
 
-    [Test]
+    [TestCase(true, 150UL, TestName = "LowestBlock_falls_back_to_the_pivot_while_no_ancient_body_was_inserted")]
+    [TestCase(false, 1UL, TestName = "LowestBlock_ignores_the_pivot_on_a_node_with_no_descending_feed")]
     [Parallelizable(ParallelScope.None)]
-    public void LowestBlock_falls_back_to_the_pivot_while_no_ancient_body_was_inserted()
+    public void LowestBlock_floors_at_the_pivot_only_under_fast_sync(bool fastSync, ulong expected)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((150UL, Keccak.Zero));
@@ -687,15 +688,15 @@ public class SyncServerTests
             Always.Valid,
             Substitute.For<ISyncPeerPool>(),
             StaticSelector.Full,
-            new TestSyncConfig(),
+            new TestSyncConfig { FastSync = fastSync },
             Policy.FullGossip,
             Substitute.For<IHistoryPruner>(),
             MainnetSpecProvider.Instance,
             LimboLogs.Instance,
             Substitute.For<ISyncPointers>());
 
-        Assert.That(syncServer.LowestBlock, Is.EqualTo(150UL),
-            "with no ancient body inserted yet, the node holds blocks only from the pivot up - the handshake must not advertise the config barrier");
+        Assert.That(syncServer.LowestBlock, Is.EqualTo(expected),
+            "an absent pointer means nothing-downloaded only under fast sync; a full-sync node holds everything and must keep advertising its true boundary");
     }
 
     [Test]

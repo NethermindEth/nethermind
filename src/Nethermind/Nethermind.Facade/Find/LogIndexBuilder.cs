@@ -274,9 +274,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         : MinTargetBlockNumber;
 
     // An absent pointer means no ancient body was ever inserted: on a fast-synced node the pivot is the floor,
-    // on a full-sync node everything was downloaded and the floor is genesis. The tree pivot, not the config
-    // one - a CL-discovered pivot never reaches the sync config. A pointer at the barrier means everything
-    // above genesis was downloaded, and block 0 is always present.
+    // on a full-sync node everything was downloaded and the floor is genesis. The tree pivot rises to the
+    // finalized head on a running node - the boundary clamp above is what turns that into stop-at-the-boundary.
+    // A pointer at the barrier means everything above genesis was downloaded, and block 0 is always present.
     private ulong LowestDownloadedBody
     {
         get
