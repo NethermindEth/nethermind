@@ -174,7 +174,8 @@ namespace Nethermind.Consensus.Producers
             ulong maxBlobs,
             bool validateForkSensitiveState)
         {
-            // Allow more rejected sidecar loads than valid candidates, but keep storage work bounded.
+            // Allow more rejected sidecar loads than valid candidates, but keep storage work bounded. Light-only
+            // rejections do no I/O and are bounded by the pool size instead, so they do not consume this budget.
             ulong maxBlobsToConsider = maxBlobs * BlobConsiderationMultiplier;
             ulong maxRejectedBlobsToConsider = maxBlobs * RejectedBlobReadMultiplier;
             ulong countOfRemainingBlobs = 0UL;

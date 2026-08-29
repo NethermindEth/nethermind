@@ -74,11 +74,10 @@ namespace Nethermind.TxPool
             FullMode = BoundedChannelFullMode.DropOldest
         });
         private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
-        private readonly Lock _headSpecGenerationLock = new();
         private readonly Lock _forkStateLock = new();
-        private IReleaseSpec? _observedHeadSpec;
+        // Publish the spec and its epoch through one reference so readers cannot combine different observations.
+        private HeadSpecObservation? _headSpecObservation;
         private long _headGeneration;
-        private long _headSpecGeneration;
         private long _forkStateVersion;
         private int _consecutiveRevalidationAbandonments;
 
@@ -326,7 +325,6 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            ObserveHeadSpec(_specProvider.GetSpec(e.Block.Header));
             if (_headInfo.IsSyncing)
             {
                 DisposeBlockAccountChanges(e.Block);
@@ -348,22 +346,24 @@ namespace Nethermind.TxPool
 
         private long ObserveHeadSpec(IReleaseSpec spec)
         {
-            if (ReferenceEquals(Volatile.Read(ref _observedHeadSpec), spec))
+            HeadSpecObservation? observation = Volatile.Read(ref _headSpecObservation);
+            while (!ReferenceEquals(observation?.Spec, spec))
             {
-                return Volatile.Read(ref _headSpecGeneration);
-            }
+                HeadSpecObservation updated = new(spec, (observation?.Generation ?? 0) + 1);
+                HeadSpecObservation? published = Interlocked.CompareExchange(
+                    ref _headSpecObservation,
+                    updated,
+                    observation);
 
-            lock (_headSpecGenerationLock)
-            {
-                if (!ReferenceEquals(_observedHeadSpec, spec))
+                if (ReferenceEquals(published, observation))
                 {
-                    long generation = Interlocked.Increment(ref _headSpecGeneration);
-                    Volatile.Write(ref _observedHeadSpec, spec);
-                    return generation;
+                    return updated.Generation;
                 }
 
-                return Volatile.Read(ref _headSpecGeneration);
+                observation = published;
             }
+
+            return observation.Generation;
         }
 
         private async Task ProcessNewHeads()
@@ -1061,13 +1061,17 @@ namespace Nethermind.TxPool
             bool isEmpty = _transactions.Count == 0 && _blobTransactions.Count == 0;
             bool markerMatches = _specChangeValidationStorage?.GetSpecChangeValidationMarker() == expectedMarker;
 
-            if (isEmpty || markerMatches)
+            if (markerMatches)
             {
-                PublishValidatedSpec(headSpec, PrepareSpecChangeValidationMarker(headSpec));
+                PublishValidatedSpec(headSpec, expectedMarker);
             }
             else
             {
                 _specChangeValidationStorage?.SetSpecChangeValidationMarker(null);
+                if (isEmpty)
+                {
+                    PublishValidatedSpec(headSpec, expectedMarker, persistMarker: false);
+                }
             }
         }
 
@@ -1089,6 +1093,8 @@ namespace Nethermind.TxPool
             IReleaseSpec spec;
             long headSpecGeneration;
             bool isEmpty;
+            string marker;
+            bool requiresObsoleteBlobRecovery;
 
             _newHeadLock.EnterWriteLock();
             try
@@ -1100,13 +1106,20 @@ namespace Nethermind.TxPool
 
                 spec = _specProvider.GetCurrentHeadSpec();
                 headSpecGeneration = ObserveHeadSpec(spec);
-                if (ReferenceEquals(Volatile.Read(ref _validatedSpec), spec))
+                marker = GetSpecChangeValidationMarker(spec);
+                requiresObsoleteBlobRecovery = RequiresObsoleteBlobRecovery(marker);
+                bool isValidated = ReferenceEquals(Volatile.Read(ref _validatedSpec), spec);
+                if (isValidated && !requiresObsoleteBlobRecovery)
                 {
                     return true;
                 }
 
-                ReleaseForkInvalidatedHashesFor(spec);
-                InvalidateValidatedSpec();
+                if (!isValidated)
+                {
+                    ReleaseForkInvalidatedHashesFor(spec);
+                    InvalidateValidatedSpec();
+                }
+
                 isEmpty = _transactions.Count == 0 && _blobTransactions.Count == 0;
             }
             finally
@@ -1122,7 +1135,10 @@ namespace Nethermind.TxPool
                 return false;
             }
 
-            string marker = PrepareSpecChangeValidationMarker(spec);
+            if (requiresObsoleteBlobRecovery)
+            {
+                (_blobTxStorage as IBatchDeleteTxStorage)?.DeleteObsoleteFullBlobTransactions();
+            }
 
             _newHeadLock.EnterWriteLock();
             try
@@ -1166,10 +1182,15 @@ namespace Nethermind.TxPool
         private bool IsRevalidationGenerationCurrent(long generation) =>
             !_cts.IsCancellationRequested && generation == Volatile.Read(ref _headGeneration);
 
-        private bool CanApplyRevalidationResults(IReleaseSpec spec, long headSpecGeneration) =>
-            !_cts.IsCancellationRequested
-            && headSpecGeneration == Volatile.Read(ref _headSpecGeneration)
-            && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
+        private bool CanApplyRevalidationResults(IReleaseSpec spec, long headSpecGeneration)
+        {
+            HeadSpecObservation? observation = Volatile.Read(ref _headSpecObservation);
+            return !_cts.IsCancellationRequested
+                && observation is not null
+                && observation.Generation == headSpecGeneration
+                && ReferenceEquals(observation.Spec, spec)
+                && ReferenceEquals(spec, _specProvider.GetCurrentHeadSpec());
+        }
 
         private bool CanContinueRevalidation(IReleaseSpec spec, long generation, long headSpecGeneration)
         {
@@ -1233,19 +1254,11 @@ namespace Nethermind.TxPool
             _forkInvalidatedHashes.Add(hash);
         }
 
-        private string PrepareSpecChangeValidationMarker(IReleaseSpec spec)
-        {
-            string marker = GetSpecChangeValidationMarker(spec);
-            if (_specChangeValidationStorage is not null
-                && _specChangeValidationStorage.GetSpecChangeValidationMarker() != marker)
-            {
-                (_blobTxStorage as IBatchDeleteTxStorage)?.DeleteObsoleteFullBlobTransactions();
-            }
+        private bool RequiresObsoleteBlobRecovery(string marker) =>
+            _specChangeValidationStorage is not null
+            && _specChangeValidationStorage.GetSpecChangeValidationMarker() != marker;
 
-            return marker;
-        }
-
-        private void PublishValidatedSpec(IReleaseSpec spec, string marker)
+        private void PublishValidatedSpec(IReleaseSpec spec, string marker, bool persistMarker = true)
         {
             _blobTransactions.FlushPendingRevalidationDeletes();
 
@@ -1254,7 +1267,11 @@ namespace Nethermind.TxPool
                 Interlocked.Increment(ref _forkStateVersion);
                 try
                 {
-                    _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
+                    if (persistMarker)
+                    {
+                        _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
+                    }
+
                     Volatile.Write(ref _validatedSpec, spec);
                     Interlocked.Exchange(ref _consecutiveRevalidationAbandonments, 0);
                 }
@@ -1727,6 +1744,8 @@ namespace Nethermind.TxPool
         }
 
         private readonly record struct HeadChange(BlockReplacementEventArgs Args, long Generation);
+
+        private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
 
 
         private sealed class AccountCache : IAccountStateProvider

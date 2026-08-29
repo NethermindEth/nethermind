@@ -21,10 +21,12 @@ namespace Nethermind.TxPool;
 public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IBatchDeleteTxStorage
 {
     private const int MaxPooledKeys = 128;
+    private const int ObsoleteSweepBatchSize = 16;
     private const int TransactionLockCount = 64;
 
     // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
     // cannot collide with the 64-byte timestamp-prefixed full-tx keys.
+    private const int FullTxKeyLength = 64;
     private const int ElidedTxKeyLength = 33;
     private const byte ElidedTxKeyPrefix = 0x01;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
@@ -41,7 +43,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
     public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
-        Span<byte> txHashPrefixed = stackalloc byte[64];
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
         byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
@@ -71,7 +73,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         if (count == 0) return 0;
 
         // Outer array must be exact-size for the IDb indexer (uses keys.Length).
-        // Inner byte[64] keys are pooled via ConcurrentQueue to avoid per-call allocations.
+        // Inner full-transaction keys are pooled via ConcurrentQueue to avoid per-call allocations.
         byte[][] dbKeys = new byte[count][];
         int rentedKeyCount = 0;
         try
@@ -123,7 +125,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         ValueHash256 hash = transaction.Hash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
 
             EncodeAndSaveTx(transaction, _fullBlobTxsDb, txHashPrefixed);
@@ -143,7 +145,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         ValueHash256 hash = transaction.Hash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
             if (!_fullBlobTxsDb.KeyExists(txHashPrefixed))
             {
@@ -176,7 +178,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     {
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
@@ -198,10 +200,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
     void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
     {
-        using ArrayPoolList<TxLookupKey> candidates = new(MaxPooledKeys);
+        using ArrayPoolList<TxLookupKey> candidates = new(ObsoleteSweepBatchSize);
         foreach (byte[] key in _fullBlobTxsDb.GetAllKeys())
         {
-            if (key.Length != 64)
+            // Elided and marker keys share this column; only timestamp-prefixed full bodies are 64 bytes.
+            if (key.Length != FullTxKeyLength)
             {
                 continue;
             }
@@ -211,7 +214,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
                 Address.Zero,
                 new UInt256(key.AsSpan(0, 32), isBigEndian: true)));
 
-            if (candidates.Count == MaxPooledKeys)
+            if (candidates.Count == ObsoleteSweepBatchSize)
             {
                 DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
                 candidates.Clear();
@@ -255,7 +258,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
                 ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
                 : null;
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
             for (int i = 0; i < keys.Length; i++)
             {
@@ -371,7 +374,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             return key;
         }
 
-        return new byte[64];
+        return new byte[FullTxKeyLength];
     }
 
     private void ReturnKey(byte[] key)

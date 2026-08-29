@@ -384,6 +384,9 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
             await _txPool.DisposeAsync();
 
             storage.ResetFullReadCount();
@@ -749,6 +752,62 @@ namespace Nethermind.TxPool.Test
                 Assert.That(elidedTransactionPersisted, Is.True);
                 Assert.That(storage.GetAll(), Is.Not.Empty);
             }
+        }
+
+        [Test]
+        public async Task should_defer_obsolete_full_transaction_recovery_from_startup()
+        {
+            TestSpecProvider specProvider = new(Cancun.Instance);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            UInt256 obsoleteTimestamp = transaction.Timestamp;
+            FailingBatchDeleteBlobTxStorage storage = new();
+            storage.Add(transaction);
+            transaction.Timestamp += UInt256.One;
+            storage.Add(transaction);
+            storage.Delete(transaction.Hash, transaction.Timestamp);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRecovery = new(false);
+            storage.BeforeObsoleteRecovery = () =>
+            {
+                recoveryStarted.TrySetResult();
+                Assert.That(
+                    releaseRecovery.Wait(TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    "Timed out waiting to release obsolete blob-body recovery.");
+            };
+
+            Task<TxPool> poolCreation = RunOnDedicatedThread(() => CreatePool(txPoolConfig, specProvider, txStorage: storage));
+            await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            TxPool createdPool = null;
+            bool constructionCompletedBeforeRecovery = true;
+            try
+            {
+                createdPool = await poolCreation.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+            }
+            catch (TimeoutException)
+            {
+                constructionCompletedBeforeRecovery = false;
+            }
+            finally
+            {
+                releaseRecovery.Set();
+            }
+
+            _txPool = createdPool ?? await poolCreation.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.That(constructionCompletedBeforeRecovery, Is.True, "TxPool construction waited for the recovery scan.");
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            Assert.That(
+                storage.TryGet(transaction.Hash, transaction.SenderAddress!, obsoleteTimestamp, out _),
+                Is.False);
         }
 
         [Test]
@@ -1864,6 +1923,8 @@ namespace Nethermind.TxPool.Test
 
             public bool FailNextFullTransactionDelete { get; set; }
 
+            public Action BeforeObsoleteRecovery { get; set; }
+
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
 
@@ -1918,8 +1979,11 @@ namespace Nethermind.TxPool.Test
                 ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
 
-            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions() =>
+            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
+            {
+                BeforeObsoleteRecovery?.Invoke();
                 ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions();
+            }
         }
 
         private static void RemoveAllTransactions(
