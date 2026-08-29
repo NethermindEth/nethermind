@@ -236,7 +236,12 @@ namespace Nethermind.TxPool
             }
 
             _revalidationProcessing = ProcessRevalidations();
-            RequestRevalidation(Volatile.Read(ref _headGeneration));
+            if (Volatile.Read(ref _validatedSpec) is null
+                || Volatile.Read(ref _specChangeMarkerUnpublished)
+                || RequiresObsoleteBlobRecovery())
+            {
+                RequestRevalidation(Volatile.Read(ref _headGeneration));
+            }
             _headProcessing = ProcessNewHeads();
         }
 
@@ -1073,6 +1078,7 @@ namespace Nethermind.TxPool
 
             if (markerMatches)
             {
+                // A marker can also record a sweep abandoned after bounded failures; it suppresses recovery retries in either case.
                 Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
                 PublishValidatedSpec(headSpec, expectedMarker);
             }
@@ -1222,7 +1228,8 @@ namespace Nethermind.TxPool
                 if (_logger.IsError) _logger.Error($"Skipping obsolete full blob transaction recovery after {failures} failed attempts.", exception);
             }
 
-            // Retained revalidation deletes retry independently of this one-time recovery sweep.
+            // Retained revalidation deletes retry independently. Abandoning this sweep after bounded failures
+            // deliberately trades orphan reclamation for progress; the marker written by this pass suppresses later retries.
             Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
         }
 

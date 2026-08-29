@@ -759,6 +759,8 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
             TaskCompletionSource firstPassStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource secondPassStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> firstPassReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> secondPassReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim releaseFirstPass = new(false);
             using ManualResetEventSlim releaseSecondPass = new(false);
             int retainedTransactionValidations = 0;
@@ -775,12 +777,12 @@ namespace Nethermind.TxPool.Test
                     if (validation == 1)
                     {
                         firstPassStarted.TrySetResult();
-                        Assert.That(releaseFirstPass.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                        firstPassReleased.TrySetResult(releaseFirstPass.Wait(TimeSpan.FromSeconds(10)));
                     }
                     else if (validation == 2)
                     {
                         secondPassStarted.TrySetResult();
-                        Assert.That(releaseSecondPass.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                        secondPassReleased.TrySetResult(releaseSecondPass.Wait(TimeSpan.FromSeconds(10)));
                     }
                 }
 
@@ -813,6 +815,7 @@ namespace Nethermind.TxPool.Test
                 await rollbackProcessed.WaitAsync(TimeSpan.FromSeconds(10));
                 releaseFirstPass.Set();
                 await secondPassStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(await firstPassReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
 
                 using (Assert.EnterMultipleScope())
                 {
@@ -827,6 +830,7 @@ namespace Nethermind.TxPool.Test
                 releaseSecondPass.Set();
             }
 
+            Assert.That(await secondPassReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
             Assert.That(() => _txPool.IsRevalidatedFor(rollbackBlock.Header), Is.True.After(Timeout, 10));
         }
 

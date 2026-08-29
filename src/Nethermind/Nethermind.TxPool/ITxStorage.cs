@@ -45,6 +45,10 @@ internal interface IBatchDeleteTxStorage
     /// <remarks>
     /// This can scan the entire persisted full-transaction collection and should run outside latency-sensitive paths.
     /// </remarks>
+    /// <param name="cancellationToken">
+    /// Aborts the scan. Implementations must throw rather than return early so an interrupted sweep is not treated as complete.
+    /// </param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     void DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken);
 }
 
