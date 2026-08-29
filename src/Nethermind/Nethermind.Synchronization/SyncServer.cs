@@ -132,8 +132,8 @@ namespace Nethermind.Synchronization
             }
         }
 
-        // While the pruner defers its discovery, the download pointers are what is actually on disk; the
-        // advertised range covers bodies and receipts, so the later of the two frontiers is the honest floor.
+        // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
+        // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
         private ulong DownloadPointerFloor =>
             ulong.Max(_syncPointers?.LowestInsertedBodyNumber ?? 0, _syncPointers?.LowestInsertedReceiptBlockNumber ?? 0);
 
