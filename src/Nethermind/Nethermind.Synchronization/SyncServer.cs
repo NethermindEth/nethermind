@@ -153,7 +153,8 @@ namespace Nethermind.Synchronization
 
         // An absent pointer only means "nothing downloaded" under fast sync, and the floor is then the pivot latched
         // at first read: the live tree pivot rises to the finalized head, which would withdraw held history. After a
-        // restart the latch picks up the risen pivot, so the floor can only ever under-advertise, never over-.
+        // restart the latch picks up the risen pivot, so the floor can only under-advertise relative to the pivot it
+        // latched; a latch taken before the CL pivot lands freezes the config pivot, which master advertised anyway.
         private ulong LatchedPivot
         {
             get
