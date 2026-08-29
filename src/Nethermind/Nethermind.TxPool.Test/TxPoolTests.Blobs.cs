@@ -3574,8 +3574,9 @@ namespace Nethermind.TxPool.Test
                 Size = 10
             };
             IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
             using BlockingBlobTxStorage storage = new(failedDeleteCount: failReinsertion ? 3 : 2);
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance, timeProvider);
             Transaction fullBlobTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
@@ -3623,6 +3624,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
             }
 
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(
