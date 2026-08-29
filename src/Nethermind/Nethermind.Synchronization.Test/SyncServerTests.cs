@@ -663,6 +663,8 @@ public class SyncServerTests
         Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
         Assert.That(notifiedEarliest, Is.EqualTo(120UL),
             "while the pruner defers, the advertised earliest must track the later of the body and receipt frontiers, not the config barrier");
+        Assert.That(ctx.SyncServer.LowestBlock, Is.EqualTo(120UL),
+            "the eth/69 status handshake reads LowestBlock directly, so it must carry the same floor as the range broadcast");
     }
 
     [Test]

@@ -470,11 +470,12 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = 1;
 
         int frontier = firstFrontier;
+        int publishedBoundary = 1;
         IBlockTree realTree = _blockTree;
         IBlockTree downloadingTree = Substitute.For<IBlockTree>();
         downloadingTree.SyncPivot.Returns(realTree.SyncPivot);
         downloadingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
-        downloadingTree.GetLowestBlock().Returns(1UL);
+        downloadingTree.GetLowestBlock().Returns(_ => (ulong)Volatile.Read(ref publishedBoundary));
         downloadingTree
             .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci =>
@@ -506,11 +507,17 @@ public class LogIndexBuilderTests
 
         await WaitMinBlockAsync(storage, secondFrontier, cancellation);
 
+        Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False);
+
+        Volatile.Write(ref publishedBoundary, secondFrontier);
+
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(builder.LastError, Is.Null);
-            Assert.That(builder.BackwardSyncCompletion.IsCompleted, Is.False);
-            Assert.That(storage.MinBlockNumber, Is.EqualTo(secondFrontier));
+            Assert.That(storage.MinBlockNumber, Is.EqualTo(secondFrontier),
+                "once the pruner publishes the boundary at the parked frontier, the risen floor must complete the descent instead of leaving it polling forever");
         }
     }
 

@@ -132,7 +132,12 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, _blockTree.GetLowestBlock());
+        // While the pruner defers its discovery, the download pointers are what is actually on disk; the
+        // advertised range covers bodies and receipts, so the later of the two frontiers is the honest floor.
+        private ulong DownloadPointerFloor =>
+            ulong.Max(_syncPointers?.LowestInsertedBodyNumber ?? 0, _syncPointers?.LowestInsertedReceiptBlockNumber ?? 0);
+
+        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -484,10 +489,7 @@ namespace Nethermind.Synchronization
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
             if (earliest is null || earliest.Number > latestBlock.Number)
             {
-                // While the pruner defers its discovery, the download pointers are what is actually on disk;
-                // the range covers bodies and receipts, so the later of the two frontiers is the honest floor.
-                ulong pointerFloor = ulong.Max(_syncPointers?.LowestInsertedBodyNumber ?? 0, _syncPointers?.LowestInsertedReceiptBlockNumber ?? 0);
-                ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), pointerFloor), latestBlock.Number);
+                ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latestBlock.Number);
                 earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
             }
 

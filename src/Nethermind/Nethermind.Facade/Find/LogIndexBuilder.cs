@@ -367,6 +367,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
 
+                    // The floor can rise when the pruner publishes; a batch checked against the old floor never
+                    // fires the completion, so the exit marks it too - but only once storage has caught up, so a
+                    // still-queued final batch fires it from AddReceiptsAsync instead of completing early.
+                    if (_logIndexStorage.MinBlockNumber <= (int)BackwardTargetBlockNumber)
+                        MarkCompleted(isForward: false);
                     return;
                 }
 
