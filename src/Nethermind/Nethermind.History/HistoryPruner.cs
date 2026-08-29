@@ -45,6 +45,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IHeaderStore _headerStore;
     private readonly IDb _metadataDb;
+    private readonly IDb _blocksDb;
+    private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -108,6 +110,7 @@ public class HistoryPruner : IHistoryPruner
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _headerStore = headerStore;
         _metadataDb = dbProvider.MetadataDb;
+        _blocksDb = dbProvider.BlocksDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
@@ -359,14 +362,16 @@ public class HistoryPruner : IHistoryPruner
 
     private bool AncientBodiesStillDownloading()
     {
-        if (!_fastSync || _syncConfig.PivotNumber == 0 || !_syncConfig.DownloadBodiesInFastSync)
+        // Keyed on the tree pivot, like the feed itself: a CL-discovered pivot never reaches the sync config.
+        ulong pivot = _blockTree.SyncPivot.BlockNumber;
+        if (!_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
         {
             return false;
         }
 
-        // The bodies feed stops at max(config barrier, pruning cutoff), not at the config barrier alone.
-        ulong barrier = ulong.Max(_syncConfig.AncientBodiesBarrierCalc, CutoffBlockNumber ?? 0);
-        byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
+        // The bodies feed stops at max(clamped config barrier, pruning cutoff).
+        ulong barrier = ulong.Max(ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier)), CutoffBlockNumber ?? 0);
+        byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
         if (pointer <= barrier)
         {

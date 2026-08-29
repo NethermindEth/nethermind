@@ -240,7 +240,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (number is 0)
             return false;
 
-        if (!TryGetBlockReceipts(number, out _))
+        if (!TryGetBlockReceipts(number, out _, fabricateReclaimed: false))
             return false;
 
         if (!_pivotSource.TrySetResult(number))
@@ -270,8 +270,21 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     // while the ancient feeds are still descending the pointer is a moving frontier, and the pruner holds
     // the boundary at its initial barrier until the backfill is done, so the floor is inert until then.
     private ulong BackwardTargetBlockNumber => _indexRetainedSlices
-        ? ulong.Max(MinTargetBlockNumber, ulong.Min(_syncPointers?.LowestInsertedBodyNumber ?? 0UL, _blockTree.GetLowestBlock()))
+        ? ulong.Max(MinTargetBlockNumber, ulong.Min(LowestDownloadedBody, _blockTree.GetLowestBlock()))
         : MinTargetBlockNumber;
+
+    // An absent pointer means no ancient body was ever inserted: on a fast-synced node the pivot is the floor,
+    // on a full-sync node everything was downloaded and the floor is genesis. The tree pivot, not the config
+    // one - a CL-discovered pivot never reaches the sync config. A pointer at the barrier means everything
+    // above genesis was downloaded, and block 0 is always present.
+    private ulong LowestDownloadedBody
+    {
+        get
+        {
+            ulong lowest = _syncPointers?.LowestInsertedBodyNumber ?? (_syncConfig.FastSync ? _blockTree.SyncPivot.BlockNumber : 0UL);
+            return lowest <= 1 ? 0UL : lowest;
+        }
+    }
 
     public bool IsRunning { get; private set; }
     public DateTimeOffset? LastUpdate { get; private set; }
@@ -519,7 +532,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     }
 
     // TODO: move to IReceiptStorage?
-    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
+    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts, bool fabricateReclaimed = true)
     {
         blockReceipts = default;
 
@@ -528,7 +541,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
             // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
             // release can over-report; healing it must invalidate the below-boundary index range first.
-            if (_indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
+            if (fabricateReclaimed && _indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
             {
                 blockReceipts = new((int)blockNumber, []);
                 return true;

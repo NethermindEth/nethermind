@@ -315,6 +315,7 @@ public class HistoryPrunerTests
             metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(bodyPointer.Value).Bytes);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));

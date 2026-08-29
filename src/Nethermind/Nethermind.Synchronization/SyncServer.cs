@@ -134,8 +134,13 @@ namespace Nethermind.Synchronization
 
         // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
         // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
-        private ulong DownloadPointerFloor =>
-            ulong.Max(_syncPointers?.LowestInsertedBodyNumber ?? 0, _syncPointers?.LowestInsertedReceiptBlockNumber ?? 0);
+        // An absent pointer means the descending feed has not inserted anything: the live tree pivot is the
+        // floor then (a CL-discovered pivot lands after construction), not the barrier the feed works towards.
+        private ulong DownloadPointerFloor => _syncPointers is null
+            ? 0
+            : ulong.Max(
+                _syncPointers.LowestInsertedBodyNumber ?? _blockTree.SyncPivot.BlockNumber,
+                _syncPointers.LowestInsertedReceiptBlockNumber ?? _blockTree.SyncPivot.BlockNumber);
 
         public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
 

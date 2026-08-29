@@ -669,6 +669,37 @@ public class SyncServerTests
 
     [Test]
     [Parallelizable(ParallelScope.None)]
+    public void LowestBlock_falls_back_to_the_pivot_while_no_ancient_body_was_inserted()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((150UL, Keccak.Zero));
+        blockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        blockTree.GetLowestBlock().Returns(1UL);
+
+        SyncServer syncServer = new(
+            Substitute.For<IWorldStateManager>(),
+            new MemDb(),
+            blockTree,
+            NullReceiptStorage.Instance,
+            Substitute.For<IBlockAccessListStore>(),
+            Always.Valid,
+            Always.Valid,
+            Substitute.For<ISyncPeerPool>(),
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            Substitute.For<IHistoryPruner>(),
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance,
+            Substitute.For<ISyncPointers>());
+
+        Assert.That(syncServer.LowestBlock, Is.EqualTo(150UL),
+            "with no ancient body inserted yet, the node holds blocks only from the pivot up - the handshake must not advertise the config barrier");
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_clamps_earliest_to_the_announced_block()
     {
         Context ctx = new();

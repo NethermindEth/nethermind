@@ -427,14 +427,14 @@ public class LogFinderTests
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
 
-    private static IndexedLogFinder CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, IPrunedLogsRetention? retention = null, int indexFrom = 0, ulong lowestStored = BoundaryOldestStored)
+    private static IndexedLogFinder CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, IPrunedLogsRetention? retention = null, int? indexFrom = 0, ulong lowestStored = BoundaryOldestStored)
     {
         blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.GetLowestBlock().Returns(lowestStored);
         index = Substitute.For<ILogIndexStorage>();
         index.Enabled.Returns(true);
         index.MinBlockNumber.Returns(indexFrom);
-        index.MaxBlockNumber.Returns(BoundaryTo);
+        index.MaxBlockNumber.Returns(indexFrom is null ? (int?)null : BoundaryTo);
         return new IndexedLogFinder(
             blockFinder, Substitute.For<IReceiptFinder>(), Substitute.For<IReceiptStorage>(), LimboLogs.Instance,
             Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention);
@@ -516,13 +516,26 @@ public class LogFinderTests
     }
 
     [Test]
-    public void Should_FailClosedBelowTheOldestStoredBlock_ForAnAddressLessFilter()
+    public void Should_FallBackToThePlainScan_ForAnAddressLessFilter()
     {
-        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index);
         LogFilter addressLess = FilterBuilder.New().FromBlock((ulong)BoundaryFrom).ToBlock(BoundaryTo).Build();
 
-        Assert.Throws<ResourceNotFoundException>(() =>
-            finder.FindLogs(addressLess, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+        FilterLog[] logs = finder.FindLogs(addressLess, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+    }
+
+    [Test]
+    public void Should_FallBackToThePlainScan_WhenNothingIsIndexedYet()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, indexFrom: null);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     [Test]
