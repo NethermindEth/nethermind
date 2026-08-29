@@ -211,10 +211,16 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
                 continue;
             }
 
-            candidates.Add(new TxLookupKey(
+            TxLookupKey candidate = new(
                 new ValueHash256(key.AsSpan(32)),
                 Address.Zero,
-                new UInt256(key.AsSpan(0, 32), isBigEndian: true)));
+                new UInt256(key.AsSpan(0, 32), isBigEndian: true));
+            if (IsCurrentFullBlobTransaction(candidate))
+            {
+                continue;
+            }
+
+            candidates.Add(candidate);
 
             if (candidates.Count == ObsoleteSweepBatchSize)
             {
@@ -257,32 +263,23 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
                 }
             }
 
-            using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-            IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
-                ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
-                : null;
-            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
-            Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-            for (int i = 0; i < keys.Length; i++)
+            if (deleteOnlyIfObsolete)
             {
-                ref readonly TxLookupKey key = ref keys[i];
-                if (deleteOnlyIfObsolete
-                    && TryDecodeLightTx(_lightBlobTxsDb.Get(key.Hash.BytesAsSpan), out LightTransaction? currentTransaction)
-                    && currentTransaction is not null
-                    && currentTransaction.Timestamp == key.Timestamp)
+                using ArrayPoolList<TxLookupKey> obsoleteKeys = new(keys.Length);
+                for (int i = 0; i < keys.Length; i++)
                 {
-                    continue;
+                    ref readonly TxLookupKey key = ref keys[i];
+                    if (!IsCurrentFullBlobTransaction(key))
+                    {
+                        obsoleteKeys.Add(key);
+                    }
                 }
 
-                GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
-                fullBlobTxsBatch.Remove(txHashPrefixed);
-                if (deleteSharedEntries)
-                {
-                    GetElidedTxKey(key.Hash, elidedKey);
-                    fullBlobTxsBatch.Remove(elidedKey);
-                    lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
-                }
+                DeleteManyFromStorage(obsoleteKeys.AsSpan(), deleteSharedEntries);
+            }
+            else
+            {
+                DeleteManyFromStorage(keys, deleteSharedEntries);
             }
         }
         finally
@@ -293,6 +290,39 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             }
         }
     }
+
+    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    {
+        if (keys.IsEmpty)
+        {
+            return;
+        }
+
+        using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+        IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+        IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
+            ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
+            : null;
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            ref readonly TxLookupKey key = ref keys[i];
+            GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
+            fullBlobTxsBatch.Remove(txHashPrefixed);
+            if (deleteSharedEntries)
+            {
+                GetElidedTxKey(key.Hash, elidedKey);
+                fullBlobTxsBatch.Remove(elidedKey);
+                lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
+            }
+        }
+    }
+
+    private bool IsCurrentFullBlobTransaction(in TxLookupKey key) =>
+        TryDecodeLightTx(_lightBlobTxsDb.Get(key.Hash.BytesAsSpan), out LightTransaction? currentTransaction)
+        && currentTransaction is not null
+        && currentTransaction.Timestamp == key.Timestamp;
 
     string? ISpecChangeValidationStorage.GetSpecChangeValidationMarker()
     {

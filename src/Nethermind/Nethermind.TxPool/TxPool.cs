@@ -36,6 +36,7 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable
     {
+        private const int MaxObsoleteBlobRecoveryAttempts = 2;
         private const int RevalidationAbandonmentWarningThreshold = 3;
 
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
@@ -62,6 +63,7 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private bool _specChangeMarkerUnpublished;
         private bool _obsoleteBlobRecoveryCompleted;
+        private int _obsoleteBlobRecoveryFailures;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly HashSet<Hash256> _forkInvalidatedHashes = [];
         private IReleaseSpec? _forkInvalidatedSpec;
@@ -486,8 +488,9 @@ namespace Nethermind.TxPool
                         _newHeadLock.EnterWriteLock();
                         try
                         {
-                            if (IsRevalidationGenerationCurrent(generation))
+                            if (!_cts.IsCancellationRequested)
                             {
+                                // Bucket reconciliation uses live account state and remains valid after the requested generation becomes stale.
                                 UpdateBucketsWithoutRevalidation();
                             }
                         }
@@ -1094,6 +1097,10 @@ namespace Nethermind.TxPool
             {
                 return TryRevalidateCurrentSpecCore(generation);
             }
+            catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+            {
+                return false;
+            }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"TxPool failed to revalidate transactions after a protocol change with exception {exception}");
@@ -1144,9 +1151,7 @@ namespace Nethermind.TxPool
 
             if (requiresObsoleteBlobRecovery && !_cts.IsCancellationRequested)
             {
-                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions(_cts.Token);
-                // Retained revalidation deletes retry independently; a restart without a matching marker sweeps again.
-                Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
+                RecoverObsoleteFullBlobTransactions();
             }
 
             ForkRevalidation? revalidation = isEmpty || isValidated
@@ -1194,6 +1199,31 @@ namespace Nethermind.TxPool
             {
                 _newHeadLock.ExitWriteLock();
             }
+        }
+
+        private void RecoverObsoleteFullBlobTransactions()
+        {
+            try
+            {
+                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions(_cts.Token);
+            }
+            catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                int failures = Interlocked.Increment(ref _obsoleteBlobRecoveryFailures);
+                if (failures < MaxObsoleteBlobRecoveryAttempts)
+                {
+                    throw;
+                }
+
+                if (_logger.IsError) _logger.Error($"Skipping obsolete full blob transaction recovery after {failures} failed attempts.", exception);
+            }
+
+            // Retained revalidation deletes retry independently of this one-time recovery sweep.
+            Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
         }
 
         private bool IsRevalidationGenerationCurrent(long generation) =>

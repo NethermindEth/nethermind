@@ -912,9 +912,46 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_stop_retrying_obsolete_full_transaction_recovery_after_repeated_failures()
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            _logManager = new OneLoggerLogManager(new ILogger(logger));
+            FailingBatchDeleteBlobTxStorage storage = new() { ObsoleteRecoveryFailuresRemaining = 2 };
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = BlobsSupportMode.Storage,
+                    PersistentBlobStorageSize = 1
+                },
+                GetCancunSpecProvider(),
+                txStorage: storage);
+            Assert.That(() => storage.ObsoleteRecoveryCount, Is.EqualTo(1).After(Timeout, 10));
+
+            await AddEmptyBlock();
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            await AddEmptyBlock();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(2));
+                Assert.That(_txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True);
+            }
+
+            logger.Received(1).Error(
+                Arg.Is<string>(static message => message.Contains("Skipping obsolete full blob transaction recovery")),
+                Arg.Any<Exception>());
+        }
+
+        [Test]
         [NonParallelizable]
         public async Task should_cancel_obsolete_full_transaction_recovery_during_shutdown()
         {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsWarn.Returns(true);
+            _logManager = new OneLoggerLogManager(new ILogger(logger));
             TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> recoveryReleasedAfterCancellation = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim releaseRecovery = new(false);
@@ -945,6 +982,9 @@ namespace Nethermind.TxPool.Test
                 Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(1));
                 Assert.That(storage.ObsoleteRecoveryCancellationCount, Is.EqualTo(1));
             }
+
+            logger.DidNotReceive().Warn(Arg.Is<string>(static message =>
+                message.Contains("failed to revalidate transactions after a protocol change")));
         }
 
         [Test]
@@ -2060,6 +2100,8 @@ namespace Nethermind.TxPool.Test
 
             public int DeleteManyFailuresRemaining { get; set; } = 1;
 
+            public int ObsoleteRecoveryFailuresRemaining { get; set; }
+
             public bool FailNextFullTransactionDelete { get; set; }
 
             public Action<CancellationToken> BeforeObsoleteRecovery { get; set; }
@@ -2126,6 +2168,12 @@ namespace Nethermind.TxPool.Test
             {
                 Interlocked.Increment(ref _obsoleteRecoveryCount);
                 BeforeObsoleteRecovery?.Invoke(cancellationToken);
+                if (ObsoleteRecoveryFailuresRemaining > 0)
+                {
+                    ObsoleteRecoveryFailuresRemaining--;
+                    throw new InvalidOperationException("Simulated obsolete blob transaction recovery failure.");
+                }
+
                 try
                 {
                     ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions(cancellationToken);

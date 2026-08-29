@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -225,6 +226,42 @@ public class BlobTxStorageTests
             Assert.That(blobTxStorage.TryGetWithoutBlobs(first.Hash, first.SenderAddress!, out _), Is.False);
             Assert.That(blobTxStorage.TryGetWithoutBlobs(second.Hash, second.SenderAddress!, out _), Is.False);
             Assert.That(blobTxStorage.GetAll(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void DeleteObsoleteFullBlobTransactions_should_skip_write_batches_for_live_entries()
+    {
+        const int transactionCount = 17;
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction[] transactions = new Transaction[transactionCount];
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithNonce((ulong)i)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            blobTxStorage.Add(transactions[i]);
+        }
+
+        ((IBatchDeleteTxStorage)blobTxStorage).DeleteObsoleteFullBlobTransactions(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(columnsDb.StartedWriteBatchCount, Is.Zero);
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction transaction = transactions[i];
+                Assert.That(blobTxStorage.TryGet(
+                    transaction.Hash,
+                    transaction.SenderAddress!,
+                    transaction.Timestamp,
+                    out _), Is.True);
+            }
         }
     }
 
