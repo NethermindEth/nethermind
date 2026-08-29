@@ -368,6 +368,7 @@ namespace Nethermind.TxPool.Test
             await _txPool.DisposeAsync();
 
             IChainHeadSpecProvider changingSpecProvider = Substitute.For<IChainHeadSpecProvider>();
+            // Both pools are empty, so UpdateBucketsWithoutRevalidation consumes no head-spec read:
             // ObserveHeadSpec and InitializeValidatedSpec see Prague; the final startup check sees Osaka.
             changingSpecProvider.GetCurrentHeadSpec().Returns(Prague.Instance, Prague.Instance, Osaka.Instance);
             changingSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
