@@ -595,6 +595,10 @@ namespace Nethermind.TxPool.Test
             };
             FailingBatchDeleteBlobTxStorage storage = new() { DeleteManyFailuresRemaining = 2 };
             _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            int recoveryCountBeforeFork = storage.ObsoleteRecoveryCount;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -615,6 +619,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 1 }));
+                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(recoveryCountBeforeFork + 1));
                 Assert.That(storage.GetAll(), Is.Empty);
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
             }
@@ -774,11 +779,17 @@ namespace Nethermind.TxPool.Test
             using ManualResetEventSlim releaseRecovery = new(false);
             storage.BeforeObsoleteRecovery = () =>
             {
+                if (storage.ObsoleteRecoveryCount != 1)
+                {
+                    return;
+                }
+
                 recoveryStarted.TrySetResult();
                 Assert.That(
                     releaseRecovery.Wait(TimeSpan.FromSeconds(10)),
                     Is.True,
                     "Timed out waiting to release obsolete blob-body recovery.");
+                throw new InvalidOperationException("Simulated interrupted obsolete blob-body recovery.");
             };
 
             Task<TxPool> poolCreation = RunOnDedicatedThread(() => CreatePool(txPoolConfig, specProvider, txStorage: storage));
@@ -788,7 +799,9 @@ namespace Nethermind.TxPool.Test
             try
             {
                 createdPool = await poolCreation.WaitAsync(TimeSpan.FromSeconds(5));
+                _txPool = createdPool;
                 Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+                await AddEmptyBlock();
             }
             catch (TimeoutException)
             {
@@ -802,6 +815,7 @@ namespace Nethermind.TxPool.Test
             _txPool = createdPool ?? await poolCreation.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.That(constructionCompletedBeforeRecovery, Is.True, "TxPool construction waited for the recovery scan.");
+            Assert.That(() => storage.ObsoleteRecoveryCount, Is.EqualTo(2).After(Timeout, 10));
             Assert.That(
                 () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
                 Is.Not.Null.After(Timeout, 10));
@@ -1914,6 +1928,7 @@ namespace Nethermind.TxPool.Test
         private sealed class FailingBatchDeleteBlobTxStorage : IBlobTxStorage, IBatchDeleteTxStorage, ISpecChangeValidationStorage
         {
             private readonly BlobTxStorage _storage = new();
+            private int _obsoleteRecoveryCount;
 
             public List<int> DeleteBatchSizes { get; } = [];
 
@@ -1924,6 +1939,8 @@ namespace Nethermind.TxPool.Test
             public bool FailNextFullTransactionDelete { get; set; }
 
             public Action BeforeObsoleteRecovery { get; set; }
+
+            public int ObsoleteRecoveryCount => Volatile.Read(ref _obsoleteRecoveryCount);
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
@@ -1981,6 +1998,7 @@ namespace Nethermind.TxPool.Test
 
             void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
             {
+                Interlocked.Increment(ref _obsoleteRecoveryCount);
                 BeforeObsoleteRecovery?.Invoke();
                 ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions();
             }
@@ -3603,18 +3621,35 @@ namespace Nethermind.TxPool.Test
             Task<BlobCellMergeResult> merge = RunOnDedicatedThread(() =>
                 blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            using ManualResetEventSlim lookupCompleted = new();
             Task<bool> concurrentLookup = RunOnDedicatedThread(() =>
-                blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _));
+            {
+                try
+                {
+                    return blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _);
+                }
+                finally
+                {
+                    lookupCompleted.Set();
+                }
+            });
+            bool lookupCompletedBeforeRelease;
             try
             {
-                Assert.That(await concurrentLookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+                lookupCompletedBeforeRelease = lookupCompleted.Wait(TimeSpan.FromSeconds(5));
             }
             finally
             {
                 storage.ReleaseBlockedRead();
             }
 
-            Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
+            await Task.WhenAll(merge, concurrentLookup);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lookupCompletedBeforeRelease, Is.True);
+                Assert.That(await concurrentLookup, Is.True);
+                Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
+            }
         }
 
         [TestCase(false)]

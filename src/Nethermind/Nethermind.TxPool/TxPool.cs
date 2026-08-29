@@ -60,6 +60,8 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private bool _pendingObsoleteBlobRecovery;
+        private string? _lastObsoleteBlobRecoveryMarker;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly HashSet<Hash256> _forkInvalidatedHashes = [];
         private IReleaseSpec? _forkInvalidatedSpec;
@@ -389,6 +391,7 @@ namespace Nethermind.TxPool
                     try
                     {
                         bool bucketsUpdated;
+                        bool revalidationRequired;
                         _newHeadLock.EnterWriteLock();
                         try
                         {
@@ -418,6 +421,7 @@ namespace Nethermind.TxPool
                             }
 
                             bucketsUpdated = ReferenceEquals(Volatile.Read(ref _validatedSpec), _specProvider.GetCurrentHeadSpec());
+                            revalidationRequired = !bucketsUpdated || Volatile.Read(ref _pendingObsoleteBlobRecovery);
                             if (bucketsUpdated)
                             {
                                 UpdateBucketsWithoutRevalidation();
@@ -428,7 +432,7 @@ namespace Nethermind.TxPool
                             _newHeadLock.ExitWriteLock();
                         }
 
-                        if (!bucketsUpdated)
+                        if (revalidationRequired)
                         {
                             RequestRevalidation(headChange.Generation);
                         }
@@ -1067,7 +1071,12 @@ namespace Nethermind.TxPool
             }
             else
             {
-                _specChangeValidationStorage?.SetSpecChangeValidationMarker(null);
+                if (_specChangeValidationStorage is not null)
+                {
+                    Volatile.Write(ref _pendingObsoleteBlobRecovery, true);
+                    _specChangeValidationStorage.SetSpecChangeValidationMarker(null);
+                }
+
                 if (isEmpty)
                 {
                     PublishValidatedSpec(headSpec, expectedMarker, persistMarker: false);
@@ -1093,6 +1102,7 @@ namespace Nethermind.TxPool
             IReleaseSpec spec;
             long headSpecGeneration;
             bool isEmpty;
+            bool isValidated;
             string marker;
             bool requiresObsoleteBlobRecovery;
 
@@ -1107,9 +1117,10 @@ namespace Nethermind.TxPool
                 spec = _specProvider.GetCurrentHeadSpec();
                 headSpecGeneration = ObserveHeadSpec(spec);
                 marker = GetSpecChangeValidationMarker(spec);
+                bool hasPendingObsoleteBlobRecovery = Volatile.Read(ref _pendingObsoleteBlobRecovery);
                 requiresObsoleteBlobRecovery = RequiresObsoleteBlobRecovery(marker);
-                bool isValidated = ReferenceEquals(Volatile.Read(ref _validatedSpec), spec);
-                if (isValidated && !requiresObsoleteBlobRecovery)
+                isValidated = ReferenceEquals(Volatile.Read(ref _validatedSpec), spec);
+                if (isValidated && !hasPendingObsoleteBlobRecovery)
                 {
                     return true;
                 }
@@ -1127,7 +1138,7 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitWriteLock();
             }
 
-            ForkRevalidation? revalidation = isEmpty
+            ForkRevalidation? revalidation = isEmpty || isValidated
                 ? null
                 : new ForkRevalidation(this, spec, generation, headSpecGeneration);
             if (revalidation is { IsComplete: false })
@@ -1138,6 +1149,7 @@ namespace Nethermind.TxPool
             if (requiresObsoleteBlobRecovery)
             {
                 (_blobTxStorage as IBatchDeleteTxStorage)?.DeleteObsoleteFullBlobTransactions();
+                Volatile.Write(ref _lastObsoleteBlobRecoveryMarker, marker);
             }
 
             _newHeadLock.EnterWriteLock();
@@ -1194,7 +1206,11 @@ namespace Nethermind.TxPool
 
         private bool CanContinueRevalidation(IReleaseSpec spec, long generation, long headSpecGeneration)
         {
-            if (CanApplyRevalidationResults(spec, headSpecGeneration))
+            HeadSpecObservation? observation = Volatile.Read(ref _headSpecObservation);
+            if (!_cts.IsCancellationRequested
+                && observation is not null
+                && observation.Generation == headSpecGeneration
+                && ReferenceEquals(observation.Spec, spec))
             {
                 return true;
             }
@@ -1255,8 +1271,8 @@ namespace Nethermind.TxPool
         }
 
         private bool RequiresObsoleteBlobRecovery(string marker) =>
-            _specChangeValidationStorage is not null
-            && _specChangeValidationStorage.GetSpecChangeValidationMarker() != marker;
+            Volatile.Read(ref _pendingObsoleteBlobRecovery)
+            && !string.Equals(Volatile.Read(ref _lastObsoleteBlobRecoveryMarker), marker, StringComparison.Ordinal);
 
         private void PublishValidatedSpec(IReleaseSpec spec, string marker, bool persistMarker = true)
         {
@@ -1267,9 +1283,11 @@ namespace Nethermind.TxPool
                 Interlocked.Increment(ref _forkStateVersion);
                 try
                 {
-                    if (persistMarker)
+                    if (persistMarker && _specChangeValidationStorage is not null)
                     {
-                        _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
+                        _specChangeValidationStorage.SetSpecChangeValidationMarker(marker);
+                        Volatile.Write(ref _lastObsoleteBlobRecoveryMarker, marker);
+                        Volatile.Write(ref _pendingObsoleteBlobRecovery, false);
                     }
 
                     Volatile.Write(ref _validatedSpec, spec);
@@ -1295,7 +1313,11 @@ namespace Nethermind.TxPool
                 try
                 {
                     Volatile.Write(ref _validatedSpec, null);
-                    _specChangeValidationStorage?.SetSpecChangeValidationMarker(null);
+                    if (_specChangeValidationStorage is not null)
+                    {
+                        Volatile.Write(ref _pendingObsoleteBlobRecovery, true);
+                        _specChangeValidationStorage.SetSpecChangeValidationMarker(null);
+                    }
                 }
                 finally
                 {
