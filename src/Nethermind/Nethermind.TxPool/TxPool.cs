@@ -755,6 +755,7 @@ namespace Nethermind.TxPool
             try
             {
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+                // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
                 TxFilteringState state = new(tx, _accounts, headSpec);
                 accepted = FilterTransactions(tx, handlingOptions, ref state);
@@ -1143,7 +1144,7 @@ namespace Nethermind.TxPool
 
             if (requiresObsoleteBlobRecovery && !_cts.IsCancellationRequested)
             {
-                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions();
+                ((IBatchDeleteTxStorage)_blobTxStorage).DeleteObsoleteFullBlobTransactions(_cts.Token);
                 // Retained revalidation deletes retry independently; a restart without a matching marker sweeps again.
                 Volatile.Write(ref _obsoleteBlobRecoveryCompleted, true);
             }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -780,7 +779,7 @@ namespace Nethermind.TxPool.Test
             };
             TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim releaseRecovery = new(false);
-            storage.BeforeObsoleteRecovery = () =>
+            storage.BeforeObsoleteRecovery = _ =>
             {
                 if (storage.ObsoleteRecoveryCount != 1)
                 {
@@ -914,48 +913,37 @@ namespace Nethermind.TxPool.Test
 
         [Test]
         [NonParallelizable]
-        public async Task should_skip_obsolete_full_transaction_recovery_during_shutdown()
+        public async Task should_cancel_obsolete_full_transaction_recovery_during_shutdown()
         {
-            int testThreadId = Environment.CurrentManagedThreadId;
-            TaskCompletionSource recoveryCheckReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource<bool> recoveryCheckReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using ManualResetEventSlim releaseRecoveryCheck = new(false);
-            ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
-            txPoolConfig.Size.Returns(1);
-            txPoolConfig.PersistentBlobStorageSize.Returns(1);
-            txPoolConfig.BlobCacheSize.Returns(1);
-            txPoolConfig.BlobsSupport.Returns(_ =>
-            {
-                if (Environment.CurrentManagedThreadId != testThreadId)
-                {
-                    recoveryCheckReached.TrySetResult();
-                    recoveryCheckReleased.TrySetResult(releaseRecoveryCheck.Wait(TimeSpan.FromSeconds(10)));
-                }
-
-                return BlobsSupportMode.Storage;
-            });
+            TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> recoveryReleasedAfterCancellation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRecovery = new(false);
             FailingBatchDeleteBlobTxStorage storage = new();
-            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: storage);
-            await recoveryCheckReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            storage.BeforeObsoleteRecovery = cancellationToken =>
+            {
+                recoveryStarted.TrySetResult();
+                bool released = releaseRecovery.Wait(TimeSpan.FromSeconds(10));
+                recoveryReleasedAfterCancellation.TrySetResult(released && cancellationToken.IsCancellationRequested);
+            };
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = BlobsSupportMode.Storage,
+                    PersistentBlobStorageSize = 1
+                },
+                GetCancunSpecProvider(),
+                txStorage: storage);
+            await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            CancellationTokenSource cancellation = (CancellationTokenSource)typeof(TxPool)
-                .GetField("_cts", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(_txPool)!;
             ValueTask disposal = _txPool.DisposeAsync();
-            try
-            {
-                Assert.That(cancellation.IsCancellationRequested, Is.True);
-            }
-            finally
-            {
-                releaseRecoveryCheck.Set();
-            }
+            releaseRecovery.Set();
 
             await disposal.AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(await recoveryCheckReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
-                Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
+                Assert.That(await recoveryReleasedAfterCancellation.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(1));
+                Assert.That(storage.ObsoleteRecoveryCancellationCount, Is.EqualTo(1));
             }
         }
 
@@ -2064,6 +2052,7 @@ namespace Nethermind.TxPool.Test
         {
             private readonly BlobTxStorage _storage = new();
             private int _obsoleteRecoveryCount;
+            private int _obsoleteRecoveryCancellationCount;
 
             public List<int> DeleteBatchSizes { get; } = [];
 
@@ -2073,9 +2062,11 @@ namespace Nethermind.TxPool.Test
 
             public bool FailNextFullTransactionDelete { get; set; }
 
-            public Action BeforeObsoleteRecovery { get; set; }
+            public Action<CancellationToken> BeforeObsoleteRecovery { get; set; }
 
             public int ObsoleteRecoveryCount => Volatile.Read(ref _obsoleteRecoveryCount);
+
+            public int ObsoleteRecoveryCancellationCount => Volatile.Read(ref _obsoleteRecoveryCancellationCount);
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
@@ -2131,11 +2122,19 @@ namespace Nethermind.TxPool.Test
                 ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
 
-            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
+            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken)
             {
                 Interlocked.Increment(ref _obsoleteRecoveryCount);
-                BeforeObsoleteRecovery?.Invoke();
-                ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions();
+                BeforeObsoleteRecovery?.Invoke(cancellationToken);
+                try
+                {
+                    ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    Interlocked.Increment(ref _obsoleteRecoveryCancellationCount);
+                    throw;
+                }
             }
         }
 

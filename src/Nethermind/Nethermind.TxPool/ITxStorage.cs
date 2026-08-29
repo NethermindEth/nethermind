@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -44,7 +45,7 @@ internal interface IBatchDeleteTxStorage
     /// <remarks>
     /// This can scan the entire persisted full-transaction collection and should run outside latency-sensitive paths.
     /// </remarks>
-    void DeleteObsoleteFullBlobTransactions();
+    void DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken);
 }
 
 internal interface ISpecChangeValidationStorage

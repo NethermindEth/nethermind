@@ -198,11 +198,13 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
         DeleteMany(keys, deleteSharedEntries: false);
 
-    void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions()
+    void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken)
     {
         using ArrayPoolList<TxLookupKey> candidates = new(ObsoleteSweepBatchSize);
         foreach (byte[] key in _fullBlobTxsDb.GetAllKeys())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Elided and marker keys share this column; only timestamp-prefixed full bodies are 64 bytes.
             if (key.Length != FullTxKeyLength)
             {
@@ -216,11 +218,13 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
             if (candidates.Count == ObsoleteSweepBatchSize)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
                 candidates.Clear();
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
     }
 
