@@ -918,6 +918,7 @@ namespace Nethermind.TxPool.Test
         {
             int testThreadId = Environment.CurrentManagedThreadId;
             TaskCompletionSource recoveryCheckReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> recoveryCheckReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim releaseRecoveryCheck = new(false);
             ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
             txPoolConfig.Size.Returns(1);
@@ -928,10 +929,7 @@ namespace Nethermind.TxPool.Test
                 if (Environment.CurrentManagedThreadId != testThreadId)
                 {
                     recoveryCheckReached.TrySetResult();
-                    Assert.That(
-                        releaseRecoveryCheck.Wait(TimeSpan.FromSeconds(10)),
-                        Is.True,
-                        "Timed out waiting to release the obsolete recovery check.");
+                    recoveryCheckReleased.TrySetResult(releaseRecoveryCheck.Wait(TimeSpan.FromSeconds(10)));
                 }
 
                 return BlobsSupportMode.Storage;
@@ -954,7 +952,11 @@ namespace Nethermind.TxPool.Test
             }
 
             await disposal.AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await recoveryCheckReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
+            }
         }
 
         [Test]
@@ -3624,7 +3626,8 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
             }
 
-            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            // Advance beyond the maximum backoff so every pending retry is due.
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMinutes(1));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(
