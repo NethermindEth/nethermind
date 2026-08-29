@@ -71,7 +71,7 @@ jobs:
           dotnet build-server shutdown || true
 
           run_harness() {
-            local project=$1 fixture=$2 rc=0
+            local project=$1 fixture=$2 required=${3:-} rc=0
             if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
               echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
               return 1
@@ -103,6 +103,13 @@ jobs:
               rc=1
             fi
 
+            # A file that is merely non-empty is not evidence that the case an input was supplied for ran:
+            # the cases that need it self-ignore while the rest of the fixture still reports.
+            if [[ -n "${required}" ]] && ! grep -qF -- "${required}" "${results}"; then
+              echo "::error::${fixture} reported no '${required}' rows, though an input for them was supplied. Check that the path resolves on the runner."
+              rc=1
+            fi
+
             echo "::endgroup::"
             return "${rc}"
           }
@@ -114,7 +121,11 @@ jobs:
             run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement || status=1
+            # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so a
+            # supplied artifact path is required to produce some privacy row rather than all of them.
+            privacy_rows=''
+            if [[ -n "${FRAME_GROTH16_ARTIFACTS}" ]]; then privacy_rows='shape=groth16-'; fi
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "${privacy_rows}" || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement || status=1
