@@ -176,7 +176,7 @@ public class LogIndexBuilderTests
     private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null, int stallTicksBeforeGivingUp = 1440) => new LogIndexBuilder(
             logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
         )
-        { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
+    { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
 
     private static ISyncPointers DownloadedToTheBarrier()
     {
