@@ -29,6 +29,7 @@ using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -599,7 +600,6 @@ namespace Nethermind.TxPool.Test
             Assert.That(
                 () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
                 Is.Not.Null.After(Timeout, 10));
-            int recoveryCountBeforeFork = storage.ObsoleteRecoveryCount;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -620,7 +620,6 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 1 }));
-                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(recoveryCountBeforeFork));
                 Assert.That(storage.GetAll(), Is.Empty);
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
             }
@@ -690,7 +689,8 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(blobPool.Count, Is.EqualTo(1));
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1 }));
-                Assert.That(storage.FullTransactionDeleteBatchSizes, Is.EqualTo(changeTimestamp ? new[] { 1 } : Array.Empty<int>()));
+                Assert.That(storage.FullTransactionDeleteBatchSizes, Is.Empty);
+                Assert.That(storage.ReplaceDeleteBatchSizes, Is.EqualTo(new[] { 1 }));
                 Assert.That(persisted, Is.True);
                 Assert.That(obsoleteTransactionPersisted, Is.EqualTo(!changeTimestamp));
                 Assert.That(elidedTransactionPersisted, Is.True);
@@ -723,10 +723,10 @@ namespace Nethermind.TxPool.Test
 
                 transaction.Timestamp += UInt256.One;
                 Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
-                storage.FailNextFullTransactionDelete = true;
                 Assert.That(
                     () => blobPool.UpdatePoolForRevalidation(accounts, KeepAllTransactions),
-                    Throws.TypeOf<InvalidOperationException>());
+                    Throws.Nothing);
+                Assert.That(storage.ReplaceDeleteBatchSizes, Is.EqualTo(new[] { 1 }));
             }
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -758,233 +758,6 @@ namespace Nethermind.TxPool.Test
                 Assert.That(elidedTransactionPersisted, Is.True);
                 Assert.That(storage.GetAll(), Is.Not.Empty);
             }
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task should_defer_obsolete_full_transaction_recovery_from_startup(bool validatorHasFingerprint)
-        {
-            TestSpecProvider specProvider = new(Cancun.Instance);
-            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
-            UInt256 obsoleteTimestamp = transaction.Timestamp;
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            transaction.Timestamp += UInt256.One;
-            storage.Add(transaction);
-            storage.Delete(transaction.Hash, transaction.Timestamp);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                PersistentBlobStorageSize = 1
-            };
-            TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using ManualResetEventSlim releaseRecovery = new(false);
-            storage.BeforeObsoleteRecovery = _ =>
-            {
-                if (storage.ObsoleteRecoveryCount != 1)
-                {
-                    return;
-                }
-
-                recoveryStarted.TrySetResult();
-                Assert.That(
-                    releaseRecovery.Wait(TimeSpan.FromSeconds(10)),
-                    Is.True,
-                    "Timed out waiting to release obsolete blob-body recovery.");
-                throw new InvalidOperationException("Simulated interrupted obsolete blob-body recovery.");
-            };
-
-            ITxValidator specChangeTxValidator = validatorHasFingerprint
-                ? new SpecChangeTxValidator(specProvider.ChainId)
-                : Always.Valid;
-            Task<TxPool> poolCreation = RunOnDedicatedThread(() => CreatePool(
-                txPoolConfig,
-                specProvider,
-                txStorage: storage,
-                specChangeTxValidator: specChangeTxValidator));
-            await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            TxPool createdPool = null;
-            bool constructionCompletedBeforeRecovery = true;
-            try
-            {
-                createdPool = await poolCreation.WaitAsync(TimeSpan.FromSeconds(5));
-                _txPool = createdPool;
-                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
-                await AddEmptyBlock();
-            }
-            catch (TimeoutException)
-            {
-                constructionCompletedBeforeRecovery = false;
-            }
-            finally
-            {
-                releaseRecovery.Set();
-            }
-
-            _txPool = createdPool ?? await poolCreation.WaitAsync(TimeSpan.FromSeconds(10));
-
-            Assert.That(constructionCompletedBeforeRecovery, Is.True, "TxPool construction waited for the recovery scan.");
-            Assert.That(() => storage.ObsoleteRecoveryCount, Is.EqualTo(2).After(Timeout, 10));
-            if (validatorHasFingerprint)
-            {
-                Assert.That(
-                    () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
-                    Is.Not.Null.After(Timeout, 10));
-            }
-            else
-            {
-                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
-            }
-
-            Assert.That(
-                storage.TryGet(transaction.Hash, transaction.SenderAddress!, obsoleteTimestamp, out _),
-                Is.False);
-        }
-
-        [TestCase(BlobsSupportMode.Disabled)]
-        [TestCase(BlobsSupportMode.InMemory)]
-        public async Task should_not_recover_obsolete_full_transactions_for_non_persistent_blob_pool(BlobsSupportMode blobsSupport)
-        {
-            Block head = _blockTree.Head;
-            _blockTree.BestSuggestedHeader = head.Header;
-            TestSpecProvider specProvider = new(Prague.Instance)
-            {
-                NextForkSpec = Osaka.Instance,
-                ForkOnBlockNumber = head.Number + 1
-            };
-            FailingBatchDeleteBlobTxStorage storage = new();
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
-            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage);
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Transaction transaction = Build.A.Transaction
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-                .TestObject;
-            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-
-            await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
-
-            Assert.That(storage.ObsoleteRecoveryCount, Is.Zero);
-        }
-
-        [Test]
-        public async Task should_recover_obsolete_full_transactions_before_revalidation_walk()
-        {
-            TestSpecProvider specProvider = new(Cancun.Instance);
-            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                PersistentBlobStorageSize = 1
-            };
-            TaskCompletionSource revalidationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using ManualResetEventSlim releaseRevalidation = new(false);
-            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
-            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
-            {
-                revalidationStarted.TrySetResult();
-                Assert.That(
-                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
-                    Is.True,
-                    "Timed out waiting to release fork revalidation.");
-                return ValidationResult.Success;
-            });
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            _txPool = CreatePool(
-                txPoolConfig,
-                specProvider,
-                txStorage: storage,
-                specChangeTxValidator: specChangeTxValidator);
-            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            try
-            {
-                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(1));
-            }
-            finally
-            {
-                releaseRevalidation.Set();
-            }
-
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
-        }
-
-        [Test]
-        public async Task should_stop_retrying_obsolete_full_transaction_recovery_after_repeated_failures()
-        {
-            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-            logger.IsError.Returns(true);
-            _logManager = new OneLoggerLogManager(new ILogger(logger));
-            FailingBatchDeleteBlobTxStorage storage = new() { ObsoleteRecoveryFailuresRemaining = 2 };
-            _txPool = CreatePool(
-                new TxPoolConfig
-                {
-                    BlobsSupport = BlobsSupportMode.Storage,
-                    PersistentBlobStorageSize = 1
-                },
-                GetCancunSpecProvider(),
-                txStorage: storage);
-            Assert.That(() => storage.ObsoleteRecoveryCount, Is.EqualTo(1).After(Timeout, 10));
-
-            await AddEmptyBlock();
-            Assert.That(
-                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
-                Is.Not.Null.After(Timeout, 10));
-            await AddEmptyBlock();
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(2));
-                Assert.That(_txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True);
-            }
-
-            logger.Received(1).Error(
-                Arg.Is<string>(static message => message.Contains("Skipping obsolete full blob transaction recovery")),
-                Arg.Any<Exception>());
-        }
-
-        [Test]
-        [NonParallelizable]
-        public async Task should_cancel_obsolete_full_transaction_recovery_during_shutdown()
-        {
-            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-            logger.IsWarn.Returns(true);
-            _logManager = new OneLoggerLogManager(new ILogger(logger));
-            TaskCompletionSource recoveryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource<bool> recoveryReleasedAfterCancellation = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using ManualResetEventSlim releaseRecovery = new(false);
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.BeforeObsoleteRecovery = cancellationToken =>
-            {
-                recoveryStarted.TrySetResult();
-                bool released = releaseRecovery.Wait(TimeSpan.FromSeconds(10));
-                recoveryReleasedAfterCancellation.TrySetResult(released && cancellationToken.IsCancellationRequested);
-            };
-            _txPool = CreatePool(
-                new TxPoolConfig
-                {
-                    BlobsSupport = BlobsSupportMode.Storage,
-                    PersistentBlobStorageSize = 1
-                },
-                GetCancunSpecProvider(),
-                txStorage: storage);
-            await recoveryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-
-            ValueTask disposal = _txPool.DisposeAsync();
-            releaseRecovery.Set();
-
-            await disposal.AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(await recoveryReleasedAfterCancellation.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
-                Assert.That(storage.ObsoleteRecoveryCount, Is.EqualTo(1));
-                Assert.That(storage.ObsoleteRecoveryCancellationCount, Is.EqualTo(1));
-            }
-
-            logger.DidNotReceive().Warn(Arg.Is<string>(static message =>
-                message.Contains("failed to revalidate transactions after a protocol change")));
         }
 
         [Test]
@@ -2091,24 +1864,14 @@ namespace Nethermind.TxPool.Test
         private sealed class FailingBatchDeleteBlobTxStorage : IBlobTxStorage, IBatchDeleteTxStorage, ISpecChangeValidationStorage
         {
             private readonly BlobTxStorage _storage = new();
-            private int _obsoleteRecoveryCount;
-            private int _obsoleteRecoveryCancellationCount;
 
-            public List<int> DeleteBatchSizes { get; } = [];
+            public ConcurrentQueue<int> DeleteBatchSizes { get; } = [];
 
-            public List<int> FullTransactionDeleteBatchSizes { get; } = [];
+            public ConcurrentQueue<int> FullTransactionDeleteBatchSizes { get; } = [];
+
+            public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
 
             public int DeleteManyFailuresRemaining { get; set; } = 1;
-
-            public int ObsoleteRecoveryFailuresRemaining { get; set; }
-
-            public bool FailNextFullTransactionDelete { get; set; }
-
-            public Action<CancellationToken> BeforeObsoleteRecovery { get; set; }
-
-            public int ObsoleteRecoveryCount => Volatile.Read(ref _obsoleteRecoveryCount);
-
-            public int ObsoleteRecoveryCancellationCount => Volatile.Read(ref _obsoleteRecoveryCancellationCount);
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
@@ -2142,7 +1905,7 @@ namespace Nethermind.TxPool.Test
 
             void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
             {
-                DeleteBatchSizes.Add(keys.Length);
+                DeleteBatchSizes.Enqueue(keys.Length);
                 if (DeleteManyFailuresRemaining > 0)
                 {
                     DeleteManyFailuresRemaining--;
@@ -2154,35 +1917,14 @@ namespace Nethermind.TxPool.Test
 
             void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys)
             {
-                FullTransactionDeleteBatchSizes.Add(keys.Length);
-                if (FailNextFullTransactionDelete)
-                {
-                    FailNextFullTransactionDelete = false;
-                    throw new InvalidOperationException();
-                }
-
+                FullTransactionDeleteBatchSizes.Enqueue(keys.Length);
                 ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
 
-            void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken)
+            void IBatchDeleteTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
             {
-                Interlocked.Increment(ref _obsoleteRecoveryCount);
-                BeforeObsoleteRecovery?.Invoke(cancellationToken);
-                if (ObsoleteRecoveryFailuresRemaining > 0)
-                {
-                    ObsoleteRecoveryFailuresRemaining--;
-                    throw new InvalidOperationException("Simulated obsolete blob transaction recovery failure.");
-                }
-
-                try
-                {
-                    ((IBatchDeleteTxStorage)_storage).DeleteObsoleteFullBlobTransactions(cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    Interlocked.Increment(ref _obsoleteRecoveryCancellationCount);
-                    throw;
-                }
+                ReplaceDeleteBatchSizes.Enqueue(obsoleteTimestamps.Length);
+                ((IBatchDeleteTxStorage)_storage).Replace(transaction, obsoleteTimestamps);
             }
         }
 

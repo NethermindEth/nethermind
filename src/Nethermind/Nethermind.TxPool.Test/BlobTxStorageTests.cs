@@ -187,6 +187,7 @@ public class BlobTxStorageTests
         Transaction tx = CreateBlobTransaction();
 
         blobTxStorage.Add(tx);
+        columnsDb.ResetWriteBatchTracking();
         blobTxStorage.Delete(tx.Hash, tx.Timestamp);
 
         using (Assert.EnterMultipleScope())
@@ -216,6 +217,7 @@ public class BlobTxStorageTests
             new(second.Hash, second.SenderAddress!, second.Timestamp)
         ];
 
+        columnsDb.ResetWriteBatchTracking();
         ((IBatchDeleteTxStorage)blobTxStorage).DeleteMany(keys);
 
         using (Assert.EnterMultipleScope())
@@ -230,39 +232,69 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void DeleteObsoleteFullBlobTransactions_should_skip_write_batches_for_live_entries()
+    public void Add_should_use_one_write_batch_across_columns()
     {
-        const int transactionCount = 17;
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction[] transactions = new Transaction[transactionCount];
-        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i] = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                .WithNonce((ulong)i)
-                .WithMaxFeePerGas(1.GWei)
-                .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            blobTxStorage.Add(transactions[i]);
-        }
+        Transaction transaction = CreateBlobTransaction();
 
-        ((IBatchDeleteTxStorage)blobTxStorage).DeleteObsoleteFullBlobTransactions(CancellationToken.None);
+        blobTxStorage.Add(transaction);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(columnsDb.StartedWriteBatchCount, Is.Zero);
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                Transaction transaction = transactions[i];
-                Assert.That(blobTxStorage.TryGet(
-                    transaction.Hash,
-                    transaction.SenderAddress!,
-                    transaction.Timestamp,
-                    out _), Is.True);
-            }
+            Assert.That(columnsDb.StartedWriteBatchCount, Is.EqualTo(1));
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _), Is.True);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                out _), Is.True);
+            Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void Replace_should_remove_obsolete_body_in_same_write_batch()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction transaction = CreateBlobTransaction();
+        blobTxStorage.Add(transaction);
+        UInt256 obsoleteTimestamp = transaction.Timestamp;
+        transaction.Timestamp += UInt256.One;
+        columnsDb.ResetWriteBatchTracking();
+
+        ((IBatchDeleteTxStorage)blobTxStorage).Replace(transaction, [obsoleteTimestamp]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(columnsDb.StartedWriteBatchCount, Is.EqualTo(1));
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                obsoleteTimestamp,
+                out _), Is.False);
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _), Is.True);
+            Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
+        }
+    }
+
+    private static int CountLightTransactions(BlobTxStorage storage)
+    {
+        int count = 0;
+        foreach (LightTransaction _ in storage.GetAll())
+        {
+            count++;
+        }
+
+        return count;
     }
 
     [Test]
@@ -304,6 +336,8 @@ public class BlobTxStorageTests
             StartedWriteBatchCount++;
             return _inner.StartWriteBatch();
         }
+
+        public void ResetWriteBatchTracking() => StartedWriteBatchCount = 0;
 
         public IColumnDbSnapshot<BlobTxsColumns> CreateSnapshot() => _inner.CreateSnapshot();
 

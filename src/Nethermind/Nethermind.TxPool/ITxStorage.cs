@@ -40,16 +40,9 @@ internal interface IBatchDeleteTxStorage
     void DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys);
 
     /// <summary>
-    /// Removes timestamped full-body records that are not referenced by their hash-keyed light record.
+    /// Atomically writes <paramref name="transaction"/> and removes obsolete full bodies for the same hash.
     /// </summary>
-    /// <remarks>
-    /// This can scan the entire persisted full-transaction collection and should run outside latency-sensitive paths.
-    /// </remarks>
-    /// <param name="cancellationToken">
-    /// Aborts the scan. Implementations must throw rather than return early so an interrupted sweep is not treated as complete.
-    /// </param>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    void DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken);
+    void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps);
 }
 
 internal interface ISpecChangeValidationStorage
