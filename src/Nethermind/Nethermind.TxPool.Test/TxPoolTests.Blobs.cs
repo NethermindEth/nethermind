@@ -700,6 +700,43 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_preserve_retained_delete_when_replacement_fails()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            UInt256 originalTimestamp = transaction.Timestamp;
+            FailingBatchDeleteBlobTxStorage storage = new();
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            transaction.Timestamp += UInt256.One;
+            storage.ReplaceFailuresRemaining = 1;
+            Assert.That(
+                () => blobPool.TryInsert(transaction.Hash, transaction, out _),
+                Throws.TypeOf<InvalidOperationException>());
+
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.Count, Is.Zero);
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
+                Assert.That(storage.TryGet(transaction.Hash, transaction.SenderAddress!, originalTimestamp, out _), Is.False);
+                Assert.That(storage.GetAll(), Is.Empty);
+            }
+        }
+
+        [Test]
         public async Task should_remove_obsolete_full_transaction_after_failed_delete_and_restart()
         {
             TestSpecProvider specProvider = new(Cancun.Instance);
@@ -1872,6 +1909,8 @@ namespace Nethermind.TxPool.Test
 
             public int DeleteManyFailuresRemaining { get; set; } = 1;
 
+            public int ReplaceFailuresRemaining { get; set; }
+
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
                 _storage.TryGet(hash, sender, timestamp, out transaction);
 
@@ -1917,6 +1956,12 @@ namespace Nethermind.TxPool.Test
             void IBatchDeleteTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
             {
                 ReplaceDeleteBatchSizes.Enqueue(obsoleteTimestamps.Length);
+                if (ReplaceFailuresRemaining > 0)
+                {
+                    ReplaceFailuresRemaining--;
+                    throw new InvalidOperationException();
+                }
+
                 ((IBatchDeleteTxStorage)_storage).Replace(transaction, obsoleteTimestamps);
             }
         }

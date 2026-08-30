@@ -33,7 +33,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
     private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
-    // Reinsertion consumes a retained delete through Replace before the same hash can be removed again.
+    // Keep the first pending timestamp: a failed replacement can leave it as the only persisted body.
     private readonly Dictionary<ValueHash256, TxLookupKey> _batchedDeletes = [];
     private bool _batchStorageDeletes;
     private readonly int _maxPendingBlobUpdates;
@@ -727,7 +727,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             {
                 if (_batchStorageDeletes)
                 {
-                    _batchedDeletes[hash] = new TxLookupKey(hash, tx.SenderAddress!, tx.Timestamp);
+                    _batchedDeletes.TryAdd(hash, new TxLookupKey(hash, tx.SenderAddress!, tx.Timestamp));
                 }
                 else
                 {
@@ -814,7 +814,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
         }
 
-        _batchedDeletes.Clear();
+        for (int i = 0; i < deletes.Count; i++)
+        {
+            _batchedDeletes.Remove(deletes[i].Hash);
+        }
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
