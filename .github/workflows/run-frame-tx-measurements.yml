@@ -76,10 +76,16 @@ jobs:
             *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
           esac
 
-          # Decided here rather than at the mempool leg: both defaults together are fatal, and the shared
-          # runner should not spend three builds and a full verify measurement before saying so.
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]] && [[ -z "${FRAME_GROTH16_ARTIFACTS}" ]]; then
-            echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
+          # Decided here rather than at the mempool leg: this is fatal and knowable before any work, and the
+          # shared runner should not spend three builds and a full verify measurement before saying so. The
+          # harness only rejects an unset path, and resolves a mistyped one no earlier than File.Exists inside
+          # each case, so -d covers unset, whitespace-only and wrong in one test.
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
+            if [[ -z "${FRAME_GROTH16_ARTIFACTS// }" ]]; then
+              echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
+            else
+              echo "::error::groth16_artifacts '${FRAME_GROTH16_ARTIFACTS}' is not a directory on this runner, so the privacy cases would self-ignore and the run would report only the adversarial shapes."
+            fi
             exit 1
           fi
           for project in "${projects[@]}"; do
