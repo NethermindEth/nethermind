@@ -1,19 +1,17 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/op-sepolia.json.zst",
-    "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
-    "BaseDbPath": "nethermind_db/op-sepolia",
-    "LogFileName": "op-sepolia.log"
+    "ChainSpecPath": "chainspec/sepolia-devnet-3-sepolia-devnet-3.json.zst",
+    "GenesisHash": "0xaab365bf4b86a69dcec883fdd462a8d8eccd7947e1fcb8a25b67be1e82bdbf79",
+    "BaseDbPath": "nethermind_db/sepolia-devnet-3-sepolia-devnet-3",
+    "LogFileName": "sepolia-devnet-3-sepolia-devnet-3.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
   "Sync": {
     "FastSync": true,
-    "SnapSync": true,
-    "PivotNumber": 48110000,
-    "PivotHash": "0xd285bec3fba549e2a88504251e39defbd1021475f0ddd3cb73bd087107306c4a"
+    "SnapSync": true
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -33,6 +31,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+    "SequencerUrl": ""
   }
 }
