@@ -628,6 +628,7 @@ namespace Nethermind.TxPool.Test
         public void should_retry_batched_revalidation_deletes_after_storage_failure()
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            Transaction secondTransaction = CreateBlobTx(TestItem.PrivateKeyB);
             FailingBatchDeleteBlobTxStorage storage = new();
             storage.Add(transaction);
             TxPoolConfig txPoolConfig = new()
@@ -643,12 +644,14 @@ namespace Nethermind.TxPool.Test
             Assert.That(
                 () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
                 Throws.TypeOf<InvalidOperationException>());
+            Assert.That(blobPool.TryInsert(secondTransaction.Hash, secondTransaction, out _), Is.True);
+            storage.DeleteManyFailuresRemaining = 1;
             Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(blobPool.Count, Is.Zero);
-                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1 }));
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 2 }));
             }
         }
 
@@ -688,7 +691,6 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(blobPool.Count, Is.EqualTo(1));
                 Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1 }));
-                Assert.That(storage.FullTransactionDeleteBatchSizes, Is.Empty);
                 Assert.That(storage.ReplaceDeleteBatchSizes, Is.EqualTo(new[] { 1 }));
                 Assert.That(persisted, Is.True);
                 Assert.That(obsoleteTransactionPersisted, Is.EqualTo(!changeTimestamp));
@@ -1866,8 +1868,6 @@ namespace Nethermind.TxPool.Test
 
             public ConcurrentQueue<int> DeleteBatchSizes { get; } = [];
 
-            public ConcurrentQueue<int> FullTransactionDeleteBatchSizes { get; } = [];
-
             public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
 
             public int DeleteManyFailuresRemaining { get; set; } = 1;
@@ -1912,12 +1912,6 @@ namespace Nethermind.TxPool.Test
                 }
 
                 ((IBatchDeleteTxStorage)_storage).DeleteMany(keys);
-            }
-
-            void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys)
-            {
-                FullTransactionDeleteBatchSizes.Enqueue(keys.Length);
-                ((IBatchDeleteTxStorage)_storage).DeleteFullBlobTransactions(keys);
             }
 
             void IBatchDeleteTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)

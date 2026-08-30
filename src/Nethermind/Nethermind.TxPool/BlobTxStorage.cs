@@ -212,10 +212,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     }
 
     void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
-        DeleteMany(keys, deleteSharedEntries: true);
-
-    void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
-        DeleteMany(keys, deleteSharedEntries: false);
+        DeleteMany(keys);
 
     private void WriteTransaction(
         Transaction transaction,
@@ -246,7 +243,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Set(hash.BytesAsSpan, lightRlp);
     }
 
-    private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -272,7 +269,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
                 }
             }
 
-            DeleteManyFromStorage(keys, deleteSharedEntries);
+            DeleteManyFromStorage(keys);
         }
         finally
         {
@@ -283,7 +280,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -292,9 +289,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
         using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
         IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-        IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
-            ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
-            : null;
+        IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
         for (int i = 0; i < keys.Length; i++)
@@ -302,12 +297,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             ref readonly TxLookupKey key = ref keys[i];
             GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
             fullBlobTxsBatch.Remove(txHashPrefixed);
-            if (deleteSharedEntries)
-            {
-                GetElidedTxKey(key.Hash, elidedKey);
-                fullBlobTxsBatch.Remove(elidedKey);
-                lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
-            }
+            GetElidedTxKey(key.Hash, elidedKey);
+            fullBlobTxsBatch.Remove(elidedKey);
+            lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
         }
     }
 

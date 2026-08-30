@@ -33,6 +33,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
     private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
+    // Reinsertion consumes a retained delete through Replace before the same hash can be removed again.
     private readonly Dictionary<ValueHash256, TxLookupKey> _batchedDeletes = [];
     private bool _batchStorageDeletes;
     private readonly int _maxPendingBlobUpdates;
@@ -752,7 +753,15 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
         Debug.Assert(!_batchStorageDeletes);
-        FlushPendingRevalidationDeletesNonLocked();
+        try
+        {
+            FlushPendingRevalidationDeletesNonLocked();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("Failed to flush retained blob revalidation deletes before revalidating the pool.", ex);
+        }
+
         _batchStorageDeletes = true;
         try
         {
@@ -780,16 +789,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         using ArrayPoolList<TxLookupKey> deletes = new(_batchedDeletes.Count);
-        using ArrayPoolList<TxLookupKey> obsoleteFullTransactions = new(_batchedDeletes.Count);
         foreach (TxLookupKey key in _batchedDeletes.Values)
         {
-            if (!base.TryGetValueNonLocked(key.Hash, out Transaction? liveTransaction))
+            if (!base.TryGetValueNonLocked(key.Hash, out _))
             {
                 deletes.Add(key);
-            }
-            else if (liveTransaction.Timestamp != key.Timestamp)
-            {
-                obsoleteFullTransactions.Add(key);
             }
         }
 
@@ -798,11 +802,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             if (deletes.Count > 0)
             {
                 batchStorage.DeleteMany(deletes.AsSpan());
-            }
-
-            if (obsoleteFullTransactions.Count > 0)
-            {
-                batchStorage.DeleteFullBlobTransactions(obsoleteFullTransactions.AsSpan());
             }
         }
         else
