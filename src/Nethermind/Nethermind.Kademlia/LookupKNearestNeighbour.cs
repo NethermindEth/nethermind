@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.IO;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -275,9 +276,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Transport failures (e.g. unreachable host) are expected during discovery, so log them quietly.
-                bool shouldWarn = e is not SocketException && e.InnerException is not SocketException;
-                if (shouldWarn)
+                // Transport failures (unreachable host, torn-down channel) are expected during
+                // discovery, so log them quietly. DotNetty's ClosedChannelException derives from IOException.
+                bool isTransportFailure = e is SocketException or IOException
+                    || e.InnerException is SocketException or IOException;
+                if (!isTransportFailure)
                 {
                     if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }

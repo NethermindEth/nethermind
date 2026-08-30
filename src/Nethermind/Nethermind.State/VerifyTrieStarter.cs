@@ -41,8 +41,11 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
                     if (_logger.IsError) _logger!.Error($"Verify trie failed");
                 }
             }
-            catch (OperationCanceledException)
+            catch (Exception e) when (IsCancellation(e))
             {
+                // The parallel trie walk in CollectStats surfaces shutdown cancellation as an
+                // AggregateException of TaskCanceledExceptions, which a plain OperationCanceledException
+                // catch would miss and mislog as an error.
                 if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
             }
             catch (Exception e)
@@ -51,6 +54,30 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             }
 
         }, TaskCreationOptions.LongRunning);
+
+        return true;
+    }
+
+    // A cancelled verify trie is expected on shutdown and is not an error. Cancellation can arrive
+    // either as a single OperationCanceledException or, from the parallel stats collection, as an
+    // AggregateException whose leaves are all cancellations. A real fault occurring alongside the
+    // cancellation leaves a non-cancellation leaf, so it is still surfaced as an error.
+    private static bool IsCancellation(Exception exception) => exception switch
+    {
+        OperationCanceledException => true,
+        AggregateException aggregate => IsAllCancellation(aggregate),
+        _ => false,
+    };
+
+    private static bool IsAllCancellation(AggregateException exception)
+    {
+        foreach (Exception inner in exception.Flatten().InnerExceptions)
+        {
+            if (inner is not OperationCanceledException)
+            {
+                return false;
+            }
+        }
 
         return true;
     }
