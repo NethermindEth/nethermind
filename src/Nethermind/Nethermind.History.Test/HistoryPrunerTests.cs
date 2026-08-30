@@ -304,8 +304,9 @@ public class HistoryPrunerTests
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
-    [TestCase(5000UL, true, TestName = "SetDeletePointerToOldestBlock_searches_once_the_body_pointer_is_stable")]
-    public void SetDeletePointerToOldestBlock_holds_while_the_ancient_bodies_feed_is_descending(ulong? bodyPointer, bool searchesWhenStable)
+    [TestCase(7000UL, false, TestName = "SetDeletePointerToOldestBlock_holds_above_the_snapshotted_cutoff")]
+    [TestCase(6800UL, true, TestName = "SetDeletePointerToOldestBlock_releases_at_the_cutoff_snapshotted_at_first_observation")]
+    public void SetDeletePointerToOldestBlock_holds_while_the_ancient_bodies_feed_is_descending(ulong? bodyPointer, bool searches)
     {
         TestMemDb metadataDb = new();
         if (bodyPointer is not null)
@@ -317,22 +318,19 @@ public class HistoryPrunerTests
 
         HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
 
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 3; i++)
         {
-            Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
-            chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+            pruner.SetDeletePointerToOldestBlock();
         }
 
-        pruner.SetDeletePointerToOldestBlock();
-
-        if (searchesWhenStable)
+        if (searches)
             chainLevels.Received().LoadLevel(Arg.Any<ulong>());
         else
             chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
     [Test]
-    public void SetDeletePointerToOldestBlock_does_not_release_while_the_body_pointer_keeps_moving()
+    public void SetDeletePointerToOldestBlock_does_not_release_while_the_pointer_moves_or_pauses_briefly()
     {
         TestMemDb metadataDb = new();
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
@@ -342,10 +340,12 @@ public class HistoryPrunerTests
 
         HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
 
-        for (ulong frontier = 5000; frontier > 4990; frontier--)
+        for (ulong frontier = 9000; frontier > 8995; frontier--)
         {
             metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(frontier).Bytes);
             Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
+            Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False,
+                "a pause shorter than the quiet-frontier window must not release the hold");
         }
 
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
@@ -357,6 +357,7 @@ public class HistoryPrunerTests
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
 
+        // Rolling with head 10_000 and 100 retention epochs puts the snapshotted cutoff at 6_800.
         return new HistoryPruner(
             blockTree,
             Substitute.For<IReceiptStorage>(),
@@ -365,7 +366,7 @@ public class HistoryPrunerTests
             chainLevels,
             Substitute.For<IHeaderStore>(),
             dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = 0 },
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true },
             new ProcessExitSource(new()),

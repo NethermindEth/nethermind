@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -47,9 +48,11 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-    private const int StableBodyPointerObservationsToRelease = 3;
+    private static readonly TimeSpan QuietFrontierReleaseWindow = TimeSpan.FromHours(1);
     private ulong _lastObservedBodyPointer;
-    private int _stableBodyPointerObservations;
+    private long _quietFrontierSince;
+    private ulong _cutoffSnapshot;
+    private bool _cutoffSnapshotTaken;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -375,26 +378,32 @@ public class HistoryPruner : IHistoryPruner
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
 
-        // At or below the static barrier the download is provably done. The feed's own barrier also carries
-        // the live pruning cutoff, which rises with the head - comparing against it could release while the
-        // feed still descends, so above the static barrier the release signal is the pointer going quiet: a
-        // frontier stable across several observations is either done or stalled, and in both cases it is the
-        // honest oldest body on disk, while holding all of pruning forever would just grow the disk unbounded.
-        ulong staticBarrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
-        if (pointer <= staticBarrier)
+        // The feed latches its barrier at initialization as max(static barrier, cutoff-at-the-time); the same
+        // snapshot taken at the pruner's first observation cannot drift upward with the head, and the pruner
+        // observes after the feed initializes, so a pointer at or below it is a finished download. Above it,
+        // the only exits are the pointer moving (still descending) or staying quiet for a long wall-clock
+        // window - a frontier that stalled for that long is the honest oldest body on disk, and holding all
+        // of pruning behind an unreachable barrier forever would just grow the disk unbounded.
+        if (!_cutoffSnapshotTaken)
+        {
+            _cutoffSnapshot = CutoffBlockNumber ?? 0;
+            _cutoffSnapshotTaken = true;
+        }
+
+        ulong barrier = ulong.Max(ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier)), _cutoffSnapshot);
+        if (pointer <= barrier)
         {
             return false;
         }
 
-        if (pointer is { } current && current == _lastObservedBodyPointer && ++_stableBodyPointerObservations >= StableBodyPointerObservationsToRelease)
+        if (pointer is { } current && current != _lastObservedBodyPointer)
+        {
+            _lastObservedBodyPointer = current;
+            _quietFrontierSince = Stopwatch.GetTimestamp();
+        }
+        else if (pointer is not null && Stopwatch.GetElapsedTime(_quietFrontierSince) >= QuietFrontierReleaseWindow)
         {
             return false;
-        }
-
-        if (pointer is { } moved && moved != _lastObservedBodyPointer)
-        {
-            _lastObservedBodyPointer = moved;
-            _stableBodyPointerObservations = 1;
         }
 
         if (!_ancientHoldLogged)

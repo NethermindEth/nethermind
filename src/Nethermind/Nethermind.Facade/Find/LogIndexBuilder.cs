@@ -74,7 +74,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
     private readonly ISyncPointers? _syncPointers;
-    private const int StallTicksBeforeGivingUp = 120;
+    // Sized above the default history pruning interval (8 epochs, ~51 minutes on mainnet), which is what
+    // clears the receipts-reclaimed/body-not-yet transient this stall waits on.
+    private const int StallTicksBeforeGivingUp = 1440;
     private int _stalledBelowBoundary = -1;
     private int _stallTicks;
     private bool _stallWarned;
@@ -426,8 +428,14 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                         }
                         else if (++_stallTicks >= StallTicksBeforeGivingUp)
                         {
-                            throw new InvalidOperationException(
+                            // Fails only this direction: the live forward index keeps running.
+                            InvalidOperationException stall = new(
                                 $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} kept a body with no readable receipts for {StallTicksBeforeGivingUp} polls - a retained height lost its receipts.");
+                            if (_logger.IsError) _logger.Error($"{GetLogPrefix(isForward)}: giving up.", stall);
+                            LastError = stall;
+                            Direction(isForward: false).Completion.TrySetException(stall);
+                            Direction(isForward: false).Progress?.MarkEnd();
+                            return;
                         }
                         else if (!_stallWarned)
                         {
