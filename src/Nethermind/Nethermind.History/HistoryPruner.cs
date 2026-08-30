@@ -48,11 +48,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-    private static readonly TimeSpan QuietFrontierReleaseWindow = TimeSpan.FromHours(1);
+    internal TimeSpan QuietFrontierReleaseWindow { get; init; } = TimeSpan.FromHours(1);
     private ulong _lastObservedBodyPointer;
     private long _quietFrontierSince;
-    private ulong _cutoffSnapshot;
-    private bool _cutoffSnapshotTaken;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -378,19 +376,12 @@ public class HistoryPruner : IHistoryPruner
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
 
-        // The feed latches its barrier at initialization as max(static barrier, cutoff-at-the-time); the same
-        // snapshot taken at the pruner's first observation cannot drift upward with the head, and the pruner
-        // observes after the feed initializes, so a pointer at or below it is a finished download. Above it,
-        // the only exits are the pointer moving (still descending) or staying quiet for a long wall-clock
-        // window - a frontier that stalled for that long is the honest oldest body on disk, and holding all
+        // The static barrier is a term of the feed's own ComputeBarrier, so it is never above the feed's
+        // latched barrier: a pointer at or below it is a finished download. Above it the feed may be stopping
+        // at the pruning cutoff instead, which rises with the head and so cannot be compared against safely -
+        // there the release signal is the frontier going quiet for a long wall-clock window, since holding all
         // of pruning behind an unreachable barrier forever would just grow the disk unbounded.
-        if (!_cutoffSnapshotTaken)
-        {
-            _cutoffSnapshot = CutoffBlockNumber ?? 0;
-            _cutoffSnapshotTaken = true;
-        }
-
-        ulong barrier = ulong.Max(ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier)), _cutoffSnapshot);
+        ulong barrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
         if (pointer <= barrier)
         {
             return false;

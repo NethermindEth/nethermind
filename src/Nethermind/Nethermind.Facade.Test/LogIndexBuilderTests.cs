@@ -173,9 +173,10 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null) => new LogIndexBuilder(
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null, int stallTicksBeforeGivingUp = 1440) => new LogIndexBuilder(
             logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
-        ).AddTo(_testDisposables);
+        )
+        { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
 
     private static ISyncPointers DownloadedToTheBarrier()
     {
@@ -569,6 +570,52 @@ public class LogIndexBuilderTests
             Assert.That(storage.MinBlockNumber, Is.EqualTo(oldestStored),
                 "an unwritten body pointer on a fast-synced node means nothing below the pivot was ever downloaded - heights below the boundary are undownloaded, not reclaimed, and must not be fabricated");
             Assert.That(storage.ReceiptCountAt(oldestStored - 1), Is.EqualTo(-1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_GiveUpTheDescentAlone_WhenABelowBoundaryHeightNeverYieldsItsReceipts(CancellationToken cancellation)
+    {
+        const int oldestStored = 50;
+        const int stalledHeight = 30;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.GetLowestBlock().Returns((ulong)oldestStored);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number is stalledHeight)
+                    return Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+                bool pruned = number < oldestStored;
+                return pruned ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        RecordingLogIndexStorage storage = new();
+        LogIndexBuilder builder = GetService(
+            storage,
+            prunedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            DownloadedToTheBarrier(),
+            stallTicksBeforeGivingUp: 2);
+
+        await builder.StartAsync();
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => builder.BackwardSyncCompletion.WaitAsync(cancellation),
+            "a height that never yields its receipts must end the descent in a hard error, not an invisible infinite poll");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builder.LastError, Is.InstanceOf<InvalidOperationException>());
+            Assert.That(builder.IsRunning, Is.True,
+                "the give-up is scoped to the backward direction - the live forward index must keep running");
         }
     }
 

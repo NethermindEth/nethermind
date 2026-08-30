@@ -304,8 +304,8 @@ public class HistoryPrunerTests
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
-    [TestCase(7000UL, false, TestName = "SetDeletePointerToOldestBlock_holds_above_the_snapshotted_cutoff")]
-    [TestCase(6800UL, true, TestName = "SetDeletePointerToOldestBlock_releases_at_the_cutoff_snapshotted_at_first_observation")]
+    [TestCase(7000UL, false, TestName = "SetDeletePointerToOldestBlock_holds_above_the_static_barrier")]
+    [TestCase(1UL, true, TestName = "SetDeletePointerToOldestBlock_releases_at_the_static_barrier")]
     public void SetDeletePointerToOldestBlock_holds_while_the_ancient_bodies_feed_is_descending(ulong? bodyPointer, bool searches)
     {
         TestMemDb metadataDb = new();
@@ -330,6 +330,25 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public void SetDeletePointerToOldestBlock_releases_once_the_frontier_has_been_quiet_for_the_window()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, quietWindow: TimeSpan.Zero);
+
+        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
+        chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+
+        pruner.SetDeletePointerToOldestBlock();
+        chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+    }
+
+    [Test]
     public void SetDeletePointerToOldestBlock_does_not_release_while_the_pointer_moves_or_pauses_briefly()
     {
         TestMemDb metadataDb = new();
@@ -351,13 +370,12 @@ public class HistoryPrunerTests
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? quietWindow = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
 
-        // Rolling with head 10_000 and 100 retention epochs puts the snapshotted cutoff at 6_800.
         return new HistoryPruner(
             blockTree,
             Substitute.For<IReceiptStorage>(),
@@ -373,7 +391,10 @@ public class HistoryPrunerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance)
+        {
+            QuietFrontierReleaseWindow = quietWindow ?? TimeSpan.FromHours(1)
+        };
     }
 
     [TestCase(5u)]
