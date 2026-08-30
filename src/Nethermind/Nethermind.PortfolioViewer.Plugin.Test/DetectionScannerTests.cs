@@ -330,8 +330,8 @@ public class DetectionScannerTests
             Assert.That(entry!.Complete, Is.True);
             Assert.That(entry.ScannedFrom, Is.EqualTo(0));
             Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
-            _logFinder.DidNotReceive().FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>());
         }
+        _logFinder.DidNotReceive().FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
