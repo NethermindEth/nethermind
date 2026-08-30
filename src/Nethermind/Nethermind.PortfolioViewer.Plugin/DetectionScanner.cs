@@ -94,7 +94,7 @@ public sealed class DetectionScanner(
             // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
-                long flo = Math.Max(floor, Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks));
+                long flo = Math.Max(floor, existing.Head + 1 - ForwardReorgOverlapBlocks);
                 long fhi = Math.Min(curHead, flo + chunk - 1);
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
@@ -112,8 +112,7 @@ public sealed class DetectionScanner(
                 }
                 catch (ResourceNotFoundException e)
                 {
-                    // forward gap is below retained receipts (node was offline past the floor) — skip it and
-                    // resume from the current head, since those blocks are pruned and can't be scanned
+                    // the floor rose past this range between our read and the finder's - resume from the current head
                     if (_logger.IsDebug) _logger.Debug($"Token detection forward gap unavailable for {account}: {e.Message}");
                     Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, curHead, existing.Complete);
                     Schedule(req);
@@ -132,7 +131,7 @@ public sealed class DetectionScanner(
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
             if (hi <= 0 || hi < floor) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
-            long lo = Math.Max(floor, Math.Max(0, hi - chunk + 1));
+            long lo = Math.Max(floor, hi - chunk + 1);
 
             HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
             HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];

@@ -272,6 +272,50 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Downward_walk_clamps_to_the_retained_history_floor_and_completes_there()
+    {
+        SeedHead(100);
+        _blockFinder.GetLowestBlock().Returns(50UL);
+        List<long> fromBlocks = [];
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { fromBlocks.Add((long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0)); return (IEnumerable<FilterLog>)[]; });
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromBlocks, Has.All.GreaterThanOrEqualTo(50));
+            Assert.That(fromBlocks, Does.Contain(50));
+            Assert.That(entry!.Complete, Is.True, "reaching the floor completes the scan in one pass");
+            Assert.That(entry.ScannedFrom, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Forward_walk_clamps_to_the_retained_history_floor_instead_of_skipping_the_gap()
+    {
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([], [], 0, 5, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(100_000).TestObject);
+        _blockFinder.GetLowestBlock().Returns(50UL);
+        List<long> fromBlocks = [];
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { fromBlocks.Add((long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0)); return (IEnumerable<FilterLog>)[]; });
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromBlocks, Has.All.GreaterThanOrEqualTo(50), "no chunk asks below the floor, so the fail-closed guard is never tripped");
+            Assert.That(fromBlocks, Does.Contain(50), "the recoverable [floor, head] portion is scanned, not skipped");
+            Assert.That(entry!.Head, Is.EqualTo(100_000));
+        }
+    }
+
+    [Test]
     public async Task Fresh_scan_reads_head_from_block_finder()
     {
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
