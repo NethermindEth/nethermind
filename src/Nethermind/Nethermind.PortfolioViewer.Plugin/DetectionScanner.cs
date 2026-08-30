@@ -129,8 +129,10 @@ public sealed class DetectionScanner(
 
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
-            if (hi <= 0) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
-            long lo = Math.Max(0, hi - chunk + 1);
+            // Clamped here rather than per topic filter, so the cursor and the completion flag stop at the floor in one pass.
+            long floor = (long)blockFinder.GetLowestBlock();
+            if (hi <= 0 || hi < floor) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
+            long lo = Math.Max(floor, Math.Max(0, hi - chunk + 1));
 
             HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
             HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];
@@ -155,7 +157,7 @@ public sealed class DetectionScanner(
                 return Task.CompletedTask;
             }
 
-            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContractsPerScan;
+            bool complete = lo <= floor || erc20.Count + nfts.Count >= MaxContractsPerScan;
             Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
             else { Grow(key); Schedule(req); } // chunk finished within the gap — go wider next time
@@ -183,11 +185,6 @@ public sealed class DetectionScanner(
     // erc20 non-null (Transfer scans): 3-topic logs are ERC-20, 4-topic are ERC-721. erc20 null (ERC-1155): all NFT.
     private void Collect(long lo, long hi, TopicsFilter topics, HashSet<string>? erc20, HashSet<string> nfts, CancellationToken token)
     {
-        // Depths below the oldest stored block cannot be answered soundly for a topic-only filter on a
-        // pruned node, so the scan starts where the data starts instead of failing chunk by chunk.
-        lo = Math.Max(lo, (long)blockFinder.GetLowestBlock());
-        if (lo > hi) return;
-
         LogFilter filter = new(0, new BlockParameter((ulong)lo), new BlockParameter((ulong)hi), AddressFilter.AnyAddress, topics)
         {
             UseIndex = true // use the per-address log index when enabled, so deep scans skip ranges with no logs

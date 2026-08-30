@@ -365,7 +365,7 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public void SetDeletePointerToOldestBlock_does_not_release_while_the_pointer_moves_or_pauses_briefly()
+    public void SetDeletePointerToOldestBlock_never_releases_a_written_pointer_above_the_barrier_without_the_marker()
     {
         TestMemDb metadataDb = new();
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
@@ -380,7 +380,7 @@ public class HistoryPrunerTests
             metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(frontier).Bytes);
             Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
             Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False,
-                "a pause shorter than the quiet-frontier window must not release the hold");
+                "a written pointer above the static barrier must hold until the completion marker releases it");
         }
 
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());

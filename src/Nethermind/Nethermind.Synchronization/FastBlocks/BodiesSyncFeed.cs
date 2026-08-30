@@ -41,7 +41,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Bodies, 0, true);
 
         private const ulong DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
-        private bool _completionMarkerWritten;
         private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
@@ -109,7 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            WriteCompletionMarkerIfDone();
+            PersistCompletionMarker();
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _barrier);
         }
 
@@ -190,17 +189,20 @@ namespace Nethermind.Synchronization.FastBlocks
             ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
-            WriteCompletionMarkerIfDone();
+            PersistCompletionMarker();
         }
 
         // Consumers that must not act on a mid-descent frontier (history pruning discovery) key off this
-        // marker rather than reconstructing the barrier, which drifts with the pruning cutoff.
-        private void WriteCompletionMarkerIfDone()
+        // marker; it mirrors AllDownloaded both ways because a recomputed barrier can drop and reopen the descent.
+        private void PersistCompletionMarker()
         {
-            if (!_completionMarkerWritten && AllDownloaded)
+            if (AllDownloaded)
             {
-                _completionMarkerWritten = true;
                 _metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
+            }
+            else
+            {
+                _metadataDb.Delete(MetadataDbKeys.AncientBodiesDownloadComplete);
             }
         }
 
