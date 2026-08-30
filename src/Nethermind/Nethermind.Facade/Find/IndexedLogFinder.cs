@@ -83,10 +83,13 @@ public class IndexedLogFinder(
         // Rejected eagerly once the index is in play: the endpoint probe only sees the two endpoint headers,
         // so it cannot notice reclaimed receipts in the interior. Keyed on the query, not the index range - an
         // index starting exactly at the boundary would otherwise route the doomed prefix to that probe.
-        // Genesis is the one below-boundary prefix with nothing to lose. Queries the index never answers fall
-        // through to the plain scan, exactly as they would with the index disabled.
+        // Genesis is the one below-boundary prefix with nothing to lose. Only address-filtered queries are
+        // held to this: retention can never vouch for a topic-only filter, so it falls through to the plain
+        // scan like everything else the index never answers, exactly as with the index disabled.
         ulong lowestStored = _blockFinder.GetLowestBlock();
-        bool uncoveredBelowBoundary = fromBlock.Number < lowestStored && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
+        bool uncoveredBelowBoundary = fromBlock.Number < lowestStored
+            && filter.AddressFilter.Addresses.Count != 0
+            && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
         if (uncoveredBelowBoundary && (fromBlock.Number != 0 || lowestStored != 1))
         {
             filter.UseIndex = tryUseIndex;
@@ -98,8 +101,9 @@ public class IndexedLogFinder(
             Math.Min((int)toBlock.Number, indexTo)
         );
 
-        if (uncoveredBelowBoundary && (ulong)range.from < lowestStored)
-            range.from = (int)lowestStored;
+        // Only the genesis carve-out reaches here uncovered; lift block 0 out of the index range.
+        if (uncoveredBelowBoundary && range.from == 0)
+            range.from = 1;
 
         if (range.from > range.to)
             return null;

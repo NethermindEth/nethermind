@@ -528,6 +528,22 @@ public class LogFinderTests
     }
 
     [Test]
+    public void Should_FallBackToThePlainScan_ForATopicOnlyFilter()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index);
+        LogFilter topicOnly = FilterBuilder.New()
+            .FromBlock((ulong)BoundaryFrom).ToBlock(BoundaryTo)
+            .WithAnyAddress()
+            .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
+            .Build();
+
+        FilterLog[] logs = finder.FindLogs(topicOnly, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty,
+            "retention can never vouch for a topic-only filter, so it must fall through to the plain scan instead of failing closed");
+    }
+
+    [Test]
     public void Should_FallBackToThePlainScan_WhenNothingIsIndexedYet()
     {
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, indexFrom: null);

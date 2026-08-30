@@ -47,6 +47,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
+    private const int StableBodyPointerObservationsToRelease = 3;
+    private ulong _lastObservedBodyPointer;
+    private int _stableBodyPointerObservations;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -369,20 +372,36 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
-        // The bodies feed stops at max(clamped config barrier, pruning cutoff).
-        ulong barrier = ulong.Max(ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier)), CutoffBlockNumber ?? 0);
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
-        if (pointer <= barrier)
+
+        // At or below the static barrier the download is provably done. The feed's own barrier also carries
+        // the live pruning cutoff, which rises with the head - comparing against it could release while the
+        // feed still descends, so above the static barrier the release signal is the pointer going quiet: a
+        // frontier stable across several observations is either done or stalled, and in both cases it is the
+        // honest oldest body on disk, while holding all of pruning forever would just grow the disk unbounded.
+        ulong staticBarrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
+        if (pointer <= staticBarrier)
         {
             return false;
+        }
+
+        if (pointer is { } current && current == _lastObservedBodyPointer && ++_stableBodyPointerObservations >= StableBodyPointerObservationsToRelease)
+        {
+            return false;
+        }
+
+        if (pointer is { } moved && moved != _lastObservedBodyPointer)
+        {
+            _lastObservedBodyPointer = moved;
+            _stableBodyPointerObservations = 1;
         }
 
         if (!_ancientHoldLogged)
         {
             _ancientHoldLogged = true;
             if (_logger.IsInfo) _logger.Info(
-                $"Holding history pruning until the ancient bodies backfill reaches #{barrier} (currently #{pointer?.ToString() ?? "none"}).");
+                $"Holding history pruning while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).");
         }
 
         return true;

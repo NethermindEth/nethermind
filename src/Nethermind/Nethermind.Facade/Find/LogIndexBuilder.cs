@@ -74,7 +74,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
     private readonly ISyncPointers? _syncPointers;
+    private const int StallTicksBeforeGivingUp = 120;
     private int _stalledBelowBoundary = -1;
+    private int _stallTicks;
     private bool _stallWarned;
 
     public string Description => "log index builder";
@@ -101,6 +103,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         _indexRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
         _syncPointers = syncPointers;
+        if (_indexRetainedSlices && syncPointers is null && _logger.IsWarn)
+            _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -418,6 +422,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                         if (start != _stalledBelowBoundary)
                         {
                             _stalledBelowBoundary = start;
+                            _stallTicks = 0;
+                        }
+                        else if (++_stallTicks >= StallTicksBeforeGivingUp)
+                        {
+                            throw new InvalidOperationException(
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} kept a body with no readable receipts for {StallTicksBeforeGivingUp} polls - a retained height lost its receipts.");
                         }
                         else if (!_stallWarned)
                         {

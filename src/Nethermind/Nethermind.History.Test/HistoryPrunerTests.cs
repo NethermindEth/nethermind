@@ -303,12 +303,9 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
-    [TestCase(null, false, false)]
-    [TestCase(5000UL, false, false)]
-    [TestCase(1UL, true, false)]
-    [TestCase(7000UL, false, true)]
-    [TestCase(6800UL, true, true)]
-    public void SetDeletePointerToOldestBlock_holds_until_the_ancient_bodies_feed_reaches_its_barrier(ulong? bodyPointer, bool searches, bool rollingPruning)
+    [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
+    [TestCase(5000UL, true, TestName = "SetDeletePointerToOldestBlock_searches_once_the_body_pointer_is_stable")]
+    public void SetDeletePointerToOldestBlock_holds_while_the_ancient_bodies_feed_is_descending(ulong? bodyPointer, bool searchesWhenStable)
     {
         TestMemDb metadataDb = new();
         if (bodyPointer is not null)
@@ -316,19 +313,51 @@ public class HistoryPrunerTests
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
 
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
+
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
+            chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+        }
+
+        pruner.SetDeletePointerToOldestBlock();
+
+        if (searchesWhenStable)
+            chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+        else
+            chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void SetDeletePointerToOldestBlock_does_not_release_while_the_body_pointer_keeps_moving()
+    {
+        TestMemDb metadataDb = new();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
+
+        for (ulong frontier = 5000; frontier > 4990; frontier--)
+        {
+            metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(frontier).Bytes);
+            Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
+        }
+
+        chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
+    }
+
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels)
+    {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
-        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
 
-        // With rolling pruning the bodies feed stops at the cutoff (head 10_000 - 100 epochs = 6_800),
-        // so a pointer parked there means the download finished, not that it is still descending.
-        IHistoryConfig historyConfig = rollingPruning
-            ? new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = 0 }
-            : new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 };
-
-        HistoryPruner pruner = new(
+        return new HistoryPruner(
             blockTree,
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),
@@ -336,7 +365,7 @@ public class HistoryPrunerTests
             chainLevels,
             Substitute.For<IHeaderStore>(),
             dbProvider,
-            historyConfig,
+            new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 },
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true },
             new ProcessExitSource(new()),
@@ -344,13 +373,6 @@ public class HistoryPrunerTests
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
-
-        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
-
-        if (searches)
-            chainLevels.Received().LoadLevel(Arg.Any<ulong>());
-        else
-            chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
     [TestCase(5u)]

@@ -55,7 +55,6 @@ namespace Nethermind.Synchronization
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
         private readonly ISyncConfig _syncConfig;
-        private long _latchedPivot;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -137,6 +136,9 @@ namespace Nethermind.Synchronization
 
         // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
         // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
+        // An absent pointer means nothing was downloaded yet, and the static config pivot is then the floor,
+        // exactly as EthCapabilitiesProvider reads it: the live tree pivot rises with finality, so a node that
+        // never runs the descending feeds (genesis-follow, CL-discovered pivot) must fall back to zero.
         private ulong DownloadPointerFloor
         {
             get
@@ -144,35 +146,10 @@ namespace Nethermind.Synchronization
                 if (_syncPointers is null)
                     return 0;
 
-                ulong fallback = _syncConfig.FastSync ? LatchedPivot : 0;
+                ulong fallback = _syncConfig.FastSync ? _syncConfig.PivotNumber : 0;
                 return ulong.Max(
                     _syncPointers.LowestInsertedBodyNumber ?? fallback,
                     _syncPointers.LowestInsertedReceiptBlockNumber ?? fallback);
-            }
-        }
-
-        // An absent pointer only means "nothing downloaded" under fast sync, and the floor is then the pivot latched
-        // at first read: the live tree pivot rises to the finalized head, which would withdraw held history. After a
-        // restart the latch picks up the risen pivot, so the floor can only under-advertise relative to the pivot it
-        // latched; a latch taken before the CL pivot lands freezes the config pivot, which master advertised anyway.
-        private ulong LatchedPivot
-        {
-            get
-            {
-                long latched = Interlocked.Read(ref _latchedPivot);
-                if (latched != 0)
-                {
-                    return (ulong)latched;
-                }
-
-                long pivot = (long)_blockTree.SyncPivot.BlockNumber;
-                if (pivot == 0)
-                {
-                    return 0;
-                }
-
-                long original = Interlocked.CompareExchange(ref _latchedPivot, pivot, 0);
-                return (ulong)(original == 0 ? pivot : original);
             }
         }
 
@@ -525,10 +502,11 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
+            // The same floor the status handshake advertises, so a peer never sees two different earliest values.
+            ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latestBlock.Number);
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
-            if (earliest is null || earliest.Number > latestBlock.Number)
+            if (earliest is null || earliest.Number > latestBlock.Number || earliest.Number < floor)
             {
-                ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latestBlock.Number);
                 earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
             }
 

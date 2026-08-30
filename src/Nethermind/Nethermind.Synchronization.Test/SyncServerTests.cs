@@ -667,16 +667,18 @@ public class SyncServerTests
             "the eth/69 status handshake reads LowestBlock directly, so it must carry the same floor as the range broadcast");
     }
 
-    [TestCase(true, 150UL, TestName = "LowestBlock_falls_back_to_the_pivot_while_no_ancient_body_was_inserted")]
-    [TestCase(false, 1UL, TestName = "LowestBlock_ignores_the_pivot_on_a_node_with_no_descending_feed")]
+    [TestCase(true, 150UL, 1UL, TestName = "LowestBlock_falls_back_to_the_config_pivot_while_no_ancient_body_was_inserted")]
+    [TestCase(false, 150UL, 1UL, TestName = "LowestBlock_ignores_the_pivot_on_a_node_with_no_descending_feed")]
+    [TestCase(true, 0UL, 1UL, TestName = "LowestBlock_ignores_the_pivot_on_a_genesis_following_node_without_a_config_pivot")]
     [Parallelizable(ParallelScope.None)]
-    public void LowestBlock_floors_at_the_pivot_only_under_fast_sync(bool fastSync, ulong expected)
+    public void LowestBlock_floors_at_the_config_pivot_only_under_fast_sync(bool fastSync, ulong configPivot, ulong lowestStored)
     {
+        ulong expected = fastSync && configPivot != 0 ? configPivot : lowestStored;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.SyncPivot.Returns((150UL, Keccak.Zero));
+        blockTree.SyncPivot.Returns((5_000UL, Keccak.Zero));
         blockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
-        blockTree.GetLowestBlock().Returns(1UL);
+        blockTree.GetLowestBlock().Returns(lowestStored);
 
         SyncServer syncServer = new(
             Substitute.For<IWorldStateManager>(),
@@ -688,7 +690,7 @@ public class SyncServerTests
             Always.Valid,
             Substitute.For<ISyncPeerPool>(),
             StaticSelector.Full,
-            new TestSyncConfig { FastSync = fastSync },
+            new TestSyncConfig { FastSync = fastSync, PivotNumber = configPivot },
             Policy.FullGossip,
             Substitute.For<IHistoryPruner>(),
             MainnetSpecProvider.Instance,
@@ -696,7 +698,40 @@ public class SyncServerTests
             Substitute.For<ISyncPointers>());
 
         Assert.That(syncServer.LowestBlock, Is.EqualTo(expected),
-            "an absent pointer means nothing-downloaded only under fast sync; a full-sync node holds everything and must keep advertising its true boundary");
+            "the floor is the static config pivot, only under fast sync - the live tree pivot rises with finality and would withdraw held history on a genesis-following node");
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_floors_above_a_published_boundary_while_receipts_descend()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.HistoryPruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
+        ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(128).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+            "the broadcast must carry the same floor as the status handshake even when the pruner has already published a lower boundary");
     }
 
     [Test]
