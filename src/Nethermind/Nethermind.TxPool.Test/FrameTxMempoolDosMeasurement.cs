@@ -1047,9 +1047,10 @@ public class FrameTxMempoolDosMeasurement
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 new ReadOnlyTxProcessingScope(processor, worldState.BeginScope(baseBlock), worldState);
 
-            /// <remarks><c>FrameTxPrefixSimulator.Dispose</c> disposes its source expecting the env to own what
-            /// <c>Create</c> built, so a no-op here leaks the world state for the pool-side simulator too.</remarks>
-            public void Dispose() => (worldState as IDisposable)?.Dispose();
+            /// <remarks><see cref="IWorldState"/> is not disposable and the processor holds no unmanaged
+            /// resource, so the scope each <see cref="Build"/> opens is the only thing with a lifetime, and
+            /// its caller already disposes it.</remarks>
+            public void Dispose() { }
         }
     }
 }

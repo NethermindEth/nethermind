@@ -347,8 +347,8 @@ public class FrameTxFloodMeasurement
     /// policy is an attacker-economics lever, not a node-latency one, and belongs in the recommendation as
     /// such.
     /// </para>
-    /// </remarks>
-    /// <para>, which is not the rate the
+    /// <para>
+    /// The offered flood rate sits below what the generator can deliver here, which is not the rate the
     /// block-processing cases use. A production pass costs about what a rejection does, so the producer alone
     /// nearly saturates the core and the generator gets roughly the other half of it — a ceiling near
     /// <c>1 / (2 * t_reject)</c>, measured at about 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two
@@ -962,7 +962,6 @@ public class FrameTxFloodMeasurement
     private sealed class ProducerRig : IDisposable
     {
         private readonly IDisposable _stateScope;
-        private readonly IWorldState _state;
         private readonly IReleaseSpec _spec;
         private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
         private readonly ulong _ceiling;
@@ -982,9 +981,8 @@ public class FrameTxFloodMeasurement
         /// </remarks>
         public int FailingExecutions => _adapter.Attempts;
 
-        private ProducerRig(IWorldState state, IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
+        private ProducerRig(IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
         {
-            _state = state;
             _stateScope = stateScope;
             _spec = spec;
             _ceiling = ceiling;
@@ -1012,7 +1010,7 @@ public class FrameTxFloodMeasurement
 
             // One instance, wired in two phases: the eviction gate closes over the rig that is returned, so
             // the attempt counter it drives is the same one ProduceOnce reads.
-            ProducerRig rig = new(state, scope, spec, ceiling, kRetry);
+            ProducerRig rig = new(scope, spec, ceiling, kRetry);
 
             IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
             balManager.Enabled.Returns(false);
@@ -1082,11 +1080,12 @@ public class FrameTxFloodMeasurement
             }
         }
 
-        public void Dispose()
-        {
-            _stateScope.Dispose();
-            (_state as IDisposable)?.Dispose();
-        }
+        /// <remarks>
+        /// Only the scope handle: <c>TestWorldStateFactory.CreateForTest</c> keeps its trie store and db
+        /// provider internal and returns neither, and <see cref="IWorldState"/> is not disposable, so there
+        /// is nothing else here to release.
+        /// </remarks>
+        public void Dispose() => _stateScope.Dispose();
     }
 
     private static void Emit(string line)
