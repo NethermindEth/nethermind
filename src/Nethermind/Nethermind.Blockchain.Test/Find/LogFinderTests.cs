@@ -528,19 +528,18 @@ public class LogFinderTests
     }
 
     [Test]
-    public void Should_AnswerATopicOnlyFilterFromTheIndex_InsteadOfFailingClosed()
+    public void Should_FailClosedBelowTheOldestStoredBlock_ForATopicOnlyFilter()
     {
-        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
         LogFilter topicOnly = FilterBuilder.New()
             .FromBlock((ulong)BoundaryFrom).ToBlock(BoundaryTo)
             .WithAnyAddress()
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
             .Build();
 
-        FilterLog[] logs = finder.FindLogs(topicOnly, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
-
-        Assert.That(logs, Is.Empty);
-        index.Received().GetEnumerator(Arg.Any<int>(), TestItem.KeccakA, BoundaryFrom, BoundaryTo);
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(topicOnly, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray(),
+            "a sliced index holds fabricated empties below the boundary, so a topic-only filter there must refuse rather than answer silently short");
     }
 
     [Test]

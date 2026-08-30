@@ -103,9 +103,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _receiptStorage = receiptStorage;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
-        _indexRetainedSlices = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
+        bool slicesConfigured = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
+        _indexRetainedSlices = slicesConfigured && syncPointers is not null;
         _syncPointers = syncPointers;
-        if (_indexRetainedSlices && syncPointers is null && _logger.IsWarn)
+        if (slicesConfigured && syncPointers is null && _logger.IsWarn)
             _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
@@ -559,7 +560,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
             // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
             // release can over-report; healing it must invalidate the below-boundary index range first.
-            if (fabricateReclaimed && _indexRetainedSlices && blockNumber < _blockTree.GetLowestBlock())
+            if (fabricateReclaimed && _indexRetainedSlices
+                && blockNumber < _blockTree.GetLowestBlock() && blockNumber >= BackwardTargetBlockNumber)
             {
                 blockReceipts = new((int)blockNumber, []);
                 return true;

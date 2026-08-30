@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Bodies, 0, true);
 
         private const ulong DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
+        private bool _completionMarkerWritten;
         private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
@@ -108,6 +109,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
+            WriteCompletionMarkerIfDone();
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _barrier);
         }
 
@@ -188,6 +190,18 @@ namespace Nethermind.Synchronization.FastBlocks
             ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
+            WriteCompletionMarkerIfDone();
+        }
+
+        // Consumers that must not act on a mid-descent frontier (history pruning discovery) key off this
+        // marker rather than reconstructing the barrier, which drifts with the pruning cutoff.
+        private void WriteCompletionMarkerIfDone()
+        {
+            if (!_completionMarkerWritten && AllDownloaded)
+            {
+                _completionMarkerWritten = true;
+                _metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
+            }
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)

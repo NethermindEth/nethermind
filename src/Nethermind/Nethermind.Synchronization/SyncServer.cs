@@ -491,7 +491,15 @@ namespace Nethermind.Synchronization
             if (_blockTree.Head is null)
                 return;
 
-            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
+            BlockHeader latest = _blockTree.Head.Header;
+            ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latest.Number);
+            BlockHeader earliest = onNewOldestBlockArgs.OldestBlockHeader;
+            if (earliest.Number < floor)
+            {
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? earliest;
+            }
+
+            OnNewRange(earliest, latest);
         }
 
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)

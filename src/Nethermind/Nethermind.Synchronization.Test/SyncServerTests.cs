@@ -736,6 +736,38 @@ public class SyncServerTests
 
     [Test]
     [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_floors_the_pruner_published_boundary_too()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
+        ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.HistoryPruner.NewOldestBlock += Raise.EventWith(new OnNewOldestBlockArgs(Build.A.BlockHeader.WithNumber(100).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(120UL),
+            "the pruner published path must carry the same floor as the head driven one, so one peer never sees two different earliest values");
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_clamps_earliest_to_the_announced_block()
     {
         Context ctx = new();

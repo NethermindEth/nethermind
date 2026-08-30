@@ -330,16 +330,32 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public void SetDeletePointerToOldestBlock_releases_once_the_frontier_has_been_quiet_for_the_window()
+    public void SetDeletePointerToOldestBlock_releases_when_the_feed_marked_its_backfill_complete()
     {
         TestMemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
         IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
 
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, quietWindow: TimeSpan.Zero);
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
+
+        pruner.SetDeletePointerToOldestBlock();
+        chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void SetDeletePointerToOldestBlock_releases_an_absent_pointer_only_after_the_window()
+    {
+        TestMemDb metadataDb = new();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, absentWindow: TimeSpan.Zero);
 
         Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False);
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
@@ -370,7 +386,7 @@ public class HistoryPrunerTests
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? quietWindow = null)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? absentWindow = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
@@ -393,7 +409,7 @@ public class HistoryPrunerTests
             NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance)
         {
-            QuietFrontierReleaseWindow = quietWindow ?? TimeSpan.FromHours(1)
+            AbsentPointerReleaseWindow = absentWindow ?? TimeSpan.FromHours(1)
         };
     }
 

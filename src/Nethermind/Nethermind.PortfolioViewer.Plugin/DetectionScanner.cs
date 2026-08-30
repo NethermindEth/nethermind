@@ -183,6 +183,11 @@ public sealed class DetectionScanner(
     // erc20 non-null (Transfer scans): 3-topic logs are ERC-20, 4-topic are ERC-721. erc20 null (ERC-1155): all NFT.
     private void Collect(long lo, long hi, TopicsFilter topics, HashSet<string>? erc20, HashSet<string> nfts, CancellationToken token)
     {
+        // Depths below the oldest stored block cannot be answered soundly for a topic-only filter on a
+        // pruned node, so the scan starts where the data starts instead of failing chunk by chunk.
+        lo = Math.Max(lo, (long)blockFinder.GetLowestBlock());
+        if (lo > hi) return;
+
         LogFilter filter = new(0, new BlockParameter((ulong)lo), new BlockParameter((ulong)hi), AddressFilter.AnyAddress, topics)
         {
             UseIndex = true // use the per-address log index when enabled, so deep scans skip ranges with no logs

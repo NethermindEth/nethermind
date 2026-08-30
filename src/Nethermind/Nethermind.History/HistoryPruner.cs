@@ -48,9 +48,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-    internal TimeSpan QuietFrontierReleaseWindow { get; init; } = TimeSpan.FromHours(1);
-    private ulong _lastObservedBodyPointer;
-    private long _quietFrontierSince;
+    internal TimeSpan AbsentPointerReleaseWindow { get; init; } = TimeSpan.FromHours(1);
+    private long _absentPointerSince;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -373,28 +372,35 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
+        // The feed persists a completion marker when it reaches its own latched barrier, so the release
+        // never has to reconstruct a barrier that drifts with the pruning cutoff. The static barrier is a
+        // term of the feed's ComputeBarrier and so always releasable. A written pointer above it with no
+        // marker is a descent in progress - the persisted pointer only moves every flush interval, so its
+        // quietness proves nothing and the hold stays. An absent pointer is bounded by wall clock instead:
+        // after the window it is a feed that never runs, and master latched there immediately.
+        if (_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete))
+        {
+            return false;
+        }
+
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
-
-        // The static barrier is a term of the feed's own ComputeBarrier, so it is never above the feed's
-        // latched barrier: a pointer at or below it is a finished download. Above it the feed may be stopping
-        // at the pruning cutoff instead, which rises with the head and so cannot be compared against safely -
-        // there the release signal is the frontier going quiet for a long wall-clock window, since holding all
-        // of pruning behind an unreachable barrier forever would just grow the disk unbounded.
         ulong barrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
         if (pointer <= barrier)
         {
             return false;
         }
 
-        if (pointer is { } current && current != _lastObservedBodyPointer)
+        if (pointer is null)
         {
-            _lastObservedBodyPointer = current;
-            _quietFrontierSince = Stopwatch.GetTimestamp();
-        }
-        else if (pointer is not null && Stopwatch.GetElapsedTime(_quietFrontierSince) >= QuietFrontierReleaseWindow)
-        {
-            return false;
+            if (_absentPointerSince == 0)
+            {
+                _absentPointerSince = Stopwatch.GetTimestamp();
+            }
+            else if (Stopwatch.GetElapsedTime(_absentPointerSince) >= AbsentPointerReleaseWindow)
+            {
+                return false;
+            }
         }
 
         if (!_ancientHoldLogged)
