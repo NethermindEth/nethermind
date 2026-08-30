@@ -2594,6 +2594,34 @@ public class FrameTxProcessorTests
         Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
     }
 
+    [Test]
+    public void Execute_AssertionForkWithoutKeyedNoncesOrRecentRoots_RunsPostTxButRefusesTheOtherEnvelopes()
+    {
+        _spec.IsEip8250Enabled = false;
+        _spec.IsEip8272Enabled = false;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
+        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
+        keyed.NonceKeys = [(UInt256)7];
+        Transaction rooted = FrameTx(nonce: 1, SelfVerifyFrame());
+        rooted.RecentRootReferences = [];
+
+        TransactionResult postResult = Process(postTx);
+        TransactionResult keyedResult = Process(keyed);
+        TransactionResult rootedResult = Process(rooted, slotNumber: 1_001);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postResult.TransactionExecuted, Is.True, "the assertion fork must run a POST_TX frame");
+            Assert.That(keyedResult.TransactionExecuted, Is.False, "keyed nonces must stay refused before their fork");
+            Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
+            Assert.That(rootedResult.TransactionExecuted, Is.False, "recent-root references must stay refused before their fork");
+            Assert.That(rootedResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+        }
+    }
+
     /// <remarks>A set built from RPC input reaches the processor uncapped, so rejecting it before
     /// <c>Measure</c> keeps that method's bounded <c>stackalloc</c> from an out-of-range slice.</remarks>
     [Test]
@@ -3501,5 +3529,86 @@ public class FrameTxProcessorTests
 
         Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
         return (ulong)_stateProvider.Get(new StorageCell(Observer, 0)).ToUnsignedBigInteger();
+    }
+
+    [TestCase(Instruction.APPROVE, (byte)0xAA, TestName = "RegistryByte_APPROVE_0xAA")]
+    [TestCase(Instruction.TXPARAM, (byte)0xB0, TestName = "RegistryByte_TXPARAM_0xB0")]
+    [TestCase(Instruction.FRAMEDATALOAD, (byte)0xB1, TestName = "RegistryByte_FRAMEDATALOAD_0xB1")]
+    [TestCase(Instruction.FRAMEDATACOPY, (byte)0xB2, TestName = "RegistryByte_FRAMEDATACOPY_0xB2")]
+    [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
+    [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
+    [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
+    [TestCase(Instruction.RECENTROOTREFLOAD, (byte)0xB6, TestName = "RegistryByte_RECENTROOTREFLOAD_0xB6")]
+    [TestCase(Instruction.TXTRACE, (byte)0xB7, TestName = "RegistryByte_TXTRACE_0xB7")]
+    [TestCase(Instruction.TXDIFF, (byte)0xB8, TestName = "RegistryByte_TXDIFF_0xB8")]
+    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB9, TestName = "RegistryByte_EVENTDATACOPY_0xB9")]
+    public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
+        => Assert.That((byte)opcode, Is.EqualTo(registryByte));
+
+    [TestCase((byte)0xBA, TestName = "UnallocatedFrameOpcode_0xBA_Halts")]
+    [TestCase((byte)0xBB, TestName = "UnallocatedFrameOpcode_0xBB_Halts")]
+    [TestCase((byte)0xBC, TestName = "UnallocatedFrameOpcode_0xBC_Halts")]
+    [TestCase((byte)0xBD, TestName = "UnallocatedFrameOpcode_0xBD_Halts")]
+    [TestCase((byte)0xBE, TestName = "UnallocatedFrameOpcode_0xBE_Halts")]
+    [TestCase((byte)0xBF, TestName = "UnallocatedFrameOpcode_0xBF_Halts")]
+    public void Execute_UnallocatedFrameRangeOpcode_ExceptionallyHalts(byte opcode)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .Op(opcode)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, UInt256.Zero);
+    }
+
+    [Test]
+    public void Execute_KeyedNonceForkWithoutReferencesOrAssertions_RunsKeyedAndRefusesTheOtherEnvelopes()
+    {
+        _spec.IsEip8272Enabled = false;
+        _spec.IsEip7906Enabled = false;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
+        keyed.NonceKeys = [1, 7];
+        Assert.That(Process(keyed).TransactionExecuted, Is.True);
+
+        Transaction referencing = FrameTx(nonce: 0, SelfVerifyFrame());
+        referencing.RecentRootReferences = [];
+        TransactionResult referencingResult = Process(referencing, slotNumber: HeadSlot);
+        Assert.That(referencingResult.TransactionExecuted, Is.False);
+        Assert.That(referencingResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
+
+        Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
+        TransactionResult postTxResult = Process(postTx);
+        Assert.That(postTxResult.TransactionExecuted, Is.False);
+        Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+    }
+
+    [Test]
+    public void Execute_ReferenceForkWithoutKeyedNoncesOrAssertions_RunsReferenceAndRefusesTheOtherEnvelopes()
+    {
+        _spec.IsEip8250Enabled = false;
+        _spec.IsEip7906Enabled = false;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction referencing = FrameTx(nonce: 0, SelfVerifyFrame());
+        referencing.RecentRootReferences = [CommitReference(ReferencedSlot)];
+        Assert.That(Process(referencing, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+
+        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
+        keyed.NonceKeys = [7];
+        TransactionResult keyedResult = Process(keyed);
+        Assert.That(keyedResult.TransactionExecuted, Is.False);
+        Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
+
+        Transaction postTx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
+        TransactionResult postTxResult = Process(postTx);
+        Assert.That(postTxResult.TransactionExecuted, Is.False);
+        Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
     }
 }
