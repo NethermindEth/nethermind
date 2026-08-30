@@ -37,7 +37,10 @@ public partial class EngineModuleTests
         EngineRpcCapabilitiesProvider enabledProvider = new(new TestSingleReleaseSpecProvider(enabledSpec));
         EngineRpcCapabilitiesProvider disabledProvider = new(new TestSingleReleaseSpecProvider(disabledSpec));
 
-        Assert.That(enabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.True);
-        Assert.That(disabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.True);
+            Assert.That(disabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.False);
+        }
     }
 }

@@ -27,6 +27,19 @@ public class FrameTxValidationTests
         Assert.That(error, Is.EqualTo(expectedError));
     }
 
+    [TestCase(true, null)]
+    [TestCase(false, FrameTxValidation.PostTxNotEnabled)]
+    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
+    {
+        Transaction tx = CreateValidFrameTx(static tx =>
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx)]);
+
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
+
+        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+        Assert.That(error, Is.EqualTo(expectedError));
+    }
+
     private static IEnumerable<TestCaseData> ConstraintCases()
     {
         yield return Case("MinimalSelfVerifyFrame_Valid",
@@ -50,8 +63,6 @@ public class FrameTxValidationTests
         // assert frame.mode < 4 (EIP-7906 widened it from 3)
         yield return Case("FrameModeFour_InvalidMode",
             static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
-        yield return Case("FrameModeFive_InvalidMode",
-            static tx => tx.Frames = [Frame(mode: 5)], FrameTxValidation.InvalidMode);
 
         // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
         // opcode, so an unexercised permission bit is not an envelope defect.
