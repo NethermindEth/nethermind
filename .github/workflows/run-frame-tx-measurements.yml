@@ -65,7 +65,14 @@ jobs:
 
           # `dotnet test` would build in-job, leaving MSBuild workers and VBCSCompiler resident through
           # the measurement.
-          for project in Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test; do
+          projects=()
+          case "${HARNESS}" in
+            both)           projects=(Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
+            verify)         projects=(Nethermind.Evm.Test) ;;
+            mempool)        projects=(Nethermind.TxPool.Test) ;;
+            flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
+          esac
+          for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
           done
           dotnet build-server shutdown || true
@@ -86,19 +93,26 @@ jobs:
             export FRAME_FLOOD_OUT="${results}"
 
             # Setting ProcessorAffinity in-process reports success without confining the threads, so the
-            # single-core contention this harness measures has to be imposed from outside.
+            # single-core contention this harness measures has to be imposed from outside. Unpinned, this
+            # harness measures no flood effect at all, which is indistinguishable from a real negative result.
+            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]] && ! command -v taskset >/dev/null; then
+              echo "::error::taskset is not available, so ${fixture} cannot be confined to one CPU and its figures would describe an uncontended node."
+              echo "::endgroup::"
+              return 1
+            fi
+
             local -a cmd=(
               dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore --
               --no-ansi --filter "FullyQualifiedName~${fixture}"
             )
-            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]] && command -v taskset >/dev/null; then
+            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]]; then
               cmd=(taskset -c 0 "${cmd[@]}")
             fi
 
             "${cmd[@]}" 2>&1 | tee "${OUTPUT_DIR}/${fixture}.log" || rc=$?
 
             # Self-ignored cases leave no RESULT lines, which would otherwise pass as a green run.
-            if [[ ! -s "${results}" ]]; then
+            if ! grep -q '^RESULT ' "${results}" 2>/dev/null; then
               echo "::error::${fixture} produced no RESULT lines. Check that its inputs are present on the runner."
               rc=1
             fi
