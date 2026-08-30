@@ -316,6 +316,25 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Scan_already_below_the_floor_completes_without_querying()
+    {
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 20, 100, false, 0));
+        _blockFinder.GetLowestBlock().Returns(50UL);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Complete, Is.True);
+            Assert.That(entry.ScannedFrom, Is.EqualTo(0));
+            Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
+            _logFinder.DidNotReceive().FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Test]
     public async Task Fresh_scan_reads_head_from_block_finder()
     {
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
