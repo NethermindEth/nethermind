@@ -13,6 +13,7 @@ on:
           - mempool
           - flood
           - producer-retry
+          - prefix-retry
         default: both
       groth16_artifacts:
         description: Path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases self-ignore.
@@ -71,6 +72,8 @@ jobs:
             verify)         projects=(Nethermind.Evm.Test) ;;
             mempool)        projects=(Nethermind.TxPool.Test) ;;
             flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
+            prefix-retry)   projects=(Nethermind.TxPool.Test) ;;
+            *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
           esac
           for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
@@ -135,17 +138,26 @@ jobs:
             run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so a
-            # supplied artifact path is required to produce some privacy row rather than all of them.
-            privacy_rows=''
-            if [[ -n "${FRAME_GROTH16_ARTIFACTS}" ]]; then privacy_rows='shape=groth16-'; fi
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "${privacy_rows}" || status=1
+            # Unset, the privacy cases self-ignore while the adversarial ones still emit rows, so the run
+            # would go green having skipped the workload this harness exists to price.
+            if [[ -z "${FRAME_GROTH16_ARTIFACTS}" ]]; then
+              echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
+              status=1
+            else
+              # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so the
+              # marker requires some privacy row rather than all of them.
+              run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement 'shape=groth16-' || status=1
+            fi
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement || status=1
+          fi
+          # Not in `both`: it wires no simulator, so it measures pool retention rather than a campaign metric.
+          if [[ "${HARNESS}" == "prefix-retry" ]]; then
+            run_harness Nethermind.TxPool.Test FrameTxPrefixRetryMeasurement || status=1
           fi
 
           exit "${status}"
