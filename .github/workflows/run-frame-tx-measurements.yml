@@ -75,13 +75,22 @@ jobs:
             prefix-retry)   projects=(Nethermind.TxPool.Test) ;;
             *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
           esac
+
+          # Decided here rather than at the mempool leg: both defaults together are fatal, and the shared
+          # runner should not spend three builds and a full verify measurement before saying so.
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]] && [[ -z "${FRAME_GROTH16_ARTIFACTS}" ]]; then
+            echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
+            exit 1
+          fi
           for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
           done
           dotnet build-server shutdown || true
 
+          ran=0
           run_harness() {
             local project=$1 fixture=$2 required=${3:-} rc=0
+            ran=$((ran + 1))
             if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
               echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
               return 1
@@ -122,7 +131,7 @@ jobs:
 
             # A file that is merely non-empty is not evidence that the case an input was supplied for ran:
             # the cases that need it self-ignore while the rest of the fixture still reports.
-            if [[ -n "${required}" ]] && ! grep -qF -- "${required}" "${results}"; then
+            if [[ -n "${required}" ]] && ! grep -qF -- "${required}" "${results}" 2>/dev/null; then
               echo "::error::${fixture} reported no '${required}' rows, though an input for them was supplied. Check that the path resolves on the runner."
               rc=1
             fi
@@ -138,16 +147,9 @@ jobs:
             run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            # Unset, the privacy cases self-ignore while the adversarial ones still emit rows, so the run
-            # would go green having skipped the workload this harness exists to price.
-            if [[ -z "${FRAME_GROTH16_ARTIFACTS}" ]]; then
-              echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
-              status=1
-            else
-              # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so the
-              # marker requires some privacy row rather than all of them.
-              run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement 'shape=groth16-' || status=1
-            fi
+            # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so the
+            # marker requires some privacy row rather than all of them.
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement 'shape=groth16-' || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement || status=1
@@ -158,6 +160,13 @@ jobs:
           # Not in `both`: it wires no simulator, so it measures pool retention rather than a campaign metric.
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
             run_harness Nethermind.TxPool.Test FrameTxPrefixRetryMeasurement || status=1
+          fi
+
+          # The build mapping and the dispatch blocks are two hand-maintained lists; this catches an option
+          # added to one and forgotten in the other, which would otherwise exit 0 with an empty OUTPUT_DIR.
+          if [[ "${ran}" -eq 0 ]]; then
+            echo "::error::harness '${HARNESS}' ran no fixture. It has a build mapping but no dispatch block."
+            status=1
           fi
 
           exit "${status}"
