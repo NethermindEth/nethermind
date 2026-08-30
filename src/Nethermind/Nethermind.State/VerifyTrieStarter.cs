@@ -43,9 +43,6 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             }
             catch (Exception e) when (IsCancellation(e))
             {
-                // The parallel trie walk in CollectStats surfaces shutdown cancellation as an
-                // AggregateException of TaskCanceledExceptions, which a plain OperationCanceledException
-                // catch would miss and mislog as an error.
                 if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
             }
             catch (Exception e)
@@ -58,10 +55,14 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
         return true;
     }
 
-    // A cancelled verify trie is expected on shutdown and is not an error. Cancellation can arrive
-    // either as a single OperationCanceledException or, from the parallel stats collection, as an
-    // AggregateException whose leaves are all cancellations. A real fault occurring alongside the
-    // cancellation leaves a non-cancellation leaf, so it is still surfaced as an error.
+    /// <summary>Whether an exception thrown by the verify-trie run represents cancellation rather than a fault.</summary>
+    /// <remarks>
+    /// The stats walk runs in parallel (<c>BatchedTrieVisitor</c> / <c>FlatTrieVerifier</c> do
+    /// <c>Task.WaitAll</c>), so shutdown cancellation surfaces as an <see cref="AggregateException"/> of
+    /// <see cref="OperationCanceledException"/>s, not a single one. Only an aggregate whose leaves are
+    /// <em>all</em> cancellations counts as cancelled: a real fault raised alongside the cancellation
+    /// leaves a non-cancellation leaf and is still surfaced as an error.
+    /// </remarks>
     private static bool IsCancellation(Exception exception) => exception switch
     {
         OperationCanceledException => true,
@@ -71,15 +72,17 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
 
     private static bool IsAllCancellation(AggregateException exception)
     {
-        foreach (Exception inner in exception.Flatten().InnerExceptions)
+        bool any = false;
+        foreach (Exception leaf in exception.Flatten().InnerExceptions)
         {
-            if (inner is not OperationCanceledException)
+            any = true;
+            if (leaf is not OperationCanceledException)
             {
                 return false;
             }
         }
 
-        return true;
+        return any;
     }
 }
 

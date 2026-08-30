@@ -27,8 +27,8 @@ public class VerifyTrieStarterTests
         CapturingLogManager logManager = RunVerifyTrieThatThrows(
             new AggregateException(new TaskCanceledException(), new TaskCanceledException()));
 
+        Assert.That(() => logManager.Infos, Has.Some.Contains("Verify trie cancelled").After(5000, 20));
         Assert.That(logManager.Errors, Is.Empty);
-        Assert.That(logManager.Infos, Has.Some.Contains("Verify trie cancelled"));
     }
 
     [Test]
@@ -39,7 +39,7 @@ public class VerifyTrieStarterTests
         CapturingLogManager logManager = RunVerifyTrieThatThrows(
             new AggregateException(new TaskCanceledException(), new InvalidOperationException("boom")));
 
-        Assert.That(logManager.Errors, Has.Some.Contains("Error in verify trie"));
+        Assert.That(() => logManager.Errors, Has.Some.Contains("Error in verify trie").After(5000, 20));
     }
 
     private static CapturingLogManager RunVerifyTrieThatThrows(Exception toThrow)
@@ -56,8 +56,6 @@ public class VerifyTrieStarterTests
         VerifyTrieStarter starter = new(worldStateManager, exitSource, logManager);
 
         Assert.That(starter.TryStartVerifyTrie(Build.A.BlockHeader.TestObject), Is.True);
-        // Verify runs on a background thread; wait until it records its verdict.
-        Assert.That(() => logManager.Total, Is.GreaterThan(0).After(5000, 20));
         return logManager;
     }
 
@@ -65,7 +63,6 @@ public class VerifyTrieStarterTests
     {
         public ConcurrentQueue<string> Infos { get; } = new();
         public ConcurrentQueue<string> Errors { get; } = new();
-        public int Total => Infos.Count + Errors.Count;
 
         public ILogger GetClassLogger<T>() => new(new Logger(this));
         public ILogger GetLogger(string loggerName) => new(new Logger(this));

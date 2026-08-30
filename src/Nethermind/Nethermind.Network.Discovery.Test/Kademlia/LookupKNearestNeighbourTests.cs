@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -21,7 +25,7 @@ public class LookupKNearestNeighbourTests
     private const int N1 = 4;
     private const int N2 = 5;
 
-    private static (LookupKNearestNeighbour<int, int, int> Lookup, IRoutingTable<int, int> Routing, INodeHealthTracker<int> Health) CreateLookup(int alpha, TimeSpan hardTimeout, int[] seeds)
+    private static (LookupKNearestNeighbour<int, int, int> Lookup, IRoutingTable<int, int> Routing, INodeHealthTracker<int> Health) CreateLookup(int alpha, TimeSpan hardTimeout, int[] seeds, ILoggerFactory? loggerFactory = null)
     {
         IRoutingTable<int, int> routing = Substitute.For<IRoutingTable<int, int>>();
         routing.GetKNearestNeighbour(Arg.Any<int>(), Arg.Any<bool>()).Returns(seeds);
@@ -39,7 +43,8 @@ public class LookupKNearestNeighbourTests
                 Alpha = alpha,
                 KSize = 8,
                 LookupFindNeighbourHardTimeout = hardTimeout,
-            });
+            },
+            loggerFactory ?? NullLoggerFactory.Instance);
 
         return (lookup, routing, health);
     }
@@ -234,5 +239,61 @@ public class LookupKNearestNeighbourTests
             token);
 
         Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_transport_failure_is_not_logged_as_warning(CancellationToken token)
+    {
+        // A torn-down channel raises DotNetty's ClosedChannelException (: IOException); like a
+        // SocketException it is expected transport churn and must not be reported at warning.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
+
+        _ = await lookup.Lookup(Self, 8, (_, _) => throw new IOException("channel closed"), token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_unexpected_failure_is_logged_as_warning(CancellationToken token)
+    {
+        // A non-transport failure is unexpected and should still be reported.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
+
+        _ = await lookup.Lookup(Self, 8, (_, _) => throw new InvalidOperationException("boom"), token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.True);
+    }
+
+    private readonly record struct LogEntry(LogLevel Level, string Message);
+
+    private sealed class CapturingLoggerFactory(ILogger logger) : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        private readonly ConcurrentQueue<LogEntry> _entries = new();
+        public IEnumerable<LogEntry> Entries => _entries;
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => _entries.Enqueue(new LogEntry(logLevel, formatter(state, exception)));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose() { }
+        }
     }
 }
