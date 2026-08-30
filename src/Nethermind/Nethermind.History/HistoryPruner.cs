@@ -62,7 +62,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
     private readonly ISyncConfig _syncConfig;
-    private bool _ancientHoldLogged;
+    private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
+    private long _ancientHoldLastLogged;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
@@ -403,9 +404,9 @@ public class HistoryPruner : IHistoryPruner
             }
         }
 
-        if (!_ancientHoldLogged)
+        if (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval)
         {
-            _ancientHoldLogged = true;
+            _ancientHoldLastLogged = Stopwatch.GetTimestamp();
             if (_logger.IsInfo) _logger.Info(
                 $"Holding history pruning while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).");
         }

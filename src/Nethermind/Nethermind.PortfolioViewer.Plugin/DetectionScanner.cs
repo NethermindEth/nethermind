@@ -86,13 +86,15 @@ public sealed class DetectionScanner(
         {
             DetectionEntry? existing = cache.Get(chainId, account.ToString());
             long curHead = (long)(blockFinder.Head?.Number ?? 0);
+            // Clamped where the cursors and completion flags derive, so both walks stop at the floor in one pass.
+            long floor = (long)blockFinder.GetLowestBlock();
             int chunk = CurrentChunk(key);
 
             // Forward phase: cover blocks since the last scan first, so freshly-received tokens surface before
             // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
-                long flo = Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks);
+                long flo = Math.Max(floor, Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks));
                 long fhi = Math.Min(curHead, flo + chunk - 1);
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
@@ -129,8 +131,6 @@ public sealed class DetectionScanner(
 
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
-            // Clamped here rather than per topic filter, so the cursor and the completion flag stop at the floor in one pass.
-            long floor = (long)blockFinder.GetLowestBlock();
             if (hi <= 0 || hi < floor) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
             long lo = Math.Max(floor, Math.Max(0, hi - chunk + 1));
 
