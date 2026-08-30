@@ -49,6 +49,7 @@ jobs:
           HARNESS: ${{ inputs.harness }}
         run: |
           set -uo pipefail
+          rm -rf "${OUTPUT_DIR}"
           mkdir -p "${OUTPUT_DIR}"
 
           run_harness() {
@@ -58,7 +59,12 @@ jobs:
               return 1
             fi
             echo "::group::${fixture}"
-            dotnet test --project "${project}/${project}.csproj" -c release -- \
+            if ! dotnet build "${project}/${project}.csproj" -c release; then
+              echo "::endgroup::"
+              return 1
+            fi
+            dotnet build-server shutdown || true
+            dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore -- \
               --no-ansi --filter "FullyQualifiedName~${fixture}" \
               2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
             echo "::endgroup::"
