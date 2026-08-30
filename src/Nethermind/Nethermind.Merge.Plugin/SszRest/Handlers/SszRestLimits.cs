@@ -4,7 +4,7 @@
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Single source of truth for Engine API v2 REST request-size limits.
+/// Single source of truth for Engine API REST request-size limits.
 /// </summary>
 /// <remarks>
 /// Per <c>execution-apis#793</c>: <c>MAX_BODIES_REQUEST = 2**5 = 32</c>,
