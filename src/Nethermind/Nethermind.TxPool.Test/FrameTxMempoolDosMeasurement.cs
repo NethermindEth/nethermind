@@ -378,7 +378,6 @@ public class FrameTxMempoolDosMeasurement
         // against the gas it actually burned.
         ulong burnedGas = shape == "banned-opcode" ? _frameExecutionGasLimit : gas.Burned;
 
-
         long probeFailuresBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
 
         // The guard. Without it a harness whose transaction is dropped by a cheaper upstream filter, or
@@ -1048,7 +1047,9 @@ public class FrameTxMempoolDosMeasurement
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 new ReadOnlyTxProcessingScope(processor, worldState.BeginScope(baseBlock), worldState);
 
-            public void Dispose() { }
+            /// <remarks><c>FrameTxPrefixSimulator.Dispose</c> disposes its source expecting the env to own what
+            /// <c>Create</c> built, so a no-op here leaks the world state for the pool-side simulator too.</remarks>
+            public void Dispose() => (worldState as IDisposable)?.Dispose();
         }
     }
 }

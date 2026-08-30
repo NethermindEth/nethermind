@@ -8,6 +8,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using System.IO;
 using System.Threading;
@@ -208,15 +209,17 @@ public class FrameTxFloodMeasurement
     /// </remarks>
     private static bool IsSingleCore()
     {
-        if (OperatingSystem.IsWindows())
+        string set = ObservedCpuSet();
+
+        // Windows reports an affinity bitmask rather than a list, so one allowed CPU is one set bit. Reading
+        // it back through ObservedCpuSet keeps the single Process access inside that method's handler.
+        if (set.StartsWith("mask:", StringComparison.Ordinal))
         {
-            // ProcessorAffinity is a bitmask, not a list: one allowed CPU is exactly one set bit. Parsing it
-            // as a list would read an unconfined 8-core box's mask of 255 as a single CPU.
-            using Process current = Process.GetCurrentProcess();
-            return BitOperations.PopCount((ulong)(nint)current.ProcessorAffinity) == 1;
+            return ulong.TryParse(set["mask:".Length..], NumberStyles.HexNumber, CultureInfo.InvariantCulture,
+                       out ulong mask)
+                   && BitOperations.PopCount(mask) == 1;
         }
 
-        string set = ObservedCpuSet();
         return set.Length > 0
                && set != "unknown"
                && !set.Contains(',', StringComparison.Ordinal)
@@ -345,14 +348,14 @@ public class FrameTxFloodMeasurement
     /// such.
     /// </para>
     /// </remarks>
-    /// <remarks>
-    /// The flood rate sits below what the generator can deliver here, which is not the rate the
+    /// <para>, which is not the rate the
     /// block-processing cases use. A production pass costs about what a rejection does, so the producer alone
     /// nearly saturates the core and the generator gets roughly the other half of it — a ceiling near
     /// <c>1 / (2 * t_reject)</c>, measured at about 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two
     /// arms on one run, which compares two different loads rather than two retry policies. Staying under the
     /// ceiling is what leaves <c>K_retry</c> as the only variable, and <c>flood_achieved_rate</c> on each row
     /// is what lets a reader confirm it.
+    /// </para>
     /// </remarks>
     [TestCase(1, 0)]
     [TestCase(8, 0)]
@@ -959,6 +962,7 @@ public class FrameTxFloodMeasurement
     private sealed class ProducerRig : IDisposable
     {
         private readonly IDisposable _stateScope;
+        private readonly IWorldState _state;
         private readonly IReleaseSpec _spec;
         private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
         private readonly ulong _ceiling;
@@ -978,8 +982,9 @@ public class FrameTxFloodMeasurement
         /// </remarks>
         public int FailingExecutions => _adapter.Attempts;
 
-        private ProducerRig(IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
+        private ProducerRig(IWorldState state, IDisposable stateScope, IReleaseSpec spec, ulong ceiling, int kRetry)
         {
+            _state = state;
             _stateScope = stateScope;
             _spec = spec;
             _ceiling = ceiling;
@@ -1002,11 +1007,12 @@ public class FrameTxFloodMeasurement
             EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
             EthereumTransactionProcessor processor = new(
                 BlobBaseFeeCalculator.Instance, specProvider, state, vm, codeInfo, LimboLogs.Instance);
-            CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(processor));
+            // Counted but not probed: this adapter's executions are inside the timed span.
+            CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(processor), measureBurn: false);
 
             // One instance, wired in two phases: the eviction gate closes over the rig that is returned, so
             // the attempt counter it drives is the same one ProduceOnce reads.
-            ProducerRig rig = new(scope, spec, ceiling, kRetry);
+            ProducerRig rig = new(state, scope, spec, ceiling, kRetry);
 
             IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
             balManager.Enabled.Returns(false);
@@ -1067,7 +1073,6 @@ public class FrameTxFloodMeasurement
             _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
             receiptsTracer.EndBlockTrace();
 
-
             // Replaced rather than retired, so residency stays at one and every pass has the same work.
             if (_attemptsOnCurrent >= _kRetry)
             {
@@ -1077,7 +1082,11 @@ public class FrameTxFloodMeasurement
             }
         }
 
-        public void Dispose() => _stateScope.Dispose();
+        public void Dispose()
+        {
+            _stateScope.Dispose();
+            (_state as IDisposable)?.Dispose();
+        }
     }
 
     private static void Emit(string line)

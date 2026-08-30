@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -14,11 +16,21 @@ namespace Nethermind.Blockchain.Test;
 /// one burned inside its frame.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Shared by the EIP-8141 measurement harnesses because a pass counter cannot stand in for it: a producer
 /// that stopped re-executing a failing prefix would still run its passes, so a guard built on passes holds
 /// while the measurement describes an ordinary empty block.
+/// </para>
+/// <para>
+/// <paramref name="measureBurn"/> is opt-out because <see cref="BudgetProbe"/> sets
+/// <c>IsTracingInstructions</c>, which <c>CompositeTxTracer</c> ORs into the tracer the processor sees — so
+/// an execution that would otherwise run untraced takes the EVM's instrumented specialisation instead. A
+/// caller timing that execution must not pay it; production block building does not trace instructions.
+/// </para>
 /// </remarks>
-internal sealed class CountingAdapter(ITransactionProcessorAdapter inner) : ITransactionProcessorAdapter
+/// <param name="measureBurn">Whether to attach the gas probe. Leave off when the execution is being timed.</param>
+internal sealed class CountingAdapter(ITransactionProcessorAdapter inner, bool measureBurn = true)
+    : ITransactionProcessorAdapter
 {
     public int Attempts { get; private set; }
 
@@ -27,6 +39,8 @@ internal sealed class CountingAdapter(ITransactionProcessorAdapter inner) : ITra
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         Attempts++;
+        if (!measureBurn) return inner.Execute(transaction, txTracer);
+
         BudgetProbe probe = new();
         TransactionResult result = inner.Execute(transaction, new CompositeTxTracer(txTracer, probe));
         BurnedPerAttempt.Add(probe.Consumed);
