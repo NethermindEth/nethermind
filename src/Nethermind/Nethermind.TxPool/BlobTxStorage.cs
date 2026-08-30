@@ -229,6 +229,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
         IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+        // Obsolete timestamps can include the current one; remove first so the ordered batch's final put preserves it.
         for (int i = 0; i < obsoleteTimestamps.Length; i++)
         {
             GetHashPrefixedByTimestamp(obsoleteTimestamps[i], hash, txHashPrefixed);

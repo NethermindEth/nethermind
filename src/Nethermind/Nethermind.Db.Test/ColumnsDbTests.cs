@@ -108,6 +108,22 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void WriteBatch_PutSpan_DoesNotCopyValueToManagedArray()
+    {
+        const int valueLength = 128 * 1024;
+        byte[] value = GC.AllocateUninitializedArray<byte>(valueLength);
+        using IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch();
+        IWriteBatch column = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+        column.PutSpan(TestItem.KeccakA.Bytes, [1]);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        column.PutSpan(TestItem.KeccakB.Bytes, value);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocated, Is.LessThan(valueLength));
+    }
+
+    [Test]
     public void SmokeTest_Snapshot()
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
