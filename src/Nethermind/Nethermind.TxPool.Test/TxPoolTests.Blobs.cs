@@ -629,17 +629,11 @@ namespace Nethermind.TxPool.Test
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
             Transaction secondTransaction = CreateBlobTx(TestItem.PrivateKeyB);
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                BlobCacheSize = 1,
-                PersistentBlobStorageSize = 2
-            };
-            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
-            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingBatchDeleteBlobTxStorage storage,
+                out _,
+                out IAccountStateProvider accounts);
 
             Assert.That(
                 () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
@@ -661,17 +655,11 @@ namespace Nethermind.TxPool.Test
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
             UInt256 originalTimestamp = transaction.Timestamp;
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                BlobCacheSize = 1,
-                PersistentBlobStorageSize = 2
-            };
-            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
-            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingBatchDeleteBlobTxStorage storage,
+                out _,
+                out IAccountStateProvider accounts);
 
             Assert.That(
                 () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
@@ -704,17 +692,11 @@ namespace Nethermind.TxPool.Test
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
             UInt256 originalTimestamp = transaction.Timestamp;
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                BlobCacheSize = 1,
-                PersistentBlobStorageSize = 2
-            };
-            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
-            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingBatchDeleteBlobTxStorage storage,
+                out _,
+                out IAccountStateProvider accounts);
 
             Assert.That(
                 () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
@@ -742,18 +724,14 @@ namespace Nethermind.TxPool.Test
             TestSpecProvider specProvider = new(Cancun.Instance);
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             UInt256 originalTimestamp = transaction.Timestamp;
-            FailingBatchDeleteBlobTxStorage storage = new();
-            storage.Add(transaction);
-            TxPoolConfig txPoolConfig = new()
-            {
-                BlobsSupport = BlobsSupportMode.Storage,
-                BlobCacheSize = 1,
-                PersistentBlobStorageSize = 2
-            };
-            IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer();
-            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
-
-            using (PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance))
+            FailingBatchDeleteBlobTxStorage storage;
+            TxPoolConfig txPoolConfig;
+            using (PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out storage,
+                out txPoolConfig,
+                out IAccountStateProvider accounts,
+                specProvider))
             {
                 Assert.That(
                     () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
@@ -796,6 +774,26 @@ namespace Nethermind.TxPool.Test
                 Assert.That(elidedTransactionPersisted, Is.True);
                 Assert.That(storage.GetAll(), Is.Not.Empty);
             }
+        }
+
+        private PersistentBlobTxDistinctSortedPool CreateFailingBlobPool(
+            Transaction transaction,
+            out FailingBatchDeleteBlobTxStorage storage,
+            out TxPoolConfig txPoolConfig,
+            out IAccountStateProvider accounts,
+            ISpecProvider specProvider = null)
+        {
+            storage = new FailingBatchDeleteBlobTxStorage();
+            storage.Add(transaction);
+            txPoolConfig = new TxPoolConfig
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider ?? _specProvider, _blockTree).GetDefaultComparer();
+            accounts = Substitute.For<IAccountStateProvider>();
+            return new PersistentBlobTxDistinctSortedPool(storage, txPoolConfig, comparer, LimboLogs.Instance);
         }
 
         [Test]
