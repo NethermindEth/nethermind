@@ -25,6 +25,27 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
+    [ConfigItem(Description = "Bounded rolling-window retention for flat history, in blocks below the watermark. 0 disables windowing: history is retained unbounded from genesis/pivot, today's shipped behavior.", DefaultValue = "0")]
+    ulong HistoryRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "How many blocks the watermark must advance before an idle history window pruner wakes and re-evaluates the floor. A pruner still owing sweep work paces itself on its pass budget instead. Only consulted when HistoryRetentionBlocks is set.", DefaultValue = "1024")]
+    ulong HistoryPruneIntervalBlocks { get; set; }
+
+    [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded. Must exceed the longest historical query the node serves: deletes wait for in-flight historical reads, and a read that outlives every pass blocks reclamation until it finishes.", DefaultValue = "5")]
+    int HistoryPrunePassBudgetSeconds { get; set; }
+
+    [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Static allow-list only - an address is never added or removed except by editing this config and restarting. Both the receipts and the whole block body are retained for every block one of these addresses appears in, so those heights keep their transactions queryable and not just their logs. The cost is body disk: a contract busy enough to match most blocks means most of those bodies are kept, and history pruning stops reclaiming body space over that range. An entry with a retention suffix keeps bodies and receipts only while a height is within that many blocks of the head; a cleanup cursor reclaims them after they fall out. An entry without a retention suffix retains forever and pins the whole clears column and the per-block markers (~40 bytes per block the window never reclaims). Answering below a previously pruned boundary requires History.Pruning to stay enabled: the pruner is what validates, at startup, from which depth each slice's logs are provably retained, and without it those reads fail closed.", DefaultValue = "null")]
+    string? HistorySliceAddresses { get; set; }
+
+    [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only; memory-heavy on large ranges.", DefaultValue = "false")]
+    bool HistoryVerifyEveryBlock { get; set; }
+
+    [ConfigItem(Description = "Concurrent segments the every-block history verification splits its range into. Each segment is independently anchored to its own start header, so segments share nothing but the read-only columns. 0 means half the processor count.", DefaultValue = "0")]
+    int HistoryVerifySegments { get; set; }
+
+    [ConfigItem(Description = "Rows the every-block history verification may hold in memory before it declines the run. Its working set follows state size rather than range length, so a full archive needs a large value and a machine to match. 0 uses the built-in ceiling.", DefaultValue = "0")]
+    long HistoryVerifyMaxRows { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

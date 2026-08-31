@@ -58,6 +58,7 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
         {
             if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
             await Channel.WriteAndFlushAsync(packet).WaitAsync(token);
+            Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
         }
         catch (SocketException exception)
         {

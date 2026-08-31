@@ -41,7 +41,7 @@ public class DbConfig : IDbConfig
         // Increase it to reduce stalls under heavy compaction.
         "max_compaction_bytes=4000000000;" +
 
-        "compression=kSnappyCompression;" +
+        "compression=kLZ4Compression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
 

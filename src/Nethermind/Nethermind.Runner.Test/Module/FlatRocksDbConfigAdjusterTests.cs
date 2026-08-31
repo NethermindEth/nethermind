@@ -80,6 +80,33 @@ public class FlatRocksDbConfigAdjusterTests
     }
 
     [Test]
+    public void FlatHistoryDatabase_WithRetention_EnablesCompactOnDeletions_ForTheNameTheDatabaseActuallyPasses()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetentionBlocks.Returns(450_000UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result.CompactOnDeletions, Is.True,
+            "the collector must install for the title-cased name DbOnTheRocks passes, not for the lower-cased registration constant");
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_WithoutRetention_LeavesCompactOnDeletionsOff()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetentionBlocks.Returns(0UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result.CompactOnDeletions, Is.False);
+    }
+
+    [Test]
     public void FlatDatabase_DelegatesToBaseFactoryWithCorrectParameters()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);

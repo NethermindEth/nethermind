@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -50,7 +51,21 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             localIp = IPAddress.Loopback;
         }
 
-        return new IIPResolver.NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
+        IPAddress? configuredExternalIp = TryGetExternalIpOverride(_networkConfig.ExternalIp, nameof(NetworkConfig.ExternalIp), expectedFamily: null);
+        IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
+        IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
+
+        IPAddress externalIp = configuredExternalIp
+            ?? configuredExternalIpV4
+            ?? configuredExternalIpV6
+            ?? await ResolveExternalIp(cancellationToken);
+
+        if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
+        {
+            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
+        }
+
+        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
@@ -88,7 +103,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigExternalIPSource(_networkConfig, logManager);
             yield return new WebIPSource("http://ipv4.icanhazip.com", logManager);
             yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", logManager);
             yield return new WebIPSource("http://checkip.amazonaws.com", logManager);
@@ -103,7 +117,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
                 (bool success, IPAddress ip) = await s.TryGetIP();
                 if (success)
                 {
-                    ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                     return ip;
                 }
             }
@@ -114,6 +127,30 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         }
 
         return IPAddress.Any;
+    }
+
+    private IPAddress? TryGetExternalIpOverride(string? ipOverride, string configName, AddressFamily? expectedFamily)
+    {
+        if (ipOverride is null)
+        {
+            return null;
+        }
+
+        if (!IPAddress.TryParse(ipOverride, out IPAddress? ipAddress))
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} has incorrect format.");
+            return null;
+        }
+
+        IPAddress? normalizedIp = IIPResolver.NethermindIp.NormalizeExternalIp(ipAddress, expectedFamily);
+        if (normalizedIp is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
+            return null;
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
+        return normalizedIp;
     }
 
     private async Task<IPAddress> InitializeLocalIp()

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -20,6 +22,21 @@ public class RocksDbConfigFactoryTests
         RocksDbConfigFactory factory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
         Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + dbConfig.StateDbRocksDbOptions));
+    }
+
+    [Test]
+    public void UsesLz4ByDefault_WhilePerDatabaseCompressionStillOverridesIt()
+    {
+        DbConfig dbConfig = new() { StateDbRocksDbOptions = "compression=kZstdCompression;" };
+        IDictionary<string, string> generalOptions = DbOnTheRocks.ExtractOptions(dbConfig.RocksDbOptions);
+        IDictionary<string, string> stateOptions = DbOnTheRocks.ExtractOptions(
+            new PerTableDbConfig(dbConfig, DbNames.State).RocksDbOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generalOptions["compression"], Is.EqualTo("kLZ4Compression"));
+            Assert.That(stateOptions["compression"], Is.EqualTo("kZstdCompression"));
+        }
     }
 
     [Test]

@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
@@ -80,6 +81,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IFlatDbConfig>(Config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
+            .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<IProcessExitSource>(processExitSource)
             // The production module wires the catalog and metadata to columned RocksDB via IDbFactory,
             // which the test project does not provide; an in-memory db is behavior-equivalent here.

@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -75,9 +74,20 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
+            _mainDb.ThrowIfDisposing();
+            _mainDb.UpdateReadMetrics(keys.Length);
+
             IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);
-            return _rocksDb.MultiGet(keys, columnFamilies);
+            try
+            {
+                return _rocksDb.MultiGet(keys, columnFamilies);
+            }
+            catch (RocksDbException e)
+            {
+                _mainDb.HandleFatalDbError(e);
+                throw;
+            }
         }
     }
 
@@ -137,8 +147,26 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() =>
-        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: false);
+
+    /// <inheritdoc/>
+    public bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!DbOnTheRocks.ExceedsDeadWeight(
+                _rocksDb.GetProperty("rocksdb.aggregated-table-properties", _columnFamily),
+                _rocksDb.GetProperty("rocksdb.total-sst-files-size", _columnFamily),
+                deadRatio))
+        {
+            return false;
+        }
+
+        _mainDb.LogColumnDeadWeightCompaction(Name);
+        _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: true);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public void InterruptCompactions() => _mainDb.InterruptCompactions();
 
     /// <summary>
     /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
@@ -178,8 +206,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
-        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
+        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
