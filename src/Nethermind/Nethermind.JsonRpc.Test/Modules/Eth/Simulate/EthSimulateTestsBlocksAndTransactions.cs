@@ -432,11 +432,21 @@ public class EthSimulateTestsBlocksAndTransactions
         OverridableReleaseSpec spec = new(London.Instance);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
         spec.IsEip7708Enabled = eip7708;
-        Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Log[] logs = result.Data.First().Calls.First().Logs.ToArray();
-        Assert.That(logs.Length, Is.EqualTo(1));
-        Assert.That(logs.First().Address == (eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender));
+
+        if (eip7708)
+        {
+            // traceTransfers adds its synthetic ERC-20 log on top of the EIP-7708 protocol log.
+            Assert.That(logs.Length, Is.EqualTo(2));
+            Assert.That(logs[0].Address, Is.EqualTo(TransferLog.Erc20Sender));
+            Assert.That(logs[1].Address, Is.EqualTo(TransferLog.Sender));
+        }
+        else
+        {
+            Assert.That(logs.Length, Is.EqualTo(1));
+            Assert.That(logs[0].Address, Is.EqualTo(TransferLog.Erc20Sender));
+        }
     }
 
     [Test]
