@@ -65,7 +65,7 @@ jobs:
             fi
             dotnet build-server shutdown || true
             dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore -- \
-              --no-ansi --filter "FullyQualifiedName~${fixture}" \
+              --no-ansi --output Detailed --filter "FullyQualifiedName~${fixture}" \
               2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
             echo "::endgroup::"
             return "${rc}"
