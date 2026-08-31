@@ -69,7 +69,7 @@ namespace Nethermind.TxPool
         private readonly ILogger _logger;
 
         private readonly Channel<HeadChange> _headBlocksChannel = Channel.CreateUnbounded<HeadChange>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
-        private readonly Channel<long> _revalidationChannel = Channel.CreateBounded<long>(new BoundedChannelOptions(1)
+        private readonly Channel<bool> _revalidationChannel = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -77,6 +77,7 @@ namespace Nethermind.TxPool
         });
         private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
         private readonly Lock _forkStateLock = new();
+        private readonly LatestRevalidationRequest _latestRevalidationRequest = new();
         // Publish the spec and its epoch through one reference so readers cannot combine different observations.
         private HeadSpecObservation? _headSpecObservation;
         private long _headGeneration;
@@ -463,7 +464,11 @@ namespace Nethermind.TxPool
             bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges) => accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
         }
 
-        private void RequestRevalidation(long generation) => _revalidationChannel.Writer.TryWrite(generation);
+        private void RequestRevalidation(long generation)
+        {
+            _latestRevalidationRequest.Update(generation);
+            _revalidationChannel.Writer.TryWrite(true);
+        }
 
         private void RequestCurrentSpecRevalidation() => RequestRevalidation(Volatile.Read(ref _headGeneration));
 
@@ -488,11 +493,9 @@ namespace Nethermind.TxPool
         {
             while (await _revalidationChannel.Reader.WaitToReadAsync(_cts.Token))
             {
-                long generation = 0;
-                while (_revalidationChannel.Reader.TryRead(out long requestedGeneration))
-                {
-                    generation = requestedGeneration;
-                }
+                while (_revalidationChannel.Reader.TryRead(out _)) { }
+
+                long generation = _latestRevalidationRequest.Generation;
 
                 try
                 {
@@ -1939,5 +1942,27 @@ Db usage:
 
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
+    }
+
+    internal sealed class LatestRevalidationRequest
+    {
+        private long _generation;
+
+        public long Generation => Volatile.Read(ref _generation);
+
+        public void Update(long generation)
+        {
+            long current = Volatile.Read(ref _generation);
+            while (generation > current)
+            {
+                long observed = Interlocked.CompareExchange(ref _generation, generation, current);
+                if (observed == current)
+                {
+                    return;
+                }
+
+                current = observed;
+            }
+        }
     }
 }

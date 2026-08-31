@@ -117,11 +117,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             {
                 if (pendingUpdate.WriterActive)
                 {
-                    TrackBlobUpdateNonLocked(fullBlobTx);
+                    _ = TrackBlobUpdateNonLocked(fullBlobTx);
                 }
                 else
                 {
-                    TrackBlobUpdateNonLocked(fullBlobTx);
+                    _ = TrackBlobUpdateNonLocked(fullBlobTx);
                     try
                     {
                         PersistBlobTransaction(fullBlobTx, pendingUpdate.DeleteTimestamps);
@@ -862,9 +862,17 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         _blobTxCache.Set(blobTx.Hash, blobTx);
-        if (!TrackBlobUpdateNonLocked(blobTx) && lightTx is not null)
+        ValueHash256 hash = blobTx.Hash!.ValueHash256;
+        if (!_pendingBlobUpdates.ContainsKey(hash) && _pendingBlobUpdates.Count >= _maxPendingBlobUpdates)
         {
-            _unpersistableBlobUpdates[blobTx.Hash!.ValueHash256] = lightTx;
+            if (lightTx is not null)
+            {
+                _unpersistableBlobUpdates[hash] = lightTx;
+            }
+        }
+        else
+        {
+            _ = TrackBlobUpdateNonLocked(blobTx);
         }
     }
 
@@ -1089,8 +1097,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         catch
         {
-            TrackBlobUpdateNonLocked(transaction, ignoreCapacity: true);
-            PendingBlobUpdate pendingUpdate = _pendingBlobUpdates[hash];
+            // Retained deletes must remain retryable even when the ordinary cell-update queue is full.
+            PendingBlobUpdate pendingUpdate = TrackBlobUpdateNonLocked(transaction);
             DateTimeOffset retryAt = _timeProvider.GetUtcNow();
             pendingUpdate.NextRetryAt = retryAt;
             ScheduleBlobUpdateRetry(retryAt);
@@ -1207,15 +1215,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
     }
 
-    private bool TrackBlobUpdateNonLocked(Transaction blobTx, bool ignoreCapacity = false)
+    private PendingBlobUpdate TrackBlobUpdateNonLocked(Transaction blobTx)
     {
-        if (!_pendingBlobUpdates.ContainsKey(blobTx.Hash!)
-            && !ignoreCapacity
-            && _pendingBlobUpdates.Count >= _maxPendingBlobUpdates)
-        {
-            return false;
-        }
-
         Transaction snapshot = new();
         blobTx.CopyTo(snapshot, copyHash: true);
         long token = ++_nextBlobUpdateToken;
@@ -1226,27 +1227,25 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             pendingUpdate.Timestamp = blobTx.Timestamp;
             pendingUpdate.RetryCount = 0;
             pendingUpdate.NextRetryAt = null;
+            return pendingUpdate;
         }
-        else
+
+        PendingBlobUpdate newPendingUpdate = new(token, snapshot, blobTx.Timestamp);
+        // The writer consumes these deletes atomically with its own write before clearing the retained set.
+        if (_batchedDeletes.TryGetValue(blobTx.Hash!.ValueHash256, out BatchedDeletes deletes))
         {
-            PendingBlobUpdate newPendingUpdate = new(token, snapshot, blobTx.Timestamp);
-            // The writer consumes these deletes atomically with its own write before clearing the retained set.
-            if (_batchedDeletes.TryGetValue(blobTx.Hash!.ValueHash256, out BatchedDeletes deletes))
+            newPendingUpdate.DeleteTimestamps.Add(deletes.First.Timestamp);
+            if (deletes.Additional is { } additional)
             {
-                newPendingUpdate.DeleteTimestamps.Add(deletes.First.Timestamp);
-                if (deletes.Additional is { } additional)
+                for (int i = 0; i < additional.Count; i++)
                 {
-                    for (int i = 0; i < additional.Count; i++)
-                    {
-                        newPendingUpdate.DeleteTimestamps.Add(additional[i].Timestamp);
-                    }
+                    newPendingUpdate.DeleteTimestamps.Add(additional[i].Timestamp);
                 }
             }
-
-            _pendingBlobUpdates[blobTx.Hash!] = newPendingUpdate;
         }
 
-        return true;
+        _pendingBlobUpdates[blobTx.Hash!] = newPendingUpdate;
+        return newPendingUpdate;
     }
 
     public void Dispose()

@@ -974,7 +974,12 @@ namespace Nethermind.TxPool.Test
             };
             IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider ?? _specProvider, _blockTree).GetDefaultComparer();
             accounts = Substitute.For<IAccountStateProvider>();
-            return new PersistentBlobTxDistinctSortedPool(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            return new PersistentBlobTxDistinctSortedPool(
+                storage,
+                txPoolConfig,
+                comparer,
+                LimboLogs.Instance,
+                new ManualTimeProvider());
         }
 
         [Test]
