@@ -460,6 +460,16 @@ public class LogFinderTests
     }
 
     [Test]
+    public void Should_ReportAnInvertedRangeAsInvalid_NotAsPrunedData()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
+        LogFilter inverted = FilterBuilder.New().FromBlock(30UL).ToBlock(10UL).WithAddress(TestItem.AddressA).Build();
+
+        Assert.Throws<ArgumentException>(() =>
+            finder.FindLogs(inverted, BoundaryHeader(30), BoundaryHeader(10)).ToArray());
+    }
+
+    [Test]
     public void Should_FailClosed_BelowTheReclaimCursor()
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();

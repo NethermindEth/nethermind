@@ -446,7 +446,7 @@ public class HistoryPruner : IHistoryPruner
         if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
         {
             _ancientHoldLastLogged = Stopwatch.GetTimestamp();
-            if (_logger.IsInfo) _logger.Info(
+            if (_logger.IsWarn) _logger.Warn(
                 $"Holding history pruning while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).");
         }
 
@@ -1025,18 +1025,19 @@ public class HistoryPruner : IHistoryPruner
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
 
-        // A frozen frontier must not leak to disk through the first-save sentinels either.
-        if (_frontierFrozen)
-        {
-            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
-            _lastSavedBalsDeletePointer = _balsDeletePointer;
-        }
-
         byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
         _sliceCleanupCursor = cleanupVal is null
             ? _minDeletableBlockNumber
             : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
         _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
+
+        // A frozen frontier must not leak to disk through the first-save sentinels either.
+        if (_frontierFrozen)
+        {
+            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+            _lastSavedBalsDeletePointer = _balsDeletePointer;
+            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
+        }
 
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
@@ -1064,41 +1065,34 @@ public class HistoryPruner : IHistoryPruner
         // One batch, and a boundary write carries the cursors with it: a boundary that lands without its
         // cursor reads an unreclaimed backlog as "already level" on the next load, forever.
         bool boundaryDirty = _blocksDeletePointer != _lastSavedBlocksDeletePointer;
-        if (!boundaryDirty
-            && _blocksReclaimCursor == _lastSavedBlocksReclaimCursor
-            && _sliceCleanupCursor == _lastSavedSliceCleanupCursor
-            && _balsDeletePointer == _lastSavedBalsDeletePointer)
+        bool cursorDirty = boundaryDirty || _blocksReclaimCursor != _lastSavedBlocksReclaimCursor;
+        bool cleanupDirty = _sliceCleanupCursor != _lastSavedSliceCleanupCursor;
+        bool balsDirty = boundaryDirty || _balsDeletePointer != _lastSavedBalsDeletePointer;
+        if (!cursorDirty && !cleanupDirty && !balsDirty)
         {
             return;
         }
 
-        using IWriteBatch batch = _metadataDb.StartWriteBatch();
-
-        if (boundaryDirty || _blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
+        ulong cursorToSave = _blocksReclaimCursor;
+        ulong boundaryToSave = _blocksDeletePointer;
+        ulong cleanupToSave = _sliceCleanupCursor;
+        ulong balsToSave = _balsDeletePointer;
+        using (IWriteBatch batch = _metadataDb.StartWriteBatch())
         {
-            batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
-            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+            if (cursorDirty) batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave).Bytes);
+            if (boundaryDirty) batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave).Bytes);
+            if (cleanupDirty) batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave).Bytes);
+            if (balsDirty) batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave).Bytes);
         }
 
-        if (boundaryDirty)
-        {
-            batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
-            _lastSavedBlocksDeletePointer = _blocksDeletePointer;
-            if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
-        }
+        // Only after the batch committed: a throwing commit must leave these claiming unsaved.
+        if (cursorDirty) _lastSavedBlocksReclaimCursor = cursorToSave;
+        if (boundaryDirty) _lastSavedBlocksDeletePointer = boundaryToSave;
+        if (cleanupDirty) _lastSavedSliceCleanupCursor = cleanupToSave;
+        if (balsDirty) _lastSavedBalsDeletePointer = balsToSave;
 
-        if (_sliceCleanupCursor != _lastSavedSliceCleanupCursor)
-        {
-            batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
-            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
-        }
-
-        if (boundaryDirty || _balsDeletePointer != _lastSavedBalsDeletePointer)
-        {
-            batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
-            _lastSavedBalsDeletePointer = _balsDeletePointer;
-            if (_logger.IsDebug) _logger.Debug($"Persisting oldest BAL stored = #{_balsDeletePointer} to disk.");
-        }
+        if (_logger.IsDebug && boundaryDirty) _logger.Debug($"Persisting oldest block stored = #{boundaryToSave} to disk.");
+        if (_logger.IsDebug && balsDirty) _logger.Debug($"Persisting oldest BAL stored = #{balsToSave} to disk.");
     }
 
     private void UpdateBlocksDeletePointer(ulong newDeletePointer)

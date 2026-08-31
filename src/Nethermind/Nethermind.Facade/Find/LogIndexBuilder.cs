@@ -80,6 +80,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     // receipts-reclaimed/body-not-yet transient this stall waits on, and the interval is operator-tunable.
     internal int StallTicksBeforeGivingUp { get; init; }
     private int _stalledBelowBoundary = -1;
+    private volatile int _backwardExitFloor = -1;
     private int _stallTicks;
     private bool _stallWarned;
 
@@ -379,7 +380,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        if (_logIndexStorage.MinBlockNumber <= (int)BackwardTargetBlockNumber)
+        if (_logIndexStorage.MinBlockNumber <= Math.Max((int)BackwardTargetBlockNumber, _backwardExitFloor))
             MarkCompleted(false);
     }
 
@@ -403,8 +404,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                     // The floor can rise when the pruner publishes; a batch checked against the old floor never
                     // fires the completion, so the exit marks it too - but only once storage has caught up, so a
-                    // still-queued final batch fires it from AddReceiptsAsync instead of completing early.
-                    if (_logIndexStorage.MinBlockNumber <= (int)BackwardTargetBlockNumber)
+                    // still-queued final batch fires it from AddReceiptsAsync instead of completing early. On a
+                    // latched-boundary database the floor can also DROP after this exit, so the floor it left
+                    // against is recorded for the still-queued batches - without it the completion never fires.
+                    int floorAtExit = (int)BackwardTargetBlockNumber;
+                    _backwardExitFloor = floorAtExit;
+                    if (_logIndexStorage.MinBlockNumber <= floorAtExit)
                         MarkCompleted(isForward: false);
                     return;
                 }

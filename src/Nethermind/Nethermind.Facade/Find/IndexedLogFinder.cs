@@ -94,7 +94,7 @@ public class IndexedLogFinder(
         ulong lowestStored = _historyPruner?.OldestUnreclaimedBlockNumber ?? _blockFinder.GetLowestBlock();
         bool uncoveredBelowBoundary = fromBlock.Number < lowestStored
             && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number);
-        if (uncoveredBelowBoundary && toBlock.Number != 0 && (fromBlock.Number != 0 || lowestStored != 1))
+        if (uncoveredBelowBoundary && fromBlock.Number <= toBlock.Number && toBlock.Number != 0 && (fromBlock.Number != 0 || lowestStored != 1))
         {
             filter.UseIndex = tryUseIndex;
             throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");

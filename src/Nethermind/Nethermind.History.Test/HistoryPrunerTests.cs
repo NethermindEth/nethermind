@@ -484,6 +484,8 @@ public class HistoryPrunerTests
                 "a frozen frontier must not reach disk through a pruning-path save");
             Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningReclaimCursor), Is.False,
                 "the frontier-seeded reclaim cursor must not reach disk either");
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningSliceCleanupCursor), Is.False,
+                "the first-save sentinel of the cleanup cursor is pinned on the frozen path too");
             Assert.That(metadataDb.KeyExists(MetadataDbKeys.BlockAccessListPruningDeletePointer), Is.True,
                 "the pass itself persists normally");
         }

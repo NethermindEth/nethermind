@@ -610,7 +610,7 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
-        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
         ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
 
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
@@ -640,7 +640,7 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
-        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
         ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
         ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
         ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
@@ -709,7 +709,7 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
-        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
         ctx.HistoryPruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
         ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
         ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
@@ -742,7 +742,7 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
-        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
+        ctx.BlockTree.FindHeader(120UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(120).TestObject);
         ctx.SyncPointers.LowestInsertedBodyNumber.Returns(110UL);
         ctx.SyncPointers.LowestInsertedReceiptBlockNumber.Returns(120UL);
 
@@ -774,8 +774,8 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
-        ctx.BlockTree.FindHeader(64UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(64).TestObject);
-        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.BlockTree.FindHeader(64UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(64).TestObject);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
         ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
 
         PeerInfo peer = new(Substitute.For<ISyncPeer>());

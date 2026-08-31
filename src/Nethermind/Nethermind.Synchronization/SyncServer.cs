@@ -496,7 +496,8 @@ namespace Nethermind.Synchronization
             BlockHeader earliest = onNewOldestBlockArgs.OldestBlockHeader;
             if (earliest.Number < floor)
             {
-                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? earliest;
+                // TotalDifficultyNotNeeded: ancient headers carry no TD, and a null here must not fall back below the floor.
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latest;
             }
 
             OnNewRange(earliest, latest);
@@ -515,7 +516,7 @@ namespace Nethermind.Synchronization
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
             if (earliest is null || earliest.Number > latestBlock.Number || earliest.Number < floor)
             {
-                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.TotalDifficultyNotNeeded) ?? latestBlock.Header;
             }
 
             OnNewRange(earliest, latestBlock.Header);
