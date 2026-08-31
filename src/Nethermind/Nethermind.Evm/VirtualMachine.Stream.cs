@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
@@ -12,15 +13,15 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
-    // On by default; the gate restricts it to cancelable (eth_call/simulation) frames. Volatile so a test
-    // flipping it in-process is visible to frame-executing threads.
+    // On by default; the gate restricts it to non-tracing frames. Volatile so a test flipping it in-process
+    // is visible to frame-executing threads.
     public static volatile bool Enabled = true;
 
-    // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
-    // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call
-    // contexts (eth_call/estimateGas/simulate). Differential tests set this to exercise the stream in any
-    // context regardless of that heuristic.
+    // Differential tests set this to exercise the stream in any context regardless of the production
+    // architecture policy. It is not a production switch.
     public static volatile bool ForceAllContexts;
+
+    internal static bool IsBlockProcessingEnabled(Architecture architecture) => architecture == Architecture.X64;
 
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
@@ -39,9 +40,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 {
     /// <summary>
     /// Executes a frame over the preprocessed <see cref="InstructionStream"/>: per-block static gas charged
-    /// once at each block's first entry, in-block ops run gas-free cores. Non-tracing tip-fork frames only.
-    /// A block whose precharge exceeds remaining gas, or one entered past its charging entry, falls to the
-    /// metered micro-loop so the halting op and failure type match per-op interpretation exactly.
+    /// once at each block's first entry, in-block ops run gas-free cores. Non-tracing x64 block-processing
+    /// frames and cancelable call frames only. A block whose precharge exceeds remaining gas, or one entered
+    /// past its charging entry, falls to the metered micro-loop so the halting op and failure type match
+    /// per-op interpretation exactly.
     /// </summary>
     [SkipLocalsInit]
     private CallResult RunStream<TCancelable>(

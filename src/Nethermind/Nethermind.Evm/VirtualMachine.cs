@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1324,11 +1325,13 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         IReleaseSpec spec = Spec;
-        // Engage the stream only in cancelable call contexts (eth_call/estimateGas/simulate). Block
-        // processing runs a non-cancelable tracer, where the stream is pure overhead with no compute
-        // payoff; gating it out there removes both the throughput regression and the retained StreamOp[].
+        // Engage the stream for cancelable call contexts (eth_call/estimateGas/simulate) on every
+        // architecture, and for non-tracing block processing on x64. ForceAllContexts remains a
+        // differential-test escape hatch; it does not select a production architecture policy.
         if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
-            && (TCancelable.IsActive || StreamInterpreter.ForceAllContexts)
+            && (TCancelable.IsActive
+                || StreamInterpreter.IsBlockProcessingEnabled(RuntimeInformation.ProcessArchitecture)
+                || StreamInterpreter.ForceAllContexts)
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {
             return RunStream<TCancelable>(stream, ref stack, ref gas);
