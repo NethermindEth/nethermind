@@ -155,7 +155,15 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         if (files.Count == 0) return;
         _testIngestFailureHook?.Invoke();
-        _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
+        try
+        {
+            _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
+        }
+        catch (RocksDbSharpException x)
+        {
+            _mainDb.HandleFatalDbError(x);
+            throw;
+        }
     }
 
     public void WaitForIngestCompactionHeadroom(CancellationToken cancellationToken)
@@ -360,8 +368,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                     Native.Instance.rocksdb_sstfilewriter_destroy(writer);
                 }
             }
-            catch
+            catch (Exception writerError)
             {
+                if (writerError is RocksDbSharpException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx);
                 try
                 {
                     if (File.Exists(file)) File.Delete(file);

@@ -324,7 +324,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void HandleFatalDbError(RocksDbSharpException rocksDbException)
+    internal void HandleFatalDbError(RocksDbSharpException rocksDbException)
     {
         bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
         bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
