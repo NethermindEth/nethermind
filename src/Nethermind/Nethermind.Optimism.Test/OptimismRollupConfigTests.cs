@@ -30,6 +30,7 @@ public class OptimismRollupConfigTests
     }
 
     [TestCaseSource(nameof(EmbeddedOptimismChainSpecs))]
+    [NonParallelizable]
     public void Embedded_optimism_chain_spec_builds_rollup_config(string chainSpecPath)
     {
         ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
