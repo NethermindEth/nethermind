@@ -20,6 +20,15 @@ on:
         required: false
         type: string
         default: ''
+      raise_verify_gas_const:
+        description: >-
+          Patch Eip8141Constants.MaxVerifyGas to this value before building, so the 500k sweep points can run.
+          Empty means a stock build, on which they self-ignore. Use 510000 for the complete sweep: the synthetic
+          500k cases declare 500000, but the 49-input Groth16 point declares 510000. The patch and its diff are
+          recorded in PROVENANCE.txt beside the results.
+        required: false
+        type: string
+        default: ''
 
 # Deliberately deviates from the repo default: the group carries no `github.ref`
 # and in-progress runs are not cancelled, so dispatches queue instead of
@@ -56,6 +65,7 @@ jobs:
         env:
           HARNESS: ${{ inputs.harness }}
           FRAME_GROTH16_ARTIFACTS: ${{ inputs.groth16_artifacts }}
+          RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
         run: |
           set -uo pipefail
 
@@ -88,6 +98,54 @@ jobs:
             fi
             exit 1
           fi
+          # The 500k sweep points self-ignore on a stock build: Eip8141Constants.MaxVerifyGas is a compile-time
+          # `const`, and TxPool.FrameTxMaxVerifyGas gates a different, earlier check that does not move it. The
+          # cap it feeds is reached only under ExecutionOptions.FrameValidationPrefixOnly, whose sole production
+          # caller is the mempool prefix simulator, so raising it cannot affect block validity. Patched here
+          # rather than carried on a branch, so no ref holds a modified consensus-namespace constant and the diff
+          # cannot be separated from the numbers it produced.
+          CONST_FILE=Nethermind.Core/Eip8141Constants.cs
+          STOCK_LITERAL='MaxVerifyGas = 300_000'
+          {
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "sha=${GITHUB_SHA}"
+          } > "${OUTPUT_DIR}/PROVENANCE.txt"
+          if [[ -n "${RAISE_VERIFY_GAS// }" ]]; then
+            if [[ ! "${RAISE_VERIFY_GAS}" =~ ^[1-9][0-9]{5,8}$ ]]; then
+              echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
+              exit 1
+            fi
+            if (( RAISE_VERIFY_GAS <= 300000 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} is at or below the stock 300000, so it would lower the enforced ceiling rather than unlock the 500k points. Use 510000 for the complete sweep."
+              exit 1
+            fi
+            # This workflow lives on a master-based branch but is dispatched against a ref that carries the
+            # 8141 harnesses, so the file is absent unless the dispatch ref is right.
+            if [[ ! -f "${CONST_FILE}" ]]; then
+              echo "::error::${CONST_FILE} is not present on ${GITHUB_REF_NAME}, so there is no constant to raise. Dispatch against a ref that carries EIP-8141."
+              exit 1
+            fi
+            # Refuse to patch blind: if the constant moved or gained a second occurrence, a sed would either miss
+            # silently or rewrite something else, and the run would report a stock build's numbers under a raised label.
+            hits=$(grep -c -- "${STOCK_LITERAL}" "${CONST_FILE}" || true)
+            if [[ "${hits}" != "1" ]]; then
+              echo "::error::expected exactly one '${STOCK_LITERAL}' in ${CONST_FILE}, found ${hits}. Refusing to patch."
+              exit 1
+            fi
+            sed -i "s/${STOCK_LITERAL}/MaxVerifyGas = ${RAISE_VERIFY_GAS}/" "${CONST_FILE}"
+            {
+              echo "eip8141_max_verify_gas_patched_from=300000 to=${RAISE_VERIFY_GAS}"
+              echo "# Every RESULT row in this artifact came from a build carrying the diff below."
+              git --no-pager diff -- "${CONST_FILE}"
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+            echo "::warning::Eip8141Constants.MaxVerifyGas patched 300000 -> ${RAISE_VERIFY_GAS} for this run. These figures are not from a stock build; see PROVENANCE.txt in the artifact."
+          else
+            {
+              echo "eip8141_max_verify_gas=300000 (stock, unpatched)"
+              echo "# The 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=510000 to measure them."
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+          fi
+
           for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
           done
@@ -95,7 +153,9 @@ jobs:
 
           ran=0
           run_harness() {
-            local project=$1 fixture=$2 required=${3:-} rc=0
+            local project=$1 fixture=$2 rc=0
+            shift 2
+            local -a required=("$@")
             ran=$((ran + 1))
             if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
               echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
@@ -137,14 +197,32 @@ jobs:
 
             # A file that is merely non-empty is not evidence that the case an input was supplied for ran:
             # the cases that need it self-ignore while the rest of the fixture still reports.
-            if [[ -n "${required}" ]] && ! grep -qF -- "${required}" "${results}" 2>/dev/null; then
-              echo "::error::${fixture} reported no '${required}' rows, though an input for them was supplied. Check that the path resolves on the runner."
-              rc=1
-            fi
+            local marker
+            for marker in ${required[@]+"${required[@]}"}; do
+              if ! grep -qF -- "${marker}" "${results}" 2>/dev/null; then
+                echo "::error::${fixture} reported no '${marker}' rows, though this run was configured to produce them. Check that its inputs are present on the runner."
+                rc=1
+              fi
+            done
 
             echo "::endgroup::"
             return "${rc}"
           }
+
+          # What this run is configured to produce, so a self-ignored case fails the run instead of
+          # quietly shrinking the sweep. Groth16 rows are always required because the path is checked above.
+          mempool_markers=('shape=groth16-')
+          flood_markers=()
+          if [[ -n "${RAISE_VERIFY_GAS// }" ]]; then
+            # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
+            # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
+            mempool_markers+=('verify_gas=500000')
+            flood_markers+=('ceiling=500000')
+            # The 49-input Groth16 point declares 510000, so it needs the constant at least that high.
+            if (( RAISE_VERIFY_GAS >= 510000 )); then
+              mempool_markers+=('shape=groth16-500k')
+            fi
+          fi
 
           # Each harness is attempted even when an earlier one fails, so a run never
           # reports a partial set of figures as if it were the whole set.
@@ -155,10 +233,10 @@ jobs:
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
             # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so the
             # marker requires some privacy row rather than all of them.
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement 'shape=groth16-' || status=1
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "${mempool_markers[@]}" || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
-            run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement || status=1
+            run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement ${flood_markers[@]+"${flood_markers[@]}"} || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement || status=1
