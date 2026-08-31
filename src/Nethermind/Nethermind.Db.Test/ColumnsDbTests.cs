@@ -15,7 +15,7 @@ namespace Nethermind.Db.Test;
 
 public class ColumnsDbTests
 {
-    string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+    string DbPath => Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
     private ColumnsDb<ReceiptsColumns> _db = null!;
 
     [SetUp]
