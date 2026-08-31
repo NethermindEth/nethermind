@@ -53,11 +53,9 @@ public sealed class DetectionScanner(
     private void Grow(string key) => _active.AddOrUpdate(key, BaseChunkBlocks, static (_, c) => Math.Min(c * 2, MaxChunkBlocks));
     private void Shrink(string key) => _active.AddOrUpdate(key, MinChunkBlocks, static (_, c) => Math.Max(c / 2, MinChunkBlocks));
 
-    // Lowest block the log index covers, and thus the deepest block a scan can reach. On a freshly snap-synced
-    // node the head sits just above the snap pivot, so a full base-size chunk below it would underflow into blocks
-    // whose receipts aren't backfilled yet — clamping the walk to this floor scans the available window instead of
-    // aborting empty. Returns 0 when no index floor is known (index disabled or not yet built), leaving the walk's
-    // default full-history bound and completion condition unchanged.
+    /// <summary>Lowest block the log index covers, or <c>0</c> when no floor is known (index disabled or not yet built).</summary>
+    /// <remarks>On a freshly snap-synced node the head sits just above the snap pivot, so a full base-size chunk below
+    /// it would underflow into blocks whose receipts aren't backfilled yet; the floor clamps only such a straddling chunk.</remarks>
     private long IndexFloor() => logIndexStorage.MinBlockNumber is { } min ? min : 0;
 
     private readonly record struct DetectRequest(long ChainId, Address Account);
@@ -100,7 +98,7 @@ public sealed class DetectionScanner(
             // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
-                long flo = Math.Max(IndexFloor(), existing.Head + 1 - ForwardReorgOverlapBlocks);
+                long flo = Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks);
                 long fhi = Math.Min(curHead, flo + chunk - 1);
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
@@ -138,10 +136,11 @@ public sealed class DetectionScanner(
             long floor = IndexFloor();
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
-            // Reached the bottom of scannable history — genesis, or the log-index floor (below which a snap-synced
-            // node has no indexed logs and its receipts aren't backfilled yet). Nothing left to walk down into.
-            if (hi <= 0 || hi < floor) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
-            long lo = Math.Max(floor, hi - chunk + 1);
+            if (hi <= 0) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
+            // Clamp only a chunk that straddles the index floor so it can't underflow into blocks whose receipts a
+            // snap-synced node hasn't backfilled yet. Below the floor a fully-synced node still has receipts, so let
+            // LogFinder's availability guard (ResourceNotFoundException) remain the single terminal signal.
+            long lo = hi >= floor ? Math.Max(floor, hi - chunk + 1) : Math.Max(0, hi - chunk + 1);
 
             HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
             HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];
@@ -166,7 +165,7 @@ public sealed class DetectionScanner(
                 return Task.CompletedTask;
             }
 
-            bool complete = lo <= floor || erc20.Count + nfts.Count >= MaxContractsPerScan;
+            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContractsPerScan;
             Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
             else { Grow(key); Schedule(req); } // chunk finished within the gap — go wider next time

@@ -51,6 +51,8 @@ public class DetectionScannerTests
     [TearDown]
     public async Task TearDown()
     {
+        // ILogIndexStorage is IAsyncDisposable, so the NUnit1032 analyzer requires disposing the field here (the
+        // substitute's DisposeAsync is a no-op).
         await _logIndexStorage.DisposeAsync();
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
     }
@@ -284,8 +286,8 @@ public class DetectionScannerTests
         // first downward chunk [head-5000, head] underflows below the log-index floor, where receipts aren't
         // backfilled and FindLogs throws up-front. The scan must clamp to the floor and surface the tokens in the
         // available [floor, head] window, not abort with an empty complete:true entry.
-        const long floor = 500;
-        _logIndexStorage.MinBlockNumber.Returns((int)floor);
+        const int floor = 500;
+        _logIndexStorage.MinBlockNumber.Returns(floor);
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(800).TestObject); // only a few hundred blocks above the floor
         _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
             .Returns(ci => (long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0) < floor
@@ -300,8 +302,35 @@ public class DetectionScannerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entry!.Contracts, Does.Contain(Token.ToString()), "token in the window above the pivot is detected, not lost to an underflowing first chunk");
-            Assert.That(entry.Complete, Is.True, "scan completes at the index floor");
+            Assert.That(entry.Complete, Is.True, "scan completes once the walk drops below the pivot and receipts are unavailable");
             Assert.That(entry.ScannedFrom, Is.EqualTo(0), "completed scans reset the resume cursor");
+        }
+    }
+
+    [Test]
+    public async Task Receipts_below_the_index_floor_are_still_walked_to_genesis()
+    {
+        // Regression for the #13052 review: the index floor moves down as the index backfills, so it must only
+        // clamp a straddling chunk, never terminate the scan. A fully-synced node has receipts below the floor,
+        // so a token transferred there must still be detected rather than lost to a premature complete-at-floor.
+        const int floor = 700;
+        _logIndexStorage.MinBlockNumber.Returns(floor);
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(800).TestObject);
+        // Receipts available at every depth (full node); the token lives only below the index floor.
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => (long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0) < floor
+                ? [Log(Token, Transfer, Keccak.Zero, Keccak.Zero)]
+                : []);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Contracts, Does.Contain(Token.ToString()), "a token below the moving index floor is still detected");
+            Assert.That(entry.Complete, Is.True, "scan completes at genesis, not at the index floor");
         }
     }
 
