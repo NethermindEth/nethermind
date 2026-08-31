@@ -1959,7 +1959,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [TestCase(17_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_reservoir_funded")]
-    [TestCase(16_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_spill_tail")]
+    [TestCase(16_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_parent_spill_funded")]
     public void Eip8037_reverting_child_restoring_parent_fresh_slot_to_pre_tx_original_must_charge_same_as_writing_a_non_original_value(ulong gasLimit)
     {
         TestAllTracerWithOutput restoresPreTxOriginal = ExecuteParentSetThenChildOverwriteAndRevert(gasLimit, TestItem.AddressC, storageSlot: 0, childWrittenValue: 0);
@@ -1973,7 +1973,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
                 "both children take the identical dirty-slot SSTORE branch and then revert, so restoring the pre-tx original may only cost the same as writing a non-original value; a smaller charge means the reverted child was wrongly credited a reservoir refill for the parent-funded set");
             Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
                 "the only durable state change is the parent's single fresh slot set; the reverted child adds no block state gas");
+            Assert.That(writesNonOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+                "the control must fund its own distinct fresh slot exactly like run A; if the two runs were collapsed onto one slot the control's parent SSTORE would become a no-op reset (newSameAsCurrent) charging no state gas and this equality would fail, silently disarming the control");
             AssertStorage(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
+            Assert.That(TestState.Get(new StorageCell(Recipient, (UInt256)1)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian().WithoutLeadingZeros().ToArray()),
+                "the control's parent fresh set survives while the child's reverted non-original overwrite is rolled back; a control that failed to revert would leave the child's written value here and go unnoticed");
         }
     }
 
@@ -1992,6 +1996,57 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] parentCode = Prepare.EvmCode
             .PushData(1)
             .PushData(storageSlot)
+            .Op(Instruction.SSTORE)
+            .DelegateCall(childAddress, 1_000_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        return Execute(Activation, gasLimit, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+    }
+
+    [Test]
+    public void Eip8037_reverting_child_that_spilled_its_own_fresh_set_then_restored_parent_slot_must_restore_the_spill_debt_not_credit_a_refill()
+    {
+        const ulong gasLimit = 16_777_216ul;
+
+        TestAllTracerWithOutput restoresPreTxOriginal = ExecuteParentSetThenChildSpillsOwnSetAfterTouchingParentSlot(gasLimit, TestItem.AddressC, parentSlot: 0, childOwnSlot: 2, parentOverwriteValue: 0);
+        TestAllTracerWithOutput writesNonOriginal = ExecuteParentSetThenChildSpillsOwnSetAfterTouchingParentSlot(gasLimit, TestItem.AddressD, parentSlot: 1, childOwnSlot: 3, parentOverwriteValue: 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restoresPreTxOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the tx succeeds");
+            Assert.That(writesNonOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the control tx succeeds");
+            Assert.That(restoresPreTxOriginal.GasConsumedResult.SpentGas, Is.EqualTo(writesNonOriginal.GasConsumedResult.SpentGas),
+                "with reservoir 0 the child spills its own fresh set into gas_left; restoring the parent's pre-tx original advances that credit into the child reservoir, which the own set then consumes. On revert the amount>0 tail of RemoveStateGasRefundFromReservoir must reclaim the advance from state-gas-used so the spill debt is restored, leaving the same charge as the control that wrote a non-original value and never credited; a smaller charge means the reverted advance leaked back to the parent reservoir as an unbilled refill");
+            Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+                "the only durable state change is the parent's single fresh slot set; the reverted child's own set and its restored-then-revoked credit add no block state gas");
+            Assert.That(writesNonOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+                "the control must fund its own distinct fresh slot exactly like run A; collapsing the two runs onto one slot would turn the control's parent SSTORE into a no-op reset charging no state gas and this equality would fail, silently disarming the control");
+            AssertStorage(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
+            Assert.That(TestState.Get(new StorageCell(Recipient, (UInt256)1)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian().WithoutLeadingZeros().ToArray()),
+                "the control's parent fresh set survives while the child's reverted own set and non-original overwrite are rolled back; a control that failed to revert would leave the child's written value here and go unnoticed");
+        }
+    }
+
+    private TestAllTracerWithOutput ExecuteParentSetThenChildSpillsOwnSetAfterTouchingParentSlot(ulong gasLimit, Address childAddress, int parentSlot, int childOwnSlot, int parentOverwriteValue)
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(parentOverwriteValue)
+            .PushData(parentSlot)
+            .Op(Instruction.SSTORE)
+            .PushData(1)
+            .PushData(childOwnSlot)
+            .Op(Instruction.SSTORE)
+            .Revert(0, 0)
+            .Done;
+
+        TestState.CreateAccount(childAddress, 0);
+        TestState.InsertCode(childAddress, childCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(parentSlot)
             .Op(Instruction.SSTORE)
             .DelegateCall(childAddress, 1_000_000)
             .Op(Instruction.POP)
