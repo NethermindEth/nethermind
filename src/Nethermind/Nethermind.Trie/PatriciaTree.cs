@@ -1038,6 +1038,113 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
+        /// Warms up paths for sorted hashed keys in one traversal, sharing their common prefixes.
+        /// </summary>
+        /// <param name="sortedKeys">Hashed keys, sorted lexicographically by their bytes.</param>
+        internal void WarmUpPaths(ReadOnlySpan<ValueHash256> sortedKeys)
+        {
+            if (sortedKeys.Length == 0) return;
+
+            TreePath emptyPath = TreePath.Empty;
+            DoWarmUpPaths(sortedKeys, 0, ref emptyPath, RootRef);
+        }
+
+        private void DoWarmUpPaths(ReadOnlySpan<ValueHash256> keys, int depth, ref TreePath path, TrieNode? node)
+        {
+            int originalPathLength = path.Length;
+
+            try
+            {
+                while (true)
+                {
+                    if (node is null || depth >= 64) return;
+
+                    if (keys.Length == 1)
+                    {
+                        WarmUpSingleTail(keys[0], depth, ref path, node);
+                        return;
+                    }
+
+                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1)
+                    {
+                        node = TrieStore.FindCachedOrUnknown(path, node.Keccak);
+                    }
+
+                    if (!node.TryResolveNode(TrieStore, ref path)) return;
+                    if (node.IsLeaf) return;
+
+                    if (node.IsExtension)
+                    {
+                        int start = 0;
+                        while (start < keys.Length && !MatchesNibbles(keys[start], depth, node.Key!)) start++;
+                        int end = start;
+                        while (end < keys.Length && MatchesNibbles(keys[end], depth, node.Key!)) end++;
+                        if (start == end) return;
+
+                        path.AppendMut(node.Key);
+                        TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
+                        depth += node.Key!.Length;
+                        keys = keys[start..end];
+                        node = extensionChild;
+                        continue;
+                    }
+
+                    int rangeStart = 0;
+                    while (rangeStart < keys.Length)
+                    {
+                        int nibble = NibbleAt(keys[rangeStart], depth);
+                        int rangeEnd = rangeStart + 1;
+                        while (rangeEnd < keys.Length && NibbleAt(keys[rangeEnd], depth) == nibble) rangeEnd++;
+
+                        path.AppendMut(nibble);
+                        TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nibble, keepChildRef: true);
+                        DoWarmUpPaths(keys[rangeStart..rangeEnd], depth + 1, ref path, child);
+                        path.TruncateMut(path.Length - 1);
+                        rangeStart = rangeEnd;
+                    }
+
+                    return;
+                }
+            }
+            catch (TrieException)
+            {
+                // Warm-up is best-effort; a stale or missing path remains cold.
+            }
+            finally
+            {
+                path.TruncateMut(originalPathLength);
+            }
+        }
+
+        [SkipLocalsInit]
+        private void WarmUpSingleTail(in ValueHash256 key, int depth, ref TreePath path, TrieNode node)
+        {
+            ReadOnlySpan<byte> keyBytes = key.Bytes;
+            Span<byte> nibbles = stackalloc byte[64];
+            nibbles = nibbles[..(2 * keyBytes.Length)];
+            Nibbles.BytesToNibbleBytes(keyBytes, nibbles);
+            DoWarmUpPath(nibbles[depth..], ref path, node);
+        }
+
+        private static int NibbleAt(in ValueHash256 key, int depth)
+        {
+            byte value = key.Bytes[depth >> 1];
+            return (depth & 1) == 0 ? value >> 4 : value & 0xF;
+        }
+
+        private static bool MatchesNibbles(in ValueHash256 key, int depth, byte[] nodeKey)
+        {
+            if (depth + nodeKey.Length > 64) return false;
+
+            for (int i = 0; i < nodeKey.Length; i++)
+            {
+                if (NibbleAt(key, depth + i) != nodeKey[i]) return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Run tree visitor.
         /// </summary>
         /// <param name="visitor">The visitor</param>

@@ -1330,6 +1330,35 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void WarmUpPaths_DoesNotThrow_ForDuplicateAndDivergingKeys()
+        {
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            ValueHash256 keyA = ValueKeccak.Compute(_keyA);
+            ValueHash256 keyB = ValueKeccak.Compute(_keyB);
+            ValueHash256 keyC = ValueKeccak.Compute(_keyC);
+            ValueHash256 keyD = ValueKeccak.Compute(_keyD);
+
+            patriciaTree.Set(keyA.Bytes, _longLeaf1);
+            patriciaTree.Set(keyB.Bytes, _longLeaf2);
+            patriciaTree.Set(keyC.Bytes, _longLeaf1);
+            patriciaTree.Set(keyD.Bytes, _longLeaf2);
+            trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+            ValueHash256[] keys =
+            [
+                keyA,
+                keyA,
+                keyB,
+                keyC,
+                keyD
+            ];
+            Array.Sort(keys, static (a, b) => a.CompareTo(b));
+
+            Assert.That(() => patriciaTree.WarmUpPaths(keys), Throws.Nothing);
+        }
+
+        [Test]
         public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
         {
             // Commit should not deadlock on a bounded scheduler (e.g. NewBlock P2P message on BackgroundTaskScheduler).

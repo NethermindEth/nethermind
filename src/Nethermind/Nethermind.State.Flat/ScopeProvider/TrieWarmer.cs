@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -21,6 +23,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024 * 8;
     private const int DisposeTimeoutMilliseconds = 1000;
+    private const int JobBatchSize = 64;
+    private const int BatchDrainQueueDepth = JobBatchSize * 2;
 
     private readonly ILogger _logger;
 
@@ -112,13 +116,20 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void Execute(Processor processor)
     {
+        Job[] batch = ArrayPool<Job>.Shared.Rent(JobBatchSize);
+        UInt256[] indexBuffer = ArrayPool<UInt256>.Shared.Rent(JobBatchSize);
+        ValueHash256[] addressBuffer = ArrayPool<ValueHash256>.Shared.Rent(JobBatchSize);
         try
         {
             while (true)
             {
-                while (TryDequeue(out Job job))
+                int drainLimit = PendingHint() >= BatchDrainQueueDepth ? JobBatchSize : 1;
+                int count = 0;
+                while (count < drainLimit && TryDequeue(out batch[count])) count++;
+                if (count > 0)
                 {
-                    HandleJob(in job);
+                    HandleJobs(batch.AsSpan(0, count), indexBuffer, addressBuffer);
+                    continue;
                 }
 
                 processor.ClearScheduled();
@@ -136,7 +147,91 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         finally
         {
+            ArrayPool<Job>.Shared.Return(batch, clearArray: true);
+            ArrayPool<UInt256>.Shared.Return(indexBuffer);
+            ArrayPool<ValueHash256>.Shared.Return(addressBuffer);
             OnProcessorStopped();
+        }
+    }
+
+    private static void HandleJobs(Span<Job> jobs, UInt256[] indexBuffer, ValueHash256[] addressBuffer)
+    {
+        for (int i = 0; i < jobs.Length; i++)
+        {
+            object? target = jobs[i].scopeOrStorageTree;
+            if (target is null) continue;
+
+            if (target is IBatchedAddressWarmer addressBatchWarmer && jobs[i].path is Address address)
+            {
+                int addressSequenceId = jobs[i].sequenceId;
+                int addressCount = 1;
+                addressBuffer[0] = address.ToAccountPath;
+                for (int j = i + 1; j < jobs.Length; j++)
+                {
+                    if (ReferenceEquals(jobs[j].scopeOrStorageTree, target)
+                        && jobs[j].sequenceId == addressSequenceId
+                        && jobs[j].path is Address duplicateAddress)
+                    {
+                        addressBuffer[addressCount++] = duplicateAddress.ToAccountPath;
+                        jobs[j] = default;
+                    }
+                }
+
+                if (addressCount == 1)
+                {
+                    HandleJob(in jobs[i]);
+                    continue;
+                }
+
+                try
+                {
+                    addressBatchWarmer.WarmUpStateTrieBatch(addressBuffer.AsSpan(0, addressCount), addressSequenceId);
+                }
+                catch (TrieNodeException) { }
+                catch (NodeHashMismatchException) { }
+                catch (ObjectDisposedException) { }
+                catch (NullReferenceException) when (IsDisposedJobTarget(in jobs[i])) { }
+                continue;
+            }
+
+            if (target is ITrieWarmer.IAddressWarmer)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            if (target is not IBatchedStorageWarmer batchWarmer)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            int sequenceId = jobs[i].sequenceId;
+            int count = 1;
+            indexBuffer[0] = jobs[i].index;
+            for (int j = i + 1; j < jobs.Length; j++)
+            {
+                if (ReferenceEquals(jobs[j].scopeOrStorageTree, target) && jobs[j].sequenceId == sequenceId)
+                {
+                    indexBuffer[count++] = jobs[j].index;
+                    jobs[j] = default;
+                }
+            }
+
+            if (count == 1)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            try
+            {
+                batchWarmer.WarmUpStorageTrieBatch(indexBuffer.AsSpan(0, count), sequenceId);
+            }
+            catch (TrieNodeException) { }
+            catch (NodeHashMismatchException) { }
+            catch (ObjectDisposedException) { }
+            catch (NullReferenceException) when (IsDisposedJobTarget(in jobs[i])) { }
         }
     }
 
