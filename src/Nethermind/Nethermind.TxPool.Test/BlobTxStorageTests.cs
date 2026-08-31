@@ -217,7 +217,7 @@ public class BlobTxStorageTests
         ];
 
         columnsDb.ResetWriteBatchTracking();
-        ((IBatchDeleteTxStorage)blobTxStorage).DeleteMany(keys);
+        ((IAtomicBlobTxStorage)blobTxStorage).DeleteMany(keys);
 
         using (Assert.EnterMultipleScope())
         {
@@ -266,7 +266,7 @@ public class BlobTxStorageTests
         transaction.Timestamp += UInt256.One;
         columnsDb.ResetWriteBatchTracking();
 
-        ((IBatchDeleteTxStorage)blobTxStorage).Replace(transaction, [obsoleteTimestamp]);
+        ((IAtomicBlobTxStorage)blobTxStorage).Replace(transaction, [obsoleteTimestamp]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -280,6 +280,41 @@ public class BlobTxStorageTests
                 transaction.Hash,
                 transaction.SenderAddress!,
                 transaction.Timestamp,
+                out _), Is.True);
+            Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Replace_should_not_commit_partial_batch_when_column_write_fails()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction transaction = CreateBlobTransaction();
+        blobTxStorage.Add(transaction);
+        UInt256 originalTimestamp = transaction.Timestamp;
+        transaction.Timestamp += UInt256.One;
+        columnsDb.FailNextLightColumnWrite = true;
+
+        Assert.That(
+            () => ((IAtomicBlobTxStorage)blobTxStorage).Replace(transaction, [originalTimestamp]),
+            Throws.TypeOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                originalTimestamp,
+                out _), Is.True);
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _), Is.False);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(
+                transaction.Hash,
+                transaction.SenderAddress!,
                 out _), Is.True);
             Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
         }
@@ -326,14 +361,15 @@ public class BlobTxStorageTests
         private readonly MemColumnsDb<BlobTxsColumns> _inner = new();
 
         public int StartedWriteBatchCount { get; private set; }
+        public bool FailNextLightColumnWrite { get; set; }
         public IEnumerable<BlobTxsColumns> ColumnKeys => _inner.ColumnKeys;
 
-        public IDb GetColumnDb(BlobTxsColumns key) => _inner.GetColumnDb(key);
+        public IDb GetColumnDb(BlobTxsColumns key) => new DirectWriteRejectingDb(_inner.GetColumnDb(key));
 
         public IColumnsWriteBatch<BlobTxsColumns> StartWriteBatch()
         {
             StartedWriteBatchCount++;
-            return _inner.StartWriteBatch();
+            return new TrackingColumnsWriteBatch(_inner.StartWriteBatch(), this);
         }
 
         public void ResetWriteBatchTracking() => StartedWriteBatchCount = 0;
@@ -343,5 +379,64 @@ public class BlobTxStorageTests
         public void Flush(bool onlyWal = false) => _inner.Flush(onlyWal);
 
         public void Dispose() => _inner.Dispose();
+    }
+
+    private sealed class TrackingColumnsWriteBatch(
+        IColumnsWriteBatch<BlobTxsColumns> inner,
+        TrackingColumnsDb owner) : IColumnsWriteBatch<BlobTxsColumns>
+    {
+        public IWriteBatch GetColumnBatch(BlobTxsColumns key)
+        {
+            IWriteBatch batch = inner.GetColumnBatch(key);
+            if (key == BlobTxsColumns.LightBlobTxs && owner.FailNextLightColumnWrite)
+            {
+                owner.FailNextLightColumnWrite = false;
+                return new FailingWriteBatch(batch);
+            }
+
+            return batch;
+        }
+
+        public void Clear() => inner.Clear();
+
+        public void Dispose() => inner.Dispose();
+    }
+
+    private sealed class FailingWriteBatch(IWriteBatch inner) : IWriteBatch
+    {
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) =>
+            throw new InvalidOperationException("Simulated column write failure.");
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+            inner.Merge(key, value, flags);
+
+        public void Clear() => inner.Clear();
+
+        public void Dispose() { }
+    }
+
+    private sealed class DirectWriteRejectingDb(IDb inner) : IDb
+    {
+        public string Name => inner.Name;
+
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
+
+        public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) =>
+            throw new InvalidOperationException("Blob transaction writes must use a columns batch.");
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+
+        public IWriteBatch StartWriteBatch() =>
+            throw new InvalidOperationException("Blob transaction writes must use a columns batch.");
+
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+
+        public void Dispose() { }
     }
 }

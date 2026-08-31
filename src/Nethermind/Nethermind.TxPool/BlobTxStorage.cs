@@ -18,7 +18,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IBatchDeleteTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -117,7 +117,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     public void Add(Transaction transaction)
         => Replace(transaction, []);
 
-    void IBatchDeleteTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+    void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
         => Replace(transaction, obsoleteTimestamps);
 
     private void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
@@ -211,7 +211,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
+    void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
         DeleteMany(keys);
 
     private void WriteTransaction(
@@ -224,23 +224,31 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     {
         ValueHash256 hash = transaction.Hash!.ValueHash256;
         using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-        IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
-        // Obsolete timestamps can include the current one; remove first so the ordered batch's final put preserves it.
-        for (int i = 0; i < obsoleteTimestamps.Length; i++)
+        try
         {
-            GetHashPrefixedByTimestamp(obsoleteTimestamps[i], hash, txHashPrefixed);
-            fullBlobTxsBatch.Remove(txHashPrefixed);
-        }
+            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+            // Obsolete timestamps can include the current one; remove first so the ordered batch's final put preserves it.
+            for (int i = 0; i < obsoleteTimestamps.Length; i++)
+            {
+                GetHashPrefixedByTimestamp(obsoleteTimestamps[i], hash, txHashPrefixed);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
+            }
 
-        GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
-        fullBlobTxsBatch.PutSpan(txHashPrefixed, fullRlp);
-        if (!elidedRlp.IsEmpty)
+            GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
+            fullBlobTxsBatch.PutSpan(txHashPrefixed, fullRlp);
+            if (!elidedRlp.IsEmpty)
+            {
+                fullBlobTxsBatch.PutSpan(elidedKey, elidedRlp);
+            }
+
+            batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Set(hash.BytesAsSpan, lightRlp);
+        }
+        catch
         {
-            fullBlobTxsBatch.PutSpan(elidedKey, elidedRlp);
+            batch.Clear();
+            throw;
         }
-
-        batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Set(hash.BytesAsSpan, lightRlp);
     }
 
     private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)

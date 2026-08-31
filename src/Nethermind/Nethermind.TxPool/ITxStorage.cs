@@ -21,10 +21,10 @@ public interface ITxStorage
     void Delete(in ValueHash256 hash, in UInt256 timestamp);
 }
 
-internal interface IBatchDeleteTxStorage
+internal interface IAtomicBlobTxStorage
 {
     /// <summary>
-    /// Removes the timestamped full-body record and the hash-keyed light and elided records for each key.
+    /// Atomically removes the timestamped full-body record and the hash-keyed light and elided records for each key.
     /// </summary>
     void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys);
 
