@@ -129,11 +129,10 @@ public class HistoryPruner : IHistoryPruner
         _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
-        byte[]? persistedPointerBytes = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
-        ulong persistedPointer = persistedPointerBytes is null ? 0 : new RlpReader(persistedPointerBytes).DecodeULong();
-        byte[]? persistedCursorBytes = _metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
-        ulong persistedCursor = persistedCursorBytes is null ? persistedPointer : new RlpReader(persistedCursorBytes).DecodeULong();
-        _persistedUnreclaimedFloor = ulong.Max(ulong.Min(persistedCursor, persistedPointer), _blockTree.GetLowestBlock());
+        (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
+        ulong snapshotPointer = persistedPointer ?? 0;
+        // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
+        _persistedUnreclaimedFloor = ulong.Max(ulong.Min(persistedCursor ?? snapshotPointer, snapshotPointer), _blockTree.GetLowestBlock());
 
         CheckConfig();
 
@@ -200,8 +199,9 @@ public class HistoryPruner : IHistoryPruner
     }
 
     // Deliberately lock-free - this sits on the eth_getLogs path, and the pruning pass drives the load.
-    // Until it does, the constructor's snapshot of the persisted cursors is exact: nothing moves them
-    // in this process before the load.
+    // Until it does, the answer is the later of the constructor's snapshot of the persisted cursors - exact,
+    // since nothing moves them in this process before the load - and the configured barrier, which refuses
+    // more than necessary only transiently, while serving a reclaimed height would be silently short.
     public ulong OldestUnreclaimedBlockNumber =>
         _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
@@ -978,6 +978,14 @@ public class HistoryPruner : IHistoryPruner
         return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
     }
 
+    private static (ulong? Pointer, ulong? Cursor) ReadPersistedPointers(IDb metadataDb)
+    {
+        byte[]? pointerBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
+        byte[]? cursorBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
+        return (pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong(),
+            cursorBytes is null ? null : new RlpReader(cursorBytes).DecodeULong());
+    }
+
     private bool TryLoadDeletePointers()
     {
         if (_hasLoadedDeletePointers)
@@ -985,8 +993,8 @@ public class HistoryPruner : IHistoryPruner
             return true;
         }
 
-        byte[]? blocksVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
-        if (blocksVal is null)
+        (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
+        if (persistedPointer is null)
         {
             if (!SetDeletePointerToOldestBlock())
             {
@@ -995,16 +1003,15 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateBlocksDeletePointer(ulong.Max(new RlpReader(blocksVal).DecodeULong(), _minDeletableBlockNumber));
+            UpdateBlocksDeletePointer(ulong.Max(persistedPointer.Value, _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
 
-        byte[]? reclaimVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
         // Absent on a database pruned by the per-block code, where everything below the boundary is already gone.
-        _blocksReclaimCursor = reclaimVal is null
+        _blocksReclaimCursor = persistedCursor is null
             ? _blocksDeletePointer
-            : ulong.Max(new RlpReader(reclaimVal).DecodeULong(), _minDeletableBlockNumber);
-        _lastSavedBlocksReclaimCursor = reclaimVal is null ? ulong.MaxValue : _blocksReclaimCursor;
+            : ulong.Max(persistedCursor.Value, _minDeletableBlockNumber);
+        _lastSavedBlocksReclaimCursor = persistedCursor is null ? ulong.MaxValue : _blocksReclaimCursor;
 
         byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         // Until BAL pruning runs once, the BAL pointer trails the blocks pointer because BALs are

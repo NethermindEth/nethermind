@@ -382,6 +382,38 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public void OldestUnreclaimedBlockNumber_floors_at_the_configured_barrier_before_the_pointers_load()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, lowestBlock: 9_000UL);
+
+        Assert.That(pruner.OldestUnreclaimedBlockNumber, Is.EqualTo(9_000UL),
+            "a barrier raised above the persisted cursors refuses more than necessary, transiently");
+    }
+
+    [Test]
+    public void OldestUnreclaimedBlockNumber_is_the_configured_barrier_when_nothing_was_persisted()
+    {
+        TestMemDb metadataDb = new();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, lowestBlock: 9_000UL);
+
+        Assert.That(pruner.OldestUnreclaimedBlockNumber, Is.EqualTo(9_000UL),
+            "with no persisted state the barrier is the whole answer, matching a never-pruned node");
+    }
+
+    [Test]
     public void SetDeletePointerToOldestBlock_holds_when_the_barrier_dropped_below_the_one_the_feed_last_started_with()
     {
         TestMemDb metadataDb = new();
@@ -492,11 +524,12 @@ public class HistoryPrunerTests
         return (pruner, metadataDb, retention);
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null, ulong lowestBlock = 0)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
+        blockTree.GetLowestBlock().Returns(lowestBlock);
         if (oldestBlock is not null)
         {
             blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>()).Returns(oldestBlock);
