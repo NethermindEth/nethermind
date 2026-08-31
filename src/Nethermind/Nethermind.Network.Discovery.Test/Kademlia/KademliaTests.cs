@@ -267,7 +267,7 @@ public class KademliaTests
     }
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
-        ValueHash256KademliaDistance.Instance.GetRandomHashAtDistance(currentHash, distance, Random.Shared);
+        ValueHash256TestHelper.CreateRandomHashAtDistance(currentHash, distance, Random.Shared);
 
     private static Dictionary<ValueHash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad)
         => (Dictionary<ValueHash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>)

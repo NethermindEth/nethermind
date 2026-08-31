@@ -70,7 +70,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
             return;
         }
 
-        _discv4Adapter.AddOrRefresh(reachableNode);
+        Kademlia.AddOrRefresh(reachableNode);
     }
 
     internal static bool TryCreateReachableNode(

@@ -277,8 +277,6 @@ public class KademliaAdapter(
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
         => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
 
-    public void AddOrRefresh(Node node) => AddOrRefreshRemoteNode(node);
-
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 

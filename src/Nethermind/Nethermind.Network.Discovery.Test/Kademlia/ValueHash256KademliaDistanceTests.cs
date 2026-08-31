@@ -60,7 +60,7 @@ public class ValueHash256KademliaDistanceTests
     }
 
     [Test]
-    public void TestGetRandomHash()
+    public void RandomHashAtDistance_HasRequestedDistance()
     {
         Random rand = new(0);
         Span<byte> randomizedBytes = stackalloc byte[ValueHash256.MemorySize];
@@ -69,7 +69,7 @@ public class ValueHash256KademliaDistanceTests
 
         void TestForDistance(int distance)
         {
-            ValueHash256 randHash = Distance.GetRandomHashAtDistance(randomized, distance, rand);
+            ValueHash256 randHash = ValueHash256TestHelper.CreateRandomHashAtDistance(randomized, distance, rand);
             Assert.That(Distance.CalculateLogDistance(randomized, randHash), Is.EqualTo(distance));
         }
 
@@ -86,11 +86,11 @@ public class ValueHash256KademliaDistanceTests
 
     [TestCase(-1)]
     [TestCase(257)]
-    public void GetRandomHashAtDistance_ShouldRejectInvalidDistance(int distance)
+    public void RandomHashAtDistance_RejectsInvalidDistance(int distance)
     {
         ValueHash256 hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Assert.That(() => Distance.GetRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
+        Assert.That(() => ValueHash256TestHelper.CreateRandomHashAtDistance(hash, distance, new Random(0)), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     [Test]

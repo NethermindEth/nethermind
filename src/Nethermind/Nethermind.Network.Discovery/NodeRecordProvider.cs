@@ -77,20 +77,13 @@ public sealed class NodeRecordProvider(
         LocalNodeRecord current = await currentTask;
         try
         {
-            (LocalNodeRecordState state, EndpointIssues endpointIssues) = await CreateState(head, CancellationToken.None);
-            if (current.EndpointIssues != endpointIssues)
-            {
-                LogEndpointIssues(endpointIssues);
-            }
-
+            (LocalNodeRecordState state, _) = await CreateState(head, CancellationToken.None);
             if (current.State == state)
             {
-                return current.EndpointIssues == endpointIssues
-                    ? current
-                    : current with { EndpointIssues = endpointIssues };
+                return current;
             }
 
-            return CreateSignedRecord(state, endpointIssues, NextSequence(current.Record.EnrSequence));
+            return CreateSignedRecord(state, NextSequence(current.Record.EnrSequence));
         }
         catch (Exception e)
         {
@@ -103,7 +96,7 @@ public sealed class NodeRecordProvider(
     {
         (LocalNodeRecordState state, EndpointIssues endpointIssues) = await CreateState(effectiveHeader, cancellationToken);
         LogEndpointIssues(endpointIssues);
-        return CreateSignedRecord(state, endpointIssues, NextSequence(previousSequence));
+        return CreateSignedRecord(state, NextSequence(previousSequence));
     }
 
     private async ValueTask<(LocalNodeRecordState State, EndpointIssues EndpointIssues)> CreateState(
@@ -170,7 +163,7 @@ public sealed class NodeRecordProvider(
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
 
-    private LocalNodeRecord CreateSignedRecord(LocalNodeRecordState state, EndpointIssues endpointIssues, ulong sequence)
+    private LocalNodeRecord CreateSignedRecord(LocalNodeRecordState state, ulong sequence)
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(new EthEntry(state.ForkId.HashBytes, state.ForkId.Next));
@@ -196,7 +189,7 @@ public sealed class NodeRecordProvider(
             throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
         }
 
-        return new LocalNodeRecord(selfNodeRecord, state, endpointIssues);
+        return new LocalNodeRecord(selfNodeRecord, state);
     }
 
     private ulong NextSequence(ulong previous)
@@ -205,7 +198,7 @@ public sealed class NodeRecordProvider(
         return now > previous ? now : previous + 1;
     }
 
-    private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State, EndpointIssues EndpointIssues);
+    private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State);
 
     private readonly record struct LocalNodeRecordState(
         IPAddress? ExternalIpV4,

@@ -84,51 +84,6 @@ public sealed class ValueHash256KademliaDistance : IKademliaDistance<ValueHash25
         return new ValueHash256(bytes);
     }
 
-    /// <summary>
-    /// Creates a random 256-bit key at the requested XOR log distance from <paramref name="currentHash"/>.
-    /// </summary>
-    [SkipLocalsInit]
-    internal ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance, Random random)
-    {
-        if ((uint)distance > MaxDistance)
-        {
-            throw new ArgumentOutOfRangeException(nameof(distance), distance, $"Distance must be between 0 and {MaxDistance}.");
-        }
-
-        Span<byte> randomized = stackalloc byte[ValueHash256.MemorySize];
-        random.NextBytes(randomized);
-        return CopyForRandom(currentHash, randomized, MaxDistance - distance);
-    }
-
-    private ValueHash256 CopyForRandom(ValueHash256 currentHash, Span<byte> randomizedHash, int distance)
-    {
-        if (distance >= MaxDistance)
-        {
-            return currentHash;
-        }
-
-        currentHash.Bytes[..(distance / 8)].CopyTo(randomizedHash);
-
-        int remainingBit = distance % 8;
-        int remainingBitByte = distance / 8;
-        byte mask = (byte)(~((1 << (8 - remainingBit)) - 1));
-        byte randomized = randomizedHash[remainingBitByte];
-        byte original = currentHash.Bytes[remainingBitByte];
-        randomizedHash[remainingBitByte] = (byte)((original & mask) | (randomized & ~mask));
-
-        if (distance <= MaxDistance - 1)
-        {
-            int nextBit = distance % 8;
-            int nextBitByte = distance / 8;
-            mask = (byte)(1 << (7 - nextBit));
-            randomized = randomizedHash[nextBitByte];
-            byte opposite = (byte)~currentHash.Bytes[nextBitByte];
-            randomizedHash[nextBitByte] = (byte)((opposite & mask) | (randomized & ~mask));
-        }
-
-        return new ValueHash256(randomizedHash);
-    }
-
     private static void XorDistance(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, Span<byte> destination)
     {
         int i = 0;

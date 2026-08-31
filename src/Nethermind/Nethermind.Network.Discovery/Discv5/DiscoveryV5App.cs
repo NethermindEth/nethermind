@@ -159,7 +159,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             }
 
             enrNode.ObserveEnrSequence(node.HighestObservedEnrSequence);
-            _discv5Adapter.AddOrRefresh(enrNode);
+            Kademlia.AddOrRefresh(enrNode);
         }
         catch (Exception e)
         {

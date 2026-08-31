@@ -685,8 +685,6 @@ public sealed class KademliaAdapter(
             currentNode.DiscoveryAddress,
             out refreshedNode);
 
-    public void AddOrRefresh(Node node) => AddOrRefreshRemoteNode(node);
-
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 

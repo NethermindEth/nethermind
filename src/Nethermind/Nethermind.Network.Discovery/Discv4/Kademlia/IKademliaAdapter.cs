@@ -33,11 +33,6 @@ public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IDi
     IAsyncEnumerable<Node> ReadPeerCandidates(CancellationToken token);
 
     /// <summary>
-    /// Adds or refreshes a routing node while preserving newer authenticated ENR state.
-    /// </summary>
-    void AddOrRefresh(Node node);
-
-    /// <summary>
     /// Sends an ENR request to a node and returns the response.
     /// </summary>
     /// <param name="receiver">The node to send the request to.</param>
