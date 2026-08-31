@@ -26,7 +26,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         _rocksDb = rocksDb;
         _mainDb = mainDb;
-        bool isDefaultColumn = name.Equals("Default", StringComparison.OrdinalIgnoreCase);
+        bool isDefaultColumn = name == "Default";
         if (isDefaultColumn) name = "default";
         _columnFamily = _rocksDb.GetColumnFamily(name);
         Name = name;

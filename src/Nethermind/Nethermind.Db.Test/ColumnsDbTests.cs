@@ -159,14 +159,16 @@ public class ColumnsDbTests
             TestItem.KeccakC.BytesToArray(),
             TestItem.KeccakA.BytesToArray(),
             TestItem.KeccakB.BytesToArray(),
+            Array.Empty<byte>(),
         ];
         column.Set(keys[1], [0x10]);
         column.Set(keys[2], Array.Empty<byte>());
+        column.Set(keys[3], [0x40]);
         byte[]?[] values = new byte[]?[keys.Length];
 
         column.MultiGet(keys, values, ReadFlags.HintCacheMiss);
 
-        Assert.That(values, Is.EqualTo(new byte[]?[] { null, [0x10], [] }));
+        Assert.That(values, Is.EqualTo(new byte[]?[] { null, [0x10], [], [0x40] }));
     }
 
     [Test]
