@@ -270,24 +270,67 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_persisted_light_v1_blob_tx_with_consensus_size()
+    public void should_announce_persisted_light_v1_blob_tx_with_elided_network_size()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction lightTx = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransactions([lightTx], sendFullTx: false);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
             m.Hashes.Length == 1 &&
             m.Hashes[0] == tx.Hash &&
-            m.Sizes[0] == lightTx.GetConsensusEncodingSize() &&
+            m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < tx.GetLength()));
+    }
+
+    [Test]
+    public void should_announce_blob_tx_with_the_size_it_will_serve()
+    {
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+        int elidedWireSize = elidedTx.GetLength();
+        int consensusSize = tx.GetLength(shouldCountBlobs: false);
+
+        _handler.SendNewTransaction(tx);
+
+        // The announced size must be the bytes a peer receives back in PooledTransactions, not the bare
+        // consensus encoding: geth disconnects on a mismatch larger than 8 bytes.
+        Assert.That(elidedWireSize - consensusSize, Is.GreaterThan(8));
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.Sizes[0] == elidedWireSize));
+    }
+
+    [Test]
+    public void announced_size_matches_the_bytes_actually_served_for_a_blob_tx()
+    {
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+
+        int announced = 0;
+        _session.When(session => session.DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>()))
+            .Do(call => announced = ((NewPooledTransactionHashesMessage72)call[0]).Sizes[0]);
+
+        _handler.SendNewTransaction(tx);
+
+        // Serialize the elided transaction exactly as PooledTransactions would, and compare byte counts.
+        byte[] servedTxBytes = TxDecoder.Instance
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(announced, Is.EqualTo(servedTxBytes.Length));
+            Assert.That(announced, Is.GreaterThan(tx.GetLength(shouldCountBlobs: false) + 8));
+        }
     }
 
     [Test]
     public void should_not_announce_legacy_light_v1_blob_tx_with_unknown_network_size()
     {
-        // The consensus size is not present in legacy entries.
+        // The elided network size is not present in legacy entries.
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction legacyLightTx = new(
             timestamp: tx.Timestamp,
@@ -304,7 +347,7 @@ public class Eth72ProtocolHandlerTests
             size: tx.GetLength(),
             proofVersion: ProofVersion.V1,
             blobCellMask: BlobCellMask.Full,
-            sparseBlobNetworkSize: 0);
+            elidedNetworkSize: 0);
 
         _handler.SendNewTransactions([legacyLightTx], sendFullTx: false);
 
@@ -786,14 +829,14 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_v0_blob_tx_with_consensus_size()
+    public void should_announce_v0_blob_tx_with_elided_network_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
             .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
-        int consensusEncodingSize = tx.GetLength(shouldCountBlobs: false);
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransaction(tx);
 
@@ -801,7 +844,7 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Length == 1
             && m.Hashes[0] == tx.Hash
             && m.Sizes.Length == 1
-            && m.Sizes[0] == consensusEncodingSize
+            && m.Sizes[0] == elidedWireSize
             && m.Sizes[0] < tx.GetLength()));
     }
 
@@ -935,7 +978,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_sparse_blob_tx_with_consensus_size()
+    public void should_announce_sparse_blob_tx_with_elided_network_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -943,7 +986,7 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
         int fullTxLength = tx.GetLength();
-        int consensusEncodingSize = tx.GetLength(shouldCountBlobs: false);
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransaction(tx);
 
@@ -951,7 +994,7 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Length == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.Sizes.Length == 1 &&
-            m.Sizes[0] == consensusEncodingSize &&
+            m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < fullTxLength));
     }
 
