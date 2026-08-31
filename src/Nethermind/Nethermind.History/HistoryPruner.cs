@@ -48,8 +48,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-    internal TimeSpan AbsentPointerReleaseWindow { get; init; } = TimeSpan.FromHours(1);
-    private long _absentPointerSince;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -194,6 +192,36 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
+    public ulong OldestUnreclaimedBlockNumber
+    {
+        get
+        {
+            if (!_hasLoadedDeletePointers)
+            {
+                bool lockTaken = false;
+                try
+                {
+                    Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+                    if (lockTaken)
+                    {
+                        TryLoadDeletePointers();
+                    }
+                }
+                finally
+                {
+                    if (lockTaken)
+                    {
+                        Monitor.Exit(_pruneLock);
+                    }
+                }
+            }
+
+            // Until the pointers load, the published boundary is the conservative answer: refusing more
+            // than necessary is transient, while serving a reclaimed height would be silently short.
+            return _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _blockTree.GetLowestBlock();
+        }
+    }
+
     private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
         ulong? head = _blockTree.Head?.Number;
@@ -285,8 +313,13 @@ public class HistoryPruner : IHistoryPruner
                 // Before the interval gate: the read side refuses every sliced address until this has validated
                 // the stamps, and the first interval boundary can be most of an hour away. The flag keeps the
                 // uncontended fast path honest - another caller loading the pointers must not skip this tick.
-                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
-                _stampsValidated = true;
+                // A frozen frontier must not stamp: the stamp never lowers, and this one would cap slice
+                // coverage at a mid-backfill depth forever.
+                if (!_frontierFrozen)
+                {
+                    _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
+                    _stampsValidated = true;
+                }
 
                 if (!ShouldPruneHistory())
                 {
@@ -392,10 +425,11 @@ public class HistoryPruner : IHistoryPruner
 
         // The feed persists a completion marker when it reaches its own latched barrier, so the release
         // never has to reconstruct a barrier that drifts with the pruning cutoff. The static barrier is a
-        // term of the feed's ComputeBarrier and so always releasable. A written pointer above it with no
-        // marker is a descent in progress - the persisted pointer only moves every flush interval, so its
-        // quietness proves nothing and the hold stays. An absent pointer is bounded by wall clock instead:
-        // after the window it is a feed that never runs, and master latched there immediately.
+        // term of the feed's ComputeBarrier and so always releasable, and a pointer parked at the barrier
+        // the feed recorded when it last started is a finished descent even if the marker predates this
+        // build. A written pointer above those with no marker is a descent in progress - the persisted
+        // pointer only moves every flush interval, so its quietness proves nothing and the hold stays; an
+        // absent pointer is a feed that has not run yet, which a synchronizing process eventually runs.
         if (_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete))
         {
             return false;
@@ -409,16 +443,11 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
-        if (pointer is null)
+        byte[]? barrierWhenStartedBytes = _metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted);
+        if (pointer is not null && barrierWhenStartedBytes is not null
+            && pointer <= barrierWhenStartedBytes.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros())
         {
-            if (_absentPointerSince == 0)
-            {
-                _absentPointerSince = Stopwatch.GetTimestamp();
-            }
-            else if (Stopwatch.GetElapsedTime(_absentPointerSince) >= AbsentPointerReleaseWindow)
-            {
-                return false;
-            }
+            return false;
         }
 
         if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
@@ -1032,30 +1061,33 @@ public class HistoryPruner : IHistoryPruner
         // both directions, only a shared batch could.
         _receiptRetention.OnPruningProgress(_blocksReclaimCursor, _sliceCleanupCursor);
 
-        // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no
-        // cursor reads it as "already level" and treats an unreclaimed backlog as finished, forever.
-        if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
+        // One batch, and a boundary write carries the cursors with it: a boundary that lands without its
+        // cursor reads an unreclaimed backlog as "already level" on the next load, forever.
+        bool boundaryDirty = _blocksDeletePointer != _lastSavedBlocksDeletePointer;
+        using IWriteBatch batch = _metadataDb.StartWriteBatch();
+
+        if (boundaryDirty || _blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
         {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
+            batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
             _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
         }
 
-        if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
+        if (boundaryDirty)
         {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
+            batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
         }
 
         if (_sliceCleanupCursor != _lastSavedSliceCleanupCursor)
         {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
+            batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
             _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
         }
 
-        if (_balsDeletePointer != _lastSavedBalsDeletePointer)
+        if (boundaryDirty || _balsDeletePointer != _lastSavedBalsDeletePointer)
         {
-            _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
+            batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
             _lastSavedBalsDeletePointer = _balsDeletePointer;
             if (_logger.IsDebug) _logger.Debug($"Persisting oldest BAL stored = #{_balsDeletePointer} to disk.");
         }

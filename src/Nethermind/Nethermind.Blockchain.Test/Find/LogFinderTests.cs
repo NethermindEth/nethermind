@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
@@ -427,7 +428,7 @@ public class LogFinderTests
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
 
-    private static IndexedLogFinder CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, IPrunedLogsRetention? retention = null, int? indexFrom = 0, ulong lowestStored = BoundaryOldestStored)
+    private static IndexedLogFinder CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, IPrunedLogsRetention? retention = null, int? indexFrom = 0, ulong lowestStored = BoundaryOldestStored, IHistoryPruner? historyPruner = null)
     {
         blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.GetLowestBlock().Returns(lowestStored);
@@ -437,13 +438,49 @@ public class LogFinderTests
         index.MaxBlockNumber.Returns(indexFrom is null ? (int?)null : BoundaryTo);
         return new IndexedLogFinder(
             blockFinder, Substitute.For<IReceiptFinder>(), Substitute.For<IReceiptStorage>(), LimboLogs.Instance,
-            Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention);
+            Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention, historyPruner: historyPruner);
     }
 
     private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
         FilterBuilder.New().FromBlock(from).ToBlock(BoundaryTo).WithAddress(TestItem.AddressA).Build();
 
     private static BlockHeader BoundaryHeader(ulong number) => Build.A.BlockHeader.WithNumber(number).TestObject;
+
+    [Test]
+    public void Should_ServeBetweenTheReclaimCursorAndThePublishedBoundary_FromTheIndex()
+    {
+        IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
+        pruner.OldestUnreclaimedBlockNumber.Returns(1UL);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, historyPruner: pruner);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+    }
+
+    [Test]
+    public void Should_FailClosed_BelowTheReclaimCursor()
+    {
+        IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
+        pruner.OldestUnreclaimedBlockNumber.Returns(BoundaryOldestStored);
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out _, historyPruner: pruner);
+
+        Assert.Throws<ResourceNotFoundException>(() =>
+            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+    }
+
+    [Test]
+    public void Should_AnswerAWholeGenesisQuery_WhenTheBoundaryIsTheAncientBarrier()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, indexFrom: 1, lowestStored: 24_600_000);
+        LogFilter genesisFilter = FilterBuilder.New().FromBlock(0UL).ToBlock(0UL).WithAddress(TestItem.AddressA).Build();
+
+        FilterLog[] logs = finder.FindLogs(genesisFilter, BoundaryHeader(0), BoundaryHeader(0)).ToArray();
+
+        Assert.That(logs, Is.Empty);
+        index.DidNotReceive().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+    }
 
     [Test]
     public void Should_ServeBelowTheOldestStoredBlockFromTheIndex_WhenTheRetentionCoversTheFilter()

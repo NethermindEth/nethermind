@@ -1105,6 +1105,7 @@
           "Nethermind.Blockchain": "[1.40.0-unstable, )",
           "Nethermind.Consensus": "[1.40.0-unstable, )",
           "Nethermind.Facade": "[1.40.0-unstable, )",
+          "Nethermind.History": "[1.40.0-unstable, )",
           "Nethermind.JsonRpc": "[1.40.0-unstable, )"
         }
       },

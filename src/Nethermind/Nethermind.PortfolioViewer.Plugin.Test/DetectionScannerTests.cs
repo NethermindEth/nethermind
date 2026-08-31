@@ -316,6 +316,25 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Forward_walk_with_the_floor_above_the_head_resumes_from_the_head_without_querying()
+    {
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 5, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _blockFinder.GetLowestBlock().Returns(500UL);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Head, Is.EqualTo(100), "coverage resumes from the current head");
+            Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
+        }
+        _logFinder.DidNotReceive().FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task Scan_already_below_the_floor_completes_without_querying()
     {
         _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 20, 100, false, 0));
