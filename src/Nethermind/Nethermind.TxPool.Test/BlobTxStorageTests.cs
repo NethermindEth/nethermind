@@ -197,6 +197,34 @@ public class BlobTxStorageTests
     }
 
     [Test]
+    public void Delete_should_not_commit_partial_batch_when_column_write_fails()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction transaction = CreateBlobTransaction();
+        blobTxStorage.Add(transaction);
+        columnsDb.FailNextLightColumnWrite = true;
+
+        Assert.That(
+            () => blobTxStorage.Delete(transaction.Hash, transaction.Timestamp),
+            Throws.TypeOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _), Is.True);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                out _), Is.True);
+            Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void DeleteMany_should_use_one_write_batch()
     {
         TrackingColumnsDb columnsDb = new();
@@ -210,10 +238,10 @@ public class BlobTxStorageTests
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyB).TestObject;
         blobTxStorage.Add(first);
         blobTxStorage.Add(second);
-        TxLookupKey[] keys =
+        BlobTxDeleteKey[] keys =
         [
-            new(first.Hash, first.SenderAddress!, first.Timestamp),
-            new(second.Hash, second.SenderAddress!, second.Timestamp)
+            new(first.Hash, first.Timestamp),
+            new(second.Hash, second.Timestamp)
         ];
 
         columnsDb.ResetWriteBatchTracking();
@@ -331,7 +359,7 @@ public class BlobTxStorageTests
 
         Assert.That(
             () => ((IAtomicBlobTxStorage)blobTxStorage).DeleteMany(
-                [new TxLookupKey(transaction.Hash!.ValueHash256, transaction.SenderAddress!, transaction.Timestamp)]),
+                [new BlobTxDeleteKey(transaction.Hash!.ValueHash256, transaction.Timestamp)]),
             Throws.TypeOf<InvalidOperationException>());
 
         using (Assert.EnterMultipleScope())
@@ -388,12 +416,22 @@ public class BlobTxStorageTests
     private sealed class TrackingColumnsDb : IColumnsDb<BlobTxsColumns>
     {
         private readonly MemColumnsDb<BlobTxsColumns> _inner = new();
+        private readonly Dictionary<BlobTxsColumns, IDb> _columnDbs = [];
 
         public int StartedWriteBatchCount { get; private set; }
         public bool FailNextLightColumnWrite { get; set; }
         public IEnumerable<BlobTxsColumns> ColumnKeys => _inner.ColumnKeys;
 
-        public IDb GetColumnDb(BlobTxsColumns key) => new DirectWriteRejectingDb(_inner.GetColumnDb(key));
+        public IDb GetColumnDb(BlobTxsColumns key)
+        {
+            if (!_columnDbs.TryGetValue(key, out IDb db))
+            {
+                db = new DirectWriteRejectingDb(_inner.GetColumnDb(key), key);
+                _columnDbs.Add(key, db);
+            }
+
+            return db;
+        }
 
         public IColumnsWriteBatch<BlobTxsColumns> StartWriteBatch()
         {
@@ -444,7 +482,7 @@ public class BlobTxStorageTests
         public void Dispose() { }
     }
 
-    private sealed class DirectWriteRejectingDb(IDb inner) : IDb
+    private sealed class DirectWriteRejectingDb(IDb inner, BlobTxsColumns column) : IDb
     {
         public string Name => inner.Name;
 
@@ -452,8 +490,16 @@ public class BlobTxStorageTests
 
         public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
 
-        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) =>
-            throw new InvalidOperationException("Blob transaction writes must use a columns batch.");
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
+        {
+            if (column == BlobTxsColumns.LightBlobTxs
+                || column == BlobTxsColumns.FullBlobTxs && key.Length == 64)
+            {
+                throw new InvalidOperationException("Full and light blob transaction writes must use a columns batch.");
+            }
+
+            inner.Set(key, value, flags);
+        }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
 

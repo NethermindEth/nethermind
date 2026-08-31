@@ -37,6 +37,7 @@ namespace Nethermind.TxPool
     public class TxPool : ITxPool, IAsyncDisposable
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
+        private const int MarkerPublicationDeferralWarningThreshold = 3;
 
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
@@ -81,6 +82,7 @@ namespace Nethermind.TxPool
         private long _headGeneration;
         private long _forkStateVersion;
         private int _consecutiveRevalidationAbandonments;
+        private int _consecutiveMarkerPublicationDeferrals;
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
@@ -181,7 +183,13 @@ namespace Nethermind.TxPool
             _transactions.Removed += OnRemovedTx;
 
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
-                ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
+                ? new PersistentBlobTxDistinctSortedPool(
+                    blobTxStorage,
+                    _txPoolConfig,
+                    comparer,
+                    logManager,
+                    TimeProvider.System,
+                    RequestCurrentSpecRevalidation)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             UpdateBucketsWithoutRevalidation();
             InitializeValidatedSpec();
@@ -456,6 +464,8 @@ namespace Nethermind.TxPool
         }
 
         private void RequestRevalidation(long generation) => _revalidationChannel.Writer.TryWrite(generation);
+
+        private void RequestCurrentSpecRevalidation() => RequestRevalidation(Volatile.Read(ref _headGeneration));
 
         private bool RequiresRevalidation(bool specValidatedForHead) =>
             !specValidatedForHead
@@ -1076,7 +1086,8 @@ namespace Nethermind.TxPool
 
             if (markerMatches || isEmpty)
             {
-                _ = PublishValidatedSpec(headSpec, expectedMarker);
+                // Retained deletes are process-local and cannot exist during construction.
+                _ = TryPublishValidatedSpec(headSpec, expectedMarker);
             }
             else
             {
@@ -1181,7 +1192,7 @@ namespace Nethermind.TxPool
                     return true;
                 }
 
-                if (!PublishValidatedSpec(spec, marker))
+                if (!TryPublishValidatedSpec(spec, marker))
                 {
                     return false;
                 }
@@ -1274,23 +1285,29 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Publishes the validated specification and its persistence marker.
+        /// Attempts to publish the validated specification and its persistence marker.
         /// </summary>
-        /// <returns><see langword="false"/> when an active blob writer still owns a retained delete.</returns>
-        private bool PublishValidatedSpec(IReleaseSpec spec, string marker)
+        /// <returns><see langword="false"/> when a retained blob delete cannot yet be flushed.</returns>
+        private bool TryPublishValidatedSpec(IReleaseSpec spec, string marker)
         {
-            if (!_blobTransactions.FlushPendingRevalidationDeletes())
-            {
-                return false;
-            }
+            bool deletesFlushed = _blobTransactions.TryFlushPendingRevalidationDeletes();
 
             lock (_forkStateLock)
             {
                 Interlocked.Increment(ref _forkStateVersion);
                 try
                 {
-                    _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
-                    Volatile.Write(ref _specChangeMarkerUnpublished, false);
+                    if (deletesFlushed)
+                    {
+                        _specChangeValidationStorage?.SetSpecChangeValidationMarker(marker);
+                        Volatile.Write(ref _specChangeMarkerUnpublished, false);
+                        _consecutiveMarkerPublicationDeferrals = 0;
+                    }
+                    else
+                    {
+                        Volatile.Write(ref _specChangeMarkerUnpublished, true);
+                        _consecutiveMarkerPublicationDeferrals++;
+                    }
 
                     Volatile.Write(ref _validatedSpec, spec);
                     Interlocked.Exchange(ref _consecutiveRevalidationAbandonments, 0);
@@ -1301,7 +1318,18 @@ namespace Nethermind.TxPool
                 }
             }
 
-            return true;
+            if (!deletesFlushed
+                && _consecutiveMarkerPublicationDeferrals == MarkerPublicationDeferralWarningThreshold
+                && _logger.IsWarn)
+            {
+                _logger.Warn("Transaction pool validation marker publication remains deferred while a blob persistence update completes.");
+            }
+            else if (!deletesFlushed && _logger.IsDebug)
+            {
+                _logger.Debug("Deferred transaction pool validation marker publication while a blob persistence update completes.");
+            }
+
+            return deletesFlushed;
         }
 
         private void InvalidateValidatedSpec()

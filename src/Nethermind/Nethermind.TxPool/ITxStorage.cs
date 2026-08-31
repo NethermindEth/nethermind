@@ -12,6 +12,8 @@ namespace Nethermind.TxPool;
 
 public readonly record struct TxLookupKey(ValueHash256 Hash, Address Sender, UInt256 Timestamp);
 
+internal readonly record struct BlobTxDeleteKey(ValueHash256 Hash, UInt256 Timestamp);
+
 public interface ITxStorage
 {
     bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
@@ -26,7 +28,7 @@ internal interface IAtomicBlobTxStorage
     /// <summary>
     /// Atomically removes the timestamped full-body record and the hash-keyed light and elided records for each key.
     /// </summary>
-    void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys);
+    void DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys);
 
     /// <summary>
     /// Atomically writes <paramref name="transaction"/> and removes obsolete full bodies for the same hash.

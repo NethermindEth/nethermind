@@ -136,10 +136,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             byte[] lightRlp = LightTxDecoder.Encode(transaction);
 
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-            GetElidedTxKey(hash, elidedKey);
-            bool writeElided = transaction.NetworkWrapper is ShardBlobNetworkWrapper
-                && !_fullBlobTxsDb.KeyExists(elidedKey);
-            if (writeElided)
+            if (ShouldWriteElided(transaction, elidedKey))
             {
                 using ArrayPoolSpan<byte> elidedRlp = _txDecoder.EncodeToArrayPoolSpan(
                     BlobTransactionPayload.Elide(transaction),
@@ -177,14 +174,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
     private void SaveWithoutBlobsIfMissing(Transaction transaction)
     {
-        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
-        {
-            return;
-        }
-
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-        GetElidedTxKey(transaction.Hash, elidedKey);
-        if (_fullBlobTxsDb.KeyExists(elidedKey))
+        if (!ShouldWriteElided(transaction, elidedKey))
         {
             return;
         }
@@ -204,14 +195,22 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             GetElidedTxKey(hash, elidedKey);
 
             using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-            fullBlobTxsBatch.Remove(txHashPrefixed);
-            fullBlobTxsBatch.Remove(elidedKey);
-            batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+            try
+            {
+                IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
+                fullBlobTxsBatch.Remove(elidedKey);
+                batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+            }
+            catch
+            {
+                batch.Clear();
+                throw;
+            }
         }
     }
 
-    void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
+    void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys) =>
         DeleteMany(keys);
 
     private void WriteTransaction(
@@ -251,7 +250,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    private void DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys)
+    private void DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -288,7 +287,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys)
+    private void DeleteManyFromStorage(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -304,7 +303,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
             for (int i = 0; i < keys.Length; i++)
             {
-                ref readonly TxLookupKey key = ref keys[i];
+                ref readonly BlobTxDeleteKey key = ref keys[i];
                 GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
                 fullBlobTxsBatch.Remove(txHashPrefixed);
                 GetElidedTxKey(key.Hash, elidedKey);
@@ -422,6 +421,17 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     {
         elidedKey[0] = ElidedTxKeyPrefix;
         hash.Bytes.CopyTo(elidedKey[1..]);
+    }
+
+    private bool ShouldWriteElided(Transaction transaction, scoped Span<byte> elidedKey)
+    {
+        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
+        {
+            return false;
+        }
+
+        GetElidedTxKey(transaction.Hash, elidedKey);
+        return !_fullBlobTxsDb.KeyExists(elidedKey);
     }
 
     private static void GetHashPrefixedByTimestamp(in UInt256 timestamp, in ValueHash256 hash, scoped Span<byte> txHashPrefixed)
