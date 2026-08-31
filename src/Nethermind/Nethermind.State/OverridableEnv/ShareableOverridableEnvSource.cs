@@ -16,6 +16,12 @@ namespace Nethermind.State.OverridableEnv;
 /// <see cref="ConcurrencyLimitReachedException"/>. Owns every env it hands out so shutdown releases
 /// both idle and rented envs without leaking references into outer DI disposers.
 /// </summary>
+/// <remarks>
+/// The instant rejection is a backstop, not the shedding mechanism: JSON-RPC bounds EVM-executing requests
+/// upstream with a queued admission gate whose default permit count equals this cap, so RPC traffic waits
+/// there instead of racing for envs here. Rent must stay non-blocking because it runs synchronously inside
+/// the request's EVM invocation.
+/// </remarks>
 public sealed class ShareableOverridableEnvSource<T>(
     Func<IOverridableEnv<T>> factory,
     int maxConcurrent) : IShareableOverridableEnvSource<T>

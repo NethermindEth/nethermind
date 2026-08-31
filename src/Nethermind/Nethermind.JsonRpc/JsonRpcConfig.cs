@@ -55,6 +55,14 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxLogsResponseBodySize { get; set; } = null;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? EthModuleConcurrentInstances { get; set; } = null;
+    public int? EvmExecutionConcurrency { get; set; } = null;
+    public int? TracingConcurrency { get; set; } = null;
+    public int? ProofConcurrency { get; set; } = null;
+    public int MaxQueueWaitMs { get; set; } = 500;
+    public int? TracingMaxQueueWaitMs { get; set; } = null;
+    public int? ProofMaxQueueWaitMs { get; set; } = null;
+    public int? TraceModuleConcurrentInstances { get; set; } = null;
+    public int? ProofModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
     public int? MaxLoggedRequestParametersCharacters { get; set; } = null;

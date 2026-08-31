@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
@@ -26,10 +27,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public override IProofRpcModule Create()
         {
-            IOverridableEnv overridableEnv = overridableEnvFactory.Create();
+            IOverridableEnv? overridableEnv = null;
+            ILifetimeScope? tracerScope = null;
+            ILifetimeScope? proofRpcScope = null;
+            try
+            {
+                overridableEnv = overridableEnvFactory.Create();
 
-            ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddModule(overridableEnv)
+                tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                    .AddModule(overridableEnv)
 
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
@@ -44,16 +50,28 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
                 .AddScoped<ITracer, Tracer>());
 
-            // The tracer need a in memory receipts while the proof RPC does not.
-            // Eh, its a good idea to separate what need block processing and what does not anyway.
-            // IWitnessGeneratingBlockProcessingEnvFactory used by proof_call is resolved from the parent scope.
-            ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddSingleton<IOverridableEnv<ITracer>>(tracerScope.Resolve<IOverridableEnv<ITracer>>()));
+                // The tracer need a in memory receipts while the proof RPC does not.
+                // Eh, its a good idea to separate what need block processing and what does not anyway.
+                // IWitnessGeneratingBlockProcessingEnvFactory used by proof_call is resolved from the parent
+                // scope.
+                proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                    .AddSingleton<IOverridableEnv<ITracer>>(tracerScope.Resolve<IOverridableEnv<ITracer>>()));
 
-            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);
-            rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
+                IProofRpcModule module = proofRpcScope.Resolve<IProofRpcModule>();
+                proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);
+                tracerScope = null;
+                rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
+                proofRpcScope = null;
 
-            return proofRpcScope.Resolve<IProofRpcModule>();
+                return module;
+            }
+            catch
+            {
+                proofRpcScope?.Dispose();
+                tracerScope?.Dispose();
+                (overridableEnv as IDisposable)?.Dispose();
+                throw;
+            }
         }
     }
 }

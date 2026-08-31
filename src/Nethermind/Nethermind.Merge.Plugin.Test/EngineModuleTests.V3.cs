@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -299,7 +300,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
-        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
+        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<RpcAdmissionController>()), new(RpcEndpoint.Http), new(), executionPayload);
     }
 
     [Test]
