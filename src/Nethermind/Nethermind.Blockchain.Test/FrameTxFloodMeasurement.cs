@@ -966,6 +966,7 @@ public class FrameTxFloodMeasurement
         private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
         private readonly ulong _ceiling;
         private readonly int _kRetry;
+        private readonly BlockReceiptsTracer _receiptsTracer = new();
         private int _attemptsOnCurrent;
         private int _salt;
         private Transaction _failing;
@@ -988,6 +989,7 @@ public class FrameTxFloodMeasurement
             _ceiling = ceiling;
             _kRetry = kRetry;
             _failing = FrameTx(0, ceiling);
+            _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
         }
 
         public static ProducerRig Create(ISpecProvider specProvider, int kRetry, ulong ceiling)
@@ -1064,12 +1066,10 @@ public class FrameTxFloodMeasurement
                 .WithTransactions(_failing)
                 .TestObject;
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            receiptsTracer.StartNewBlockTrace(block);
+            _receiptsTracer.StartNewBlockTrace(block);
             _executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
-            _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
-            receiptsTracer.EndBlockTrace();
+            _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
+            _receiptsTracer.EndBlockTrace();
 
             // Replaced rather than retired, so residency stays at one and every pass has the same work.
             if (_attemptsOnCurrent >= _kRetry)
