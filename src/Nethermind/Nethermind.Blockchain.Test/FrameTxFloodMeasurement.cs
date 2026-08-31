@@ -592,6 +592,7 @@ public class FrameTxFloodMeasurement
     /// </remarks>
     [TestCase(236_285ul)]
     [TestCase(300_000ul)]
+    [TestCase(500_000ul)]
     public async Task Sustainable_rejection_rate_by_ramp(ulong ceiling)
     {
         SkipUnlessSingleCore();
