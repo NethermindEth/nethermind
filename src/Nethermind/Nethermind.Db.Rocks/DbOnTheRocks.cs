@@ -589,7 +589,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // changes to the table options must be applied before setting to set.
         options.SetBlockBasedTableFactory(tableOptions);
 
-        options.ApplyFromString(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
+        string rocksDbOptions = dbConfig.RocksDbOptions;
+        string? rocksDbCollectors = null;
+        if (dbConfig.CompactOnDeletions)
+        {
+            rocksDbOptions = RemoveTablePropertiesCollectors(rocksDbOptions, out rocksDbCollectors);
+        }
+
+        options.ApplyFromString(NormalizeRocksDbOptions(rocksDbOptions));
 
         if (dbConfig.WriteBufferSize > 0)
         {
@@ -668,6 +675,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
+        if (dbConfig.CompactOnDeletions)
+        {
+            options.ApplyFromString(BuildTablePropertiesCollectorsOption(rocksDbCollectors));
+        }
 
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
@@ -1545,6 +1557,88 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;
     private const ulong CompactOnDeletionTriggerKeys = 50_000;
     private const double CompactOnDeletionFileRatio = 0.3;
+    private static readonly string CompactOnDeletionCollector = $"{{id=CompactOnDeletionCollector;window_size={CompactOnDeletionSlidingWindowKeys};deletion_trigger={CompactOnDeletionTriggerKeys};deletion_ratio={CompactOnDeletionFileRatio};}}";
+
+    private static string RemoveTablePropertiesCollectors(string options, out string? collectors)
+    {
+        const string collectorOption = "table_properties_collectors";
+        collectors = null;
+        int searchStart = 0;
+        while (searchStart < options.Length)
+        {
+            int optionStart = options.IndexOf(collectorOption, searchStart, StringComparison.Ordinal);
+            if (optionStart < 0) break;
+
+            if (optionStart > 0 && IsRocksDbOptionNameCharacter(options[optionStart - 1]))
+            {
+                searchStart = optionStart + collectorOption.Length;
+                continue;
+            }
+
+            int equalsIndex = optionStart + collectorOption.Length;
+            while (equalsIndex < options.Length && char.IsWhiteSpace(options[equalsIndex])) equalsIndex++;
+            if (equalsIndex >= options.Length || options[equalsIndex] != '=')
+            {
+                searchStart = optionStart + collectorOption.Length;
+                continue;
+            }
+
+            int valueStart = equalsIndex + 1;
+            while (valueStart < options.Length && char.IsWhiteSpace(options[valueStart])) valueStart++;
+
+            int valueEnd = FindOptionValueEnd(options, valueStart);
+            collectors = options[valueStart..valueEnd].Trim();
+            if (valueEnd < options.Length && options[valueEnd] == ';') valueEnd++;
+            options = options.Remove(optionStart, valueEnd - optionStart);
+            searchStart = optionStart;
+        }
+
+        return options;
+    }
+
+    private static bool IsRocksDbOptionNameCharacter(char value) => char.IsLetterOrDigit(value) || value is '_' or '.';
+
+    private static int FindOptionValueEnd(string options, int valueStart)
+    {
+        if (valueStart >= options.Length || options[valueStart] != '{')
+        {
+            int semicolon = options.IndexOf(';', valueStart);
+            return semicolon < 0 ? options.Length : semicolon;
+        }
+
+        int braces = 0;
+        for (int i = valueStart; i < options.Length; i++)
+        {
+            switch (options[i])
+            {
+                case '{':
+                    braces++;
+                    break;
+                case '}':
+                    if (--braces == 0) return i + 1;
+                    break;
+            }
+        }
+
+        return options.Length;
+    }
+
+    private static string BuildTablePropertiesCollectorsOption(string? collectorsOption)
+    {
+        string collectors = StripOuterBraces(collectorsOption);
+
+        if (collectors.Length > 0) collectors += ":";
+        collectors += CompactOnDeletionCollector;
+
+        return "table_properties_collectors={" + collectors + "};";
+    }
+
+    private static string StripOuterBraces(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        value = value.Trim();
+        return value.Length >= 2 && value[0] == '{' && value[^1] == '}' ? value[1..^1] : value;
+    }
 
     /// <summary>The whole store, as true open bounds at the native layer - a managed null can marshal as an empty
     /// key, and an [empty, empty) range compacts nothing at all.</summary>

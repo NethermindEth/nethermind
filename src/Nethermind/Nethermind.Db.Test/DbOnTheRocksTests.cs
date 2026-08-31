@@ -66,6 +66,77 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void CompactOnDeletions_AdditionalCollectorOverridesEarlierCollectors()
+        {
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "table_properties_collectors={{id=CompactOnDeletionCollector;window_size=100000;deletion_trigger=50000;deletion_ratio=0.5;}};"
+            };
+            config.RocksDbOptions += "table_properties_collectors = {{id=CompactOnDeletionCollector;window_size=100000;deletion_trigger=50000;deletion_ratio=0.4;}};";
+
+            string log = OpenAndReadOptionsLog(config);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log, Does.Contain("Deletion ratio = 0.5"));
+                Assert.That(log, Does.Not.Contain("Deletion ratio = 0.4"));
+                Assert.That(log.Split("CompactOnDeletionCollector").Length - 1, Is.EqualTo(1));
+            }
+        }
+
+        [TestCase(null, TestName = "CompactOnDeletions_NullAdditionalOptionsRetainTheDefaultCollector")]
+        [TestCase("", TestName = "CompactOnDeletions_EmptyAdditionalOptionsRetainTheDefaultCollector")]
+        [TestCase("max_open_files=128;", TestName = "CompactOnDeletions_AdditionalOptionsWithoutCollectorRetainTheDefaultCollector")]
+        public void CompactOnDeletions_AdditionalOptionsWithoutCollectorRetainTheDefaultCollector(string? additionalOptions)
+        {
+            DbConfig config = new() { AdditionalRocksDbOptions = additionalOptions };
+
+            string log = OpenAndReadOptionsLog(config);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log, Does.Contain("Deletion ratio = 0.3"));
+                Assert.That(log.Split("CompactOnDeletionCollector").Length - 1, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void CompactOnDeletions_AdditionalOptionsWithoutCollectorRetainBaseCollectors()
+        {
+            DbConfig config = new() { AdditionalRocksDbOptions = "max_open_files=128;" };
+            config.RocksDbOptions += "table_properties_collectors={{id=CompactOnDeletionCollector;window_size=100000;deletion_trigger=50000;deletion_ratio=0.4;}};";
+
+            string log = OpenAndReadOptionsLog(config);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log, Does.Contain("Deletion ratio = 0.4"));
+                Assert.That(log, Does.Contain("Deletion ratio = 0.3"));
+                Assert.That(log.Split("CompactOnDeletionCollector").Length - 1, Is.EqualTo(2));
+            }
+        }
+
+        private string OpenAndReadOptionsLog(DbConfig config)
+        {
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
+            rocksDbConfigFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(callInfo =>
+                {
+                    string databaseName = callInfo.ArgAt<string>(0);
+                    string? columnName = callInfo.ArgAt<string?>(1);
+                    IRocksDbConfig baseConfig = configFactory.GetForDatabase(databaseName, columnName);
+                    return new AdjustedRocksdbConfig(baseConfig, "", baseConfig.WriteBufferSize.GetValueOrDefault(), compactOnDeletions: true);
+                });
+
+            using (new DbOnTheRocks(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, rocksDbConfigFactory, LimboLogs.Instance))
+            {
+            }
+
+            return string.Join('\n', Directory.EnumerateFiles(DbPath, "LOG*", SearchOption.AllDirectories).Select(File.ReadAllText));
+        }
+
+        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
