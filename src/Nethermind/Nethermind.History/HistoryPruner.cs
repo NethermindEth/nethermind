@@ -446,8 +446,17 @@ public class HistoryPruner : IHistoryPruner
         if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
         {
             _ancientHoldLastLogged = Stopwatch.GetTimestamp();
-            if (_logger.IsWarn) _logger.Warn(
-                $"Holding history pruning while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).");
+            // Warn only when pruning is on - there the hold means unbounded disk growth; with pruning off it
+            // merely defers boundary discovery, and a healthy default-config sync must not emit alarm output.
+            string holdMessage = $"Holding the history boundary while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).";
+            if (_enabled)
+            {
+                if (_logger.IsWarn) _logger.Warn(holdMessage);
+            }
+            else if (_logger.IsInfo)
+            {
+                _logger.Info(holdMessage);
+            }
         }
 
         return true;

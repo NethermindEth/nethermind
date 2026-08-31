@@ -123,6 +123,19 @@ public class LogIndexBuilderTests
         }
     }
 
+    private sealed class GatedLogIndexStorage : RecordingLogIndexStorage
+    {
+        public TaskCompletionSource Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int GateAtOrBelow { get; init; } = int.MinValue;
+
+        public override async Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
+        {
+            if (Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum) <= GateAtOrBelow)
+                await Gate.Task;
+            await base.AddReceiptsAsync(aggregate, stats);
+        }
+    }
+
     private class FailingLogIndexStorage(int failAfter, Exception exception) : TestLogIndexStorage
     {
         private int _callCount;
@@ -546,6 +559,54 @@ public class LogIndexBuilderTests
             Assert.That(storage.MinBlockNumber, Is.EqualTo(secondFrontier),
                 "once the pruner publishes the boundary at the parked frontier, the risen floor must complete the descent instead of leaving it polling forever");
         }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_CompleteTheBackwardSync_WhenTheFloorDropsAfterTheExit(CancellationToken cancellation)
+    {
+        const int latchedBoundary = 60;
+        const int firstFrontier = 30;
+        const int droppedFrontier = 10;
+        _syncConfig.AncientReceiptsBarrier = 1;
+
+        int frontier = firstFrontier;
+        IBlockTree realTree = _blockTree;
+        IBlockTree latchedTree = Substitute.For<IBlockTree>();
+        latchedTree.SyncPivot.Returns(realTree.SyncPivot);
+        latchedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        latchedTree.GetLowestBlock().Returns((ulong)latchedBoundary);
+        latchedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                return number >= (ulong)Volatile.Read(ref frontier)
+                    ? realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1))
+                    : null;
+            });
+        ISyncPointers pointers = Substitute.For<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber.Returns(_ => (ulong)Volatile.Read(ref frontier));
+
+        GatedLogIndexStorage storage = new() { GateAtOrBelow = firstFrontier };
+        LogIndexBuilder builder = GetService(
+            storage,
+            latchedTree,
+            new FlatDbConfig { HistorySliceAddresses = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+            Substitute.For<IPrunedLogsRetention>(),
+            pointers);
+
+        await builder.StartAsync();
+        while (builder.BackwardExitFloor != firstFrontier)
+            await Task.Delay(10, cancellation);
+
+        Volatile.Write(ref frontier, droppedFrontier);
+        storage.Gate.SetResult();
+
+        await builder.BackwardSyncCompletion.WaitAsync(cancellation);
+
+        Assert.That(storage.MinBlockNumber, Is.EqualTo(firstFrontier),
+            "the completion fires against the floor the exit recorded, not the floor that dropped after it");
     }
 
     [Test]

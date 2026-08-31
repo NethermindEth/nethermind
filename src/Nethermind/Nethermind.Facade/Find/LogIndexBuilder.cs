@@ -81,6 +81,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     internal int StallTicksBeforeGivingUp { get; init; }
     private int _stalledBelowBoundary = -1;
     private volatile int _backwardExitFloor = -1;
+    internal int BackwardExitFloor => _backwardExitFloor;
     private int _stallTicks;
     private bool _stallWarned;
 
