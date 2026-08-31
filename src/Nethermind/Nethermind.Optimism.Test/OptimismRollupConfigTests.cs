@@ -37,6 +37,11 @@ public class OptimismRollupConfigTests
     [NonParallelizable]
     public void Embedded_optimism_chain_specs_build_rollup_configs()
     {
+        if (Environment.GetEnvironmentVariable("DOTNET_EnableHWIntrinsic") == "0")
+        {
+            Assert.Ignore("Catalog validation runs in normal and checked variants; Zstd decompression exceeds the no-intrinsics job budget.");
+        }
+
         EthereumJsonSerializer serializer = new();
         foreach (string chainSpecPath in EmbeddedOptimismChainSpecs())
         {
