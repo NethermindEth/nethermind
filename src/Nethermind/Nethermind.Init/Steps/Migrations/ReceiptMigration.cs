@@ -284,8 +284,6 @@ namespace Nethermind.Init.Steps.Migrations
                 return false;
             }
 
-            if (completeReceipts.Length == 0) return true;
-
             if (_recovery.TryRecover(block, completeReceipts, forceRecoverSender: false) == ReceiptsRecoveryResult.Fail)
             {
                 if (_logger.IsWarn)

@@ -38,6 +38,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
 
         ulong step = decoderContext.DecodeULong();
         byte[] signature = decoderContext.DecodeByteArray();
+        // Third-party chain specs may persist non-standard genesis seals; live headers require full signatures.
         if (signature.Length == 0 || (number != 0 && signature.Length != Signature.Size))
         {
             throw new RlpException("Invalid AuRa signature RLP.");

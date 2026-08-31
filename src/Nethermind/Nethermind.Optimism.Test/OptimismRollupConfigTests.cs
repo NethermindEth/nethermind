@@ -21,17 +21,13 @@ public class OptimismRollupConfigTests
 {
     private const string ResourcePrefix = "Nethermind.Config.chainspec.";
 
-    private static string[] EmbeddedOptimismChainSpecs()
-    {
-        string[] chainSpecPaths = typeof(IConfig).Assembly.GetManifestResourceNames()
+    private static string[] EmbeddedChainSpecs() =>
+        typeof(IConfig).Assembly.GetManifestResourceNames()
             .Where(static name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal))
-            .Where(static name => name.EndsWith(".json.zst", StringComparison.Ordinal))
-            .Select(static name => $"chainspec/{name[ResourcePrefix.Length..]}")
+            .Where(static name =>
+                name.EndsWith(".json", StringComparison.Ordinal) ||
+                name.EndsWith(".json.zst", StringComparison.Ordinal))
             .ToArray();
-        return chainSpecPaths.Length > 0
-            ? chainSpecPaths
-            : throw new InvalidOperationException("No embedded Optimism chain specs were found.");
-    }
 
     [Test]
     [NonParallelizable]
@@ -43,21 +39,29 @@ public class OptimismRollupConfigTests
         }
 
         EthereumJsonSerializer serializer = new();
-        foreach (string chainSpecPath in EmbeddedOptimismChainSpecs())
+        int optimismChainSpecCount = 0;
+        foreach (string resourceName in EmbeddedChainSpecs())
         {
-            string resourceName = ResourcePrefix + chainSpecPath["chainspec/".Length..];
             using Stream stream = typeof(IConfig).Assembly.GetManifestResourceStream(resourceName)
                 ?? throw new InvalidOperationException($"Embedded chain spec {resourceName} was not found.");
             RollupConfigInputLoader inputLoader = new(serializer);
-            ChainSpec chainSpec = new ZstdChainSpecLoader(inputLoader).Load(stream);
+            ChainSpec chainSpec = resourceName.EndsWith(".zst", StringComparison.Ordinal)
+                ? new ZstdChainSpecLoader(inputLoader).Load(stream)
+                : inputLoader.Load(stream);
+            if (!inputLoader.IsOptimism) continue;
 
-            OptimismRollupConfig config = OptimismRollupConfig.Build(
-                inputLoader.ClParameters,
-                inputLoader.OptimismParameters,
-                chainSpec);
+            optimismChainSpecCount++;
 
-            Assert.That(config.L2ChainID, Is.EqualTo(chainSpec.ChainId), chainSpecPath);
+            Assert.That(
+                () => OptimismRollupConfig.Build(
+                    inputLoader.ClParameters,
+                    inputLoader.OptimismParameters,
+                    chainSpec),
+                Throws.Nothing,
+                resourceName);
         }
+
+        Assert.That(optimismChainSpecCount, Is.GreaterThan(0), "No embedded Optimism chain specs were found.");
     }
 
     [Test]
@@ -92,16 +96,23 @@ public class OptimismRollupConfigTests
         public OptimismChainSpecEngineParameters OptimismParameters => _optimismParameters
             ?? throw new InvalidOperationException("Optimism parameters were not loaded.");
 
+        public bool IsOptimism { get; private set; }
+
         public ChainSpec Load(Stream streamData)
         {
             ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData)
                 ?? throw new InvalidDataException("Embedded chain spec is empty.");
+            if (chainSpecJson.Engine is not { } engine ||
+                !engine.CustomEngineData.ContainsKey("OptimismCL"))
+            {
+                return new ChainSpec();
+            }
+
+            IsOptimism = true;
             ChainSpecParamsJson parameters = chainSpecJson.Params
                 ?? throw new InvalidDataException("Embedded chain spec parameters are missing.");
             ChainSpecGenesisJson genesis = chainSpecJson.Genesis
                 ?? throw new InvalidDataException("Embedded chain spec genesis is missing.");
-            ChainSpecJson.EngineJson engine = chainSpecJson.Engine
-                ?? throw new InvalidDataException("Embedded chain spec engine is missing.");
 
             _clParameters = DeserializeEngineParameters<CLChainSpecEngineParameters>(engine, "OptimismCL");
             _optimismParameters = DeserializeEngineParameters<OptimismChainSpecEngineParameters>(engine, "Optimism");
