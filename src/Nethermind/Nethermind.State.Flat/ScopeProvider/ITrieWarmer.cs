@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -40,4 +41,14 @@ public interface ITrieWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
     }
+}
+
+internal interface IBatchedStorageWarmer : ITrieWarmer.IStorageWarmer
+{
+    bool WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId);
+}
+
+internal interface IBatchedAddressWarmer : ITrieWarmer.IAddressWarmer
+{
+    bool WarmUpStateTrieBatch(ReadOnlySpan<ValueHash256> accountPaths, int sequenceId);
 }

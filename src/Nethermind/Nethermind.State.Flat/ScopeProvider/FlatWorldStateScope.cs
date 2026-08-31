@@ -18,7 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, IBatchedAddressWarmer
 {
     private const int StorageReadBatchSize = 256;
 
@@ -394,6 +394,48 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         finally
         {
             Interlocked.Decrement(ref _outstandingWarmups);
+        }
+    }
+
+    bool IBatchedAddressWarmer.WarmUpStateTrieBatch(ReadOnlySpan<ValueHash256> accountPaths, int sequenceId) =>
+        WarmUpStateTrieBatch(accountPaths, sequenceId);
+
+    internal bool WarmUpStateTrieBatch(ReadOnlySpan<ValueHash256> accountPaths, int sequenceId)
+    {
+        if (accountPaths.IsEmpty) return false;
+
+        try
+        {
+            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
+
+            try
+            {
+                using ArrayPoolList<ValueHash256> keys = new(accountPaths.Length, accountPaths.Length);
+                Span<ValueHash256> keySpan = keys.AsSpan();
+                accountPaths.CopyTo(keySpan);
+                keySpan.Sort(static (a, b) => a.CompareTo(b));
+
+                int unique = 1;
+                for (int i = 1; i < keySpan.Length; i++)
+                {
+                    if (keySpan[i] != keySpan[unique - 1]) keySpan[unique++] = keySpan[i];
+                }
+
+                _warmupStateTree.WarmUpPaths(keySpan[..unique]);
+                return true;
+            }
+            finally
+            {
+                _snapshotBundle.ReleaseReadOnlyBundleLease();
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < accountPaths.Length; i++)
+            {
+                Interlocked.Decrement(ref _outstandingWarmups);
+            }
         }
     }
 
