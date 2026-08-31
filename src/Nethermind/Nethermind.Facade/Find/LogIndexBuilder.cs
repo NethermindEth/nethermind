@@ -398,7 +398,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < (int)BackwardTargetBlockNumber)
+                // One read per iteration: the exit decision, the recorded floor and the completion test must
+                // all see the same value, or a drop between two reads of the moving property re-opens the hang.
+                int backwardFloor = isForward ? 0 : (int)BackwardTargetBlockNumber;
+                if (!isForward && start < backwardFloor)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
@@ -408,9 +411,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                     // still-queued final batch fires it from AddReceiptsAsync instead of completing early. On a
                     // latched-boundary database the floor can also DROP after this exit, so the floor it left
                     // against is recorded for the still-queued batches - without it the completion never fires.
-                    int floorAtExit = (int)BackwardTargetBlockNumber;
-                    _backwardExitFloor = floorAtExit;
-                    if (_logIndexStorage.MinBlockNumber <= floorAtExit)
+                    _backwardExitFloor = backwardFloor;
+                    if (_logIndexStorage.MinBlockNumber <= backwardFloor)
                         MarkCompleted(isForward: false);
                     return;
                 }

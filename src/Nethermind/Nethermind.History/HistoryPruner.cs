@@ -62,7 +62,10 @@ public class HistoryPruner : IHistoryPruner
     private readonly bool _fastSync;
     private readonly ISyncConfig _syncConfig;
     private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
+    private const int AncientHoldStaticRelogsBeforeWarn = 3;
     private long _ancientHoldLastLogged;
+    private ulong? _ancientHoldLastLoggedPointer;
+    private int _ancientHoldStaticRelogs;
     private bool _frontierFrozen;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
@@ -443,13 +446,18 @@ public class HistoryPruner : IHistoryPruner
             }
         }
 
-        if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
+        bool firstHoldLog = _ancientHoldLastLogged == 0;
+        if (_syncConfig.SynchronizationEnabled && (firstHoldLog || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
         {
             _ancientHoldLastLogged = Stopwatch.GetTimestamp();
-            // Warn only when pruning is on - there the hold means unbounded disk growth; with pruning off it
-            // merely defers boundary discovery, and a healthy default-config sync must not emit alarm output.
+            // Info while the frontier moved since the last relog - a descending backfill is the healthy shape
+            // in every pruning mode - and Warn once it sat still for several intervals: that is the stuck hold
+            // worth alerting on, in-memory movement over a ten-minute window being a fair progress signal even
+            // though the persisted pointer's flush resolution makes it useless as a release signal.
+            _ancientHoldStaticRelogs = !firstHoldLog && pointer == _ancientHoldLastLoggedPointer ? _ancientHoldStaticRelogs + 1 : 0;
+            _ancientHoldLastLoggedPointer = pointer;
             string holdMessage = $"Holding the history boundary while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).";
-            if (_enabled)
+            if (_ancientHoldStaticRelogs >= AncientHoldStaticRelogsBeforeWarn)
             {
                 if (_logger.IsWarn) _logger.Warn(holdMessage);
             }
