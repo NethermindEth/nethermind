@@ -25,7 +25,7 @@ internal static class StreamInterpreter
     internal static readonly bool BlockProcessingEnabled =
         IsBlockProcessingEnabled(RuntimeInformation.ProcessArchitecture);
 
-    // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
+    // First eligible execution schedules background construction; minimum 1.
     public static int BuildThreshold = 1;
 
     // Larger streams fall back to the metered loop; 512 KiB fits an EIP-170-sized contract of typical (~15-16x) output.
