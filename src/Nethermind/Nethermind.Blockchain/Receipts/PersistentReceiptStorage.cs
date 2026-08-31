@@ -500,8 +500,30 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block is null) return [];
-            return Get(block, recover, false);
+            if (block is not null) return Get(block, recover, false);
+            return GetRetainedWithoutBody(blockHash);
+        }
+
+        /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
+        /// encoding carries everything recovery would otherwise derive from the body, so it decodes standalone.
+        /// A compact (body-dependent) record cannot be decoded any more and reports empty.</summary>
+        private TxReceipt[] GetRetainedWithoutBody(Hash256 blockHash)
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null) return [];
+
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached ?? [];
+
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
+                return _storageDecoder.Decode(in receiptsData);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -889,32 +911,69 @@ namespace Nethermind.Blockchain.Receipts
             RemoveBlockTx(block);
         }
 
-        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
-        /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
-        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
         {
-            // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing it
-            // would permanently drop the tx-index write of every block queued near the head.
             if (_pendingReceipts is not null)
             {
-                _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => RemoveReceiptsRangeFromDb(fromInclusive, toExclusive));
+                _pendingReceipts.Remove(blockHash, () => RemoveReceiptsCore(blockNumber, blockHash));
             }
             else
             {
-                RemoveReceiptsRangeFromDb(fromInclusive, toExclusive);
+                RemoveReceiptsCore(blockNumber, blockHash);
             }
-
-            _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
-        }
-
-        private void RemoveReceiptsRangeFromDb(ulong fromInclusive, ulong toExclusive)
-        {
-            _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
-            if (fromInclusive < toExclusive) _receiptsCache.Clear();
         }
 
         [SkipLocalsInit]
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
+        private void RemoveReceiptsCore(ulong blockNumber, Hash256 blockHash)
+        {
+            _pendingCanonical.TryRemove(blockHash.ValueHash256, out _);
+            if (DropRetainedBody(blockHash.ValueHash256)) UpdateRetentionMetrics();
+
+            _receiptsCache.Delete(blockHash);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            _receiptsDb.Remove(blockNumPrefixed);
+        }
+
+        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
+        /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => RemoveReceiptsRanges([(fromInclusive, toExclusive)]);
+
+        /// <summary>One cache invalidation for the whole batch: the cache is keyed by hash, so it cannot be narrowed
+        /// to a range, and clearing it per range would keep it cold for as long as a caller has ranges to hand over.</summary>
+        public void RemoveReceiptsRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            bool removedAny = false;
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing
+                // it would permanently drop the tx-index write of every block queued near the head.
+                if (_pendingReceipts is not null)
+                {
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                }
+                else
+                {
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                }
+
+                removedAny |= fromInclusive < toExclusive;
+            }
+
+            if (!removedAny) return;
+            _receiptsCache.Clear();
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+            }
+        }
+
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed) =>
+            SweepTransactionIndex(retainedFromBlock, resumeFrom, maxEntries, isHeightRetained: null, cancellationToken, out removed);
+
+        [SkipLocalsInit]
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
             // Not <= 0: the resume key is counted, so a budget of one returns where it started and stalls there.
@@ -944,7 +1003,9 @@ namespace Nethermind.Blockchain.Receipts
 
                 while (view.MoveNext())
                 {
-                    if (PointsBelow(view.CurrentValue, retainedFromBlock))
+                    if (TryGetPointedBlock(view.CurrentValue, out ulong pointedBlock)
+                        && pointedBlock < retainedFromBlock
+                        && (isHeightRetained is null || !isHeightRetained(pointedBlock)))
                     {
                         batch[view.CurrentKey] = null;
                         removed++;
@@ -990,24 +1051,28 @@ namespace Nethermind.Blockchain.Receipts
             batch = _transactionDb.StartWriteBatch();
         }
 
-        /// <summary>Whether an index value names a block at or below the last reclaimed one. Under
-        /// <see cref="IReceiptConfig.CompactTxIndex"/> the value is the number, otherwise the hash, and the header
-        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.
+        /// <summary>The block an index value names. Under <see cref="IReceiptConfig.CompactTxIndex"/> the value is
+        /// the number, otherwise the hash, and the header supplies the number - headers never being pruned. A hash
+        /// that does not resolve is left alone.
         /// The two branches are not the same cost: the number is read from the iterator's own buffer, while the hash
         /// costs a header lookup per entry, so the same pass budget covers far fewer entries.</summary>
-        private bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        private bool TryGetPointedBlock(ReadOnlySpan<byte> value, out ulong number)
         {
+            number = 0;
             if (value.Length == 0) return false;
 
             if (value.Length == Hash256.Size)
             {
-                return _blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                    is { Number: ulong number } && number < retainedFromBlock;
+                if (_blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    is not { Number: ulong headerNumber }) return false;
+                number = headerNumber;
+                return true;
             }
 
             try
             {
-                return new RlpReader(value).DecodeULong() < retainedFromBlock;
+                number = new RlpReader(value).DecodeULong();
+                return true;
             }
             catch (RlpException)
             {

@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,16 +18,19 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IBatchDeleteTxStorage
 {
     private const int MaxPooledKeys = 128;
+    private const int ObsoleteSweepBatchSize = 16;
     private const int TransactionLockCount = 64;
 
     // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
     // cannot collide with the 64-byte timestamp-prefixed full-tx keys.
+    private const int FullTxKeyLength = 64;
     private const int ElidedTxKeyLength = 33;
     private const byte ElidedTxKeyPrefix = 0x01;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static ReadOnlySpan<byte> SpecChangeValidationMarkerKey => "spec-change-validation"u8;
     private static readonly Lock[] _transactionLocks = CreateTransactionLocks();
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private int _pooledKeyCount;
@@ -39,7 +43,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
     public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
-        Span<byte> txHashPrefixed = stackalloc byte[64];
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
         byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
@@ -74,7 +78,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         if (count == 0) return 0;
 
         // Outer array must be exact-size for the IDb indexer (uses keys.Length).
-        // Inner byte[64] keys are pooled via ConcurrentQueue to avoid per-call allocations.
+        // Inner full-transaction keys are pooled via ConcurrentQueue to avoid per-call allocations.
         byte[][] dbKeys = new byte[count][];
         int rentedKeyCount = 0;
         try
@@ -126,7 +130,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         ValueHash256 hash = transaction.Hash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
 
             EncodeAndSaveTx(transaction, _fullBlobTxsDb, txHashPrefixed);
@@ -146,7 +150,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         ValueHash256 hash = transaction.Hash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
             if (!_fullBlobTxsDb.KeyExists(txHashPrefixed))
             {
@@ -179,7 +183,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     {
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[64];
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
             GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
             Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
@@ -190,6 +194,156 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             fullBlobTxsBatch.Remove(txHashPrefixed);
             fullBlobTxsBatch.Remove(elidedKey);
             batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+        }
+    }
+
+    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
+        DeleteMany(keys, deleteSharedEntries: true);
+
+    void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
+        DeleteMany(keys, deleteSharedEntries: false);
+
+    void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken)
+    {
+        using ArrayPoolList<TxLookupKey> candidates = new(ObsoleteSweepBatchSize);
+        foreach (byte[] key in _fullBlobTxsDb.GetAllKeys())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Elided and marker keys share this column; only timestamp-prefixed full bodies are 64 bytes.
+            if (key.Length != FullTxKeyLength)
+            {
+                continue;
+            }
+
+            TxLookupKey candidate = new(
+                new ValueHash256(key.AsSpan(32)),
+                Address.Zero,
+                new UInt256(key.AsSpan(0, 32), isBigEndian: true));
+            if (IsCurrentFullBlobTransaction(candidate))
+            {
+                continue;
+            }
+
+            candidates.Add(candidate);
+
+            if (candidates.Count == ObsoleteSweepBatchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
+                candidates.Clear();
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
+    }
+
+    private void DeleteMany(
+        scoped ReadOnlySpan<TxLookupKey> keys,
+        bool deleteSharedEntries,
+        bool deleteOnlyIfObsolete = false)
+    {
+        if (keys.IsEmpty)
+        {
+            return;
+        }
+
+        Span<bool> requiredLocks = stackalloc bool[TransactionLockCount];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            requiredLocks[GetTransactionLockIndex(keys[i].Hash)] = true;
+        }
+
+        Span<int> acquiredLocks = stackalloc int[TransactionLockCount];
+        int acquiredLockCount = 0;
+        try
+        {
+            for (int i = 0; i < requiredLocks.Length; i++)
+            {
+                if (requiredLocks[i])
+                {
+                    _transactionLocks[i].Enter();
+                    acquiredLocks[acquiredLockCount++] = i;
+                }
+            }
+
+            if (deleteOnlyIfObsolete)
+            {
+                using ArrayPoolList<TxLookupKey> obsoleteKeys = new(keys.Length);
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    ref readonly TxLookupKey key = ref keys[i];
+                    if (!IsCurrentFullBlobTransaction(key))
+                    {
+                        obsoleteKeys.Add(key);
+                    }
+                }
+
+                DeleteManyFromStorage(obsoleteKeys.AsSpan(), deleteSharedEntries);
+            }
+            else
+            {
+                DeleteManyFromStorage(keys, deleteSharedEntries);
+            }
+        }
+        finally
+        {
+            for (int i = acquiredLockCount - 1; i >= 0; i--)
+            {
+                _transactionLocks[acquiredLocks[i]].Exit();
+            }
+        }
+    }
+
+    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    {
+        if (keys.IsEmpty)
+        {
+            return;
+        }
+
+        using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+        IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+        IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
+            ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
+            : null;
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            ref readonly TxLookupKey key = ref keys[i];
+            GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
+            fullBlobTxsBatch.Remove(txHashPrefixed);
+            if (deleteSharedEntries)
+            {
+                GetElidedTxKey(key.Hash, elidedKey);
+                fullBlobTxsBatch.Remove(elidedKey);
+                lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
+            }
+        }
+    }
+
+    private bool IsCurrentFullBlobTransaction(in TxLookupKey key) =>
+        TryDecodeLightTx(_lightBlobTxsDb.Get(key.Hash.BytesAsSpan), out LightTransaction? currentTransaction)
+        && currentTransaction is not null
+        && currentTransaction.Timestamp == key.Timestamp;
+
+    string? ISpecChangeValidationStorage.GetSpecChangeValidationMarker()
+    {
+        byte[]? marker = _fullBlobTxsDb.Get(SpecChangeValidationMarkerKey);
+        return marker is null ? null : Encoding.UTF8.GetString(marker);
+    }
+
+    void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string? marker)
+    {
+        if (marker is null)
+        {
+            _fullBlobTxsDb.Remove(SpecChangeValidationMarkerKey);
+        }
+        else
+        {
+            _fullBlobTxsDb.Set(SpecChangeValidationMarkerKey, Encoding.UTF8.GetBytes(marker));
         }
     }
 
@@ -264,7 +418,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             return key;
         }
 
-        return new byte[64];
+        return new byte[FullTxKeyLength];
     }
 
     private void ReturnKey(byte[] key)
@@ -291,8 +445,10 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
 
-    private static Lock GetTransactionLock(in ValueHash256 hash) =>
-        _transactionLocks[(uint)hash.GetHashCode() % TransactionLockCount];
+    private static Lock GetTransactionLock(in ValueHash256 hash) => _transactionLocks[GetTransactionLockIndex(hash)];
+
+    private static int GetTransactionLockIndex(in ValueHash256 hash) =>
+        (int)((uint)hash.GetHashCode() % TransactionLockCount);
 
     private static Lock[] CreateTransactionLocks()
     {

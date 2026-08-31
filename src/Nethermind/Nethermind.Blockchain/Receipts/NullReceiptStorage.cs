@@ -52,6 +52,10 @@ namespace Nethermind.Blockchain.Receipts
 
         // Bound as the node's receipt storage when Receipt.StoreReceipts is off, and the pruner runs regardless -
         // inheriting the throwing default would abort every pass after the blocks of its first chunk were gone.
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+        }
+
         public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
         {
         }

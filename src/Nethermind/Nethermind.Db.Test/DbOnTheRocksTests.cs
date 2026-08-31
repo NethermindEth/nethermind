@@ -616,6 +616,95 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[0] = (byte)i;
+                key[1] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            // A one-byte lower bound and a 128-byte upper bound, so the two bounds fall in different capped:8
+            // prefix buckets.
+            byte[] upperBound = new byte[128];
+            upperBound[0] = 0x0F;
+            upperBound.AsSpan(1).Fill(0xFF);
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween([0x00], upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "every key from 0x00 to 0x0F is inside the requested range, so a prefix-configured database must still walk all of them rather than stopping inside the lower bound's prefix bucket");
+        }
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[8] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            byte[] lowerBound = new byte[32];
+            byte[] upperBound = new byte[32];
+            upperBound[8] = 0x10;
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(lowerBound, upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
+        }
+
+        [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
+        [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
+        [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
+        public bool CrossesPrefixBucket_classifies_bounds(int prefixLength, int sharedBytes)
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            string dbName = prefixLength == 0 ? "Blocks" : "Code";
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, dbName), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] first = new byte[sharedBytes == 3 ? 3 : 32];
+            byte[] last = new byte[first.Length];
+            if (first.Length > sharedBytes) last[sharedBytes] = 0xFF;
+
+            return db.CrossesPrefixBucket(first, last);
+        }
     }
 
     [TestFixture(true)]
@@ -1142,6 +1231,41 @@ namespace Nethermind.Db.Test
                 return overflowKey;
             }
         }
+
+        [Test]
+        public void DeadWeight_AgainstARealDatabase_TheAggregatedPropertiesParseAndTheOpenRangeCompactionDigestsTombstones()
+        {
+            RocksDbConfigFactory configFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
+            IDb store = db;
+            byte[] value = new byte[64];
+            for (int i = 0; i < 2000; i++) store[Keccak.Compute(i.ToBigEndianByteArray()).BytesToArray()] = value;
+            db.Flush();
+            for (int i = 0; i < 2000; i++) store.Remove(Keccak.Compute(i.ToBigEndianByteArray()).Bytes);
+            db.Flush();
+
+            string? aggregated = db.GatherProperty("rocksdb.aggregated-table-properties");
+
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, long.MaxValue.ToString(), 0.5), Is.True,
+                "the real property string of the shipped RocksDB version must parse and report the tombstones");
+
+            db.Compact();
+
+            string? afterwards = db.GatherProperty("rocksdb.aggregated-table-properties");
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(afterwards, long.MaxValue.ToString(), 0.5), Is.False,
+                "the open-range compaction must digest the tombstones, after which the trigger stands down");
+        }
+
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "1000000000000", 0.5, true, TestName = "DeadWeight_TombstonesShadowMostPuts_Compacts")]
+        [TestCase("# entries=3300000000; # deletions=100000000;", "1000000000000", 0.5, false, TestName = "DeadWeight_MostlyLivePuts_Declines")]
+        [TestCase("# entries=100; # deletions=100;", "1000000000000", 0.5, true, TestName = "DeadWeight_OnlyTombstonesLeft_Compacts")]
+        [TestCase("# entries=0; # deletions=0;", "1000000000000", 0.5, false, TestName = "DeadWeight_EmptyStore_Declines")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", "999999999", 0.5, false, TestName = "DeadWeight_SmallStore_Declines")]
+        [TestCase(null, "1000000000000", 0.5, false, TestName = "DeadWeight_NoTableProperties_Declines")]
+        [TestCase("# entries=garbage; # deletions=1;", "1000000000000", 0.5, false, TestName = "DeadWeight_UnparsableEntries_Declines")]
+        [TestCase("# entries=6250000000; # deletions=3050000000;", null, 0.5, false, TestName = "DeadWeight_NoTotalSize_Declines")]
+        public void ExceedsDeadWeight_DecidesFromTheAggregatedTombstoneCounts(string? aggregated, string? total, double ratio, bool expected) =>
+            Assert.That(DbOnTheRocks.ExceedsDeadWeight(aggregated, total, ratio), Is.EqualTo(expected));
     }
 
     class CorruptedDbOnTheRocks(

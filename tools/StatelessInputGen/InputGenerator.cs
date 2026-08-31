@@ -217,10 +217,10 @@ internal static class InputGenerator
             ? specProvider
             : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
 
-    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    private static SszPublicKey[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
     {
         EthereumEcdsa ecdsa = new(chainId);
-        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+        SszPublicKey[] publicKeys = new SszPublicKey[transactions.Length];
 
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -228,10 +228,7 @@ internal static class InputGenerator
             PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
                 ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
 
-            publicKeys[i] = new()
-            {
-                Bytes = publicKey.PrefixedBytes
-            };
+            publicKeys[i] = SszPublicKey.FromSpan(publicKey.PrefixedBytes);
         }
 
         return publicKeys;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,17 +11,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions;
 
-public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager, ISpecProvider specProvider, IBlocksConfig? blocksConfig) : ITxSource where T : Transaction
+public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager, ISpecProvider specProvider) : ITxSource where T : Transaction
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
 
     public bool SupportsBlobs => innerSource.SupportsBlobs;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
-        IReleaseSpec currentSpec = NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig);
+        IReleaseSpec currentSpec = specProvider.GetSpec(targetBlock);
 
-        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, gasLimit, payloadAttributes, filterSource))
+        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, targetBlock, gasLimit, payloadAttributes, filterSource))
         {
             if (tx is T)
             {

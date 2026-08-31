@@ -344,6 +344,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
             }
 
+            public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+            {
+            }
+
 #pragma warning disable CS0067
             public event EventHandler<BlockReplacementEventArgs> NewCanonicalReceipts;
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
