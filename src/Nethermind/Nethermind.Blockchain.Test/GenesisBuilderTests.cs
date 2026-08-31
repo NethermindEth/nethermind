@@ -31,17 +31,21 @@ public class GenesisBuilderTests
     }
 
     [Test]
-    public void Missing_allocations_are_rejected()
+    public void Can_build_again_after_allocations_are_released()
     {
         ChainSpec chainSpec = new()
         {
             Genesis = Build.A.Block.Genesis.TestObject,
             GenesisStateUnavailable = true,
-            Allocations = null,
+            Allocations = [],
         };
-        (GenesisBuilder builder, _) = BuildGenesisBuilder(chainSpec);
+        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
 
-        Assert.That(() => builder.Build(), Throws.InvalidOperationException);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        Block first = builder.Build();
+        Block second = builder.Build();
+
+        Assert.That(second.Hash, Is.EqualTo(first.Hash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -210,7 +210,7 @@ public class RlpDecoderTests
             context.DecodeNonNullArray(KeccakDecoder.Instance);
         }
 
-        Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]

@@ -81,8 +81,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 return null;
             }
 
-            ArgumentNullException.ThrowIfNull(builtIn.Pricing);
-            KeyValuePair<string, JsonElement>[] pricing = builtIn.Pricing.Where(o => predicate(o)).ToArray();
+            if (builtIn.Pricing is not { } builtInPricing) return null;
+            KeyValuePair<string, JsonElement>[] pricing = builtInPricing.Where(o => predicate(o)).ToArray();
             if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;

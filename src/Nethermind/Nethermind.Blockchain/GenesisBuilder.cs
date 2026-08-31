@@ -56,8 +56,7 @@ public class GenesisBuilder(
     private void Preallocate(Block genesis)
     {
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
-        Dictionary<Address, ChainSpecAllocation> allocations = chainSpec.Allocations
-            ?? throw new InvalidOperationException("Chain spec allocations are missing.");
+        if (chainSpec.Allocations is not { } allocations) return;
 
         foreach ((Address address, ChainSpecAllocation allocation) in allocations.OrderBy(static a => a.Key))
         {

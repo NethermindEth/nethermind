@@ -965,6 +965,11 @@ public ref struct RlpReader
         T[] result = new T[count];
         for (int i = 0; i < result.Length; i++)
         {
+            if (PeekByte() == Rlp.EmptyListByte)
+            {
+                RlpHelpers.ThrowNullArrayElement(i);
+            }
+
             result[i] = decoder.DecodeGuardNotNull(ref this);
         }
 
@@ -994,7 +999,7 @@ public ref struct RlpReader
         T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.OfEmptyList[0])
+            if (PeekByte() == Rlp.EmptyListByte)
             {
                 result[i] = defaultElement;
                 Position++;
@@ -1021,7 +1026,7 @@ public ref struct RlpReader
         T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.OfEmptyList[0])
+            if (PeekByte() == Rlp.EmptyListByte)
             {
                 result[i] = defaultElement;
                 Position++;
@@ -1051,7 +1056,7 @@ public ref struct RlpReader
         bool hasDefaultElement = defaultElement is not null && !typeof(T).IsValueType;
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.OfEmptyList[0])
+            if (PeekByte() == Rlp.EmptyListByte)
             {
                 if (!hasDefaultElement)
                 {
@@ -1092,7 +1097,7 @@ public ref struct RlpReader
         T?[] result = new T?[count];
         for (int i = 0; i < result.Length; i++)
         {
-            if (PeekByte() == Rlp.OfEmptyList[0])
+            if (PeekByte() == Rlp.EmptyListByte)
             {
                 result[i] = defaultElement;
                 Position++;
@@ -1124,7 +1129,7 @@ public ref struct RlpReader
         {
             for (; i < result.Count; i++)
             {
-                if (PeekByte() == Rlp.OfEmptyList[0])
+                if (PeekByte() == Rlp.EmptyListByte)
                 {
                     result[i] = defaultElement;
                     Position++;
@@ -1170,7 +1175,7 @@ public ref struct RlpReader
         {
             for (; i < result.Count; i++)
             {
-                if (!decodeEmptyList && PeekByte() == Rlp.OfEmptyList[0])
+                if (!decodeEmptyList && PeekByte() == Rlp.EmptyListByte)
                 {
                     if (!hasDefaultElement)
                     {
@@ -1225,7 +1230,7 @@ public ref struct RlpReader
         {
             for (; i < result.Count; i++)
             {
-                if (PeekByte() == Rlp.OfEmptyList[0])
+                if (PeekByte() == Rlp.EmptyListByte)
                 {
                     result[i] = defaultElement;
                     Position++;
