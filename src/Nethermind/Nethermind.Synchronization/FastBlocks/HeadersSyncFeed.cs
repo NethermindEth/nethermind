@@ -330,10 +330,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         InsertHeaders(dependentBatch);
                     }
-                    catch
+                    catch (Exception e)
                     {
+                        // Faults here reach the dispatch loop, which ends it and finishes the feed for good.
+                        // Recover the range first, then rethrow only cancellation.
                         RequeueAsNewBatch(dependentBatch);
-                        throw;
+                        if (e is OperationCanceledException) throw;
+
+                        if (_logger.IsError) _logger.Error($"Failed to insert dependent batch {dependentBatch}", e);
+                        return;
                     }
 
                     lowest = LowestInsertedBlockHeader?.Number;
@@ -546,29 +551,20 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <summary>
-        /// Builds the batch to park in the dependency graph from the headers <paramref name="batch"/>
-        /// received. If a header is missing between the first and the last, the whole response is parked.
+        /// Builds the batch to add to <c>_dependencies</c>, covering the response up to <paramref name="lastIndex"/>.
+        /// It must end there: that header's number becomes the key.
         /// </summary>
-        private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch)
+        /// <param name="lastIndex">The highest non-null position in the response.</param>
+        private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch, int lastIndex)
         {
             ReadOnlySpan<BlockHeader?> response = batch.Response!.AsSpan();
-            int firstIndex = -1;
-            int lastIndex = -1;
-            int presentCount = 0;
-            for (int i = 0; i < response.Length; i++)
+            int firstIndex = lastIndex;
+            for (int i = 0; i < lastIndex; i++)
             {
                 if (response[i] is null) continue;
 
-                if (firstIndex < 0) firstIndex = i;
-                lastIndex = i;
-                presentCount++;
-            }
-
-            // Fewer headers than the positions they span means a header is missing in the middle.
-            if (presentCount != lastIndex - firstIndex + 1)
-            {
-                firstIndex = 0;
-                lastIndex = response.Length - 1;
+                firstIndex = i;
+                break;
             }
 
             int count = lastIndex - firstIndex + 1;
@@ -582,9 +578,13 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <summary>
-        /// Queues <paramref name="batch"/>'s range again as a new batch. The original cannot be
-        /// reused: the caller disposes it, and <c>InsertHeaders</c> may have queued it already.
+        /// Queues <paramref name="batch"/>'s range for download again, after inserting it failed.
+        /// A new batch is used because callers dispose the original, which may already be queued.
         /// </summary>
+        /// <remarks>
+        /// <see cref="ProcessPersistedPortion"/> is skipped: it inserts headers too, so it can fail
+        /// the same way. The range may therefore include headers already on disk.
+        /// </remarks>
         private void RequeueAsNewBatch(HeadersSyncBatch batch) => EnqueueBatch(new HeadersSyncBatch
         {
             StartNumber = batch.StartNumber,
@@ -693,7 +693,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == response.Length - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (!ValidateFirstHeader(header)) break;
+                    if (!ValidateFirstHeader(header, i)) break;
                 }
                 else
                 {
@@ -804,7 +804,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
 
             // Well, its the last in the batch, but first processed.
-            bool ValidateFirstHeader(BlockHeader header)
+            bool ValidateFirstHeader(BlockHeader header, int headerIndex)
             {
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
@@ -871,7 +871,17 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         return false;
                     }
-                    HeadersSyncBatch dependentBatch = BuildDependentBatch(batch);
+                    // `_dependencies` is only ever read at `lowest - 1`, so an entry at or above the lowest inserted header is dead.
+                    // Those headers are already inserted, so account for them and let the filler ask for the rest.
+                    if (lowestInserted is not null && header.Number > lowestInserted.Number)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - already inserted above {lowestInserted.Number} - no dependency");
+                        addedEarliest = Math.Max(batch.StartNumber, lowestInserted.Number);
+                        addedLast = batch.EndNumber;
+                        return false;
+                    }
+
+                    HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, headerIndex);
                     addedEarliest = dependentBatch.StartNumber;
                     addedLast = dependentBatch.EndNumber;
                     _dependencies[header.Number] = dependentBatch;
