@@ -203,42 +203,26 @@ namespace Nethermind.AuRa.Test
             byte[] code = Bytes.FromHexString("0x60006000");
             UInt256 balance = new(1_000_000_000_000_000_000);
             const ulong nonce = 7;
-            // Address.SystemUser goes through the identical two-line change and can hold a balance
-            // on AuRa (AuRaChainSpecEngineParameters even sets Eip158IgnoredAccount = SystemUser).
+            // Address.SystemUser goes through the identical two-line change; it is a persisted
+            // protocol account whose balance and nonce must survive preprocessing too.
             UInt256 systemUserBalance = new(3_000_000_000);
             const ulong systemUserNonce = 2;
 
-            (AuRaBlockProcessor processor, BlockAccessListManager balManager, IWorldState stateProvider) =
-                CreateBalAwareProcessor(withdrawalAddress);
-
-            Hash256 stateRoot;
-            using (stateProvider.BeginScope(IWorldState.PreGenesis))
-            {
-                stateProvider.CreateAccount(withdrawalAddress, balance, nonce);
-                stateProvider.InsertCode(withdrawalAddress, code, Amsterdam.Instance, isGenesis: true);
-                stateProvider.CreateAccount(Address.SystemUser, systemUserBalance, systemUserNonce);
-                stateProvider.Commit(Amsterdam.Instance);
-                stateProvider.CommitTree(0);
-                stateProvider.RecalculateStateRoot();
-                stateRoot = stateProvider.StateRoot;
-            }
-
-            BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-
-            using (stateProvider.BeginScope(parent))
-            {
-                EnableBal(balManager);
-                InvokeApplyAuRaPreprocessingChanges(processor);
-
-                using (Assert.EnterMultipleScope())
+            SeedThenPreprocess(withdrawalAddress,
+                seed: s =>
                 {
-                    Assert.That(stateProvider.GetCode(withdrawalAddress), Is.EqualTo(code));
-                    Assert.That(stateProvider.GetBalance(withdrawalAddress), Is.EqualTo(balance));
-                    Assert.That(stateProvider.GetNonce(withdrawalAddress), Is.EqualTo(nonce));
-                    Assert.That(stateProvider.GetBalance(Address.SystemUser), Is.EqualTo(systemUserBalance));
-                    Assert.That(stateProvider.GetNonce(Address.SystemUser), Is.EqualTo(systemUserNonce));
-                }
-            }
+                    s.CreateAccount(withdrawalAddress, balance, nonce);
+                    s.InsertCode(withdrawalAddress, code, Amsterdam.Instance, isGenesis: true);
+                    s.CreateAccount(Address.SystemUser, systemUserBalance, systemUserNonce);
+                },
+                assert: s =>
+                {
+                    Assert.That(s.GetCode(withdrawalAddress), Is.EqualTo(code));
+                    Assert.That(s.GetBalance(withdrawalAddress), Is.EqualTo(balance));
+                    Assert.That(s.GetNonce(withdrawalAddress), Is.EqualTo(nonce));
+                    Assert.That(s.GetBalance(Address.SystemUser), Is.EqualTo(systemUserBalance));
+                    Assert.That(s.GetNonce(Address.SystemUser), Is.EqualTo(systemUserNonce));
+                });
         }
 
         // Guards the other half of the contract: when the accounts are genuinely absent
@@ -249,12 +233,26 @@ namespace Nethermind.AuRa.Test
         {
             Address withdrawalAddress = TestItem.AddressF;
 
+            SeedThenPreprocess(withdrawalAddress,
+                seed: static _ => { },
+                assert: s =>
+                {
+                    Assert.That(s.AccountExists(Address.SystemUser), Is.True);
+                    Assert.That(s.AccountExists(withdrawalAddress), Is.True);
+                });
+        }
+
+        // Shared scaffolding: seed a pre-genesis state, then process BAL preprocessing on top of a
+        // block scope with BAL enabled, and run the caller's assertions against the resulting state.
+        private static void SeedThenPreprocess(Address withdrawalAddress, Action<IWorldState> seed, Action<IWorldState> assert)
+        {
             (AuRaBlockProcessor processor, BlockAccessListManager balManager, IWorldState stateProvider) =
                 CreateBalAwareProcessor(withdrawalAddress);
 
             Hash256 stateRoot;
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
+                seed(stateProvider);
                 stateProvider.Commit(Amsterdam.Instance);
                 stateProvider.CommitTree(0);
                 stateProvider.RecalculateStateRoot();
@@ -270,8 +268,7 @@ namespace Nethermind.AuRa.Test
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(stateProvider.AccountExists(Address.SystemUser), Is.True);
-                    Assert.That(stateProvider.AccountExists(withdrawalAddress), Is.True);
+                    assert(stateProvider);
                 }
             }
         }
