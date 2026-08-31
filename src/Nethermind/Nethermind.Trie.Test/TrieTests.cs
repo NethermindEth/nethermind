@@ -1330,7 +1330,7 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void WarmUpPaths_DoesNotThrow_ForDuplicateAndDivergingKeys()
+        public void WarmUpPaths_WarmsPersistedDuplicateAndDivergingKeys()
         {
             MemDb memDb = new();
             Hash256 rootHash;

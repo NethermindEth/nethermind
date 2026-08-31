@@ -1106,9 +1106,9 @@ namespace Nethermind.Trie
                     return;
                 }
             }
-            catch (TrieException)
+            catch (TrieNodeException)
             {
-                // Warm-up is best-effort; a stale or missing path remains cold.
+                // Warm-up is best-effort; a stale or malformed node leaves this subtree cold.
             }
             finally
             {
