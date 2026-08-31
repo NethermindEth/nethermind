@@ -19,6 +19,10 @@ namespace Nethermind.TxPool.Filters
         ILogger logger)
         : IIncomingTxFilter
     {
+        // Plugins may supply only ITxValidator, in which case they require the full validation pass.
+        private readonly ISpecChangeTxValidator? _incrementalSpecChangeTxValidator =
+            specChangeTxValidator as ISpecChangeTxValidator;
+
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = state.HeadSpec;
@@ -63,7 +67,9 @@ namespace Nethermind.TxPool.Filters
                     blockGasLimit: 0,
                     TxValidationOptions.SkipBlobProofs);
                 return validationResult
-                    ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                    ? _incrementalSpecChangeTxValidator is null
+                        ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                        : _incrementalSpecChangeTxValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
                     : validationResult;
             }
         }
