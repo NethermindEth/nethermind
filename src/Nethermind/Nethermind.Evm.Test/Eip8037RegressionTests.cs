@@ -1967,18 +1967,22 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(restoresPreTxOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the tx succeeds");
-            Assert.That(writesNonOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the control tx succeeds");
-            Assert.That(restoresPreTxOriginal.GasConsumedResult.SpentGas, Is.EqualTo(writesNonOriginal.GasConsumedResult.SpentGas),
+            AssertRollbackChargedLikeControl(restoresPreTxOriginal, writesNonOriginal,
                 "both children take the identical dirty-slot SSTORE branch and then revert, so restoring the pre-tx original may only cost the same as writing a non-original value; a smaller charge means the reverted child was wrongly credited a reservoir refill for the parent-funded set");
-            Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
-                "the only durable state change is the parent's single fresh slot set; the reverted child adds no block state gas");
-            Assert.That(writesNonOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
-                "the control must fund its own distinct fresh slot exactly like run A; if the two runs were collapsed onto one slot the control's parent SSTORE would become a no-op reset (newSameAsCurrent) charging no state gas and this equality would fail, silently disarming the control");
             AssertStorage(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
-            Assert.That(TestState.Get(new StorageCell(Recipient, (UInt256)1)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian().WithoutLeadingZeros().ToArray()),
-                "the control's parent fresh set survives while the child's reverted non-original overwrite is rolled back; a control that failed to revert would leave the child's written value here and go unnoticed");
+            AssertStorage(new StorageCell(Recipient, UInt256.One), UInt256.One);
         }
+    }
+
+    private void AssertRollbackChargedLikeControl(TestAllTracerWithOutput restoresPreTxOriginal, TestAllTracerWithOutput writesNonOriginal, string spentGasReason)
+    {
+        Assert.That(restoresPreTxOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the tx succeeds");
+        Assert.That(writesNonOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the control tx succeeds");
+        Assert.That(restoresPreTxOriginal.GasConsumedResult.SpentGas, Is.EqualTo(writesNonOriginal.GasConsumedResult.SpentGas), spentGasReason);
+        Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+            "the only durable state change is the parent's single fresh slot set; the reverted child adds no block state gas");
+        Assert.That(writesNonOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+            "the control must fund its own distinct fresh slot exactly like run A; if the two runs were collapsed onto one slot the control's parent SSTORE would become a no-op reset (newSameAsCurrent) charging no state gas and this equality would fail, silently disarming the control");
     }
 
     private TestAllTracerWithOutput ExecuteParentSetThenChildOverwriteAndRevert(ulong gasLimit, Address childAddress, int storageSlot, int childWrittenValue, int? childOwnSlot = null)
@@ -2018,24 +2022,19 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [Test]
     public void Eip8037_reverting_child_that_consumed_its_advanced_state_gas_credit_must_reclaim_it_from_state_gas_used()
     {
-        const ulong gasLimit = 16_777_216ul;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap;
 
         TestAllTracerWithOutput restoresPreTxOriginal = ExecuteParentSetThenChildOverwriteAndRevert(gasLimit, TestItem.AddressC, storageSlot: 0, childWrittenValue: 0, childOwnSlot: 2);
         TestAllTracerWithOutput writesNonOriginal = ExecuteParentSetThenChildOverwriteAndRevert(gasLimit, TestItem.AddressF, storageSlot: 1, childWrittenValue: 2, childOwnSlot: 3);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(restoresPreTxOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the tx succeeds");
-            Assert.That(writesNonOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the control tx succeeds");
-            Assert.That(restoresPreTxOriginal.GasConsumedResult.SpentGas, Is.EqualTo(writesNonOriginal.GasConsumedResult.SpentGas),
+            AssertRollbackChargedLikeControl(restoresPreTxOriginal, writesNonOriginal,
                 "with reservoir 0 the child's restore of the parent's pre-tx original credits a state-gas refund that is advanced into the child reservoir, and the child's own fresh set then consumes that advance. On revert the amount>0 tail of RemoveStateGasRefundFromReservoir must reclaim the advance from state-gas-used, leaving the same charge as the control that wrote a non-original value and never credited; a smaller charge means the reverted advance leaked back as an unbilled reservoir refill");
-            Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
-                "the only durable state change is the parent's single fresh slot set; the reverted child's own set and its advanced-then-reclaimed credit add no block state gas");
-            Assert.That(writesNonOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
-                "the control must fund its own distinct fresh slot exactly like run A; collapsing the two runs onto one slot would turn the control's parent SSTORE into a no-op reset charging no state gas and this equality would fail, silently disarming the control");
             AssertStorage(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
-            Assert.That(TestState.Get(new StorageCell(Recipient, (UInt256)1)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian().WithoutLeadingZeros().ToArray()),
-                "the control's parent fresh set survives while the child's reverted own set and non-original overwrite are rolled back; a control that failed to revert would leave the child's written value here and go unnoticed");
+            AssertStorage(new StorageCell(Recipient, UInt256.One), UInt256.One);
+            AssertStorage(new StorageCell(Recipient, (UInt256)2), UInt256.Zero);
+            AssertStorage(new StorageCell(Recipient, (UInt256)3), UInt256.Zero);
         }
     }
 }
