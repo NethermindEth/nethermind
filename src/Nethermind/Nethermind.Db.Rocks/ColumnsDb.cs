@@ -183,8 +183,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _sharedCacheMissReadOptions.SetFillCache(false);
 
             // One session pair for every column reader, so their point reads skip the per-call
-            // SafeHandle ref-counting. Owned here because the readers are never disposed and the
-            // database cannot close while a session is held.
+            // read-options SafeHandle ref-counting. Owned here because the readers are never
+            // disposed, and this snapshot's Dispose is the point at which none of their reads can
+            // still be running.
             _sharedReadSession = columnsDb.CreateReadSession(_sharedReadOptions);
             _sharedCacheMissReadSession = columnsDb.CreateReadSession(_sharedCacheMissReadOptions);
 
@@ -276,8 +277,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-            // Sessions first: they hold the database open, and the options and snapshot below are
-            // what their cached pointers refer to.
+            // Sessions first: each holds a reference on the read options below, so disposing
+            // them last would leave those options alive past this point.
             _sharedReadSession.Dispose();
             _sharedCacheMissReadSession.Dispose();
 

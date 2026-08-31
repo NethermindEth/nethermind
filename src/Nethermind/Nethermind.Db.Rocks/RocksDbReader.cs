@@ -37,11 +37,13 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     private readonly bool _ownsReadOptions;
     private int _disposed;
 
-    // Null unless a caller supplied them, and never owned here. A session caches raw native
-    // pointers, so releasing it while a read is in flight frees the options underneath that read.
+    // Null unless a caller supplied them, and never owned here. A session caches the raw read
+    // options pointer, so releasing it while a read is in flight frees the options underneath that
+    // read.
     // Only an owner that already may not dispose concurrently with its own reads can hold one —
     // ColumnDbSnapshot, whose Dispose already releases the native snapshot those reads use. A
-    // reader disposed at database teardown has no such guarantee, so it takes a lease per call.
+    // reader disposed at database teardown has no such guarantee, so it leases the options per
+    // call. Either way the database itself is leased per read.
     private readonly RocksDbReadSession? _session;
     private readonly RocksDbReadSession? _hintCacheMissSession;
 
@@ -52,7 +54,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     /// Internal because the sessions must be the ones opened over <paramref name="options"/> and
     /// <paramref name="hintCacheMissOptions"/> on <paramref name="mainDb"/>; a session from
     /// anywhere else would read through the wrong native handles. The caller keeps ownership and
-    /// must dispose them before those options and before the database closes.
+    /// must dispose them before those options.
     /// </remarks>
     internal RocksDbReader(DbOnTheRocks mainDb,
         ReadOptions options,
