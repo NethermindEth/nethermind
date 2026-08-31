@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1330,7 +1329,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // differential-test escape hatch; it does not select a production architecture policy.
         if (spec.IncludePush0Instruction && StreamInterpreter.Enabled && !TTracingInst.IsActive
             && (TCancelable.IsActive
-                || StreamInterpreter.IsBlockProcessingEnabled(RuntimeInformation.ProcessArchitecture)
+                || StreamInterpreter.BlockProcessingEnabled
                 || StreamInterpreter.ForceAllContexts)
             && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
         {

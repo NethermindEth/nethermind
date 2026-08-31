@@ -22,6 +22,8 @@ internal static class StreamInterpreter
     public static volatile bool ForceAllContexts;
 
     internal static bool IsBlockProcessingEnabled(Architecture architecture) => architecture == Architecture.X64;
+    internal static readonly bool BlockProcessingEnabled =
+        IsBlockProcessingEnabled(RuntimeInformation.ProcessArchitecture);
 
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
