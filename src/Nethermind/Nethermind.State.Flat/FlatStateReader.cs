@@ -57,7 +57,7 @@ public class FlatStateReader(
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
         }
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, _trieNodeRlpCache);
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : _trieNodeRlpCache);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
