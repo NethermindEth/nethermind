@@ -48,6 +48,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
+    private readonly ReaderWriterLockSlim _nativeReadLifetime = new();
 
     internal readonly RocksDb _db;
 
@@ -949,7 +950,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    internal void MultiGet(byte[][] keys, Span<byte[]?> values, IColumnFamilyHandle? columnFamily, ReadOptions readOptions)
+    internal void MultiGet(byte[][] keys, Span<byte[]?> values, IColumnFamilyHandle? columnFamily, ReadOptions readOptions, bool useNativeBatchedMultiGet, ReadFlags flags)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -962,6 +963,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
+            if (useNativeBatchedMultiGet && columnFamily is not null && !ContainsNullKey(keys))
+            {
+                MultiGetNative(keys, values, columnFamily, flags);
+                return;
+            }
+
             IColumnFamilyHandle[]? columnFamilies = null;
             if (columnFamily is not null)
             {
@@ -977,6 +984,143 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             HandleFatalDbError(e);
             throw;
+        }
+    }
+
+    private static bool ContainsNullKey(byte[][] keys)
+    {
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (keys[i] is null) return true;
+        }
+
+        return false;
+    }
+
+    private unsafe void MultiGetNative(byte[][] keys, Span<byte[]?> values, IColumnFamilyHandle columnFamily, ReadFlags flags)
+    {
+        _nativeReadLifetime.EnterReadLock();
+        try
+        {
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+            int count = keys.Length;
+            int keyBytes = 0;
+            for (int i = 0; i < count; i++)
+            {
+                keyBytes = checked(keyBytes + keys[i].Length);
+            }
+
+            nint[] keyPointers = ArrayPool<nint>.Shared.Rent(count);
+            nuint[] keyLengths = ArrayPool<nuint>.Shared.Rent(count);
+            nint[] valuePointers = ArrayPool<nint>.Shared.Rent(count);
+            nint[] errorPointers = ArrayPool<nint>.Shared.Rent(count);
+            byte[] keyBuffer = ArrayPool<byte>.Shared.Rent(Math.Max(keyBytes, 1));
+
+            try
+            {
+                Array.Clear(keyPointers, 0, count);
+                Array.Clear(keyLengths, 0, count);
+                Array.Clear(valuePointers, 0, count);
+                Array.Clear(errorPointers, 0, count);
+
+                rocksdb_readoptions_t* readOptions = RocksDbNative.rocksdb_readoptions_create();
+                if (readOptions is null) throw new InvalidOperationException("RocksDB failed to create read options.");
+
+                try
+                {
+                    RocksDbNative.rocksdb_readoptions_set_verify_checksums(readOptions, VerifyChecksum ? (byte)1 : (byte)0);
+                    RocksDbNative.rocksdb_readoptions_set_fill_cache(readOptions, (flags & ReadFlags.HintCacheMiss) == 0 ? (byte)1 : (byte)0);
+
+                    fixed (nint* keyList = keyPointers)
+                    fixed (nuint* keySizeList = keyLengths)
+                    fixed (nint* valueList = valuePointers)
+                    fixed (nint* errorList = errorPointers)
+                    fixed (byte* keyBufferPointer = keyBuffer)
+                    {
+                        int keyOffset = 0;
+                        for (int i = 0; i < count; i++)
+                        {
+                            byte[] key = keys[i];
+                            keyLengths[i] = checked((nuint)key.Length);
+                            key.AsSpan().CopyTo(keyBuffer.AsSpan(keyOffset));
+                            keyPointers[i] = (nint)(keyBufferPointer + keyOffset);
+                            keyOffset += key.Length;
+                        }
+
+                        RocksDbNative.rocksdb_batched_multi_get_cf(
+                            (rocksdb_t*)_db.Handle,
+                            readOptions,
+                            (rocksdb_column_family_handle_t*)columnFamily.Handle,
+                            checked((nuint)count),
+                            (sbyte**)keyList,
+                            keySizeList,
+                            (rocksdb_pinnableslice_t**)valueList,
+                            (sbyte**)errorList,
+                            sorted_input: false);
+                    }
+
+                    string? firstError = null;
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (errorPointers[i] == 0) continue;
+
+                        firstError ??= Marshal.PtrToStringUTF8(errorPointers[i]) ?? "RocksDB batch read failed.";
+                        RocksDbNative.rocksdb_free((void*)errorPointers[i]);
+                        errorPointers[i] = 0;
+                    }
+
+                    if (firstError is not null) throw new RocksDbException(firstError);
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (valuePointers[i] == 0)
+                        {
+                            values[i] = null;
+                            continue;
+                        }
+
+                        nuint valueLength = 0;
+                        sbyte* value = RocksDbNative.rocksdb_pinnableslice_value(
+                            (rocksdb_pinnableslice_t*)valuePointers[i], &valueLength);
+                        int managedLength = checked((int)valueLength);
+                        values[i] = value is null
+                            ? managedLength == 0 ? Array.Empty<byte>() : throw new InvalidOperationException("RocksDB returned a null batch value.")
+                            : new ReadOnlySpan<byte>((byte*)value, managedLength).ToArray();
+                    }
+                }
+                finally
+                {
+                    RocksDbNative.rocksdb_readoptions_destroy(readOptions);
+                }
+            }
+            finally
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (valuePointers[i] != 0)
+                    {
+                        RocksDbNative.rocksdb_pinnableslice_destroy((rocksdb_pinnableslice_t*)valuePointers[i]);
+                        valuePointers[i] = 0;
+                    }
+
+                    if (errorPointers[i] != 0)
+                    {
+                        RocksDbNative.rocksdb_free((void*)errorPointers[i]);
+                        errorPointers[i] = 0;
+                    }
+                }
+
+                ArrayPool<nint>.Shared.Return(keyPointers);
+                ArrayPool<nuint>.Shared.Return(keyLengths);
+                ArrayPool<nint>.Shared.Return(valuePointers);
+                ArrayPool<nint>.Shared.Return(errorPointers);
+                ArrayPool<byte>.Shared.Return(keyBuffer);
+            }
+        }
+        finally
+        {
+            _nativeReadLifetime.ExitReadLock();
         }
     }
 
@@ -1853,7 +1997,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _iteratorManager?.Dispose();
         _seekIteratorManager.Dispose();
-        _db.Dispose();
+        _nativeReadLifetime.EnterWriteLock();
+        try
+        {
+            _db.Dispose();
+        }
+        finally
+        {
+            _nativeReadLifetime.ExitWriteLock();
+        }
 
         _defaultReadOptions.Dispose();
         _hintCacheMissOptions.Dispose();

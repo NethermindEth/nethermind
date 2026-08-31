@@ -34,8 +34,18 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
+    private readonly bool _useNativeBatchedMultiGet;
     private readonly bool _ownsReadOptions;
     private int _disposed;
+
+    internal RocksDbReader(
+        DbOnTheRocks mainDb,
+        Func<ReadOptions> readOptionsFactory,
+        bool useNativeBatchedMultiGet,
+        DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
+        IColumnFamilyHandle? columnFamily = null)
+        : this(mainDb, readOptionsFactory, iteratorManager, columnFamily)
+        => _useNativeBatchedMultiGet = useNativeBatchedMultiGet;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
@@ -86,7 +96,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             throw new ArgumentException("Keys and values must have the same length.", nameof(values));
 
         ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
-        _mainDb.MultiGet(keys, values, _columnFamily, readOptions);
+        _mainDb.MultiGet(keys, values, _columnFamily, readOptions, _useNativeBatchedMultiGet, flags);
     }
 
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)

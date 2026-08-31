@@ -149,6 +149,26 @@ public class ColumnsDbTests
         Assert.That(values, Is.EqualTo(new byte[]?[] { [0x10], [0x20], null }));
     }
 
+    [TestCase(ReceiptsColumns.Blocks)]
+    [TestCase(ReceiptsColumns.Default)]
+    public void MultiGet_PreservesMissingAndEmptyValues(ReceiptsColumns columnKey)
+    {
+        IDb column = _db.GetColumnDb(columnKey);
+        byte[][] keys =
+        [
+            TestItem.KeccakC.BytesToArray(),
+            TestItem.KeccakA.BytesToArray(),
+            TestItem.KeccakB.BytesToArray(),
+        ];
+        column.Set(keys[1], [0x10]);
+        column.Set(keys[2], Array.Empty<byte>());
+        byte[]?[] values = new byte[]?[keys.Length];
+
+        column.MultiGet(keys, values, ReadFlags.HintCacheMiss);
+
+        Assert.That(values, Is.EqualTo(new byte[]?[] { null, [0x10], [] }));
+    }
+
     [Test]
     public void Snapshot_DoubleDispose_DoesNotThrow()
     {

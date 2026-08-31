@@ -26,13 +26,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         _rocksDb = rocksDb;
         _mainDb = mainDb;
-        if (name == "Default") name = "default";
+        bool isDefaultColumn = name.Equals("Default", StringComparison.OrdinalIgnoreCase);
+        if (isDefaultColumn) name = "default";
         _columnFamily = _rocksDb.GetColumnFamily(name);
         Name = name;
 
         _iteratorManager = _mainDb.CreateLazyReadAheadIteratorManager(_columnFamily);
         _seekIteratorManager = _mainDb.CreateLazySeekIteratorManager(_columnFamily);
-        _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
+        _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, !isDefaultColumn, _iteratorManager, _columnFamily);
     }
 
     public void Dispose()
