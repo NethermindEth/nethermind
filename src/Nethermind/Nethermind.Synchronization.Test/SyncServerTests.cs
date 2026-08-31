@@ -764,6 +764,7 @@ public class SyncServerTests
         Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
         Assert.That(notifiedEarliest, Is.EqualTo(120UL),
             "the pruner published path must carry the same floor as the head driven one, so one peer never sees two different earliest values");
+        ctx.BlockTree.Received().UpdateLowestServedBlock(120UL);
     }
 
     [Test]

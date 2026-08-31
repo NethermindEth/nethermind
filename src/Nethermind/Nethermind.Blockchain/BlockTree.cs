@@ -100,6 +100,7 @@ namespace Nethermind.Blockchain
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         private ulong _oldestBlock;
+    private ulong _lowestServedBlock;
 
         private TaskCompletionSource? _taskCompletionSource;
 
@@ -1903,6 +1904,10 @@ namespace Nethermind.Blockchain
         }
 
         public ulong GetLowestBlock() => _oldestBlock;
+
+    public ulong LowestServedBlock => Math.Max(_oldestBlock, Volatile.Read(ref _lowestServedBlock));
+
+    public void UpdateLowestServedBlock(ulong lowestServed) => Volatile.Write(ref _lowestServedBlock, lowestServed);
 
         public void NewOldestBlock(ulong oldestBlock) => _oldestBlock = oldestBlock;
     }

@@ -108,6 +108,9 @@ namespace Nethermind.Synchronization
             _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
             _historyPruner.NewOldestBlock += OnNewRange;
+            // Seed the served floor at startup so JSON-RPC's pruned-history check agrees with the eth/69
+            // advertisement before the first broadcast recomputes it.
+            _blockTree.UpdateLowestServedBlock(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor));
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
@@ -492,7 +495,9 @@ namespace Nethermind.Synchronization
                 return;
 
             BlockHeader latest = _blockTree.Head.Header;
-            ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latest.Number);
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latest.Number);
             BlockHeader earliest = onNewOldestBlockArgs.OldestBlockHeader;
             if (earliest.Number < floor)
             {
@@ -512,7 +517,9 @@ namespace Nethermind.Synchronization
                 return;
 
             // The same floor the status handshake advertises, so a peer never sees two different earliest values.
-            ulong floor = ulong.Min(ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor), latestBlock.Number);
+            ulong servedFloor = ulong.Max(_blockTree.GetLowestBlock(), DownloadPointerFloor);
+            _blockTree.UpdateLowestServedBlock(servedFloor);
+            ulong floor = ulong.Min(servedFloor, latestBlock.Number);
             BlockHeader? earliest = _historyPruner.OldestBlockHeader;
             if (earliest is null || earliest.Number > latestBlock.Number || earliest.Number < floor)
             {
