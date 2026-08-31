@@ -64,7 +64,7 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
             ?? throw new InvalidOperationException($"State at {baseBlock} not found");
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, _trieNodeRlpCache);
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : _trieNodeRlpCache);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
