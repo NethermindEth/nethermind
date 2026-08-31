@@ -48,6 +48,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IDb _metadataDb;
     private readonly IDb _blocksDb;
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
+    private readonly ulong _persistedUnreclaimedFloor;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -128,6 +129,12 @@ public class HistoryPruner : IHistoryPruner
         _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
+        byte[]? persistedPointerBytes = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
+        ulong persistedPointer = persistedPointerBytes is null ? 0 : new RlpReader(persistedPointerBytes).DecodeULong();
+        byte[]? persistedCursorBytes = _metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
+        ulong persistedCursor = persistedCursorBytes is null ? persistedPointer : new RlpReader(persistedCursorBytes).DecodeULong();
+        _persistedUnreclaimedFloor = ulong.Max(ulong.Min(persistedCursor, persistedPointer), _blockTree.GetLowestBlock());
+
         CheckConfig();
 
         if (_enabled)
@@ -193,10 +200,10 @@ public class HistoryPruner : IHistoryPruner
     }
 
     // Deliberately lock-free - this sits on the eth_getLogs path, and the pruning pass drives the load.
-    // Until the pointers load, the published boundary is the conservative answer: refusing more than
-    // necessary is transient, while serving a reclaimed height would be silently short.
+    // Until it does, the constructor's snapshot of the persisted cursors is exact: nothing moves them
+    // in this process before the load.
     public ulong OldestUnreclaimedBlockNumber =>
-        _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _blockTree.GetLowestBlock();
+        _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
     private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
@@ -403,9 +410,12 @@ public class HistoryPruner : IHistoryPruner
         // never has to reconstruct a barrier that drifts with the pruning cutoff. The static barrier is a
         // term of the feed's ComputeBarrier and so always releasable, and a pointer parked at the barrier
         // the feed recorded when it last started is a finished descent even if the marker predates this
-        // build. A written pointer above those with no marker is a descent in progress - the persisted
-        // pointer only moves every flush interval, so its quietness proves nothing and the hold stays; an
-        // absent pointer is a feed that has not run yet, which a synchronizing process eventually runs.
+        // build - only for a descent whose barrier never moved, since a rolling cutoff climbs during a
+        // long descent and parks the pointer above the recorded value; a legacy database self-heals
+        // regardless, because the feed activates once and writes the marker. A written pointer above
+        // those with no marker is a descent in progress - the persisted pointer only moves every flush
+        // interval, so its quietness proves nothing and the hold stays; an absent pointer is a feed that
+        // has not run yet, which a synchronizing process eventually runs.
         if (_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete))
         {
             return false;

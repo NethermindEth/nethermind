@@ -365,6 +365,23 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public void OldestUnreclaimedBlockNumber_reads_the_persisted_boundary_before_the_pointers_load()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(5_000_000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(4_000_000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
+
+        Assert.That(pruner.OldestUnreclaimedBlockNumber, Is.EqualTo(4_000_000UL),
+            "before the pointers load, the persisted cursors are the truth, not the config barrier");
+    }
+
+    [Test]
     public void SetDeletePointerToOldestBlock_holds_when_the_barrier_dropped_below_the_one_the_feed_last_started_with()
     {
         TestMemDb metadataDb = new();
