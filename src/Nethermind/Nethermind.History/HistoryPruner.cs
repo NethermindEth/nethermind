@@ -64,6 +64,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ISyncConfig _syncConfig;
     private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
     private long _ancientHoldLastLogged;
+    private bool _frontierFrozen;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
@@ -343,9 +344,17 @@ public class HistoryPruner : IHistoryPruner
     {
         // While the ancient bodies feed is still descending, the oldest existing body is the download
         // frontier, not the truth - a pointer latched from it would over-report forever.
+        bool frontierFrozen = false;
         if (AncientBodiesStillDownloading())
         {
-            return false;
+            if (_syncConfig.SynchronizationEnabled)
+            {
+                return false;
+            }
+
+            // With synchronization disabled no feed can move the frontier, so it is the truth for this
+            // process - but it is never persisted, so the next syncing process re-derives the boundary.
+            frontierFrozen = true;
         }
 
         ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
@@ -357,7 +366,15 @@ public class HistoryPruner : IHistoryPruner
         if (oldestBlockNumber is not null)
         {
             UpdateBlocksDeletePointer(oldestBlockNumber.Value);
-            SaveDeletePointers();
+            if (frontierFrozen)
+            {
+                _frontierFrozen = true;
+                _lastSavedBlocksDeletePointer = _blocksDeletePointer;
+            }
+            else
+            {
+                SaveDeletePointers();
+            }
             return true;
         }
 
@@ -367,9 +384,8 @@ public class HistoryPruner : IHistoryPruner
     private bool AncientBodiesStillDownloading()
     {
         // Keyed on the tree pivot, like the feed itself: a CL-discovered pivot never reaches the sync config.
-        // With synchronization disabled the feed cannot run at all, so the frontier is frozen and is the truth.
         ulong pivot = _blockTree.SyncPivot.BlockNumber;
-        if (!_syncConfig.SynchronizationEnabled || !_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
+        if (!_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
         {
             return false;
         }
@@ -405,7 +421,7 @@ public class HistoryPruner : IHistoryPruner
             }
         }
 
-        if (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval)
+        if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
         {
             _ancientHoldLastLogged = Stopwatch.GetTimestamp();
             if (_logger.IsInfo) _logger.Info(
@@ -979,6 +995,13 @@ public class HistoryPruner : IHistoryPruner
         // ulong.MaxValue is used as sentinel: guarantees SaveDeletePointers saves on the very first call.
         _lastSavedBalsDeletePointer = balsVal is null ? ulong.MaxValue : _balsDeletePointer;
         Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+
+        // A frozen frontier must not leak to disk through the first-save sentinels either.
+        if (_frontierFrozen)
+        {
+            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+            _lastSavedBalsDeletePointer = _balsDeletePointer;
+        }
 
         byte[]? cleanupVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningSliceCleanupCursor);
         _sliceCleanupCursor = cleanupVal is null

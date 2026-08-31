@@ -403,11 +403,34 @@ public class HistoryPrunerTests
         chainLevels.Received().LoadLevel(Arg.Any<ulong>());
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? absentWindow = null, bool synchronizationEnabled = true)
+    [Test]
+    public void SetDeletePointerToOldestBlock_publishes_but_never_persists_a_frontier_frozen_by_disabled_synchronization()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+        Block oldest = Build.A.Block.WithNumber(9_000UL).TestObject;
+        chainLevels.LoadLevel(Arg.Any<ulong>()).Returns(new ChainLevelInfo(true, new BlockInfo(oldest.Hash!, 0)));
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: false, oldestBlock: oldest);
+
+        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.True);
+        Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.False,
+            "a frontier frozen by disabled synchronization serves this process but must never be persisted");
+    }
+
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? absentWindow = null, bool synchronizationEnabled = true, Block oldestBlock = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
+        if (oldestBlock is not null)
+        {
+            blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<ulong?>()).Returns(oldestBlock);
+        }
 
         return new HistoryPruner(
             blockTree,

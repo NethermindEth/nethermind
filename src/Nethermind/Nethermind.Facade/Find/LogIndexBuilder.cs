@@ -11,6 +11,7 @@ using System.Threading.Tasks.Dataflow;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Synchronization;
 using Nethermind.Db;
@@ -89,7 +90,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
         ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
-        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null)
+        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null, IBlocksConfig? blocksConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -109,7 +110,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _syncPointers = syncPointers;
         if (slicesConfigured && syncPointers is null && _logger.IsWarn)
             _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
-        StallTicksBeforeGivingUp = StallDeadlineTicks(historyConfig);
+        StallTicksBeforeGivingUp = StallDeadlineTicks(historyConfig, blocksConfig);
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -117,14 +118,15 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         Direction(isForward: true) = new();
     }
 
-    private static int StallDeadlineTicks(IHistoryConfig? historyConfig)
+    private static int StallDeadlineTicks(IHistoryConfig? historyConfig, IBlocksConfig? blocksConfig)
     {
         const ulong FloorTicks = 1440;
         const ulong SlotsPerEpoch = 32;
-        const ulong SecondsPerSlot = 12;
-        ulong intervalEpochs = ulong.Min(historyConfig?.PruningInterval ?? 0, 1_000_000);
-        ulong intervalTicks = intervalEpochs * SlotsPerEpoch * SecondsPerSlot / (ulong)NewBlockWaitTimeout.TotalSeconds;
-        return (int)ulong.Min(ulong.Max(FloorTicks, intervalTicks * 3), int.MaxValue);
+        ulong secondsPerSlot = ulong.Max(blocksConfig?.SecondsPerSlot ?? 12, 1);
+        ulong overflowCeiling = ulong.MaxValue / (SlotsPerEpoch * secondsPerSlot * 3);
+        ulong intervalEpochs = ulong.Min(historyConfig?.PruningInterval ?? 0, overflowCeiling);
+        ulong deadline = intervalEpochs * SlotsPerEpoch * secondsPerSlot * 3 / (ulong)NewBlockWaitTimeout.TotalSeconds;
+        return (int)ulong.Min(ulong.Max(FloorTicks, deadline), int.MaxValue);
     }
 
     private void StartProcessing(bool isForward)
@@ -443,7 +445,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
                         {
                             // Fails only this direction: the live forward index keeps running.
                             InvalidOperationException stall = new(
-                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} kept a body with no readable receipts for {StallTicksBeforeGivingUp} polls - a retained height lost its receipts, or history pruning passes run less often than this deadline.");
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} kept a body with no readable receipts for {StallTicksBeforeGivingUp} polls - a retained height lost its receipts, history pruning passes run less often than this deadline, or an ancient receipts backfill is still descending below a latched boundary.");
                             if (_logger.IsError) _logger.Error($"{GetLogPrefix(isForward)}: giving up.", stall);
                             LastError = stall;
                             Direction(isForward: false).Completion.TrySetException(stall);

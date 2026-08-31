@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Synchronization;
 using Nethermind.Core.Crypto;
@@ -179,14 +180,16 @@ public class LogIndexBuilderTests
         )
     { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
 
-    [TestCase(0UL, 1440)]
-    [TestCase(8UL, 1842)]
-    [TestCase(40UL, 9216)]
-    public void Stall_deadline_scales_with_the_pruning_interval(ulong pruningInterval, int expectedTicks)
+    [TestCase(0UL, 12UL, 1440)]
+    [TestCase(8UL, 12UL, 1843)]
+    [TestCase(40UL, 12UL, 9216)]
+    [TestCase(40UL, 2UL, 1536)]
+    public void Stall_deadline_scales_with_the_pruning_interval_and_slot_time(ulong pruningInterval, ulong secondsPerSlot, int expectedTicks)
     {
         LogIndexBuilder builder = new(
             Substitute.For<ILogIndexStorage>(), _config, _blockTree, _syncConfig, _receiptStorage, _logManager,
-            historyConfig: new HistoryConfig { PruningInterval = pruningInterval });
+            historyConfig: new HistoryConfig { PruningInterval = pruningInterval },
+            blocksConfig: new BlocksConfig { SecondsPerSlot = secondsPerSlot });
         builder.AddTo(_testDisposables);
 
         Assert.That(builder.StallTicksBeforeGivingUp, Is.EqualTo(expectedTicks));
