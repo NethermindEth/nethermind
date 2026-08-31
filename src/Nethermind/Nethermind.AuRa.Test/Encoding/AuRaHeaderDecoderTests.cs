@@ -54,6 +54,35 @@ public class AuRaHeaderDecoderTests
         }
     }
 
+    [Test]
+    public void Decode_accepts_non_empty_non_standard_genesis_signature()
+    {
+        byte[] signature = [0x01];
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).WithAura(42, signature).TestObject;
+        Rlp rlp = _decoder.Encode(header);
+        RlpReader reader = new(rlp.Bytes);
+
+        AuRaBlockHeader decoded = (AuRaBlockHeader)(_decoder.Decode(ref reader)
+            ?? throw new InvalidOperationException("AuRa header decoding returned null."));
+
+        Assert.That(decoded.AuRaSignature, Is.EqualTo(signature));
+    }
+
+    [Test]
+    public void Decode_rejects_non_standard_aura_signature_after_genesis()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAura(42, [0x01]).TestObject;
+        Rlp rlp = _decoder.Encode(header);
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        void Decode()
+        {
+            RlpReader reader = new(rlp.Bytes);
+            _decoder.Decode(ref reader);
+        }
+    }
+
     /// <summary>Round-trip stability: encoding a decoded header reproduces the exact bytes.</summary>
     [Test]
     public void AuRa_roundtrip_bytes_are_stable()

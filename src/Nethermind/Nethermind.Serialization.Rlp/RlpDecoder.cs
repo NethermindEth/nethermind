@@ -90,6 +90,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return result;
     }
 
+    /// <inheritdoc/>
     public virtual T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
         int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -98,6 +99,11 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         T[] result = new T[length];
         for (int i = 0; i < result.Length; i++)
         {
+            if (decoderContext.PeekByte() == Rlp.EmptyListByte)
+            {
+                RlpHelpers.ThrowNullArrayElement(i);
+            }
+
             result[i] = DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
         }
 

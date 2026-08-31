@@ -6,6 +6,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -88,6 +89,18 @@ public class RlpDecoderTests
         }
 
         Assert.That(Decode, Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decoder_non_null_array_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            UInt256Decoder.Instance.DecodeNonNullArray(ref context);
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]

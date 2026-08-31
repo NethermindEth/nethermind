@@ -268,6 +268,8 @@ namespace Nethermind.Init.Steps.Migrations
             Hash256 blockHash = block.Hash
                 ?? throw new InvalidDataException($"Cannot migrate receipts for block {block.Number} without a block hash.");
             TxReceipt?[] receipts = _migrationStore.GetForMigration(block.Number, blockHash);
+            if (receipts.Length == 0) return true;
+
             if (receipts.Length != block.Transactions.Length)
             {
                 if (_logger.IsWarn)

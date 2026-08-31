@@ -44,20 +44,30 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// <summary>Decodes an RLP sequence while preserving null elements for compatibility.</summary>
     T?[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
 
-    /// <summary>Decodes an RLP sequence and rejects any element decoded as null.</summary>
-    /// <exception cref="RlpException">An element is null.</exception>
+    /// <summary>Decodes an RLP sequence and rejects null elements.</summary>
+    /// <exception cref="RlpException">An element uses the RLP null marker or decodes as null.</exception>
     T[] DecodeNonNullArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
-        T?[] values = DecodeArray(ref decoderContext, rlpBehaviors, limit);
+        int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
+        int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
+        decoderContext.GuardLimit(length, limit);
+        T[] values = new T[length];
         for (int i = 0; i < values.Length; i++)
         {
-            if (values[i] is null)
+            if (decoderContext.PeekByte() == Rlp.EmptyListByte)
             {
                 RlpHelpers.ThrowNullArrayElement(i);
             }
+
+            values[i] = DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
         }
 
-        return values!;
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+        {
+            decoderContext.Check(checkPosition);
+        }
+
+        return values;
     }
 
     [return: MaybeNull]

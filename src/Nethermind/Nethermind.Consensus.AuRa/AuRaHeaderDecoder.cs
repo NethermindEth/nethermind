@@ -38,7 +38,7 @@ public sealed class AuRaHeaderDecoder : HeaderDecoder
 
         ulong step = decoderContext.DecodeULong();
         byte[] signature = decoderContext.DecodeByteArray();
-        if (signature.Length != Signature.Size)
+        if (signature.Length == 0 || (number != 0 && signature.Length != Signature.Size))
         {
             throw new RlpException("Invalid AuRa signature RLP.");
         }

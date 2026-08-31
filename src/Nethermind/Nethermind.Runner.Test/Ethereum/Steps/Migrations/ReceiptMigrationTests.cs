@@ -28,9 +28,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
-        [TestCase(0)]
-        [TestCase(1)]
-        public async Task Truncated_legacy_receipts_leave_migration_pointer_gap(int receiptCount)
+        [TestCase(0, 0UL, TestName = "Receiptless_block_advances_migration_pointer")]
+        [TestCase(1, ulong.MaxValue, TestName = "Truncated_legacy_receipts_leave_migration_pointer_gap")]
+        public async Task Legacy_receipt_cardinality_updates_migration_pointer(
+            int receiptCount,
+            ulong expectedMigratedBlockNumber)
         {
             InMemoryReceiptStorage source = new();
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree()
@@ -62,7 +64,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(destination.Count, Is.Zero);
-                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(destination.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber));
                 Assert.That(source.Get(block), Has.Length.EqualTo(receiptCount));
             }
         }

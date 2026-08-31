@@ -45,13 +45,26 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Personal_list_accounts_reports_wallet_failure()
         {
+            const string failureMessage = "Wallet account enumeration failed.";
+            InvalidOperationException exception = new(failureMessage);
             IWallet wallet = Substitute.For<IWallet>();
-            wallet.GetAccounts().Returns(_ => throw new InvalidOperationException());
-            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, _keyStore);
+            wallet.GetAccounts().Returns(_ => throw exception);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(
+                _ecdsa,
+                wallet,
+                _keyStore,
+                new OneLoggerLogManager(new ILogger(logger)));
 
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
 
-            Assert.That(serialized, Does.Contain("\"error\""));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("\"error\""));
+                Assert.That(serialized, Does.Not.Contain(failureMessage));
+                logger.Received(1).Error("Error while getting key addresses from wallet.", exception);
+            }
         }
 
         [Test]
