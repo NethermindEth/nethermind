@@ -275,22 +275,22 @@ public class RocksDbPersistence : IPersistence
 
     private void RollbackFailedIngest(ISstIngestWriteBatch[] batches, in StateId to)
     {
-        if (BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is { } marker && marker.To != to)
+        bool markerIsOurs = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is not { } marker || marker.To == to;
+        if (markerIsOurs)
         {
-            return;
-        }
-        try
-        {
-            // The marker must be gone before staged files are deleted: a marker surviving its files would
-            // roll the pointer forward past missing data on the next open.
-            using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
-                BasePersistence.ClearIngestMarker(batch.GetColumnBatch(FlatDbColumns.Metadata));
-            _db.Flush(onlyWal: true);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
-            return;
+            try
+            {
+                // The marker must be gone before staged files are deleted: a marker surviving its files would
+                // roll the pointer forward past missing data on the next open.
+                using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
+                    BasePersistence.ClearIngestMarker(batch.GetColumnBatch(FlatDbColumns.Metadata));
+                _db.Flush(onlyWal: true);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
+                return;
+            }
         }
 
         foreach (ISstIngestWriteBatch batch in batches)
