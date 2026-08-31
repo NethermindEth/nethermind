@@ -21,6 +21,13 @@ public sealed class GetBlobsV1SszHandler(IEngineRpcModule engineModule) : SszEnd
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
+        if (hashes.Length > SszRestLimits.MaxBlobsRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
+                $"hash count {hashes.Length} exceeds the limit of {SszRestLimits.MaxBlobsRequest}",
+                MergeErrorCodes.TooLargeRequest);
+            return;
+        }
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await engineModule.engine_getBlobsV1(hashes);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeGetBlobsV1Response);
     }
@@ -37,6 +44,13 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
+        if (hashes.Length > SszRestLimits.MaxBlobsRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
+                $"hash count {hashes.Length} exceeds the limit of {SszRestLimits.MaxBlobsRequest}",
+                MergeErrorCodes.TooLargeRequest);
+            return;
+        }
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);
         await WriteSszResultAsync(ctx, result, static (d, w) => TVersion.Encode(d!, w));
     }
@@ -51,6 +65,13 @@ public sealed class GetBlobsV4SszHandler(IEngineRpcModule engineModule) : SszEnd
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         (byte[][] hashes, System.Collections.BitArray indices) = SszCodec.DecodeGetBlobsV4Request(body);
+        if (hashes.Length > SszRestLimits.MaxBlobsRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
+                $"hash count {hashes.Length} exceeds the limit of {SszRestLimits.MaxBlobsRequest}",
+                MergeErrorCodes.TooLargeRequest);
+            return;
+        }
         ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await engineModule.engine_getBlobsV4(hashes, indices);
         await WriteSszResultAsync(ctx, result, static (d, w) => SszCodec.EncodeGetBlobsV4Response(d!, w));
     }

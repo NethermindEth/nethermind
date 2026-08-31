@@ -797,6 +797,16 @@ public class SszMiddlewareTests
     private static byte[] BuildPayloadBodiesByHashRequest(Hash256[] hashes) =>
         BuildHashListRequest(Array.ConvertAll(hashes, h => h.Bytes.ToArray()));
 
+    // Hand-builds a GetBlobsV4 request: a 4-byte offset to the variable hash list, the fixed
+    // 128-bit indices bitvector (16 zero bytes), then hashCount 32-byte versioned hashes.
+    private static byte[] BuildGetBlobsV4Request(int hashCount)
+    {
+        const int fixedSection = 4 + 16;
+        byte[] result = new byte[fixedSection + hashCount * 32];
+        BitConverter.TryWriteBytes(result.AsSpan(0, 4), (uint)fixedSection);
+        return result;
+    }
+
     [Test]
     public async Task ClientVersion_reads_X_Engine_Client_Version_header()
     {
@@ -1468,5 +1478,31 @@ public class SszMiddlewareTests
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(body, Does.Contain("ssz-decode-error"));
         _engineModule.DidNotReceive().engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>());
+    }
+
+    [TestCase("/engine/v1/blobs/v1")]
+    [TestCase("/engine/v1/blobs/v2")]
+    [TestCase("/engine/v1/blobs/v3")]
+    [TestCase("/engine/v1/blobs/v4")]
+    public async Task GetBlobs_over_limit_is_rejected_before_the_engine_module(string path)
+    {
+        int overLimit = SszRestLimits.MaxBlobsRequest + 1;
+        byte[] body = path.EndsWith("/v4")
+            ? BuildGetBlobsV4Request(overLimit)
+            : BuildHashListRequest(new byte[overLimit][].Select(static _ => new byte[32]).ToArray());
+        DefaultHttpContext ctx = MakePostContext(path, body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        // The wire schema caps the list at MaxBlobsRequest, so the decoder rejects an over-limit
+        // request (the handler's explicit 413 guard is the belt-and-suspenders should the cap ever
+        // be raised). Either way it must never dispatch to the engine.
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        Assert.That(responseBody, Does.Contain("ssz-decode-error"));
+        await _engineModule.DidNotReceive().engine_getBlobsV1(Arg.Any<byte[][]>());
+        await _engineModule.DidNotReceive().engine_getBlobsV2(Arg.Any<byte[][]>());
+        await _engineModule.DidNotReceive().engine_getBlobsV3(Arg.Any<byte[][]>());
+        await _engineModule.DidNotReceive().engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
     }
 }
