@@ -7,6 +7,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
@@ -28,6 +29,7 @@ public class DetectionScannerTests
     private DetectionCache _cache = null!;
     private ILogFinder _logFinder = null!;
     private IBlockFinder _blockFinder = null!;
+    private ILogIndexStorage _logIndexStorage = null!;
     private CapturingScheduler _scheduler = null!;
     private DetectionScanner _scanner = null!;
 
@@ -39,13 +41,17 @@ public class DetectionScannerTests
         _cache = new DetectionCache(_dir, LimboLogs.Instance);
         _logFinder = Substitute.For<ILogFinder>();
         _blockFinder = Substitute.For<IBlockFinder>();
+        // No index floor by default (MinBlockNumber returns null), so scans keep their full-history bound;
+        // the pivot-underflow test sets a floor explicitly.
+        _logIndexStorage = Substitute.For<ILogIndexStorage>();
         _scheduler = new CapturingScheduler();
-        _scanner = new DetectionScanner(_scheduler, _logFinder, _blockFinder, _cache, LimboLogs.Instance, (ulong)ChainId);
+        _scanner = new DetectionScanner(_scheduler, _logFinder, _blockFinder, _logIndexStorage, _cache, LimboLogs.Instance, (ulong)ChainId);
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
+        await _logIndexStorage.DisposeAsync();
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
     }
 
@@ -269,6 +275,34 @@ public class DetectionScannerTests
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
         Assert.That(entry!.Complete, Is.True, "hitting the retained-history floor completes the scan");
+    }
+
+    [Test]
+    public async Task First_scan_covers_the_window_above_the_index_floor_on_a_snap_synced_node()
+    {
+        // Regression for #13051: on a freshly snap-synced node the head sits just above the snap pivot, so the
+        // first downward chunk [head-5000, head] underflows below the log-index floor, where receipts aren't
+        // backfilled and FindLogs throws up-front. The scan must clamp to the floor and surface the tokens in the
+        // available [floor, head] window, not abort with an empty complete:true entry.
+        const long floor = 500;
+        _logIndexStorage.MinBlockNumber.Returns((int)floor);
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(800).TestObject); // only a few hundred blocks above the floor
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => (long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0) < floor
+                ? throw new ResourceNotFoundException("receipts unavailable below the snap pivot")
+                : [Log(Token, Transfer, Keccak.Zero, Keccak.Zero)]);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Contracts, Does.Contain(Token.ToString()), "token in the window above the pivot is detected, not lost to an underflowing first chunk");
+            Assert.That(entry.Complete, Is.True, "scan completes at the index floor");
+            Assert.That(entry.ScannedFrom, Is.EqualTo(0), "completed scans reset the resume cursor");
+        }
     }
 
     [Test]
