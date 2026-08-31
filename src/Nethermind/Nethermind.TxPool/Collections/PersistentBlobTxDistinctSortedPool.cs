@@ -33,6 +33,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
     private readonly HashSet<ValueHash256> _metadataFallbackReads = [];
+    private readonly List<TxLookupKey> _batchedDeletes = [];
+    private bool _batchStorageDeletes;
     private readonly int _maxPendingBlobUpdates;
     private const int MaxBlobUpdateWriteAttempts = 2;
     private const int MaxBlobUpdateRetryExponent = 5;
@@ -727,7 +729,14 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
             if (tx is not null && !hasPendingUpdate)
             {
-                _blobTxStorage.Delete(hash, tx.Timestamp);
+                if (_batchStorageDeletes)
+                {
+                    _batchedDeletes.Add(new TxLookupKey(hash, tx.SenderAddress!, tx.Timestamp));
+                }
+                else
+                {
+                    _blobTxStorage.Delete(hash, tx.Timestamp);
+                }
             }
 
             _blobTxCache.Delete(hash);
@@ -741,6 +750,77 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         return false;
+    }
+
+    internal override void UpdatePoolForRevalidation(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+
+        Debug.Assert(!_batchStorageDeletes);
+        _batchStorageDeletes = true;
+        try
+        {
+            UpdatePoolNonLocked(accounts, updateElements);
+        }
+        finally
+        {
+            _batchStorageDeletes = false;
+        }
+
+        FlushPendingRevalidationDeletesNonLocked();
+    }
+
+    internal override void FlushPendingRevalidationDeletes()
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        FlushPendingRevalidationDeletesNonLocked();
+    }
+
+    private void FlushPendingRevalidationDeletesNonLocked()
+    {
+        if (_batchedDeletes.Count == 0)
+        {
+            return;
+        }
+
+        using ArrayPoolList<TxLookupKey> deletes = new(_batchedDeletes.Count);
+        using ArrayPoolList<TxLookupKey> obsoleteFullTransactions = new(_batchedDeletes.Count);
+        for (int i = 0; i < _batchedDeletes.Count; i++)
+        {
+            TxLookupKey key = _batchedDeletes[i];
+            if (!base.TryGetValueNonLocked(key.Hash, out Transaction? liveTransaction))
+            {
+                deletes.Add(key);
+            }
+            else if (liveTransaction.Timestamp != key.Timestamp)
+            {
+                obsoleteFullTransactions.Add(key);
+            }
+        }
+
+        if (_blobTxStorage is IBatchDeleteTxStorage batchStorage)
+        {
+            if (deletes.Count > 0)
+            {
+                batchStorage.DeleteMany(deletes.AsSpan());
+            }
+
+            if (obsoleteFullTransactions.Count > 0)
+            {
+                batchStorage.DeleteFullBlobTransactions(obsoleteFullTransactions.AsSpan());
+            }
+        }
+        else
+        {
+            // No timestamp-only fallback exists; Delete also removes hash-keyed records owned by a reinserted transaction.
+            for (int i = 0; i < deletes.Count; i++)
+            {
+                TxLookupKey key = deletes[i];
+                _blobTxStorage.Delete(key.Hash, key.Timestamp);
+            }
+        }
+
+        _batchedDeletes.Clear();
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
