@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -177,6 +178,19 @@ public class LogIndexBuilderTests
             logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
         )
     { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
+
+    [TestCase(0UL, 1440)]
+    [TestCase(8UL, 1842)]
+    [TestCase(40UL, 9216)]
+    public void Stall_deadline_scales_with_the_pruning_interval(ulong pruningInterval, int expectedTicks)
+    {
+        LogIndexBuilder builder = new(
+            Substitute.For<ILogIndexStorage>(), _config, _blockTree, _syncConfig, _receiptStorage, _logManager,
+            historyConfig: new HistoryConfig { PruningInterval = pruningInterval });
+        builder.AddTo(_testDisposables);
+
+        Assert.That(builder.StallTicksBeforeGivingUp, Is.EqualTo(expectedTicks));
+    }
 
     private static ISyncPointers DownloadedToTheBarrier()
     {

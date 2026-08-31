@@ -136,9 +136,9 @@ namespace Nethermind.Synchronization
 
         // The advertised range covers bodies and receipts, so the honest earliest is the later of the two
         // download frontiers - the block tree's boundary is only the truth once the pruner has published one.
-        // An absent pointer means nothing was downloaded yet, and the static config pivot is then the floor,
-        // exactly as EthCapabilitiesProvider reads it: the live tree pivot rises with finality, so a node that
-        // never runs the descending feeds (genesis-follow, CL-discovered pivot) must fall back to zero.
+        // An absent pointer under fast sync falls back to the static config pivot - bodies exist only from
+        // where full sync began, so the pivot is the honest earliest even when the feeds never run; the live
+        // tree pivot rises with finality, so a genesis-following node (CL-discovered pivot) falls back to zero.
         private ulong DownloadPointerFloor
         {
             get

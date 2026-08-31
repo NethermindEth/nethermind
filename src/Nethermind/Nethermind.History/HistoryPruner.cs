@@ -367,8 +367,9 @@ public class HistoryPruner : IHistoryPruner
     private bool AncientBodiesStillDownloading()
     {
         // Keyed on the tree pivot, like the feed itself: a CL-discovered pivot never reaches the sync config.
+        // With synchronization disabled the feed cannot run at all, so the frontier is frozen and is the truth.
         ulong pivot = _blockTree.SyncPivot.BlockNumber;
-        if (!_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
+        if (!_syncConfig.SynchronizationEnabled || !_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
         {
             return false;
         }

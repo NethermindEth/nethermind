@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.History;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 using static System.Threading.Tasks.TaskCreationOptions;
@@ -74,9 +75,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
     private readonly ISyncPointers? _syncPointers;
-    // Sized above the default history pruning interval (8 epochs, ~51 minutes on mainnet), which is what
-    // clears the receipts-reclaimed/body-not-yet transient this stall waits on.
-    internal int StallTicksBeforeGivingUp { get; init; } = 1440;
+    // Three pruning intervals, floored at two hours: the next pruning pass is what clears the
+    // receipts-reclaimed/body-not-yet transient this stall waits on, and the interval is operator-tunable.
+    internal int StallTicksBeforeGivingUp { get; init; }
     private int _stalledBelowBoundary = -1;
     private int _stallTicks;
     private bool _stallWarned;
@@ -88,7 +89,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
         ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
-        ISyncPointers? syncPointers = null)
+        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -108,11 +109,22 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _syncPointers = syncPointers;
         if (slicesConfigured && syncPointers is null && _logger.IsWarn)
             _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
+        StallTicksBeforeGivingUp = StallDeadlineTicks(historyConfig);
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
         Direction(isForward: false) = new();
         Direction(isForward: true) = new();
+    }
+
+    private static int StallDeadlineTicks(IHistoryConfig? historyConfig)
+    {
+        const ulong FloorTicks = 1440;
+        const ulong SlotsPerEpoch = 32;
+        const ulong SecondsPerSlot = 12;
+        ulong intervalEpochs = ulong.Min(historyConfig?.PruningInterval ?? 0, 1_000_000);
+        ulong intervalTicks = intervalEpochs * SlotsPerEpoch * SecondsPerSlot / (ulong)NewBlockWaitTimeout.TotalSeconds;
+        return (int)ulong.Min(ulong.Max(FloorTicks, intervalTicks * 3), int.MaxValue);
     }
 
     private void StartProcessing(bool isForward)

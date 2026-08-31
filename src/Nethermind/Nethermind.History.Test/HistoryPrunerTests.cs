@@ -386,7 +386,24 @@ public class HistoryPrunerTests
         chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? absentWindow = null)
+    [Test]
+    public void SetDeletePointerToOldestBlock_releases_a_written_pointer_when_synchronization_is_disabled()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: false);
+
+        pruner.SetDeletePointerToOldestBlock();
+
+        chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+    }
+
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, TimeSpan? absentWindow = null, bool synchronizationEnabled = true)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
@@ -402,7 +419,7 @@ public class HistoryPrunerTests
             dbProvider,
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = 0 },
             BlocksConfig,
-            new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true },
+            new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true, SynchronizationEnabled = synchronizationEnabled },
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
