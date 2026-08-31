@@ -1944,6 +1944,13 @@ Db usage:
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 
+    /// <summary>
+    /// Retains the newest requested revalidation generation independently of the lossy wake-up channel.
+    /// </summary>
+    /// <remarks>
+    /// Producers must update the generation before signalling the channel. The consumer must drain pending
+    /// signals before reading <see cref="Generation"/>, so every consumed signal is covered by the observed generation.
+    /// </remarks>
     internal sealed class LatestRevalidationRequest
     {
         private long _generation;

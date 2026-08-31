@@ -115,13 +115,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             _blobTxMetadataCache.Set(hash, BlobTransactionPayload.Elide(fullBlobTx));
             if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate))
             {
-                if (pendingUpdate.WriterActive)
+                _ = TrackBlobUpdateNonLocked(fullBlobTx);
+                if (!pendingUpdate.WriterActive)
                 {
-                    _ = TrackBlobUpdateNonLocked(fullBlobTx);
-                }
-                else
-                {
-                    _ = TrackBlobUpdateNonLocked(fullBlobTx);
                     try
                     {
                         PersistBlobTransaction(fullBlobTx, pendingUpdate.DeleteTimestamps);
