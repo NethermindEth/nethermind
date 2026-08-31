@@ -771,7 +771,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (reader.TokenType == JsonTokenType.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(reader.GetString(), expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            return DeserializeReparsedString(reader.GetString(), expectedParameter);
         }
 
         return DeserializeTypedParameter(ref reader, expectedParameter);
@@ -782,7 +782,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Type paramType = expectedParameter.ParameterType;
         if (providedParameter.ValueKind == JsonValueKind.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            return DeserializeReparsedString(providedParameter.GetString(), expectedParameter);
         }
 
         JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
@@ -810,6 +810,19 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return typeInfo is not null
             ? JsonSerializer.Deserialize(ref reader, typeInfo)
             : JsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+    }
+
+    private static object? DeserializeReparsedString(string? json, ExpectedParameter expectedParameter)
+    {
+        if (json is null)
+        {
+            return null;
+        }
+
+        JsonTypeInfo? typeInfo = expectedParameter.HasParameterConverter ? expectedParameter.TypeInfo : null;
+        return typeInfo is not null
+            ? JsonSerializer.Deserialize(json, typeInfo)
+            : JsonSerializer.Deserialize(json, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
     private static object?[] DeserializeParameters(

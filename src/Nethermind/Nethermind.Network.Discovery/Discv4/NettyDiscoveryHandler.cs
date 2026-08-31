@@ -117,6 +117,7 @@ public class NettyDiscoveryHandler(
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
+        Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", FastEnum.GetName(discoveryMsg.MsgType)!));
     }
 
     private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
@@ -129,7 +130,6 @@ public class NettyDiscoveryHandler(
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (size < 98)
         {
