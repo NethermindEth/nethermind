@@ -131,7 +131,7 @@ public class HistoryPruner : IHistoryPruner
 
         (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
         ulong snapshotPointer = persistedPointer ?? 0;
-        ulong barrierFloor = _blockTree.GetLowestBlock();
+        ulong barrierFloor = _blockTree.GetLowestBlock(); // still the config barrier here - nothing has raised it yet
         // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
         _persistedUnreclaimedFloor = ulong.Max(ulong.Min(persistedCursor ?? snapshotPointer, snapshotPointer), barrierFloor);
 
@@ -199,11 +199,11 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    // Deliberately lock-free - this sits on the eth_getLogs path, and the pruning pass drives the load,
-    // which the ancient-bodies hold can defer for the whole backfill. Until then the answer is the later
-    // of the constructor's snapshot of the persisted cursors - exact, since nothing moves them in this
-    // process before the load - and the configured barrier: refusing more than necessary beats serving a
-    // reclaimed height silently short.
+    // Deliberately lock-free - this sits on the eth_getLogs path, and the first pruning pass or
+    // OldestBlockHeader access drives the load, which the ancient-bodies hold can defer for the whole
+    // backfill. Until then the answer is the later of the constructor's snapshot of the persisted cursors
+    // - exact, since nothing moves them in this process before the load - and the configured barrier:
+    // refusing more than necessary beats serving a reclaimed height silently short.
     public ulong OldestUnreclaimedBlockNumber =>
         _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
