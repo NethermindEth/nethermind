@@ -451,7 +451,12 @@ public class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
-            Node node = CreateNode(msg);
+            Node? node = CreateNode(msg);
+            if (node is null)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Ignoring {msg} with no sender endpoint");
+                return;
+            }
 
             if (IsResponse(msgType))
             {
@@ -504,10 +509,17 @@ public class KademliaAdapter(
 
     private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
-    private static Node CreateNode(DiscoveryMsg msg)
-        => msg is PingMsg { SourceTcpPort: > 0 } ping
-            ? new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port)
+    private static Node? CreateNode(DiscoveryMsg msg)
+    {
+        if (msg.FarPublicKey is null || msg.FarAddress is null)
+        {
+            return null;
+        }
+
+        return msg is PingMsg { SourceTcpPort: > 0 } ping
+            ? new Node(msg.FarPublicKey, new IPEndPoint(msg.FarAddress.Address, ping.SourceTcpPort), msg.FarAddress.Port)
             : Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
+    }
 
     private bool ValidatePingAddress(PingMsg msg)
     {

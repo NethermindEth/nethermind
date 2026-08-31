@@ -111,14 +111,17 @@ namespace Nethermind.Network
                 if (removed.Node?.Id is not null)
                 {
                     handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
+                    if (!HasSyncPeer(handlerKey))
+                    {
+                        _txPool.RemovePeer(handlerKey);
+                    }
                 }
             }
 
             PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
+            if (sessionKey is not null && sessionKey != handlerKey && !HasSyncPeer(sessionKey))
             {
-                _txPool.RemovePeer(session.Node.Id);
+                _txPool.RemovePeer(sessionKey);
             }
         }
 
@@ -400,6 +403,19 @@ namespace Nethermind.Network
 
                 return _cachedCapabilities!;
             }
+        }
+
+        private bool HasSyncPeer(PublicKey nodeId)
+        {
+            foreach (KeyValuePair<Guid, SyncPeerProtocolHandlerBase> pair in _syncPeers)
+            {
+                if (pair.Value.Node?.Id == nodeId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

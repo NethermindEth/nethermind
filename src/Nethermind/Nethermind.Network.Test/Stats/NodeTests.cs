@@ -126,7 +126,87 @@ namespace Nethermind.Network.Test.Stats
                 Assert.That(node.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
                 Assert.That(node.HasDiscoveryEndpoint, Is.True);
+                Assert.That(node.V6Address, Is.Null);
             }
+        }
+
+        [Test]
+        public void TryFromEnr_keeps_both_family_endpoints()
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+
+            bool result = Node.TryFromEnr(enr, out Node? node);
+
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
+                Assert.That(node.Enr, Is.SameAs(enr));
+            }
+        }
+
+        [Test]
+        public void Node_from_enr_backed_NetworkNode_keeps_both_family_endpoints()
+        {
+            NetworkNode networkNode = new(CreateDualStackEnr(TestItem.PrivateKeyA).ToString());
+
+            Node node = new(networkNode);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
+            }
+        }
+
+        [Test]
+        public void PromoteAlternateEndpoint_swaps_primary_and_updates_discovery()
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            IPEndPoint v4 = node!.Address;
+            IPEndPoint v6 = node.V6Address!;
+
+            node.PromoteAlternateEndpoint(v6);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address, Is.EqualTo(v6));
+                Assert.That(node.V6Address, Is.EqualTo(v4));
+                Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30306)));
+            }
+        }
+
+        [Test]
+        public void PromoteAlternateEndpoint_is_noop_when_endpoint_equals_primary()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            IPEndPoint original = node.Address;
+
+            node.PromoteAlternateEndpoint(original);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address, Is.EqualTo(original));
+                Assert.That(node.V6Address, Is.Null);
+            }
+        }
+
+        [Test]
+        public void PromoteAlternateEndpoint_alternate_survives_enr_refresh()
+        {
+            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            node!.PromoteAlternateEndpoint(node.V6Address!);
+
+            // Simulate discovery refresh with same ENR
+            node.Enr = enr;
+
+            Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
         }
 
         [TestCase(NodeFromEnrMode.PeerCandidate)]
@@ -327,6 +407,22 @@ namespace Nethermind.Network.Test.Stats
             }
             enr.SetEntry(new Tcp6Entry(30303));
             enr.SetEntry(new Udp6Entry(30304));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+            return enr;
+        }
+
+        private static NodeRecord CreateDualStackEnr(PrivateKey privateKey)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new TcpEntry(30303));
+            enr.SetEntry(new UdpEntry(30304));
+            enr.SetEntry(new Tcp6Entry(30305));
+            enr.SetEntry(new Udp6Entry(30306));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;

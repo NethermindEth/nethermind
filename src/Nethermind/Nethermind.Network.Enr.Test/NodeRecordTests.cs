@@ -120,6 +120,66 @@ public class NodeRecordTests
     }
 
     [Test]
+    public void Tcp_endpoints_are_extracted_per_family_from_dual_stack_record()
+    {
+        NodeRecord nodeRecord = CreateEndpointRecord(
+            ip: IPAddress.Parse("192.0.2.1"),
+            tcp: 30303,
+            ip6: IPAddress.Parse("2001:db8::1"),
+            tcp6: 30305);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out IPEndPoint? ipv4), Is.True);
+            Assert.That(ipv4, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
+            Assert.That(nodeRecord.TryGetTcp6Endpoint(out IPEndPoint? ipv6), Is.True);
+            Assert.That(ipv6, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
+        }
+    }
+
+    [Test]
+    public void Tcp6_endpoint_falls_back_to_the_shared_tcp_port()
+    {
+        NodeRecord nodeRecord = CreateEndpointRecord(
+            ip: IPAddress.Parse("192.0.2.1"),
+            tcp: 30303,
+            ip6: IPAddress.Parse("2001:db8::1"),
+            tcp6: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out IPEndPoint? ipv4), Is.True);
+            Assert.That(ipv4, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
+            Assert.That(nodeRecord.TryGetTcp6Endpoint(out IPEndPoint? ipv6), Is.True);
+            Assert.That(ipv6, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30303)));
+        }
+    }
+
+    [TestCase(true, 30304)]
+    [TestCase(false, 30304)]
+    public void Tcp_endpoint_falls_back_to_ipv6_entries_when_ipv4_tcp_is_missing(bool withTcp6, int expectedPort)
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+        if (withTcp6)
+        {
+            nodeRecord.SetEntry(new Tcp6Entry(expectedPort));
+        }
+        else
+        {
+            nodeRecord.SetEntry(new TcpEntry(expectedPort));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out IPEndPoint? endpoint), Is.True);
+            Assert.That(endpoint, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), expectedPort)));
+            Assert.That(nodeRecord.TryGetTcp6Endpoint(out IPEndPoint? ipv6), Is.True);
+            Assert.That(ipv6, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), expectedPort)));
+        }
+    }
+
+    [Test]
     public void Cannot_select_ipv4_mapped_address_from_ip6_entry()
     {
         NodeRecord nodeRecord = new();
@@ -134,6 +194,77 @@ public class NodeRecordTests
             Assert.That(nodeRecord.TryGetDiscoveryEndpoint(out _), Is.False);
             Assert.That(nodeRecord.TryGetTcpEndpoint(out _), Is.False);
         }
+    }
+
+    [Test]
+    public void Tcp_endpoints_are_missing_without_usable_port_entries()
+    {
+        NodeRecord nodeRecord = CreateEndpointRecord(
+            ip: IPAddress.Parse("192.0.2.1"),
+            tcp: null,
+            ip6: IPAddress.Parse("2001:db8::1"),
+            tcp6: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.TryGetTcpEndpoint(out _), Is.False);
+            Assert.That(nodeRecord.TryGetTcp6Endpoint(out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Udp6_endpoint_prefers_udp6_over_the_shared_udp_port()
+    {
+        NodeRecord nodeRecord = CreateEndpointRecord(
+            ip: null,
+            tcp: null,
+            ip6: IPAddress.Parse("2001:db8::1"),
+            tcp6: null);
+        nodeRecord.SetEntry(new UdpEntry(30306));
+        nodeRecord.SetEntry(new Udp6Entry(30307));
+
+        Assert.That(nodeRecord.TryGetUdp6Endpoint(out IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30307)));
+    }
+
+    [Test]
+    public void Udp6_endpoint_falls_back_to_the_shared_udp_port()
+    {
+        NodeRecord nodeRecord = CreateEndpointRecord(
+            ip: null,
+            tcp: null,
+            ip6: IPAddress.Parse("2001:db8::1"),
+            tcp6: null);
+        nodeRecord.SetEntry(new UdpEntry(30306));
+
+        Assert.That(nodeRecord.TryGetUdp6Endpoint(out IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30306)));
+    }
+
+    private static NodeRecord CreateEndpointRecord(IPAddress? ip, int? tcp, IPAddress? ip6, int? tcp6)
+    {
+        NodeRecord nodeRecord = new();
+        if (ip is not null)
+        {
+            nodeRecord.SetEntry(new IpEntry(ip));
+        }
+
+        if (ip6 is not null)
+        {
+            nodeRecord.SetEntry(new Ip6Entry(ip6));
+        }
+
+        if (tcp is not null)
+        {
+            nodeRecord.SetEntry(new TcpEntry(tcp.Value));
+        }
+
+        if (tcp6 is not null)
+        {
+            nodeRecord.SetEntry(new Tcp6Entry(tcp6.Value));
+        }
+
+        return nodeRecord;
     }
 
     [Test]
