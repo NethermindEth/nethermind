@@ -101,7 +101,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // a single shared word per DB serializes them under load.
     internal readonly StripedLong _allocatedSpan = new();
     private readonly StripedLong _totalReads = new();
-    private CacheLinePaddedLong _totalWrites;
+    private readonly StripedLong _totalWrites = new();
 
     private readonly DisposableLazy<IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<IteratorManager> _seekIteratorManager;
@@ -378,7 +378,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     protected internal void UpdateReadMetrics(int count) => _totalReads.Add(count);
 
-    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
+    protected internal void UpdateWriteMetrics() => _totalWrites.Increment();
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
         _db.TryGetIntProperty(propertyName, out ulong value) ? (long)value : 0;
@@ -394,7 +394,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 IndexSize = 0,
                 MemtableSize = 0,
                 TotalReads = _totalReads.Sum,
-                TotalWrites = _totalWrites.Value,
+                TotalWrites = _totalWrites.Sum,
             };
         }
         return new IDbMeta.DbMetric()
@@ -404,7 +404,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
             TotalReads = _totalReads.Sum,
-            TotalWrites = _totalWrites.Value,
+            TotalWrites = _totalWrites.Sum,
         };
     }
 

@@ -866,6 +866,28 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
+        [Test]
+        public void Db_metrics_keep_cumulative_read_and_write_totals()
+        {
+            IDbMeta.DbMetric before = _db.GatherMetric();
+
+            _db.Set([1], [2]);
+            _db.Set([3], [4]);
+
+            byte[] output = new byte[1];
+            IReadOnlyKeyValueStore reader = _db;
+            Assert.That(reader.Get([1], output), Is.EqualTo(1));
+            Assert.That(reader.Get([3], output), Is.EqualTo(1));
+
+            IDbMeta.DbMetric after = _db.GatherMetric();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(after.TotalReads - before.TotalReads, Is.EqualTo(2));
+                Assert.That(after.TotalWrites - before.TotalWrites, Is.EqualTo(2));
+            }
+        }
+
         [TestCase(1)]
         [TestCase(1024)]
         [TestCase(8192)]
