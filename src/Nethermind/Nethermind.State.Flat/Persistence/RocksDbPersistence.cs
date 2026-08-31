@@ -57,7 +57,21 @@ public class RocksDbPersistence : IPersistence
 
     public void Flush() => _db.Flush();
 
-    public void Clear() => BasePersistence.ClearAllColumns(_db);
+    public void Clear()
+    {
+        BasePersistence.ClearAllColumns(_db);
+        if (_stagingDir is not null && Directory.Exists(_stagingDir))
+        {
+            try
+            {
+                Directory.Delete(_stagingDir, recursive: true);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to delete SST ingest staging directory '{_stagingDir}' during Clear. {e}");
+            }
+        }
+    }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
@@ -232,7 +246,7 @@ public class RocksDbPersistence : IPersistence
             // persist or startup recovery to roll the commit forward.
             if (columnsIngested == 0)
             {
-                RollbackFailedIngest(batches);
+                RollbackFailedIngest(batches, to);
             }
             else if (_logger.IsError)
             {
@@ -259,8 +273,12 @@ public class RocksDbPersistence : IPersistence
         }
     }
 
-    private void RollbackFailedIngest(ISstIngestWriteBatch[] batches)
+    private void RollbackFailedIngest(ISstIngestWriteBatch[] batches, in StateId to)
     {
+        if (BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is { } marker && marker.To != to)
+        {
+            return;
+        }
         try
         {
             // The marker must be gone before staged files are deleted: a marker surviving its files would
@@ -364,7 +382,7 @@ public class RocksDbPersistence : IPersistence
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        if (_useSstIngestion && _storeSupportsIngest && from != StateId.Sync && to != StateId.Sync)
+        if (_useSstIngestion && _storeSupportsIngest && from != StateId.Sync && to != StateId.Sync && from != to && !flags.HasFlag(WriteFlags.DisableWAL))
         {
             return CreateIngestWriteBatch(dbSnap, to);
         }

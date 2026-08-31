@@ -248,6 +248,7 @@ public static class BasePersistence
                 {
                     // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
                     batch.GetColumnBatch(column).Remove(CurrentStateKey);
+                    batch.GetColumnBatch(column).Remove(IngestMarkerKey);
                     continue;
                 }
 
