@@ -1332,30 +1332,58 @@ namespace Nethermind.Trie.Test
         [Test]
         public void WarmUpPaths_DoesNotThrow_ForDuplicateAndDivergingKeys()
         {
-            using IPruningTrieStore trieStore = CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            MemDb memDb = new();
+            Hash256 rootHash;
             ValueHash256 keyA = ValueKeccak.Compute(_keyA);
             ValueHash256 keyB = ValueKeccak.Compute(_keyB);
             ValueHash256 keyC = ValueKeccak.Compute(_keyC);
             ValueHash256 keyD = ValueKeccak.Compute(_keyD);
 
-            patriciaTree.Set(keyA.Bytes, _longLeaf1);
-            patriciaTree.Set(keyB.Bytes, _longLeaf2);
-            patriciaTree.Set(keyC.Bytes, _longLeaf1);
-            patriciaTree.Set(keyD.Bytes, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            using (IPruningTrieStore trieStore = CreateTrieStore(memDb))
+            {
+                PatriciaTree patriciaTree = new(trieStore, _logManager);
 
+                patriciaTree.Set(keyA.Bytes, _longLeaf1);
+                patriciaTree.Set(keyB.Bytes, _longLeaf2);
+                patriciaTree.Set(keyC.Bytes, _longLeaf1);
+                patriciaTree.Set(keyD.Bytes, _longLeaf2);
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+                trieStore.PersistCache(CancellationToken.None);
+                rootHash = patriciaTree.RootHash;
+            }
+
+            ValueHash256 missingA = ValueKeccak.Compute(Bytes.FromHexString("00000000000ac"));
+            ValueHash256 missingB = ValueKeccak.Compute(Bytes.FromHexString("00000000001ac"));
             ValueHash256[] keys =
             [
                 keyA,
                 keyA,
                 keyB,
                 keyC,
-                keyD
+                keyD,
+                missingA,
+                missingB
             ];
             Array.Sort(keys, static (a, b) => a.CompareTo(b));
 
-            Assert.That(() => patriciaTree.WarmUpPaths(keys), Throws.Nothing);
+            using IPruningTrieStore freshTrieStore = CreateTrieStore(memDb);
+            PatriciaTree freshTree = new(freshTrieStore, _logManager) { RootHash = rootHash };
+            long readsBeforeWarmup = memDb.ReadsCount;
+
+            freshTree.WarmUpPaths(keys);
+            long readsAfterWarmup = memDb.ReadsCount;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readsAfterWarmup, Is.GreaterThan(readsBeforeWarmup));
+                Assert.That(freshTree.Get(keyA.Bytes).ToArray(), Is.EqualTo(_longLeaf1));
+                Assert.That(freshTree.Get(keyB.Bytes).ToArray(), Is.EqualTo(_longLeaf2));
+                Assert.That(freshTree.Get(keyC.Bytes).ToArray(), Is.EqualTo(_longLeaf1));
+                Assert.That(freshTree.Get(keyD.Bytes).ToArray(), Is.EqualTo(_longLeaf2));
+                Assert.That(freshTree.Get(missingA.Bytes).ToArray(), Is.Empty);
+                Assert.That(freshTree.Get(missingB.Bytes).ToArray(), Is.Empty);
+                Assert.That(memDb.ReadsCount, Is.EqualTo(readsAfterWarmup));
+            }
         }
 
         [Test]
