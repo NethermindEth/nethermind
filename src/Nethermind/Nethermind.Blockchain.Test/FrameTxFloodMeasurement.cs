@@ -964,12 +964,10 @@ public class FrameTxFloodMeasurement
         private readonly IDisposable _stateScope;
         private readonly IReleaseSpec _spec;
         private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
-        private readonly ulong _ceiling;
         private readonly int _kRetry;
         private readonly BlockReceiptsTracer _receiptsTracer = new();
+        private readonly Block _block;
         private int _attemptsOnCurrent;
-        private int _salt;
-        private Transaction _failing;
         private CountingAdapter _adapter = null!;
 
         public int Evictions { get; private set; }
@@ -986,10 +984,20 @@ public class FrameTxFloodMeasurement
         {
             _stateScope = stateScope;
             _spec = spec;
-            _ceiling = ceiling;
             _kRetry = kRetry;
-            _failing = FrameTx(0, ceiling);
             _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
+
+            // Built once, ahead of the timed window. WithTransactions computes a transaction root that
+            // ProcessTransactions then computes again, and a producer does not rebuild its block inside the
+            // pass being measured. Safe to reuse: the block is not a BlockToProduce, so ProcessTransactions
+            // never replaces its transaction list and only rewrites TxRoot, with the same empty root each pass.
+            _block = Build.A.Block
+                .WithNumber(1)
+                .WithBaseFeePerGas(UInt256.Zero)
+                .WithBeneficiary(TestItem.AddressE)
+                .WithGasLimit(BlockGasLimit)
+                .WithTransactions(FrameTx(0, ceiling))
+                .TestObject;
         }
 
         public static ProducerRig Create(ISpecProvider specProvider, int kRetry, ulong ceiling)
@@ -1058,25 +1066,19 @@ public class FrameTxFloodMeasurement
 
         private void ProduceOnce()
         {
-            Block block = Build.A.Block
-                .WithNumber(1)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(TestItem.AddressE)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(_failing)
-                .TestObject;
-
-            _receiptsTracer.StartNewBlockTrace(block);
-            _executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
-            _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
+            _receiptsTracer.StartNewBlockTrace(_block);
+            _executor.SetBlockExecutionContext(new BlockExecutionContext(_block.Header, _spec));
+            _executor.ProcessTransactions(_block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
             _receiptsTracer.EndBlockTrace();
 
-            // Replaced rather than retired, so residency stays at one and every pass has the same work.
+            // Every pass now does identical work whatever K_retry is, which matters because that is the axis
+            // this case compares: building a replacement transaction cost the K_retry = 1 arm a hash on every
+            // pass and the K_retry = 8 arm one on every eighth. Nothing downstream reads the transaction's
+            // identity, so eviction only has to reset the counter.
             if (_attemptsOnCurrent >= _kRetry)
             {
                 Evictions++;
                 _attemptsOnCurrent = 0;
-                _failing = FrameTx(++_salt, _ceiling);
             }
         }
 
