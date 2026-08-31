@@ -16,7 +16,10 @@ on:
           - prefix-retry
         default: both
       groth16_artifacts:
-        description: Path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases self-ignore.
+        description: >-
+          Absolute path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases
+          self-ignore. A relative path is not equivalent: this workflow resolves one against src/Nethermind
+          while the harness resolves it against the test assembly's output directory.
         required: false
         type: string
         default: ''
@@ -91,7 +94,7 @@ jobs:
           # harness only rejects an unset path, and resolves a mistyped one no earlier than File.Exists inside
           # each case, so -d covers unset, whitespace-only and wrong in one test.
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
-            if [[ -z "${FRAME_GROTH16_ARTIFACTS// }" ]]; then
+            if [[ -z "${FRAME_GROTH16_ARTIFACTS//[[:space:]]/}" ]]; then
               echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
             else
               echo "::error::groth16_artifacts '${FRAME_GROTH16_ARTIFACTS}' is not a directory on this runner, so the privacy cases would self-ignore and the run would report only the adversarial shapes."
@@ -110,13 +113,17 @@ jobs:
             echo "ref=${GITHUB_REF_NAME}"
             echo "sha=${GITHUB_SHA}"
           } > "${OUTPUT_DIR}/PROVENANCE.txt"
-          if [[ -n "${RAISE_VERIFY_GAS// }" ]]; then
+          RAISE_VERIFY_GAS="${RAISE_VERIFY_GAS//[[:space:]]/}"
+          if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             if [[ ! "${RAISE_VERIFY_GAS}" =~ ^[1-9][0-9]{5,8}$ ]]; then
               echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
               exit 1
             fi
-            if (( RAISE_VERIFY_GAS <= 300000 )); then
-              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} is at or below the stock 300000, so it would lower the enforced ceiling rather than unlock the 500k points. Use 510000 for the complete sweep."
+            # Both harnesses skip a ceiling strictly greater than the constant, and the 500k points declare
+            # exactly 500000, so 300001..499999 unlocks nothing. Refused here rather than after the mempool
+            # and flood legs have run and the marker check reports a row the operator cannot place.
+            if (( RAISE_VERIFY_GAS < 500000 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the 500k points declare 500000. Use 510000 for the complete sweep, including the 49-input Groth16 point."
               exit 1
             fi
             # This workflow lives on a master-based branch but is dispatched against a ref that carries the
@@ -132,7 +139,7 @@ jobs:
               echo "::error::expected exactly one '${STOCK_LITERAL}' in ${CONST_FILE}, found ${hits}. Refusing to patch."
               exit 1
             fi
-            sed -i "s/${STOCK_LITERAL}/MaxVerifyGas = ${RAISE_VERIFY_GAS}/" "${CONST_FILE}"
+            sed -i "s/${STOCK_LITERAL}/MaxVerifyGas = ${RAISE_VERIFY_GAS}/" "${CONST_FILE}" || exit 1
             {
               echo "eip8141_max_verify_gas_patched_from=300000 to=${RAISE_VERIFY_GAS}"
               echo "# Every RESULT row in this artifact came from a build carrying the diff below."
@@ -213,7 +220,7 @@ jobs:
           # quietly shrinking the sweep. Groth16 rows are always required because the path is checked above.
           mempool_markers=('shape=groth16-')
           flood_markers=()
-          if [[ -n "${RAISE_VERIFY_GAS// }" ]]; then
+          if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
             # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
             mempool_markers+=('verify_gas=500000')
@@ -259,6 +266,16 @@ jobs:
         if: always() && env.OUTPUT_DIR != ''
         run: |
           set -uo pipefail
+          # Beside the rows, not only in the artifact: a patched run's tables are otherwise indistinguishable
+          # from a stock run's to anyone who screenshots one.
+          if [[ -f "${OUTPUT_DIR}/PROVENANCE.txt" ]]; then
+            {
+              echo '## Provenance'
+              echo '```'
+              cat "${OUTPUT_DIR}/PROVENANCE.txt"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
           for report in "${OUTPUT_DIR}"/*-results.txt; do
             [[ -f "${report}" ]] || continue
             {
