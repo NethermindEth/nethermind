@@ -949,6 +949,37 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    internal void MultiGet(byte[][] keys, Span<byte[]?> values, IColumnFamilyHandle? columnFamily, ReadOptions readOptions)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Length != values.Length)
+            throw new ArgumentException("Keys and values must have the same length.", nameof(values));
+        if (keys.Length == 0) return;
+
+        UpdateReadMetrics(keys.Length);
+
+        try
+        {
+            IColumnFamilyHandle[]? columnFamilies = null;
+            if (columnFamily is not null)
+            {
+                columnFamilies = new IColumnFamilyHandle[keys.Length];
+                Array.Fill(columnFamilies, columnFamily);
+            }
+
+            KeyValuePair<byte[], byte[]?>[] results = _db.MultiGet(keys, columnFamilies, readOptions);
+            for (int i = 0; i < results.Length; i++)
+                values[i] = results[i].Value;
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
