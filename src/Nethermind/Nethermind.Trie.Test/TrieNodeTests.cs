@@ -79,6 +79,114 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Concurrent_resolve_loads_rlp_once()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        int loads = 0;
+        using ManualResetEventSlim loadStarted = new(false);
+        using ManualResetEventSlim allowLoad = new(false);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            Interlocked.Increment(ref loads);
+            loadStarted.Set();
+            if (!allowLoad.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("resolver was not released");
+            return rlp;
+        });
+
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        using ManualResetEventSlim start = new(false);
+        Task[] tasks = new Task[8];
+        for (int i = 0; i < tasks.Length; i++)
+        {
+            tasks[i] = Task.Run(() =>
+            {
+                start.Wait();
+                trieNode.ResolveNode(resolver, TreePath.Empty);
+            });
+        }
+
+        start.Set();
+        bool firstLoadStarted = loadStarted.Wait(TimeSpan.FromSeconds(30));
+        allowLoad.Set();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstLoadStarted, Is.True);
+            Assert.That(Task.WaitAll(tasks, TimeSpan.FromSeconds(30)), Is.True);
+            Assert.That(Volatile.Read(ref loads), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Resolve_retries_after_loader_exception()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        int loads = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            if (Interlocked.Increment(ref loads) == 1) throw new TrieException("transient failure");
+            return rlp;
+        });
+
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+        Assert.DoesNotThrow(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loads, Is.EqualTo(2));
+            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Leaf));
+        }
+    }
+
+    [Test]
+    public void Resolve_retries_after_null_rlp()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        int loads = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            return Interlocked.Increment(ref loads) == 1 ? null : rlp;
+        });
+
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+        Assert.DoesNotThrow(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loads, Is.EqualTo(2));
+            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Leaf));
+        }
+    }
+
+    [Test]
+    public void Resolve_retries_after_corrupt_rlp()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        byte[] corruptRlp = [0xc1, 0x80];
+        int loads = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            return Interlocked.Increment(ref loads) == 1 ? corruptRlp : rlp;
+        });
+
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        Assert.Throws<TrieNodeException>(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+        Assert.DoesNotThrow(() => trieNode.ResolveNode(resolver, TreePath.Empty));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loads, Is.EqualTo(2));
+            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Leaf));
+        }
+    }
+
+    [Test]
     public void Throws_trie_exception_on_unexpected_format()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
