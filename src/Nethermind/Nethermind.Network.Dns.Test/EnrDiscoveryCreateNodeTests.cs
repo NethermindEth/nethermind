@@ -29,11 +29,12 @@ public class EnrDiscoveryCreateNodeTests
 
         bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
 
-        using (Assert.EnterMultipleScope())
+        Assert.That(result, Is.EqualTo(expectedResult));
+        Assert.That(node is not null, Is.EqualTo(expectedResult));
+        if (expectedResult)
         {
-            Assert.That(result, Is.EqualTo(expectedResult));
-            Assert.That(node is not null, Is.EqualTo(expectedResult));
-            if (expectedResult)
+            Assert.That(node, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
                 Assert.That(node.Port, Is.EqualTo(expectedPort));
@@ -41,6 +42,32 @@ public class EnrDiscoveryCreateNodeTests
                 Assert.That(node.HasDiscoveryEndpoint, Is.EqualTo(expectedDiscoveryEndpoint));
                 Assert.That(node.Enr, Is.SameAs(nodeRecord));
             }
+        }
+    }
+
+    [Test]
+    public void TryCreateNode_exposes_both_families_of_a_dual_stack_record()
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+        nodeRecord.SetEntry(new TcpEntry(30303));
+        nodeRecord.SetEntry(new UdpEntry(30304));
+        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+        nodeRecord.SetEntry(new Tcp6Entry(30305));
+        nodeRecord.SetEntry(new Udp6Entry(30306));
+
+        bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
+            Assert.That(node.Port, Is.EqualTo(30303));
+            Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
+            Assert.That(node.Enr, Is.SameAs(nodeRecord));
         }
     }
 

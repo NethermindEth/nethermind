@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using FastEnumUtility;
@@ -27,6 +28,10 @@ namespace Nethermind.Stats.Model
         private NodeRecord _enr;
         private int? _discoveryPort;
         private IPEndPoint _discoveryAddress;
+        private readonly Lock _alternateLock = new();
+        private ulong _alternateEnrSequence;
+        private bool _hasAlternateEnr;
+        private IPEndPoint _alternateDiscovery;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -57,6 +62,16 @@ namespace Nethermind.Stats.Model
         /// TCP network address of the node.
         /// </summary>
         public IPEndPoint Address { get; private set; }
+
+        /// <summary>
+        /// The alternate TCP endpoint of the other address family when the node advertises dual-stack
+        /// endpoints, e.g. via the <c>ip6</c>/<c>tcp6</c> ENR entries; otherwise <see langword="null"/>.
+        /// After a successful fallback dial this holds the previously tried primary endpoint so the
+        /// next dial can retry the other family.
+        /// </summary>
+#nullable enable annotations
+        public IPEndPoint? V6Address { get; private set; }
+#nullable restore
 
         /// <summary>
         /// UDP discovery port part of the network node.
@@ -123,6 +138,7 @@ namespace Nethermind.Stats.Model
                 if (value is not null)
                 {
                     TryClearEnrRequest(value.EnrSequence);
+                    TrySetIpv6Endpoint(value);
                 }
             }
         }
@@ -353,6 +369,152 @@ namespace Nethermind.Stats.Model
                 node.ClearDiscoveryEndpoint();
             }
         }
+
+        private void TrySetIpv6Endpoint(NodeRecord enr)
+        {
+            (IPEndPoint newAlternate, IPEndPoint newAlternateDiscovery) = ComputeAlternateWithDiscovery(enr);
+            lock (_alternateLock)
+            {
+                if (_hasAlternateEnr && enr.EnrSequence <= _alternateEnrSequence)
+                {
+                    return;
+                }
+
+                V6Address = newAlternate;
+                _alternateDiscovery = newAlternateDiscovery;
+                _alternateEnrSequence = enr.EnrSequence;
+                _hasAlternateEnr = true;
+            }
+        }
+
+        /// <summary>
+        /// Makes the alternate endpoint the primary after a successful fallback dial so future
+        /// dials start with the reachable family and persistence stores the reachable endpoint.
+        /// </summary>
+        public void PromoteAlternateEndpoint(IPEndPoint successfulEndpoint)
+        {
+            if (successfulEndpoint.Equals(Address))
+            {
+                return;
+            }
+
+            IPEndPoint oldPrimary = Address;
+            int oldDiscoveryPort = DiscoveryPort;
+            bool hadDiscovery = HasDiscoveryEndpoint;
+            SetIPEndPoint(successfulEndpoint);
+            lock (_alternateLock)
+            {
+                V6Address = oldPrimary;
+                IPEndPoint oldAlternateDiscovery = _alternateDiscovery;
+                _alternateDiscovery = hadDiscovery ? new IPEndPoint(oldPrimary.Address, oldDiscoveryPort) : null;
+                if (oldAlternateDiscovery is not null)
+                {
+                    DiscoveryPort = oldAlternateDiscovery.Port;
+                }
+                else if (Enr is not null)
+                {
+                    IPEndPoint expectedDiscovery = null;
+                    if (Address.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        if (Enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(Address.Address))
+                        {
+                            expectedDiscovery = disc;
+                        }
+                    }
+                    else if (Enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(Address.Address))
+                    {
+                        expectedDiscovery = disc6;
+                    }
+
+                    if (expectedDiscovery is not null)
+                    {
+                        DiscoveryPort = expectedDiscovery.Port;
+                    }
+                    else
+                    {
+                        ClearDiscoveryEndpoint();
+                    }
+                }
+                else
+                {
+                    ClearDiscoveryEndpoint();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Merges the alternate endpoint from another node if its ENR is strictly newer than the
+        /// one this alternate was derived from. The alternate is derived from <paramref name="other"/>'s
+        /// ENR against this node's current address family, so merging onto a promoted node yields the
+        /// correct family.
+        /// </summary>
+        internal bool TryMergeAlternate(Node other)
+        {
+            if (other.Enr is null)
+            {
+                return false;
+            }
+
+            (IPEndPoint newAlternate, IPEndPoint newAlternateDiscovery) = ComputeAlternateWithDiscovery(other.Enr);
+            lock (_alternateLock)
+            {
+                if (_hasAlternateEnr && other.Enr.EnrSequence <= _alternateEnrSequence)
+                {
+                    return false;
+                }
+
+                V6Address = newAlternate;
+                _alternateDiscovery = newAlternateDiscovery;
+                _alternateEnrSequence = other.Enr.EnrSequence;
+                _hasAlternateEnr = true;
+                return true;
+            }
+        }
+
+        private (IPEndPoint Alternate, IPEndPoint Discovery) ComputeAlternateWithDiscovery(NodeRecord enr)
+        {
+            IPAddress address = Address.Address;
+            if (address.IsIPv4MappedToIPv6)
+            {
+                return (null, null);
+            }
+
+            if (address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                if (enr.TryGetTcp6Endpoint(out IPEndPoint ipv6Endpoint) &&
+                    !ipv6Endpoint.Address.IsIPv4MappedToIPv6)
+                {
+                    IPEndPoint discovery = null;
+                    if (enr.TryGetUdp6Endpoint(out IPEndPoint udp6) && udp6.Address.Equals(ipv6Endpoint.Address))
+                    {
+                        discovery = udp6;
+                    }
+
+                    return (ipv6Endpoint, discovery);
+                }
+            }
+            else if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (enr.TryGetTcp4Endpoint(out IPEndPoint v4Endpoint))
+                {
+                    IPEndPoint discovery = null;
+                    if (enr.TryGetDiscoveryEndpoint(out IPEndPoint disc) && disc.Address.Equals(v4Endpoint.Address))
+                    {
+                        discovery = disc;
+                    }
+                    else if (enr.TryGetUdp6Endpoint(out IPEndPoint disc6) && disc6.Address.Equals(v4Endpoint.Address))
+                    {
+                        discovery = disc6;
+                    }
+
+                    return (v4Endpoint, discovery);
+                }
+            }
+
+            return (null, null);
+        }
+
+        private IPEndPoint ComputeAlternate(NodeRecord enr) => ComputeAlternateWithDiscovery(enr).Alternate;
 
         private static string FormatHost(IPAddress address)
             => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();

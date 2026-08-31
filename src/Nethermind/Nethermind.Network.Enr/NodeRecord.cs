@@ -120,32 +120,63 @@ public class NodeRecord
     /// <summary>
     /// Tries to get the UDP discovery endpoint from matching ENR address and port entries.
     /// </summary>
+    /// <remarks>
+    /// Prefers the IPv4 <c>ip</c>/<c>udp</c> pair and falls back to the IPv6 <c>ip6</c> address with
+    /// the <c>udp6</c> or shared <c>udp</c> port.
+    /// </remarks>
     /// <param name="endpoint">The discovery endpoint when the ENR contains a usable UDP endpoint.</param>
     /// <returns><see langword="true"/> when a usable discovery endpoint is present; otherwise <see langword="false"/>.</returns>
     public bool TryGetDiscoveryEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
-        => TryGetEndpoint(EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
+        => TryGetEndpoint(EnrContentKey.Ip, EnrContentKey.Udp, out endpoint) || TryGetUdp6Endpoint(out endpoint);
+
+    /// <summary>
+    /// Tries to get the IPv6 UDP discovery endpoint from the <c>ip6</c> address entry and the <c>udp6</c>
+    /// port entry, falling back to the shared <c>udp</c> port as allowed by EIP-778 for records
+    /// advertising one port for both families.
+    /// </summary>
+    /// <param name="endpoint">The IPv6 discovery endpoint when the ENR contains a usable UDP endpoint.</param>
+    /// <returns><see langword="true"/> when a usable IPv6 discovery endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetUdp6Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Ip6, EnrContentKey.Udp6, out endpoint)
+           || TryGetEndpoint(EnrContentKey.Ip6, EnrContentKey.Udp, out endpoint);
+
+    /// <summary>
+    /// Tries to get the IPv4 RLPx endpoint from the <c>ip</c> address entry and the <c>tcp</c> port entry.
+    /// </summary>
+    /// <param name="endpoint">The IPv4 TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
+    /// <returns><see langword="true"/> when a usable IPv4 TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetTcp4Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Ip, EnrContentKey.Tcp, out endpoint);
+
+    /// <summary>
+    /// Tries to get the IPv6 RLPx endpoint from the <c>ip6</c> address entry and the <c>tcp6</c> port entry,
+    /// falling back to the shared <c>tcp</c> port as allowed by EIP-778 for records advertising one port
+    /// for both families.
+    /// </summary>
+    /// <param name="endpoint">The IPv6 TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
+    /// <returns><see langword="true"/> when a usable IPv6 TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetTcp6Endpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Ip6, EnrContentKey.Tcp6, out endpoint)
+           || TryGetEndpoint(EnrContentKey.Ip6, EnrContentKey.Tcp, out endpoint);
 
     /// <summary>
     /// Tries to get the TCP RLPx endpoint from matching ENR address and port entries.
     /// </summary>
+    /// <remarks>
+    /// Prefers the IPv4 <c>ip</c>/<c>tcp</c> pair and falls back to the IPv6 <c>ip6</c> address with
+    /// the <c>tcp6</c> or shared <c>tcp</c> port.
+    /// </remarks>
     /// <param name="endpoint">The TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
     /// <returns><see langword="true"/> when a usable TCP endpoint is present; otherwise <see langword="false"/>.</returns>
     public bool TryGetTcpEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
-        => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, out endpoint);
+        => TryGetEndpoint(EnrContentKey.Ip, EnrContentKey.Tcp, out endpoint) || TryGetTcp6Endpoint(out endpoint);
 
-    private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
+    private bool TryGetEndpoint(string addressKey, string portKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
-        IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        if (ip is not null && TryGetPort(ipv4PortKey, out int port))
+        IPAddress? address = GetObj<IPAddress>(addressKey);
+        if (address is not null && TryGetPort(portKey, out int port))
         {
-            endpoint = new IPEndPoint(ip, port);
-            return true;
-        }
-
-        IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        if (ip6 is not null && (TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port)))
-        {
-            endpoint = new IPEndPoint(ip6, port);
+            endpoint = new IPEndPoint(address, port);
             return true;
         }
 

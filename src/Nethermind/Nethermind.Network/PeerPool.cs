@@ -141,6 +141,8 @@ namespace Nethermind.Network
                 pooled.IsBootnode = true;
                 if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
             }
+
+            pooled.TryMergeAlternate(incoming);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

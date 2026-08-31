@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
@@ -92,6 +96,113 @@ public class RlpxHostIntegrationTests
         }
     }
 
+    [Test]
+    public async Task ConnectAsync_falls_back_to_ipv6_endpoint_when_ipv4_connection_fails()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host");
+        }
+
+        using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
+        ipv6Listener.Start();
+        int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
+
+        // Bound but never listened to, so connections are refused while the port cannot be reused
+        // by anything else running in parallel.
+        using Socket refusingSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        refusingSocket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        int refusedPort = ((IPEndPoint)refusingSocket.LocalEndPoint).Port;
+
+        RlpxHost host = CreateHost(filterEnabled: false, subnetBucketing: false);
+        try
+        {
+            await host.Init();
+
+            // Channels are initialized before the TCP connect completes, so the failed primary
+            // attempt creates a session as well; wait for the one established over IPv6.
+            TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.SessionCreated += (_, args) =>
+            {
+                if (args.Session.RemoteHost == "::1")
+                {
+                    sessionCreated.TrySetResult(args.Session);
+                }
+            };
+
+            Node node = CreateDualStackNode(refusedPort, listeningPort);
+
+            Assert.That(await host.ConnectAsync(node), Is.True, "the connection should fall back to the IPv6 endpoint");
+
+            ISession session = await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.RemoteHost, Is.EqualTo("::1"));
+                Assert.That(session.RemotePort, Is.EqualTo(listeningPort));
+                Assert.That(node.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, refusedPort)));
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+            ipv6Listener.Stop();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_reports_the_primary_endpoint_it_dialed()
+    {
+        using TcpListener ipv4Listener = new(IPAddress.Loopback, 0);
+        ipv4Listener.Start();
+        int listeningPort = ((IPEndPoint)ipv4Listener.LocalEndpoint).Port;
+
+        RlpxHost host = CreateHost(filterEnabled: false, subnetBucketing: false);
+        try
+        {
+            await host.Init();
+
+            TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.SessionCreated += (_, args) => sessionCreated.TrySetResult(args.Session);
+
+            Node node = CreateDualStackNode(listeningPort, null);
+
+            Assert.That(await host.ConnectAsync(node), Is.True);
+
+            ISession session = await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.RemoteHost, Is.EqualTo("127.0.0.1"));
+                Assert.That(session.RemotePort, Is.EqualTo(listeningPort));
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+            ipv4Listener.Stop();
+        }
+    }
+
+    private static Node CreateDualStackNode(int? ipv4Port, int? ipv6Port)
+    {
+        NodeRecord enr = new();
+        enr.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        if (ipv4Port is not null)
+        {
+            enr.SetEntry(new IpEntry(IPAddress.Loopback));
+            enr.SetEntry(new TcpEntry(ipv4Port.Value));
+        }
+
+        if (ipv6Port is not null)
+        {
+            enr.SetEntry(new Ip6Entry(IPAddress.IPv6Loopback));
+            enr.SetEntry(new Tcp6Entry(ipv6Port.Value));
+        }
+
+        Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+        return node!;
+    }
+
     private static RlpxHost CreateHost(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
         IPrivilegedIpProvider? privilegedIpProvider = null)
     {
@@ -111,7 +222,7 @@ public class RlpxHostIntegrationTests
 
         return new RlpxHost(
             Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IHandshakeService>(),
+            new StubHandshakeService(),
             Substitute.For<ISessionMonitor>(),
             NullDisconnectsAnalyzer.Instance,
             networkConfig,
@@ -127,5 +238,21 @@ public class RlpxHostIntegrationTests
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    /// <summary>
+    /// Keeps the outbound RLPx channel alive long enough for the connection attempt to complete;
+    /// the tests never run a real handshake against the raw TCP listener.
+    /// </summary>
+    private sealed class StubHandshakeService : IHandshakeService
+    {
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false)
+            => new([]);
+
+        public Packet Ack(EncryptionHandshake handshake, Packet auth) => new([]);
+
+        public void Agree(EncryptionHandshake handshake, Packet ack)
+        {
+        }
     }
 }
