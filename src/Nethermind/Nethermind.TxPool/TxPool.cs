@@ -1181,7 +1181,10 @@ namespace Nethermind.TxPool
                     return true;
                 }
 
-                PublishValidatedSpec(spec, marker);
+                if (!PublishValidatedSpec(spec, marker))
+                {
+                    return false;
+                }
 
                 return true;
             }
@@ -1270,9 +1273,12 @@ namespace Nethermind.TxPool
             _forkInvalidatedHashes.Add(hash);
         }
 
-        private void PublishValidatedSpec(IReleaseSpec spec, string marker)
+        private bool PublishValidatedSpec(IReleaseSpec spec, string marker)
         {
-            _blobTransactions.FlushPendingRevalidationDeletes();
+            if (!_blobTransactions.FlushPendingRevalidationDeletes())
+            {
+                return false;
+            }
 
             lock (_forkStateLock)
             {
@@ -1290,6 +1296,8 @@ namespace Nethermind.TxPool
                     Interlocked.Increment(ref _forkStateVersion);
                 }
             }
+
+            return true;
         }
 
         private void InvalidateValidatedSpec()

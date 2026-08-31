@@ -26,7 +26,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
 
-    internal virtual void FlushPendingRevalidationDeletes() { }
+    internal virtual bool FlushPendingRevalidationDeletes() => true;
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();

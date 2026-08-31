@@ -775,22 +775,30 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         FlushPendingRevalidationDeletesNonLocked();
     }
 
-    internal override void FlushPendingRevalidationDeletes()
+    internal override bool FlushPendingRevalidationDeletes()
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
-        FlushPendingRevalidationDeletesNonLocked();
+        return FlushPendingRevalidationDeletesNonLocked();
     }
 
-    private void FlushPendingRevalidationDeletesNonLocked()
+    private bool FlushPendingRevalidationDeletesNonLocked()
     {
         if (_batchedDeletes.Count == 0)
         {
-            return;
+            return true;
         }
 
         using ArrayPoolList<TxLookupKey> deletes = new(_batchedDeletes.Count);
+        bool hasActiveWriter = false;
         foreach (KeyValuePair<ValueHash256, HashSet<TxLookupKey>> pendingDeletes in _batchedDeletes)
         {
+            if (_pendingBlobUpdates.TryGetValue(pendingDeletes.Key, out PendingBlobUpdate? pendingUpdate)
+                && pendingUpdate.WriterActive)
+            {
+                hasActiveWriter = true;
+                continue;
+            }
+
             if (!base.TryGetValueNonLocked(pendingDeletes.Key, out _))
             {
                 foreach (TxLookupKey key in pendingDeletes.Value)
@@ -821,6 +829,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         {
             _batchedDeletes.Remove(deletes[i].Hash);
         }
+
+        return !hasActiveWriter;
     }
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
@@ -1151,7 +1161,16 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
-            _pendingBlobUpdates[blobTx.Hash!] = new PendingBlobUpdate(token, snapshot, blobTx.Timestamp, blobTx.SenderAddress!);
+            PendingBlobUpdate newPendingUpdate = new(token, snapshot, blobTx.Timestamp, blobTx.SenderAddress!);
+            if (_batchedDeletes.TryGetValue(blobTx.Hash!.ValueHash256, out HashSet<TxLookupKey>? deletes))
+            {
+                foreach (TxLookupKey delete in deletes)
+                {
+                    newPendingUpdate.DeleteTimestamps.Add(delete.Timestamp);
+                }
+            }
+
+            _pendingBlobUpdates[blobTx.Hash!] = newPendingUpdate;
         }
 
         return true;

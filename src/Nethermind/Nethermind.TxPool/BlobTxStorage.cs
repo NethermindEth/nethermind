@@ -296,18 +296,26 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
 
         using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-        IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-        IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
-        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
-        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-        for (int i = 0; i < keys.Length; i++)
+        try
         {
-            ref readonly TxLookupKey key = ref keys[i];
-            GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
-            fullBlobTxsBatch.Remove(txHashPrefixed);
-            GetElidedTxKey(key.Hash, elidedKey);
-            fullBlobTxsBatch.Remove(elidedKey);
-            lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
+            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+            IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+            Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                ref readonly TxLookupKey key = ref keys[i];
+                GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
+                GetElidedTxKey(key.Hash, elidedKey);
+                fullBlobTxsBatch.Remove(elidedKey);
+                lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
+            }
+        }
+        catch
+        {
+            batch.Clear();
+            throw;
         }
     }
 

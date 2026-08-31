@@ -707,6 +707,59 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void should_retain_pending_revalidation_delete_through_failed_reinsertion_update()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            FailingAtomicBlobTxStorage storage = new();
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            storage.Add(transaction);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            UInt256 originalTimestamp = transaction.Timestamp;
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+
+            transaction.Timestamp += UInt256.One;
+            storage.ReplaceFailuresRemaining = 1;
+            Assert.That(() => blobPool.TryInsert(transaction.Hash, transaction, out _), Throws.TypeOf<InvalidOperationException>());
+
+            Assert.That(
+                blobPool.MergeCells(transaction.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    originalTimestamp,
+                    out _), Is.False);
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    transaction.Timestamp,
+                    out _), Is.True);
+            }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted(bool changeTimestamp)
@@ -3398,11 +3451,16 @@ namespace Nethermind.TxPool.Test
 
             Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
-            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
-            bool removed;
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            Task<bool> removal = RunOnDedicatedThread(() =>
+            {
+                blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions);
+                return true;
+            });
             try
             {
-                removed = await removal.WaitAsync(TimeSpan.FromSeconds(5));
+                await removal.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(blobPool.FlushPendingRevalidationDeletes(), Is.False);
             }
             finally
             {
@@ -3413,7 +3471,8 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(updated, Is.EqualTo(BlobCellMergeResult.Accepted));
-                Assert.That(removed, Is.True);
+                Assert.That(blobPool.Count, Is.Zero);
+                Assert.That(blobPool.FlushPendingRevalidationDeletes(), Is.True);
                 Assert.That(storage.WaitForDelete(TimeSpan.FromSeconds(5)), Is.True);
                 Assert.That(storage.TryGet(
                     fullBlobTx.Hash!.ValueHash256,

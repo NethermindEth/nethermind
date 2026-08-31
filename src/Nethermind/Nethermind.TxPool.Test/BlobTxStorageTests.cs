@@ -320,6 +320,35 @@ public class BlobTxStorageTests
         }
     }
 
+    [Test]
+    public void DeleteMany_should_not_commit_partial_batch_when_column_write_fails()
+    {
+        TrackingColumnsDb columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction transaction = CreateBlobTransaction();
+        blobTxStorage.Add(transaction);
+        columnsDb.FailNextLightColumnWrite = true;
+
+        Assert.That(
+            () => ((IAtomicBlobTxStorage)blobTxStorage).DeleteMany(
+                [new TxLookupKey(transaction.Hash!.ValueHash256, transaction.SenderAddress!, transaction.Timestamp)]),
+            Throws.TypeOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGet(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                transaction.Timestamp,
+                out _), Is.True);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(
+                transaction.Hash,
+                transaction.SenderAddress!,
+                out _), Is.True);
+            Assert.That(CountLightTransactions(blobTxStorage), Is.EqualTo(1));
+        }
+    }
+
     private static int CountLightTransactions(BlobTxStorage storage)
     {
         int count = 0;
