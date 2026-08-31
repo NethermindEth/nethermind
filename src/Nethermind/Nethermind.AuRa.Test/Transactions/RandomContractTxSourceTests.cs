@@ -51,7 +51,8 @@ public class RandomContractTxSourceTests
             Substitute.For<ICryptoRandom>(),
             LimboLogs.Instance);
 
-        Transaction[] transactions = source.GetTransactions(Build.A.BlockHeader.TestObject, 0, null, false).ToArray();
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction[] transactions = source.GetTransactions(header, header, 0, null, false).ToArray();
 
         Assert.That(transactions, Is.EqualTo(new[] { revealTransaction }));
         previousCryptoKey.Received(1).Unprotect();
