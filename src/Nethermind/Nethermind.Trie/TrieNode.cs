@@ -43,7 +43,6 @@ namespace Nethermind.Trie
         private const byte _warmerOwnedMask = 0b0000_1000;
         private const byte _warmerResolvingMask = 0b0001_0000;
         private const byte _warmerResolvedMask = 0b0010_0000;
-        private const byte _rlpResolvingMask = 0b0100_0000;
 
         private byte _blockAndFlags = 0;
         // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
@@ -432,68 +431,24 @@ namespace Nethermind.Trie
         internal void ResolveUnknownNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte> rlp;
-            while (true)
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.IsNull)
             {
-                rlp = ReadRlp();
-                if (IsRlpResolutionInProgress())
+                Hash256 keccak = Keccak;
+                if (keccak is null)
                 {
-                    WaitForRlpResolution();
-                    continue;
+                    ThrowMissingKeccak();
                 }
 
-                if (rlp.IsNotNull) break;
+                byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
 
-                if (!TryBeginRlpResolutionWhenEmpty())
+                if (fullRlp == null)
                 {
-                    WaitForRlpResolution();
-                    continue;
+                    ThrowNullRlp();
                 }
 
-                bool published = false;
-                try
-                {
-                    rlp = ReadRlp();
-                    if (rlp.IsNull)
-                    {
-                        Hash256 keccak = Keccak;
-                        if (keccak is null)
-                        {
-                            ThrowMissingKeccak();
-                        }
-
-                        byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
-
-                        if (fullRlp is null)
-                        {
-                            ThrowNullRlp();
-                        }
-
-                        WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                        published = true;
-                        IsPersisted = true;
-                    }
-
-                    if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int loadedNumberOfItems))
-                    {
-                        ThrowUnexpectedNumberOfItems(loadedNumberOfItems, path);
-                    }
-                }
-                catch
-                {
-                    if (published)
-                    {
-                        WriteRlp(default);
-                    }
-
-                    throw;
-                }
-                finally
-                {
-                    CompleteRlpResolution();
-                }
-
-                return;
+                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                IsPersisted = true;
             }
 
             if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
@@ -511,48 +466,6 @@ namespace Nethermind.Trie
             void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) => throw new TrieNodeException(
                     $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})",
                     path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
-        }
-
-        private bool TryBeginRlpResolutionWhenEmpty()
-        {
-            ulong sequenceAndLength = Volatile.Read(ref _rlpSeqAndLength);
-            if ((sequenceAndLength >> 32 & 1) != 0 || Volatile.Read(ref _rlpArray) is not null)
-            {
-                return false;
-            }
-
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
-            if ((previousValue & _rlpResolvingMask) != 0)
-            {
-                return false;
-            }
-
-            byte newValue = (byte)(previousValue | _rlpResolvingMask);
-            return Interlocked.CompareExchange(ref _blockAndFlags, newValue, previousValue) == previousValue;
-        }
-
-        private bool IsRlpResolutionInProgress() => (Volatile.Read(ref _blockAndFlags) & _rlpResolvingMask) != 0;
-
-        private void WaitForRlpResolution()
-        {
-            SpinWait spinWait = default;
-            while (IsRlpResolutionInProgress())
-            {
-                spinWait.SpinOnce(sleep1Threshold: -1);
-            }
-        }
-
-        private void CompleteRlpResolution()
-        {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
-            while (true)
-            {
-                byte newValue = (byte)(previousValue & ~_rlpResolvingMask);
-                byte currentValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, previousValue);
-                if (currentValue == previousValue) return;
-
-                previousValue = currentValue;
-            }
         }
 
         private void ResolveWarmerOwnedNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
