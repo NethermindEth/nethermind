@@ -324,7 +324,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    internal void HandleFatalDbError(RocksDbSharpException rocksDbException)
+    internal void HandleFatalDbError(RocksDbSharpException rocksDbException, bool scheduleRepairMarker = true)
     {
         bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
         bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
@@ -340,10 +340,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // never write the marker for it. Either way we fast-shutdown, because continuing past a
         // failed write would apply later writes as if it had succeeded and corrupt state at the
         // application layer even when the DB files themselves are intact.
-        if (corruption)
+        if (corruption && scheduleRepairMarker)
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+        }
+        else if (corruption)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Corruption reported by an SST ingest on path {_fullPath}; shutting down without scheduling a repair of the live DB.");
         }
         else if (_logger.IsWarn)
         {

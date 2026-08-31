@@ -161,7 +161,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
         catch (RocksDbSharpException x)
         {
-            _mainDb.HandleFatalDbError(x);
+            _mainDb.HandleFatalDbError(x, scheduleRepairMarker: false);
             throw;
         }
     }
@@ -370,7 +370,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             }
             catch (Exception writerError)
             {
-                if (writerError is RocksDbSharpException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx);
+                if (writerError is RocksDbSharpException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx, scheduleRepairMarker: false);
                 try
                 {
                     if (File.Exists(file)) File.Delete(file);
