@@ -123,10 +123,6 @@ namespace Nethermind.Consensus.AuRa
         // BAL is off — pre-EIP-7928 chains continue to rely on the EVM's lazy account creation.
         // Done BEFORE base.ProcessBlock so the BAL parent-snapshot in parallel mode reflects the
         // materialised accounts.
-        // Must not overwrite an existing account: on chains such as Gnosis the withdrawal-contract
-        // address hosts a deployed protocol contract (code, balance, nonce). CreateAccount would
-        // journal a New empty account that Commit persists under the EIP-158-disabled system spec,
-        // wiping it. CreateAccountIfNotExists only materialises when genuinely absent.
         private void ApplyAuRaPreprocessingChanges(IReleaseSpec spec)
         {
             if (!_balManager.Enabled) return;
