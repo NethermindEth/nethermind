@@ -28,12 +28,13 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             return 1;
         }
 
-        int bufferLength = Rlp.LengthOfSequence(GetContentLength(items, rlpBehaviors));
+        int contentLength = GetContentLength(items, rlpBehaviors);
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
-            bufferLength++;
+            return Rlp.LengthOfSequence(contentLength - 1) + 2;
         }
-        return bufferLength;
+
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
@@ -65,21 +66,21 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (decoderContext.PeekByte() == CompactEncoding)
         {
             decoderContext.ReadByte();
-            return CompactDecoder.DecodeNonNullArray(
+            return TakeCompletePrefix(CompactDecoder.DecodeArray(
                 ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));
         }
         else
         {
             int startPosition = decoderContext.Position;
             try
             {
-                return Decoder.DecodeNonNullArray(ref decoderContext, RlpBehaviors.Storage);
+                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage));
             }
             catch (RlpException)
             {
                 decoderContext.Position = startPosition;
-                return Decoder.DecodeNonNullArray(ref decoderContext);
+                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext));
             }
         }
     }
@@ -125,21 +126,21 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
             RlpReader decoderContext = new(receiptsData[1..]);
-            return CompactDecoder.DecodeNonNullArray(
+            return TakeCompletePrefix(CompactDecoder.DecodeArray(
                 ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));
         }
         else
         {
             RlpReader decoderContext = new(receiptsData);
             try
             {
-                return Decoder.DecodeNonNullArray(ref decoderContext, RlpBehaviors.Storage);
+                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage));
             }
             catch (RlpException)
             {
                 decoderContext.Position = 0;
-                return Decoder.DecodeNonNullArray(ref decoderContext);
+                return TakeCompletePrefix(Decoder.DecodeArray(ref decoderContext));
             }
         }
     }
@@ -179,12 +180,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         RlpBehaviors rlpBehaviors,
         bool includeTrailingItems = false)
     {
-        // The persisted compact format excludes its final byte from the outer sequence length.
-        // Migration decoding scans the full span to include that trailing item.
         int declaredEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        int itemsEnd = includeTrailingItems ? decoderContext.Length : declaredEnd;
         int length = decoderContext.PeekNumberOfItemsRemaining(
-            itemsEnd,
+            declaredEnd,
             RlpLimit.DefaultLimit.Limit + 1);
         decoderContext.GuardLimit(length);
         TxReceipt?[] result = new TxReceipt?[length];
@@ -193,12 +191,34 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
+        // The persisted compact format excludes its final byte from the outer sequence length.
+        // A missing final receipt is therefore the one valid item that starts at the boundary.
+        if (includeTrailingItems &&
+            decoderContext.Position == declaredEnd &&
+            decoderContext.Position < decoderContext.Length &&
+            decoderContext.PeekByte() == Rlp.EmptyListByte)
+        {
+            decoderContext.ReadByte();
+            Array.Resize(ref result, result.Length + 1);
+        }
+
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
-            decoderContext.Check(declaredEnd);
+            decoderContext.Check(includeTrailingItems ? decoderContext.Length : declaredEnd);
         }
 
         return result;
+    }
+
+    private static TxReceipt[] TakeCompletePrefix(TxReceipt?[] receipts)
+    {
+        int missingIndex = Array.IndexOf(receipts, null);
+        if (missingIndex < 0)
+        {
+            return (TxReceipt[])(object)receipts;
+        }
+
+        return Array.ConvertAll(receipts[..missingIndex], static receipt => receipt!);
     }
 
     public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)

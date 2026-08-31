@@ -299,33 +299,52 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Receipt_storage_decoding_rejects_null_bloom()
+        public void Receipt_storage_decoding_calculates_legacy_null_bloom()
         {
             byte[] encoded = EncodeStorageReceiptWithNullBloom();
             ReceiptStorageDecoder decoder = new();
+            RlpReader reader = new(encoded);
 
-            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            TxReceipt receipt = decoder.DecodeGuardNotNull(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
-            void Decode()
-            {
-                RlpReader reader = new(encoded);
-                decoder.Decode(ref reader, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            }
+            Assert.That(receipt.Bloom, Is.EqualTo(Bloom.Empty));
         }
 
         [Test]
-        public void Receipt_storage_struct_ref_decoding_rejects_null_bloom()
+        public void Receipt_storage_struct_ref_decoding_marks_legacy_null_bloom_as_missing()
         {
             byte[] encoded = EncodeStorageReceiptWithNullBloom();
             ReceiptStorageDecoder decoder = new();
+            RlpReader reader = new(encoded);
 
-            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            decoder.DecodeStructRef(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts,
+                out TxReceiptStructRef receipt);
 
-            void Decode()
-            {
-                RlpReader reader = new(encoded);
-                decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts, out _);
-            }
+            Assert.That(receipt.Bloom.Bytes.Length, Is.Zero);
+        }
+
+        [Test]
+        public void Receipt_storage_decoding_omits_legacy_null_log_entry()
+        {
+            ReceiptStorageDecoder decoder = new();
+            byte[] encoded = decoder.Encode(
+                Build.A.Receipt.WithAllFieldsFilled.TestObject,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+            encoded = HeaderRlpTestHelper.ReplaceFieldEncoding(
+                encoded,
+                fieldIndex: 10,
+                [0xc1, Rlp.EmptyListByte]);
+            RlpReader reader = new(encoded);
+
+            TxReceipt receipt = decoder.DecodeGuardNotNull(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(receipt.Logs, Is.Empty);
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()

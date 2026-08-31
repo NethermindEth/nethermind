@@ -85,24 +85,30 @@ public class LogEntryDecoderTests
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Struct_ref_decoders_reject_empty_log_entry(bool compact)
+    [Test]
+    public void Legacy_storage_struct_ref_decoder_returns_default_for_empty_log_entry()
     {
-        Assert.That(
-            compact ? DecodeCompact : DecodeRegular,
-            Throws.TypeOf<RlpException>());
+        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
 
-        static void DecodeCompact()
+        LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
+
+        using (Assert.EnterMultipleScope())
         {
-            RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
-            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+            Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
+            Assert.That(logEntry.Data.Length, Is.Zero);
+            Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
         }
+    }
 
-        static void DecodeRegular()
+    [Test]
+    public void Compact_struct_ref_decoder_rejects_empty_log_entry()
+    {
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+
+        static void Decode()
         {
-            RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
-            LogEntryDecoder.DecodeStructRef(ref ctx, RlpBehaviors.None, out _);
+            RlpReader reader = new(Rlp.OfEmptyList.Bytes);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out _);
         }
     }
 

@@ -55,9 +55,22 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (receipts is null || receipts.Length == 0) return false;
 
-            if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if (recoverSenderOnly)
+                {
+                    if (forceRecoverSender && receipt.Sender is null) return true;
+                }
+                else if (receipt.BlockHash is null ||
+                         receipt.TxHash is null ||
+                         (forceRecoverSender && receipt.Sender is null))
+                {
+                    return true;
+                }
+            }
 
-            return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
+            return false;
         }
 
         private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext

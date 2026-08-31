@@ -509,8 +509,12 @@ public ref struct RlpReader
         return bloomBytes.SequenceEqual(Bloom.Empty.Bytes) ? Bloom.Empty : new Bloom(bloomBytes);
     }
 
-    public void DecodeBloomStructRef(out BloomStructRef bloom)
+    public void DecodeBloomStructRef(out BloomStructRef bloom) =>
+        DecodeBloomStructRef(out bloom, out _);
+
+    internal void DecodeBloomStructRef(out BloomStructRef bloom, out bool wasMissing)
     {
+        wasMissing = false;
         ReadOnlySpan<byte> bloomBytes;
 
         // tks: not sure why but some nodes send us Blooms in a sequence form
@@ -525,8 +529,8 @@ public ref struct RlpReader
             bloomBytes = DecodeByteArraySpan(RlpLimit.Bloom);
             if (bloomBytes.Length == 0)
             {
-                ThrowNullDecodedValue<Bloom>();
-                bloom = default;
+                wasMissing = true;
+                bloom = new BloomStructRef(Bloom.Empty.Bytes);
                 return;
             }
         }

@@ -19,6 +19,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
@@ -113,6 +114,59 @@ public class LogFinderTests
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Legacy_missing_bloom_and_log_entries_degrade_without_losing_valid_logs()
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        LogEntry validLog = Build.A.LogEntry
+            .WithAddress(TestItem.AddressA)
+            .WithTopics(TestItem.KeccakA)
+            .TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .WithIndex(0)
+            .WithLogs(validLog)
+            .TestObject;
+        ReceiptStorageDecoder decoder = new();
+        byte[] receiptRlp = decoder.Encode(
+            receipt,
+            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
+            receiptRlp,
+            fieldIndex: 9,
+            [Rlp.EmptyByteArrayByte]);
+        receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
+            receiptRlp,
+            fieldIndex: 10,
+            Rlp.Encode(Rlp.OfEmptyList, Rlp.Encode(validLog)).Bytes);
+        int receiptsContentLength = receiptRlp.Length * 2 + 1;
+        byte[] receiptsRlp = new byte[Rlp.LengthOfSequence(receiptsContentLength)];
+        int receiptPosition = Rlp.StartSequence(receiptsRlp, 0, receiptsContentLength);
+        receiptRlp.CopyTo(receiptsRlp.AsSpan(receiptPosition));
+        receiptsRlp[receiptPosition + receiptRlp.Length] = Rlp.EmptyListByte;
+        receiptRlp.CopyTo(receiptsRlp.AsSpan(receiptPosition + receiptRlp.Length + 1));
+        LegacyReceiptFinder receiptFinder = new(receiptsRlp);
+        LogFinder logFinder = new(
+            _blockTree,
+            receiptFinder,
+            _receiptStorage,
+            LimboLogs.Instance,
+            _receiptsRecovery);
+
+        FilterLog[] allLogs = logFinder.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray();
+        FilterLog[] addressedLogs = logFinder.FindLogs(
+            FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build()).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allLogs, Has.Length.EqualTo(1));
+            Assert.That(allLogs[0].LogIndex, Is.Zero);
+            Assert.That(addressedLogs, Has.Length.EqualTo(1));
+            Assert.That(addressedLogs[0].Address, Is.EqualTo(TestItem.AddressA));
+        }
     }
 
     [Test]
@@ -444,6 +498,26 @@ public class LogFinderTests
         }
 
         private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
+    }
+
+    private sealed class LegacyReceiptFinder(byte[] receiptsData) : IReceiptFinder
+    {
+        private readonly TestMemDb _blocksDb = new();
+
+        public Hash256? FindBlockHash(Hash256 txHash) => null;
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => [];
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            iterator = new ReceiptsIterator(
+                receiptsData,
+                _blocksDb,
+                recoveryContextFactory: null,
+                new ReceiptStorageDecoder());
+            return true;
+        }
     }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>

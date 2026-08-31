@@ -139,6 +139,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             from = Math.Min(from, to);
             ulong synced = 0;
+            long missingBlockBodies = 0;
 
             if (_logger.IsWarn) _logger.Warn($"Running migration from {from} to {to}");
 
@@ -171,6 +172,7 @@ namespace Nethermind.Init.Steps.Migrations
                     _progressLogger.Update(Interlocked.Increment(ref synced));
                     if (storedBlock is null)
                     {
+                        Interlocked.Increment(ref missingBlockBodies);
                         if (_logger.IsDebug) _logger.Debug($"Block {blockNum} not found. Logs will not be searchable for this block.");
                         pointerTracker?.ReportCompleted(blockNum);
                         return;
@@ -186,6 +188,11 @@ namespace Nethermind.Init.Steps.Migrations
                         pointerTracker?.ReportIncomplete(blockNum);
                     }
                 });
+
+                if (missingBlockBodies > 0 && _logger.IsWarn)
+                {
+                    _logger.Warn($"Receipt migration skipped {missingBlockBodies} blocks with missing bodies; their legacy receipt data was left unchanged.");
+                }
 
                 if (!token.IsCancellationRequested)
                 {
@@ -284,7 +291,7 @@ namespace Nethermind.Init.Steps.Migrations
                 return false;
             }
 
-            if (_recovery.TryRecover(block, completeReceipts, forceRecoverSender: false) == ReceiptsRecoveryResult.Fail)
+            if (_recovery.TryRecover(block, completeReceipts, forceRecoverSender: true) == ReceiptsRecoveryResult.Fail)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Could not recover receipt metadata for block {block.ToString(Block.Format.FullHashAndNumber)}; leaving its legacy receipt data unchanged.");
@@ -294,7 +301,14 @@ namespace Nethermind.Init.Steps.Migrations
             Hash256[] transactionHashes = new Hash256[completeReceipts.Length];
             for (int i = 0; i < completeReceipts.Length; i++)
             {
-                transactionHashes[i] = GetRequiredTransactionHash(completeReceipts[i], block);
+                if (completeReceipts[i].TxHash is not Hash256 transactionHash)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Receipt {i} for block {block.ToString(Block.Format.FullHashAndNumber)} has no transaction hash after recovery; leaving its legacy receipt data unchanged.");
+                    return false;
+                }
+
+                transactionHashes[i] = transactionHash;
             }
 
             _migrationStore.InsertForMigration(block, completeReceipts);
@@ -353,10 +367,6 @@ namespace Nethermind.Init.Steps.Migrations
             completeReceipts = missingCount == 0 ? candidates : null;
             return completeReceipts is not null;
         }
-
-        private static Hash256 GetRequiredTransactionHash(TxReceipt receipt, Block block) =>
-            receipt.TxHash ?? throw new InvalidDataException(
-                $"Receipt for block {block.ToString(Block.Format.FullHashAndNumber)} has no transaction hash after recovery.");
 
         private void ResetMigrationIndexIfNeeded()
         {

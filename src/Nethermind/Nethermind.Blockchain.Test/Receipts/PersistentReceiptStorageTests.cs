@@ -377,10 +377,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockHash.Bytes] = encodedBytes;
         _storage.ClearCache();
-        if (useCompactReceipts)
-        {
-            Assert.That(_storage.Get(blockHash), Has.Length.EqualTo(1));
-        }
+        Assert.That(_storage.Get(blockHash), Has.Length.EqualTo(1));
 
         TxReceipt?[] migrationReceipts = ((IReceiptMigrationStore)_storage)
             .GetForMigration(block.Number, blockHash);

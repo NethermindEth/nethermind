@@ -59,17 +59,20 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddressOrNull();
             if (isStorage) txReceipt.GasUsed = decoderContext.DecodeULong();
             txReceipt.GasUsedTotal = decoderContext.DecodeULong();
-            txReceipt.Bloom = decoderContext.DecodeBloomNonNull();
+            txReceipt.Bloom = decoderContext.DecodeBloomOrNull();
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             List<LogEntry> logEntries = [];
 
             while (decoderContext.Position < lastCheck)
             {
-                LogEntry logEntry = LogEntryDecoder.Instance.DecodeGuardNotNull(
+                LogEntry? logEntry = LogEntryDecoder.Instance.Decode(
                     ref decoderContext,
                     RlpBehaviors.AllowExtraBytes);
-                logEntries.Add(logEntry);
+                if (logEntry is not null)
+                {
+                    logEntries.Add(logEntry);
+                }
             }
 
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
@@ -304,7 +307,11 @@ namespace Nethermind.Serialization.Rlp
                 item.GasUsed = decoderContext.DecodeULong();
             }
             item.GasUsedTotal = decoderContext.DecodeULong();
-            decoderContext.DecodeBloomStructRef(out item.Bloom);
+            decoderContext.DecodeBloomStructRef(out item.Bloom, out bool bloomWasMissing);
+            if (bloomWasMissing)
+            {
+                item.Bloom = default;
+            }
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();

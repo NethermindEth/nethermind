@@ -109,11 +109,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        [TestCase(true, false, 0UL, TestName = "Missing_block_body_is_skipped_without_holding_migration_pointer")]
-        [TestCase(false, true, ulong.MaxValue, TestName = "Failed_receipt_recovery_leaves_migration_pointer_gap")]
+        [TestCase(true, false, false, 0UL, TestName = "Missing_block_body_is_skipped_without_holding_migration_pointer")]
+        [TestCase(false, true, false, ulong.MaxValue, TestName = "Failed_receipt_recovery_leaves_migration_pointer_gap")]
+        [TestCase(false, false, true, ulong.MaxValue, TestName = "Missing_transaction_hash_after_recovery_leaves_migration_pointer_gap")]
         public async Task Unmigrated_complete_receipts_preserve_legacy_data(
             bool missingBlockBody,
             bool recoveryFails,
+            bool recoveryLeavesTransactionHashMissing,
             ulong expectedMigratedBlockNumber)
         {
             InMemoryReceiptStorage source = new();
@@ -123,6 +125,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             IBlockTree populatedBlockTree = blockTreeBuilder.TestObject;
             Block block = populatedBlockTree.FindBlock(1);
             Assert.That(source.Get(block), Is.Not.Empty);
+            if (recoveryLeavesTransactionHashMissing)
+            {
+                TxReceipt[] receipts = source.Get(block);
+                receipts[0].TxHash = null;
+                source.Insert(block, receipts, ensureCanonical: false);
+            }
 
             IBlockTree migrationBlockTree = populatedBlockTree;
             if (missingBlockBody)
@@ -133,12 +141,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             IReceiptsRecovery recovery = Substitute.For<IReceiptsRecovery>();
-            recovery.TryRecover(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), false)
-                .Returns(recoveryFails ? ReceiptsRecoveryResult.Fail : ReceiptsRecoveryResult.Success);
+            recovery.TryRecover(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true)
+                .Returns(recoveryFails
+                    ? ReceiptsRecoveryResult.Fail
+                    : recoveryLeavesTransactionHashMissing
+                        ? ReceiptsRecoveryResult.Skipped
+                        : ReceiptsRecoveryResult.Success);
             InMemoryReceiptStorage destination = new() { MigratedBlockNumber = ulong.MaxValue };
             TestReceiptStorage receiptStorage = new(source, destination);
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            CollectingLogger logger = new();
 
             ReceiptMigration migration = new(
                 receiptStorage,
@@ -148,7 +161,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 new ReceiptConfig { StoreReceipts = true, ReceiptsMigration = true },
                 new TestMemColumnsDb<ReceiptsColumns>(),
                 recovery,
-                LimboLogs.Instance);
+                new OneLoggerLogManager(new ILogger(logger)));
 
             await migration.Run(CancellationToken.None);
 
@@ -157,6 +170,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 Assert.That(destination.Count, Is.Zero);
                 Assert.That(destination.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber));
                 Assert.That(source.Get(block), Is.Not.Empty);
+            }
+
+            if (missingBlockBody)
+            {
+                Assert.That(
+                    logger.Warnings,
+                    Has.Some.Contains("skipped 2 blocks with missing bodies"));
+            }
+            else
+            {
+                recovery.Received().TryRecover(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
             }
         }
 
@@ -311,6 +335,22 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
         private static MigrationReport Incomplete(ulong blockNumber) => new(blockNumber, false);
 
         public readonly record struct MigrationReport(ulong BlockNumber, bool IsComplete);
+
+        private sealed class CollectingLogger : InterfaceLogger
+        {
+            public List<string> Warnings { get; } = [];
+
+            public void Info(string text) { }
+            public void Warn(string text) => Warnings.Add(text);
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception ex = null) { }
+            public bool IsInfo => false;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => false;
+        }
 
         private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
         {

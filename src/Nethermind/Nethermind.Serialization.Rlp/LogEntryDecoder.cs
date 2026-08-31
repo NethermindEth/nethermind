@@ -114,7 +114,8 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.IsNextItemEmptyList())
             {
                 decoderContext.ReadByte();
-                throw new RlpException("LogEntry decoded as null");
+                item = default;
+                return;
             }
 
             int logEntryLength = decoderContext.ReadSequenceLength();
