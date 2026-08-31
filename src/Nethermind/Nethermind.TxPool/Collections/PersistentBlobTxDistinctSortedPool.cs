@@ -1162,6 +1162,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         else
         {
             PendingBlobUpdate newPendingUpdate = new(token, snapshot, blobTx.Timestamp, blobTx.SenderAddress!);
+            // The writer consumes these deletes atomically with its own write before clearing the retained set.
             if (_batchedDeletes.TryGetValue(blobTx.Hash!.ValueHash256, out HashSet<TxLookupKey>? deletes))
             {
                 foreach (TxLookupKey delete in deletes)

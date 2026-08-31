@@ -26,6 +26,10 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
 
+    /// <summary>
+    /// Flushes retained deletes before publishing a spec-change validation marker.
+    /// </summary>
+    /// <returns><see langword="false"/> when an active writer still owns a retained delete and the marker must remain unpublished.</returns>
     internal virtual bool FlushPendingRevalidationDeletes() => true;
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)

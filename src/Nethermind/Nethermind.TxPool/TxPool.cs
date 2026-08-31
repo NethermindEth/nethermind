@@ -1076,7 +1076,7 @@ namespace Nethermind.TxPool
 
             if (markerMatches || isEmpty)
             {
-                PublishValidatedSpec(headSpec, expectedMarker);
+                _ = PublishValidatedSpec(headSpec, expectedMarker);
             }
             else
             {
@@ -1273,6 +1273,10 @@ namespace Nethermind.TxPool
             _forkInvalidatedHashes.Add(hash);
         }
 
+        /// <summary>
+        /// Publishes the validated specification and its persistence marker.
+        /// </summary>
+        /// <returns><see langword="false"/> when an active blob writer still owns a retained delete.</returns>
         private bool PublishValidatedSpec(IReleaseSpec spec, string marker)
         {
             if (!_blobTransactions.FlushPendingRevalidationDeletes())
