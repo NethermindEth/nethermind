@@ -67,11 +67,32 @@ work="$SCRATCH_ROOT/jsonbench"
 as_root rm -rf "$work"
 mkdir -p "$work/io/out"
 
-log "Cloning $JB_REPO@$JB_REF..."
-git init -q "$work/src"
-git -C "$work/src" remote add origin "$JB_REPO"
-git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" || die "failed to fetch $JB_REF from $JB_REPO"
-git -C "$work/src" checkout -q FETCH_HEAD
+# One sweep cell is one invocation, so a multi-rate multi-arm sweep fetched the same pinned ref
+# dozens of times and GitHub started refusing them mid-run (git then reports it as a missing
+# credential). JB_REF is immutable, so keep the checkout beside the wiped work dir and reuse it;
+# cleanup.sh deletes a fixed list of subdirs, and this is not one of them.
+src_cache="$SCRATCH_ROOT/jsonbench-src/${JB_REF//[^a-zA-Z0-9_.-]/-}"
+if [[ ! -e "$src_cache/.git" ]]; then
+  log "Cloning $JB_REPO@$JB_REF..."
+  staging="$src_cache.staging.$$"
+  as_root rm -rf "$staging"
+  mkdir -p "$(dirname "$staging")"
+  git init -q "$staging"
+  git -C "$staging" remote add origin "$JB_REPO"
+  fetched="false"
+  for attempt in 1 2 3; do
+    if git -C "$staging" fetch -q --depth 1 origin "$JB_REF"; then fetched="true"; break; fi
+    log "  fetch attempt $attempt failed; retrying in $(( attempt * 5 ))s"
+    sleep $(( attempt * 5 ))
+  done
+  [[ "$fetched" == "true" ]] || die "failed to fetch $JB_REF from $JB_REPO"
+  git -C "$staging" checkout -q FETCH_HEAD
+  as_root rm -rf "$src_cache"
+  mv "$staging" "$src_cache"
+else
+  log "Reusing cached $JB_REPO@$JB_REF checkout"
+fi
+cp -a "$src_cache" "$work/src"
 runner_dockerfile="$work/src/runner/Dockerfile"
 [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
 tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
