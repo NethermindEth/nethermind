@@ -351,8 +351,8 @@ public class HistoryPrunerTests
     public void SetDeletePointerToOldestBlock_releases_a_pointer_parked_at_the_barrier_the_feed_last_started_with()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)7000).ToBigEndianByteArrayWithoutLeadingZeros());
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(5000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)5000).ToBigEndianByteArrayWithoutLeadingZeros());
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -362,6 +362,24 @@ public class HistoryPrunerTests
 
         pruner.SetDeletePointerToOldestBlock();
         chainLevels.Received().LoadLevel(Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void SetDeletePointerToOldestBlock_holds_when_the_barrier_dropped_below_the_one_the_feed_last_started_with()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)7000).ToBigEndianByteArrayWithoutLeadingZeros());
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
+
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
+
+        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False,
+            "a recorded barrier above the current one describes a finished descent the config since reopened");
+        chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
     [Test]
@@ -406,7 +424,7 @@ public class HistoryPrunerTests
     [Test]
     public void A_frontier_frozen_by_disabled_synchronization_is_not_persisted_by_a_pruning_pass()
     {
-        (HistoryPruner pruner, TestMemDb metadataDb) = CreateFrontierFixture(synchronizationEnabled: false);
+        (HistoryPruner pruner, TestMemDb metadataDb, IPrunedReceiptRetention retention) = CreateFrontierFixture(synchronizationEnabled: false);
 
         Assert.That(pruner.OldestBlockHeader?.Number, Is.EqualTo(9_000UL));
         pruner.TryPruneHistory(CancellationToken.None);
@@ -420,21 +438,23 @@ public class HistoryPrunerTests
             Assert.That(metadataDb.KeyExists(MetadataDbKeys.BlockAccessListPruningDeletePointer), Is.True,
                 "the pass itself persists normally");
         }
+        retention.DidNotReceive().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
     }
 
     [Test]
     public void A_discovered_boundary_is_persisted_by_a_pruning_pass_when_synchronization_is_enabled()
     {
-        (HistoryPruner pruner, TestMemDb metadataDb) = CreateFrontierFixture(synchronizationEnabled: true, markerPresent: true);
+        (HistoryPruner pruner, TestMemDb metadataDb, IPrunedReceiptRetention retention) = CreateFrontierFixture(synchronizationEnabled: true, markerPresent: true);
 
         Assert.That(pruner.OldestBlockHeader?.Number, Is.EqualTo(9_000UL));
         pruner.TryPruneHistory(CancellationToken.None);
 
         Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.True,
             "the suppression is scoped to the frozen path, not persistence outright");
+        retention.Received().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
     }
 
-    private static (HistoryPruner Pruner, TestMemDb MetadataDb) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false)
+    private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false)
     {
         TestMemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
@@ -449,12 +469,13 @@ public class HistoryPrunerTests
         IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
         Block oldest = Build.A.Block.WithNumber(9_000UL).TestObject;
         chainLevels.LoadLevel(Arg.Is<ulong>(static n => n >= 9_000)).Returns(new ChainLevelInfo(true, new BlockInfo(oldest.Hash!, 0)));
+        IPrunedReceiptRetention retention = Substitute.For<IPrunedReceiptRetention>();
 
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1);
-        return (pruner, metadataDb);
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1, retention: retention);
+        return (pruner, metadataDb, retention);
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
@@ -479,7 +500,7 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
-            NullPrunedReceiptRetention.Instance,
+            retention ?? NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
     }
 

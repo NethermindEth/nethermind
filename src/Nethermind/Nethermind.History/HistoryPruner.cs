@@ -192,35 +192,11 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public ulong OldestUnreclaimedBlockNumber
-    {
-        get
-        {
-            if (!_hasLoadedDeletePointers)
-            {
-                bool lockTaken = false;
-                try
-                {
-                    Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
-                    if (lockTaken)
-                    {
-                        TryLoadDeletePointers();
-                    }
-                }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        Monitor.Exit(_pruneLock);
-                    }
-                }
-            }
-
-            // Until the pointers load, the published boundary is the conservative answer: refusing more
-            // than necessary is transient, while serving a reclaimed height would be silently short.
-            return _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _blockTree.GetLowestBlock();
-        }
-    }
+    // Deliberately lock-free - this sits on the eth_getLogs path, and the pruning pass drives the load.
+    // Until the pointers load, the published boundary is the conservative answer: refusing more than
+    // necessary is transient, while serving a reclaimed height would be silently short.
+    public ulong OldestUnreclaimedBlockNumber =>
+        _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _blockTree.GetLowestBlock();
 
     private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
@@ -444,10 +420,15 @@ public class HistoryPruner : IHistoryPruner
         }
 
         byte[]? barrierWhenStartedBytes = _metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted);
-        if (pointer is not null && barrierWhenStartedBytes is not null
-            && pointer <= barrierWhenStartedBytes.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros())
+        if (pointer is not null && barrierWhenStartedBytes is not null)
         {
-            return false;
+            ulong barrierWhenStarted = barrierWhenStartedBytes.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+            // Only while the feed still targets at least that barrier: a config edit that lowered it reopens
+            // the descent, and the recorded value then describes the descent that finished, not the current one.
+            if (barrierWhenStarted <= ulong.Max(barrier, CutoffBlockNumber ?? 0) && pointer <= barrierWhenStarted)
+            {
+                return false;
+            }
         }
 
         if (_syncConfig.SynchronizationEnabled && (_ancientHoldLastLogged == 0 || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
@@ -1064,6 +1045,14 @@ public class HistoryPruner : IHistoryPruner
         // One batch, and a boundary write carries the cursors with it: a boundary that lands without its
         // cursor reads an unreclaimed backlog as "already level" on the next load, forever.
         bool boundaryDirty = _blocksDeletePointer != _lastSavedBlocksDeletePointer;
+        if (!boundaryDirty
+            && _blocksReclaimCursor == _lastSavedBlocksReclaimCursor
+            && _sliceCleanupCursor == _lastSavedSliceCleanupCursor
+            && _balsDeletePointer == _lastSavedBalsDeletePointer)
+        {
+            return;
+        }
+
         using IWriteBatch batch = _metadataDb.StartWriteBatch();
 
         if (boundaryDirty || _blocksReclaimCursor != _lastSavedBlocksReclaimCursor)

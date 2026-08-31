@@ -9,12 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Synchronization;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -78,7 +76,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private LogIndexUpdateStats _stats;
     private readonly bool _indexRetainedSlices;
     private readonly ISyncPointers? _syncPointers;
-    private readonly IHeaderStore? _headerStore;
     // Three pruning intervals, floored at two hours: the next pruning pass is what clears the
     // receipts-reclaimed/body-not-yet transient this stall waits on, and the interval is operator-tunable.
     internal int StallTicksBeforeGivingUp { get; init; }
@@ -93,8 +90,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
         ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
-        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null, IBlocksConfig? blocksConfig = null,
-        IHeaderStore? headerStore = null)
+        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null, IBlocksConfig? blocksConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -115,7 +111,6 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (slicesConfigured && syncPointers is null && _logger.IsWarn)
             _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
         StallTicksBeforeGivingUp = StallDeadlineTicks(historyConfig, blocksConfig);
-        _headerStore = headerStore;
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -550,10 +545,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (to - from > buffer.Length)
             throw new InvalidOperationException($"{GetLogPrefix()}: buffer size is too small: {buffer.Length} / {to - from}");
 
-        IReadOnlyDictionary<ulong, BlockHeader> prefetchedHeaders = isForward ? null : PrefetchUnambiguousHeaders(from, to);
-
         int nextIndex = isForward ? from : to - 1;
-        if (!TryGetBlockReceipts((ulong)nextIndex, out buffer[0], prefetchedHeaders: prefetchedHeaders))
+        if (!TryGetBlockReceipts((ulong)nextIndex, out buffer[0]))
             return ReadOnlySpan<BlockReceipts>.Empty;
 
         Parallel.For(from, to, new()
@@ -564,47 +557,19 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         {
             int bufferIndex = isForward ? i - from : to - 1 - i;
             if (buffer[bufferIndex] == default)
-                TryGetBlockReceipts((ulong)i, out buffer[bufferIndex], prefetchedHeaders: prefetchedHeaders);
+                TryGetBlockReceipts((ulong)i, out buffer[bufferIndex]);
         });
 
         int endIndex = Array.IndexOf(buffer, default);
         return endIndex < 0 ? buffer : buffer.AsSpan(..endIndex);
     }
 
-    // One sequential header scan per backward batch replaces the per-height level reads that evict the shared
-    // level cache; a height with more than one header in range falls back to the level, which knows the canonical.
-    private IReadOnlyDictionary<ulong, BlockHeader> PrefetchUnambiguousHeaders(int from, int to)
-    {
-        if (_headerStore is null)
-            return null;
-
-        Dictionary<ValueHash256, BlockHeader> prefetched = _headerStore.PrefetchByNumberRange((ulong)from, (ulong)to);
-        Dictionary<ulong, BlockHeader> byNumber = new(prefetched.Count);
-        HashSet<ulong> ambiguous = null;
-        foreach (BlockHeader header in prefetched.Values)
-        {
-            ulong number = header.Number;
-            if (ambiguous?.Contains(number) == true)
-                continue;
-            if (!byNumber.TryAdd(number, header))
-            {
-                byNumber.Remove(number);
-                (ambiguous ??= []).Add(number);
-            }
-        }
-
-        return byNumber;
-    }
-
     // TODO: move to IReceiptStorage?
-    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts, bool fabricateReclaimed = true, IReadOnlyDictionary<ulong, BlockHeader> prefetchedHeaders = null)
+    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts, bool fabricateReclaimed = true)
     {
         blockReceipts = default;
 
-        Block? block = prefetchedHeaders is not null && prefetchedHeaders.TryGetValue(blockNumber, out BlockHeader prefetchedHeader)
-            ? _blockTree.FindBlock(prefetchedHeader.Hash, BlockTreeLookupOptions.ExcludeTxHashes, blockNumber)
-            : _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes);
-        if (block is not { Hash: not null })
+        if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
             // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
             // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
