@@ -1957,4 +1957,47 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             "The parent SSTORE should run out of gas once the child CALL burns its own failed SSTORE gas.");
         Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
     }
+
+    [TestCase(17_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_reservoir_funded")]
+    [TestCase(16_777_216ul, TestName = "Eip8037_reverting_child_restoring_parent_fresh_slot_credits_no_state_gas_spill_tail")]
+    public void Eip8037_reverting_child_restoring_parent_fresh_slot_to_pre_tx_original_must_charge_same_as_writing_a_non_original_value(ulong gasLimit)
+    {
+        TestAllTracerWithOutput restoresPreTxOriginal = ExecuteParentSetThenChildOverwriteAndRevert(gasLimit, TestItem.AddressC, storageSlot: 0, childWrittenValue: 0);
+        TestAllTracerWithOutput writesNonOriginal = ExecuteParentSetThenChildOverwriteAndRevert(gasLimit, TestItem.AddressE, storageSlot: 1, childWrittenValue: 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restoresPreTxOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the tx succeeds");
+            Assert.That(writesNonOriginal.StatusCode, Is.EqualTo(StatusCode.Success), "the reverting child leaves the parent's committed fresh set intact, so the control tx succeeds");
+            Assert.That(restoresPreTxOriginal.GasConsumedResult.SpentGas, Is.EqualTo(writesNonOriginal.GasConsumedResult.SpentGas),
+                "both children take the identical dirty-slot SSTORE branch and then revert, so restoring the pre-tx original may only cost the same as writing a non-original value; a smaller charge means the reverted child was wrongly credited a reservoir refill for the parent-funded set");
+            Assert.That(restoresPreTxOriginal.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState),
+                "the only durable state change is the parent's single fresh slot set; the reverted child adds no block state gas");
+            AssertStorage(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
+        }
+    }
+
+    private TestAllTracerWithOutput ExecuteParentSetThenChildOverwriteAndRevert(ulong gasLimit, Address childAddress, int storageSlot, int childWrittenValue)
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(childWrittenValue)
+            .PushData(storageSlot)
+            .Op(Instruction.SSTORE)
+            .Revert(0, 0)
+            .Done;
+
+        TestState.CreateAccount(childAddress, 0);
+        TestState.InsertCode(childAddress, childCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(storageSlot)
+            .Op(Instruction.SSTORE)
+            .DelegateCall(childAddress, 1_000_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        return Execute(Activation, gasLimit, parentCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+    }
 }
