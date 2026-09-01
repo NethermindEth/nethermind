@@ -375,7 +375,8 @@ public class StateProviderTests(bool useFlat)
         // Overflow the 8-way insert filter so the committed entry is evicted from it and the
         // re-insert below reaches the code batch probe instead of the filter short-circuit.
         const int deploysOverflowingInsertFilter = 512;
-        for (int i = 0; i < deploysOverflowingInsertFilter; i++)
+        // From 1: index 0 would re-stage the code under test, refreshing its eviction ticker.
+        for (int i = 1; i <= deploysOverflowingInsertFilter; i++)
         {
             Address address = new(Keccak.Compute(i.ToString()).Bytes[..Address.Size]);
             provider.CreateAccountIfNotExists(address, 0);
@@ -385,7 +386,10 @@ public class StateProviderTests(bool useFlat)
 
         Snapshot snapshot = provider.TakeSnapshot();
         provider.CreateAccount(TestItem.AddressC, 0);
-        provider.InsertCode(TestItem.AddressC, code, spec);
+        bool reachedCodeBatch = provider.InsertCode(TestItem.AddressC, codeHash, code, spec);
+        // Eviction is 3-random, so report inconclusive rather than silently degrading into a
+        // duplicate of the filter-short-circuit case when the entry happens to survive.
+        Assume.That(reachedCodeBatch, Is.True, "insert filter did not evict the entry");
         provider.Restore(snapshot);
 
         provider.Commit(spec);
