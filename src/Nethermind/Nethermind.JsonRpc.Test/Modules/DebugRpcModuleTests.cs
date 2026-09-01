@@ -395,8 +395,10 @@ public partial class DebugRpcModuleTests
             new
             {
                 tracer = "callTracer",
-                stateOverrides = JsonSerializer.Deserialize<object>(
-                    $$$"""{"{{{RevertingContractAddress}}}":{"code":"{{{RevertingContractCode}}}"}}""")
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [RevertingContractAddress] = new { code = RevertingContractCode }
+                }
             });
 
         JToken parsed = JToken.Parse(response);
@@ -422,7 +424,10 @@ public partial class DebugRpcModuleTests
             null,
             new { tracer = "callTracer" });
 
-        JToken frame = JToken.Parse(response)["result"]!;
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
+
+        JToken frame = parsed["result"]!;
         Assert.Multiple(() =>
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
