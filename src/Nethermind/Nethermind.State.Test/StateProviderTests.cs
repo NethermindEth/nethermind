@@ -258,6 +258,77 @@ public class StateProviderTests(bool useFlat)
         Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
+    [TestCase(false, Description = "code of a reverted deployment is dropped")]
+    [TestCase(true, Description = "code redeployed after the revert is still persisted")]
+    public void Code_of_restored_deployment_is_persisted_only_when_redeployed(bool redeployAfterRestore)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(spec);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        // A successful child CREATE with a code deposit...
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+
+        // ...undone by an ancestor REVERT.
+        provider.Restore(snapshot);
+
+        if (redeployAfterRestore)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);
+        if (redeployAfterRestore)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+    }
+
+    [Test]
+    public void Code_committed_before_a_restore_is_still_persisted()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+        provider.Commit(spec, commitRoots: false);
+
+        // A later transaction deploying the same code and reverting must not drop the
+        // committed deployment's code.
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.CreateAccount(TestItem.AddressC, 0);
+        provider.InsertCode(TestItem.AddressC, code, spec);
+        provider.Restore(snapshot);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+    }
+
     [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
