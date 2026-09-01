@@ -121,6 +121,13 @@ jobs:
         with:
           path: nethermind
           submodules: "recursive"
+      - name: Check out patched legacy tests
+        uses: actions/checkout@v6
+        with:
+          repository: flcl42/tests
+          ref: dffee992a3e27229723c66c0e8c0d338c4e0a62a
+          path: tests
+          submodules: "recursive"
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -129,7 +136,7 @@ jobs:
         id: set-matrix
         run: |
           cd nethermind/tools/HiveConsensusWorkflowGenerator
-          dotnet run
+          dotnet run -- ../tests/LegacyTests/Cancun
           cat matrix.json
           echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
 
@@ -163,8 +170,8 @@ jobs:
       - name: Check out Hive repository
         uses: actions/checkout@v6
         with:
-          repository: ethereum/hive
-          ref: master
+          repository: flcl42/hive
+          ref: fefd12adb13a1de7cade9fc6c6032dfa1560b4d8
           path: hive
 
       - name: Patch Hive Dockerfile
@@ -177,18 +184,63 @@ jobs:
         run: go build .
 
       - name: Run hive for tests - ${{ join(matrix.hiveTests.testNames, ', ') }}
+        id: run-hive
         continue-on-error: true
         working-directory: hive
         run: |
+          set -euo pipefail
           IFS=',' read -ra TEST_NAMES <<< "${{ join(matrix.hiveTests.testNames, ',') }}"
           for testName in "${TEST_NAMES[@]}"
           do
-            ./hive --client nethermind --sim ethereum/consensus --sim.limit /$testName --sim.parallelism $PARALLELISM
+            ./hive --client nethermind --sim ethereum/consensus --sim.limit legacy-cancun/$testName --sim.limit.exact --sim.parallelism $PARALLELISM
           done
       - name: Print results
+        continue-on-error: true
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+      - name: Record strict result counts
+        id: strict_counts
+        if: always()
+        env:
+          HIVE_OUTCOME: ${{ steps.run-hive.outcome }}
+        run: |
+          shopt -s nullglob
+          result_files=(hive/workspace/logs/*.json)
+          output="legacy-cancun-counts-${{ strategy.job-index }}.json"
+          if (( ${#result_files[@]} == 0 )); then
+            jq -n --arg outcome "$HIVE_OUTCOME" \
+              '{passed: 0, failed: 0, loader_passed: 0, loader_failed: 0, complete: false, outcome: $outcome}' > "$output"
+          else
+            jq -s --arg outcome "$HIVE_OUTCOME" '
+              {
+                passed: ([.[] | (.testCases // [])[] | select(.name != "test file loader" and .summaryResult.pass == true)] | length),
+                failed: ([.[] | (.testCases // [])[] | select(.name != "test file loader" and .summaryResult.pass == false)] | length),
+                loader_passed: ([.[] | (.testCases // [])[] | select(.name == "test file loader" and .summaryResult.pass == true)] | length),
+                loader_failed: ([.[] | (.testCases // [])[] | select(.name == "test file loader" and .summaryResult.pass == false)] | length),
+                complete: ($outcome == "success"),
+                outcome: $outcome
+              }
+            ' "${result_files[@]}" > "$output"
+          fi
+          cat "$output"
+          echo "failed=$(jq -r '.failed' "$output")" >> "$GITHUB_OUTPUT"
+          echo "loader_failed=$(jq -r '.loader_failed' "$output")" >> "$GITHUB_OUTPUT"
+          echo "complete=$(jq -r '.complete' "$output")" >> "$GITHUB_OUTPUT"
+      - name: Upload strict result counts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-cancun-counts-${{ strategy.job-index }}
+          path: legacy-cancun-counts-${{ strategy.job-index }}.json
+          retention-days: 7
+      - name: Upload failed shard workspace
+        if: always() && (steps.strict_counts.outputs.complete != 'true' || steps.strict_counts.outputs.failed != '0' || steps.strict_counts.outputs.loader_failed != '0')
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-cancun-failure-${{ strategy.job-index }}
+          path: hive/workspace
+          retention-days: 7
       # - name: Send results to dashboard
       #   uses: appleboy/scp-action@master
       #   with:
@@ -198,3 +250,46 @@ jobs:
       #     port: ${{ secrets.HIVE_PORT }}
       #     source: hive/workspace/logs/*
       #     target: ${{ secrets.HIVE_DIR }}/
+
+  aggregate_hive_results:
+    name: "Aggregate legacy-cancun results"
+    if: always()
+    needs: [run_hive_tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download strict result counts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: legacy-cancun-counts-*
+          path: counts
+          merge-multiple: true
+      - name: Verify the complete suite is green
+        env:
+          MATRIX_RESULT: ${{ needs.run_hive_tests.result }}
+        run: |
+          shopt -s nullglob
+          count_files=(counts/*.json)
+          if (( ${#count_files[@]} == 0 )); then
+            echo "No result-count artifacts were produced."
+            exit 1
+          fi
+          summary=$(jq -s '
+            {
+              jobs: length,
+              complete_jobs: ([.[] | select(.complete == true)] | length),
+              passed: (map(.passed) | add),
+              failed: (map(.failed) | add),
+              loader_passed: (map(.loader_passed) | add),
+              loader_failed: (map(.loader_failed) | add)
+            }
+          ' "${count_files[@]}")
+          echo "$summary"
+          jobs=$(jq -r '.jobs' <<< "$summary")
+          complete_jobs=$(jq -r '.complete_jobs' <<< "$summary")
+          passed=$(jq -r '.passed' <<< "$summary")
+          failed=$(jq -r '.failed' <<< "$summary")
+          loader_passed=$(jq -r '.loader_passed' <<< "$summary")
+          loader_failed=$(jq -r '.loader_failed' <<< "$summary")
+          if [[ "$MATRIX_RESULT" != "success" || "$jobs" -ne 256 || "$complete_jobs" -ne 256 || "$passed" -ne 111893 || "$failed" -ne 0 || "$loader_passed" -ne 3278 || "$loader_failed" -ne 0 ]]; then
+            exit 1
+          fi
