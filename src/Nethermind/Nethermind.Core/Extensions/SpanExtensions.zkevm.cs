@@ -21,17 +21,70 @@ namespace Nethermind.Core.Extensions
         // Guest execution requires stable hashes across runs.
         public static readonly uint InstanceRandom = 2098026241U;
 
+        // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
+        // would collide for inputs that differ only by swapping two lanes.
+        private const ulong Lane0 = 0x9E3779B97F4A7C15UL;
+        private const ulong Lane1 = 0xC2B2AE3D27D4EB4FUL;
+        private const ulong Lane2 = 0x165667B19E3779F9UL;
+        private const ulong Lane3 = 0x85EBCA77C2B2AE63UL;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
-            => FastHashCrc(ref MemoryMarshal.GetReference(input), input.Length, ComputeSeed(input.Length));
+        {
+            // 32 bytes is the dominant key width in the guest (trie node hashes, storage cells), and
+            // the four-lane CRC-style walk is one of its hottest leaves. Every byte still feeds the
+            // result -- folding to the leading word would collide across big-endian UInt256 values,
+            // which share leading zeros -- but at four multiplies instead of a lane-at-a-time walk.
+            if (input.Length == 32)
+            {
+                return (int)(uint)Mix32(ref MemoryMarshal.GetReference(input));
+            }
+
+            // Addresses are the other dominant key width.
+            if (input.Length == 20)
+            {
+                return (int)(uint)MixAddress(ref MemoryMarshal.GetReference(input));
+            }
+
+            return FastHashCrc(ref MemoryMarshal.GetReference(input), input.Length, ComputeSeed(input.Length));
+        }
+
+        /// <summary>Mixes the twenty bytes of an address into a well-distributed 64-bit value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MixAddress(ref byte b)
+        {
+            ulong mixed =
+                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Lane2;
+
+            mixed ^= InstanceRandom;
+            mixed *= Lane0;
+            return mixed ^ (mixed >> 29);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long FastHash64For32BytesFallback(ref byte start)
-            => FastHash64For32BytesCrc(ref start, ComputeSeed(32));
+            => (long)Mix32(ref start);
+
+        /// <summary>Mixes thirty-two bytes into a well-distributed 64-bit value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Mix32(ref byte b)
+        {
+            ulong mixed =
+                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Lane2 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Lane3;
+
+            mixed ^= InstanceRandom;
+            mixed *= Lane0;
+            return mixed ^ (mixed >> 29);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long FastHash64For20BytesFallback(ref byte start)
-            => FastHash64For20BytesCrc(ref start, ComputeSeed(20));
+            => (long)MixAddress(ref start);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static uint Crc32C(uint crc, byte data) => ZkEvmBitOperations.Crc32C(crc, data);
