@@ -11,6 +11,16 @@ namespace Nethermind.Core.Extensions;
 
 public static class EvmWordExtensions
 {
+#if ZK_EVM
+    // RISC-V has no byte-swap instruction, so the BCL expands to a byte-at-a-time shuffle;
+    // Bswap64 does it with three masked shift/or pairs on whole words.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReverseBytes(ulong value) => ZkEvmBitOperations.Bswap64(value);
+#else
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReverseBytes(ulong value) => BinaryPrimitives.ReverseEndianness(value);
+#endif
+
     extension(EvmWord word)
     {
         /// <summary>
@@ -41,10 +51,10 @@ public static class EvmWordExtensions
             }
 
             Vector256<ulong> u = word.AsUInt64();
-            ulong out0 = BinaryPrimitives.ReverseEndianness(u.GetElement(3));
-            ulong out1 = BinaryPrimitives.ReverseEndianness(u.GetElement(2));
-            ulong out2 = BinaryPrimitives.ReverseEndianness(u.GetElement(1));
-            ulong out3 = BinaryPrimitives.ReverseEndianness(u.GetElement(0));
+            ulong out0 = ReverseBytes(u.GetElement(3));
+            ulong out1 = ReverseBytes(u.GetElement(2));
+            ulong out2 = ReverseBytes(u.GetElement(1));
+            ulong out3 = ReverseBytes(u.GetElement(0));
             return Vector256.Create(out0, out1, out2, out3).AsByte();
         }
     }
