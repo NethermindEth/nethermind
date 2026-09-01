@@ -57,6 +57,7 @@ public class StateHealingStrategyTests
             Assert.That(fired, Is.EqualTo(1));
         }
     }
+
     private static StateHealingStrategy CreateStrategy(bool snapSync = true, bool balHealing = true, bool balHealingSupported = true)
     {
         IBalHealing healing = Substitute.For<IBalHealing>();

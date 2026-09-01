@@ -35,6 +35,8 @@ public class FlatBalHealing(
     private const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
 
+    public bool IsAvailable => true;
+
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
     {
         Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorages, token);

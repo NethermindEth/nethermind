@@ -117,7 +117,13 @@ public class StateSyncRunner(
             catch (PivotReorgedException e)
             {
                 if (_logger.IsWarn) _logger.Warn($"{e.Message} Discarding the synced state and starting over.");
+
                 pivot = await WaitForPivot(token);
+                while (!blockTree.IsMainChain(pivot))
+                {
+                    await Task.Delay(1000, token);
+                    pivot = await WaitForPivot(token);
+                }
             }
         }
     }

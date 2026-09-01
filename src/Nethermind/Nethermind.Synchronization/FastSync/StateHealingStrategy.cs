@@ -28,12 +28,17 @@ public sealed class StateHealingStrategy(ISyncConfig syncConfig, Lazy<IBalHealin
     {
         if (_canBalHeal) return;
 
-        if (!syncConfig.SnapSync || !syncConfig.BalHealing || !balHealing.Value.IsAvailable || pivot.BlockAccessListHash is null)
+        if (!syncConfig.SnapSync || !syncConfig.BalHealing || pivot.BlockAccessListHash is null)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Will Heal state with trie nodes - snap sync: {syncConfig.SnapSync}, " +
-                              $"BAL healing: {syncConfig.BalHealing}, supported by the state backend: {balHealing.Value.IsAvailable}, " +
-                              $"pivot: {pivot.Number}, BAL hash: {pivot.BlockAccessListHash}.");
+                              $"BAL healing: {syncConfig.BalHealing}, pivot: {pivot.Number}, BAL hash: {pivot.BlockAccessListHash}.");
+            return;
+        }
+
+        if (!balHealing.Value.IsAvailable)
+        {
+            if (_logger.IsDebug) _logger.Debug("Will Heal state with trie nodes - the state backend does not support BAL healing.");
             return;
         }
 
