@@ -275,11 +275,15 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Transport failures (unreachable host, torn-down channel) are expected during
-                // discovery, so log them quietly. DotNetty's ClosedChannelException derives from IOException.
-                bool isTransportFailure = e is SocketException or IOException
+                // Once the lookup token is cancelled, any failure here is expected teardown (the event loop
+                // or channel is going away, in whatever exception shape DotNetty raises). Transport failures
+                // (unreachable host, torn-down channel — ClosedChannelException derives from IOException) are
+                // likewise expected during discovery. Log both quietly; only an unexpected mid-operation
+                // failure — one that happens while the lookup is still live — warrants a warning.
+                bool isExpectedFailure = token.IsCancellationRequested
+                    || e is SocketException or IOException
                     || e.InnerException is SocketException or IOException;
-                if (!isTransportFailure)
+                if (!isExpectedFailure)
                 {
                     if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
