@@ -129,6 +129,11 @@ public class FrameTxMempoolDosMeasurement
     private static int StuffedSignatureCount(ulong ceiling) =>
         (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
 
+    /// <summary>Floor below which a per-signature cost is not a real public-key recovery. Measured ~49 us per
+    /// entry on the development box, and an isolated <c>EthereumEcdsa.RecoverAddress</c> costs 47 to 51 us, so
+    /// 25 clears the slowest plausible machine while still catching a cache with a partial hit rate.</summary>
+    private const double MinCredibleRecoveryMicros = 25.0;
+
     /// <summary>
     /// The share of its granted budget a burn shape must consume for the run to count as a burn.
     /// </summary>
@@ -533,10 +538,12 @@ public class FrameTxMempoolDosMeasurement
     /// budget and is not the worst case.
     /// </para>
     /// <para>
-    /// Swept over the same ceilings as the burn shapes, and <see cref="Ceiling500k"/> needs no patched build
-    /// here: <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation, and a signature refusal never
-    /// reaches the simulator. Only the declared-gas precheck could bound this, and it reads the configurable
-    /// mirror. So this shape reaches the one sweep point the burn shapes cannot.
+    /// Swept over the same ceilings as the burn shapes. <see cref="Ceiling500k"/> needs no patched build
+    /// here, because <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation and a signature refusal
+    /// never reaches the simulator. It does need a <em>configured</em> 500,000: the declared-gas precheck at
+    /// filter stage 7 reads <c>ITxPoolConfig.FrameTxMaxVerifyGas</c>, whose default is 300,000, so a default
+    /// node refuses this transaction for free. The pool is therefore configured at the ceiling under test, and
+    /// the row describes a node an operator could actually run. Say "no patched build", not "stock node".
     /// </para>
     /// </remarks>
     [TestCase(Ceiling100k)]
@@ -548,7 +555,9 @@ public class FrameTxMempoolDosMeasurement
         int count = StuffedSignatureCount(ceiling);
 
         // The frame never executes, so its code is irrelevant; only its declared limit enters the budget.
-        BuildHarness(PrefixCode("banned-opcode"));
+        // The pool is configured at the ceiling under test, so stage 7 enforces the budget this row is
+        // labelled with rather than the 300,000 default.
+        BuildHarness(PrefixCode("banned-opcode"), ceiling);
         _frameExecutionGasLimit = MinimalFrameGas;
         _frameSignatures = BuildSecp256k1Signatures(count);
 
@@ -556,6 +565,17 @@ public class FrameTxMempoolDosMeasurement
         Assert.That(declaredGas, Is.LessThanOrEqualTo(ceiling),
             "the declared budget must fit the ceiling it claims, or the row is labelled with a budget the "
             + "transaction never asked for");
+
+        // `count` is only the attacker's optimum if one more entry does not fit. Proving it against the live
+        // filter also proves the filter is enforcing this ceiling, which is what makes the row honest.
+        long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
+        _frameSignatures = BuildSecp256k1Signatures(count + 1);
+        Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
+            Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh),
+            $"{count + 1} entries declare more than {ceiling} and must be refused by the declared-gas gate; "
+            + "if they are not, the pool is not enforcing the ceiling this row claims");
+        Assert.That(Metrics.PendingTransactionsFrameTxVerifyGasTooHigh, Is.EqualTo(gasRefusalsBefore + 1));
+        _frameSignatures = BuildSecp256k1Signatures(count);
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
@@ -570,26 +590,39 @@ public class FrameTxMempoolDosMeasurement
 
         Transaction[] samples = BuildFrameSamples(1 + Warmup, Samples);
         List<double> submitMicros = new(Samples);
+        long sampledFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         for (int i = 0; i < samples.Length; i++)
         {
             long start = Stopwatch.GetTimestamp();
-            _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
+            AcceptTxResult result = _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
             submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+            if (result == AcceptTxResult.Accepted) Assert.Fail($"sample {i} was admitted");
         }
+
+        // Without this the row's `samples=` and `evm_ran=no` rest on the single probe above, and any sample
+        // short-circuited upstream would be timed as if it had done the curve work.
+        Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
+            Is.EqualTo(sampledFailuresBefore + Samples),
+            "every timed submission must have been refused by the signature filter");
+        Assert.That(_simulateMicros, Is.Empty, "the EVM must not run for any sample");
 
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
-        double perSignature = p50 / count;
+        // Whole-admission p50 over the entry count, so the ~20 other filters' cost is charged to
+        // signatures. An independently timed EthereumEcdsa.RecoverAddress puts the residue at a few percent,
+        // but the name has to say admission, not recovery.
+        double admissionPerSignature = p50 / count;
 
         // The failure this shape is most exposed to: a memoised verification would collapse the cost and still
         // emit a plausible row. A public-key recovery cannot be this cheap.
-        Assert.That(perSignature, Is.GreaterThan(10.0),
-            $"{perSignature:F1} us per signature is too cheap for real curve work; suspect a cached result");
+        Assert.That(admissionPerSignature, Is.GreaterThan(MinCredibleRecoveryMicros),
+            $"{admissionPerSignature:F1} us per signature is too cheap for real curve work; suspect a cache");
 
         Emit($"case=signature_reject scheme=secp256k1 ceiling={ceiling} signatures={count} "
              + $"declared_gas={declaredGas} samples={Samples} submit_p50_us={p50:F1} "
-             + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} per_signature_us={perSignature:F2} "
-             + $"submit_us_per_Mgas={p50 / declaredGas * 1_000_000:F1} basis=declared_signature_gas evm_ran=no");
+             + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} admission_us_per_signature={admissionPerSignature:F2} "
+             + $"submit_max_us={submitMicros[^1]:F1} tx_bytes={FrameTx(0).GetLength(shouldCountBlobs: false)} "
+             + $"submit_us_per_Mgas={p50 / declaredGas * 1_000_000:F1} basis=declared_prefix_gas evm_ran=no");
     }
 
     /// <summary>
@@ -907,7 +940,7 @@ public class FrameTxMempoolDosMeasurement
     /// measurement and a plausible number for work that never happened.
     /// </para>
     /// </remarks>
-    private void BuildHarness(byte[] senderCode)
+    private void BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
     {
         _dbProvider = TestMemDbProvider.Init();
         _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, _logManager);
@@ -947,7 +980,7 @@ public class FrameTxMempoolDosMeasurement
             _specProvider,
             _logManager);
 
-        _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros));
+        _txPool = CreatePool(new TimingSimulator(_realSimulator, _simulateMicros), verifyGasCeiling);
     }
 
     /// <summary>
@@ -971,11 +1004,19 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <remarks>
-    /// <c>FrameTxMaxVerifyGas = 0</c> lifts the static declared-gas precheck at filter stage 6. It does not
-    /// raise the enforced ceiling: the processor caps each prefix frame at the
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c> whatever the pool is configured with.
+    /// <para>
+    /// <paramref name="verifyGasCeiling"/> is what a node operator would configure. <c>0</c> disables the
+    /// static declared-gas precheck at filter stage 7 entirely, which is what the burn shapes want: they are
+    /// bounded by the <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c> in the processor regardless, so
+    /// leaving the precheck on would only add a second bound at the same 300,000 and hide which one bit.
+    /// </para>
+    /// <para>
+    /// Shapes refused <em>before</em> the simulator must pass the ceiling instead. For those, <c>0</c> would
+    /// measure a transaction no configured node accepts, and the emitted <c>ceiling=</c> field would name a
+    /// budget nothing enforced.
+    /// </para>
     /// </remarks>
-    private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator)
+    private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, ulong verifyGasCeiling = 0)
     {
         ChainHeadInfoProvider headInfo = new(
             new ChainHeadSpecProvider(_specProvider, _blockTree),
@@ -986,7 +1027,7 @@ public class FrameTxMempoolDosMeasurement
             _ethereumEcdsa,
             new BlobTxStorage(),
             headInfo,
-            new TxPoolConfig { GasLimit = BlockGasLimit, FrameTxMaxVerifyGas = 0 },
+            new TxPoolConfig { GasLimit = BlockGasLimit, FrameTxMaxVerifyGas = verifyGasCeiling },
             new TxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
