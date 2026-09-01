@@ -138,9 +138,17 @@ jobs:
           # still runs; the compare step flags that the two sides measured with different sources.
           # Probing the runner rather than the harness alone matches what the benchmark steps build.
           probe_project="Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj"
+          probe_log="${GITHUB_WORKSPACE}/evm-base-harness-probe.log"
+          # Taken before the probe so it can gate the fallback: an unchanged harness cannot be why base
+          # fails to build. `|| true` keeps a git failure from aborting a run the probe may yet pass.
+          harness_delta="$(git -C "${GITHUB_WORKSPACE}" diff --shortstat "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- "${benchmark_sources[@]}" | sed 's/^[[:space:]]*//')" || true
           pushd "${BASE_WORKTREE}/src/Nethermind" >/dev/null
           dotnet restore Benchmarks.slnx --locked-mode
-          if ! dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee "${GITHUB_WORKSPACE}/evm-base-harness-probe.log"; then
+          if ! dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee "${probe_log}"; then
+            if [[ -z "${harness_delta}" ]]; then
+              echo "::error::Base build failed with no benchmark harness delta against base (unchanged, or undeterminable); this is not a harness incompatibility."
+              exit 1
+            fi
             # Restore only the sources base tracks; a harness file the PR adds has no base version.
             mapfile -t tracked < <(git -C "${BASE_WORKTREE}" ls-files -- "${benchmark_sources[@]}")
             if [[ "${#tracked[@]}" -gt 0 ]]; then
@@ -150,14 +158,14 @@ jobs:
               git -C "${BASE_WORKTREE}" ls-files --error-unmatch -- "${source}" >/dev/null 2>&1 || rm -f "${BASE_WORKTREE}/${source}"
             done
             # A base that fails to build on its own sources was never a harness incompatibility; let it
-            # fail here rather than publish a comparison whose two sides ran different harnesses.
-            dotnet build "${probe_project}" -c Release --no-restore
-            harness_delta="$(git -C "${GITHUB_WORKSPACE}" diff --shortstat "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- "${benchmark_sources[@]}" | sed 's/^[[:space:]]*//')"
+            # fail here rather than publish a comparison whose two sides ran different harnesses. Its
+            # output appends to the probe log so a red check shows which of the two builds broke.
+            dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee -a "${probe_log}"
             {
               echo "BASE_HARNESS_FALLBACK=true"
-              echo "BASE_HARNESS_DELTA=${harness_delta:-not reported}"
+              echo "BASE_HARNESS_DELTA=${harness_delta}"
             } >> "${GITHUB_ENV}"
-            echo "::warning::PR opcode benchmark harness does not compile against base; the base side used its own harness sources (${harness_delta:-not reported})."
+            echo "::warning::PR opcode benchmark harness does not compile against base; the base side used its own harness sources (${harness_delta})."
           fi
           popd >/dev/null
 
