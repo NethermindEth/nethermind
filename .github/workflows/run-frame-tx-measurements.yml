@@ -188,7 +188,7 @@ jobs:
 
             local -a cmd=(
               dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore --
-              --no-ansi --filter "FullyQualifiedName~${fixture}"
+              --no-ansi --output Detailed --filter "FullyQualifiedName~${fixture}"
             )
             if [[ "${fixture}" == "FrameTxFloodMeasurement" ]]; then
               cmd=(taskset -c 0 "${cmd[@]}")
