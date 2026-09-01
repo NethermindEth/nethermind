@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
+using RocksDbSharp;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -57,7 +58,7 @@ public class SstIngestionTests
     private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
     private static StateId State(ulong number, byte seed) => new(number, ValueKeccak.Compute(new byte[] { seed }));
 
-    private void Reopen()
+    private void Reopen(bool persistViaSstIngestion = true)
     {
         _db.Dispose();
         _db = new ColumnsDb<FlatDbColumns>(
@@ -67,7 +68,7 @@ public class SstIngestionTests
             new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = persistViaSstIngestion });
     }
 
     private string[] StagedSstFiles()
@@ -529,5 +530,125 @@ public class SstIngestionTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         AssertSlot(reader, Slot1, v1);
         Assert.That(reader.CurrentState, Is.EqualTo(s1));
+    }
+
+    [Test]
+    public void Same_state_and_disable_wal_batches_bypass_the_ingest_path()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s1, WriteFlags.None))
+        {
+            batch.SetStorage(Addr, Slot1, Slot(0x11));
+        }
+        Assert.That(StagedSstFiles(), Is.Empty);
+        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.DisableWAL))
+        {
+            batch.SetStorage(Addr, Slot2, Slot(0x22));
+        }
+        Assert.That(StagedSstFiles(), Is.Empty);
+        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+    }
+
+    [Test]
+    public void Interrupted_ingest_rolls_forward_on_reopen_even_with_sst_ingestion_disabled()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        byte[] accountKey = ValueKeccak.Compute("flagoff-account"u8).ToByteArray();
+        byte[] storageKey = ValueKeccak.Compute("flagoff-storage"u8).ToByteArray();
+
+        ISstIngestWriteBatch accountBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account)).StartSstIngestBatch();
+        ISstIngestWriteBatch storageBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Storage)).StartSstIngestBatch();
+        try
+        {
+            accountBatch.Set(accountKey, [0xa2]);
+            storageBatch.Set(storageKey, [0xb2]);
+            List<string> stagedFiles = [.. accountBatch.SealToStagedFiles(), .. storageBatch.SealToStagedFiles()];
+
+            using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
+                BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
+            _db.Flush(onlyWal: true);
+
+            accountBatch.IngestStagedFiles();
+        }
+        finally
+        {
+            accountBatch.Dispose();
+            storageBatch.Dispose();
+        }
+
+        Reopen(persistViaSstIngestion: false);
+
+        Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0xa2 }));
+        Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+        }
+        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+        Assert.That(StagedSstFiles(), Is.Empty);
+    }
+
+    [Test]
+    public void Ingest_corruption_fast_shuts_down_without_scheduling_a_repair_of_the_live_db()
+    {
+        _db.Dispose();
+        ObservableColumnsDb observable = new(
+            _dbPath,
+            new DbSettings("State", _dbPath) { DeleteOnStart = true },
+            new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            LimboLogs.Instance,
+            Enum.GetValues<FlatDbColumns>());
+        _db = observable;
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
+        accountColumn._testIngestFailureHook = () => throw new RocksDbSharpException("Corruption: injected external SST corruption");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot1, Slot(0x11));
+        }, Throws.InstanceOf<RocksDbSharpException>());
+
+        accountColumn._testIngestFailureHook = null;
+        Assert.That(observable.FatalShutdownCount, Is.EqualTo(1));
+        Assert.That(Directory.GetFiles(_dbPath, "corrupt.marker", SearchOption.AllDirectories), Is.Empty);
+    }
+
+    private sealed class ObservableColumnsDb(
+        string basePath,
+        DbSettings settings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        IReadOnlyList<FlatDbColumns> keys)
+        : ColumnsDb<FlatDbColumns>(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keys)
+    {
+        public int FatalShutdownCount { get; private set; }
+
+        protected override void FatalShutdown() => FatalShutdownCount++;
     }
 }
