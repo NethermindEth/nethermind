@@ -140,6 +140,9 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
     {
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
+        // The linked token below is cancelled on normal lookup completion (the drain after the first
+        // worker returns), so it does not signal shutdown. Keep the caller's token to tell the two apart.
+        CancellationToken callerToken = token;
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
@@ -275,12 +278,12 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 nodeHealthTracker.OnRequestFailed(node);
-                // Once the lookup token is cancelled, any failure here is expected teardown (the event loop
-                // or channel is going away, in whatever exception shape DotNetty raises). Transport failures
-                // (unreachable host, torn-down channel — ClosedChannelException derives from IOException) are
-                // likewise expected during discovery. Log both quietly; only an unexpected mid-operation
-                // failure — one that happens while the lookup is still live — warrants a warning.
-                bool isExpectedFailure = token.IsCancellationRequested
+                // Expected-and-quiet: a failure after the caller's token is cancelled (teardown, in whatever
+                // shape DotNetty raises), or a transport failure (unreachable host, torn-down channel —
+                // ClosedChannelException derives from IOException). Only a failure while the caller still
+                // wants results is unexpected and warrants a warning. Use the caller's token, not the
+                // internal one, which is also cancelled on the normal drain after the first worker returns.
+                bool isExpectedFailure = callerToken.IsCancellationRequested
                     || e is SocketException or IOException
                     || e.InnerException is SocketException or IOException;
                 if (!isExpectedFailure)

@@ -254,7 +254,7 @@ public class LookupKNearestNeighbourTests
         _ = await lookup.Lookup(Self, 8, (_, _) => throw new IOException("channel closed"), token);
 
         Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
-        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace), Is.True);
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
     }
 
     [Test]
@@ -291,6 +291,36 @@ public class LookupKNearestNeighbourTests
         }, cts.Token);
 
         Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_unexpected_failure_during_drain_is_logged_as_warning(CancellationToken token)
+    {
+        // The other seeds return nothing, so the lookup finishes and drains — cancelling its internal
+        // token while the caller's token stays live. Seed1 is still in flight and then fails with a
+        // non-transport exception: a real fault that must warn, not be silenced as shutdown teardown.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1], new CapturingLoggerFactory(logger));
+
+        _ = await lookup.Lookup(Self, 1, async (node, findToken) =>
+        {
+            if (node != Seed1) return [];
+
+            try
+            {
+                await Task.Delay(Timeout.Infinite, findToken);
+                return [];
+            }
+            catch (OperationCanceledException)
+            {
+                // The drain cancelled the internal token; the caller's token is still live.
+                throw new InvalidOperationException("failed during drain");
+            }
+        }, token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning && e.Message.Contains("Find neighbour op failed")), Is.True);
     }
 
     private readonly record struct LogEntry(LogLevel Level, string Message);
