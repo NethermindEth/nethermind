@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Tracing;
 /// and captures the resolved payer.</summary>
 /// <remarks>EIP8141-GAP: deploy-frame carve-outs unhandled, so the processor declines any prefix containing one.</remarks>
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec, CancellationToken token = default)
-    : TxTracer, IFrameTxReceiptTracer
+    : TxTracer, ITxTracer, IFrameTxReceiptTracer
 {
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
     // SetOperationStack, as the operands aren't available any earlier.

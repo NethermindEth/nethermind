@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -382,14 +383,25 @@ public class FrameTxValidationPrefixSimulationTests
         return data;
     }
 
-    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
+    [Test]
+    public void Simulate_TracerTokenCancelled_TheEvmAbortsThePrefix()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => Simulate(tx, token: cts.Token));
+    }
+
+    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None, CancellationToken token = default)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
             .WithTransactions(tx)
             .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
-        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, token);
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
         TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | extraOptions);
         return (result, tracer);

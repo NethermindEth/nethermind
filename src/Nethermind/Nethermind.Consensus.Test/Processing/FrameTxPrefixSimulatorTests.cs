@@ -160,14 +160,15 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
-    public void Simulate_ExceedsWallClockBudget_RejectsInsteadOfBlocking()
+    public void Simulate_ExceedsWallClockBudget_LeavesUndecidedInsteadOfBlocking()
     {
         FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, wallClockBudget: TimeSpan.FromMilliseconds(20));
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
             .Returns(callInfo =>
             {
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
-                SpinWait.SpinUntil(() => tracer.IsCancelled, TimeSpan.FromSeconds(5));
+                bool cancelled = SpinWait.SpinUntil(() => tracer.IsCancelled, TimeSpan.FromSeconds(5));
+                Assert.That(cancelled, Is.True, "the budget did not cancel the tracer");
                 throw new OperationCanceledException();
             });
 
@@ -175,7 +176,7 @@ public class FrameTxPrefixSimulatorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
             Assert.That(result.Reason, Does.Contain("budget"));
         }
     }

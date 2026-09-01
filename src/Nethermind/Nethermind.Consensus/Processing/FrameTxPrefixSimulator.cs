@@ -97,8 +97,8 @@ public sealed class FrameTxPrefixSimulator(
             }
             catch (OperationCanceledException) when (budget.IsCancellationRequested && !token.IsCancellationRequested)
             {
-                if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation exceeded its {_wallClockBudget.TotalMilliseconds}ms budget; rejecting.");
-                return FrameTxSimulationResult.Reject("validation-prefix simulation exceeded its time budget");
+                if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation exceeded its {_wallClockBudget.TotalMilliseconds}ms budget; leaving it unjudged.");
+                return FrameTxSimulationResult.Undecided("validation-prefix simulation exceeded its time budget");
             }
             catch (OperationCanceledException)
             {
