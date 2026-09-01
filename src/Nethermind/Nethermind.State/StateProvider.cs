@@ -945,7 +945,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             // The batch survives this reset, but the changes being discarded are exactly the ones the
             // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
-            RestoreCodeInserts(Snapshot.EmptyPosition);
+            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
