@@ -41,7 +41,9 @@ public static class WitnessExtensions
             foreach (byte[] stateElement in witness.State)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.PutSpan(hash, stateElement);
+                // Set, not PutSpan: the element is already an owned array, and PutSpan's default
+                // implementation would copy it.
+                db.Set(hash, stateElement);
             }
 
             return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
@@ -53,7 +55,8 @@ public static class WitnessExtensions
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                db.PutSpan(hash, code);
+                // See CreateNodeStorage: Set stores the array as-is, PutSpan would copy it.
+                db.Set(hash, code);
             }
 
             return db;
