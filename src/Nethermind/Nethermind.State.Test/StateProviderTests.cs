@@ -4,8 +4,10 @@
 #nullable enable
 
 using System;
+using System.Reflection;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -372,24 +374,15 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(TestItem.AddressB, code, spec);
         provider.Commit(spec, commitRoots: false);
 
-        // Overflow the 8-way insert filter so the committed entry is evicted from it and the
-        // re-insert below reaches the code batch probe instead of the filter short-circuit.
-        const int deploysOverflowingInsertFilter = 512;
-        // From 1: index 0 would re-stage the code under test, refreshing its eviction ticker.
-        for (int i = 1; i <= deploysOverflowingInsertFilter; i++)
-        {
-            Address address = new(Keccak.Compute(i.ToString()).Bytes[..Address.Size]);
-            provider.CreateAccountIfNotExists(address, 0);
-            provider.InsertCode(address, new byte[] { 0x60, (byte)i, 0x60, (byte)(i >> 8), 0xf3 }, spec);
-        }
-        provider.Commit(spec, commitRoots: false);
+        // Drop the committed entry from the insert filter, which is the only way the code batch
+        // probe becomes reachable. Overflowing the filter instead would leave the coverage to its
+        // 3-random eviction sampling, which can silently keep the entry.
+        EvictFromCodeInsertFilter((WorldState)provider, codeHash);
 
         Snapshot snapshot = provider.TakeSnapshot();
         provider.CreateAccount(TestItem.AddressC, 0);
         bool reachedCodeBatch = provider.InsertCode(TestItem.AddressC, codeHash, code, spec);
-        // Eviction is 3-random, so report inconclusive rather than silently degrading into a
-        // duplicate of the filter-short-circuit case when the entry happens to survive.
-        Assume.That(reachedCodeBatch, Is.True, "insert filter did not evict the entry");
+        Assert.That(reachedCodeBatch, Is.True, "the insert filter short-circuited the re-insert");
         provider.Restore(snapshot);
 
         provider.Commit(spec);
@@ -478,6 +471,15 @@ public class StateProviderTests(bool useFlat)
         {
             containerToDispose?.Dispose();
         }
+    }
+
+    /// <summary>Removes a code hash from <c>StateProvider</c>'s insert filter, as a capacity eviction would.</summary>
+    private static void EvictFromCodeInsertFilter(WorldState worldState, in ValueHash256 codeHash)
+    {
+        AssociativeKeyCache<ValueHash256> filter = (AssociativeKeyCache<ValueHash256>)typeof(StateProvider)
+            .GetField("_blockCodeInsertFilter", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(worldState._stateProvider)!;
+        Assert.That(filter.Delete(codeHash), Is.True, "the code hash was not in the insert filter");
     }
 }
 
