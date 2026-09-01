@@ -103,6 +103,11 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+            if (decoderContext.Position < receiptEnd)
+            {
+                decoderContext.Position = receiptEnd;
+            }
+
             txReceipt.Logs = logEntries.ToArray();
             return txReceipt;
         }
