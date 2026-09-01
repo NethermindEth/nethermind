@@ -31,12 +31,12 @@ public class BlockGasReservationsFitnessTests
     private const ulong BlockGasLimit = 30_000_000;
     private static readonly IReleaseSpec Spec = Eip8141Prototype.Instance;
 
-    private static Transaction NonFrameTx() =>
+    private static Transaction NonFrameTx(ulong gasLimit) =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)
             .WithSenderAddress(TestItem.AddressA)
             .WithNonce(Nonce)
-            .WithGasLimit(200_000)
+            .WithGasLimit(gasLimit)
             .WithMaxFeePerGas(1)
             .WithMaxPriorityFeePerGas(1)
             .TestObject;
@@ -59,7 +59,8 @@ public class BlockGasReservationsFitnessTests
 
     private static IEnumerable<TestCaseData> Transactions()
     {
-        yield return new TestCaseData(NonFrameTx()).SetName("Ordinary transaction under EIP-8037");
+        yield return new TestCaseData(NonFrameTx(200_000)).SetName("Ordinary transaction under EIP-8037");
+        yield return new TestCaseData(NonFrameTx(20_000_000)).SetName("Ordinary transaction whose execution reservation hits the EIP-7825 cap");
         yield return new TestCaseData(FrameTx(executionGasLimit: 500_000, stateGasLimit: 300_000)).SetName("Frame transaction with state gas");
         yield return new TestCaseData(FrameTx(executionGasLimit: 500_000, stateGasLimit: 0)).SetName("Frame transaction without state gas");
     }
