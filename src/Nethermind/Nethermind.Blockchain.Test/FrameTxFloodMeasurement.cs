@@ -332,15 +332,18 @@ public class FrameTxFloodMeasurement
     /// <para>
     /// The measured operation here is a block-<em>production</em> pass, not the block-processing pass the
     /// other cases time, because producer-side re-execution and its eviction bound only exist on the
-    /// production path. The retry gate stands in for the pool's eviction decision; an evicted transaction is
-    /// replaced with a fresh one, so the producer always has exactly one never-approving prefix to burn
-    /// through and the run describes a sustained attack rather than a decaying one.
+    /// production path. The retry gate stands in for the pool's eviction decision. Eviction resets the
+    /// attempt counter and nothing else: the same never-approving prefix stays resident, because nothing
+    /// downstream reads the transaction's identity and rebuilding one would charge the low-<c>K_retry</c>
+    /// arms a hash the high ones avoid, on the very axis this case compares. So the producer always has
+    /// exactly one never-approving prefix to burn through, and the run describes a sustained attack rather
+    /// than a decaying one.
     /// </para>
     /// <para>
     /// <b>The prediction this case exists to test.</b> Writing <c>W</c> as a function of <c>K_retry</c>
     /// suggests the retry bound moves block-building time on its own. It should not: per-pass cost is set by
     /// how many never-approving transactions are <em>resident</em>, while <c>K_retry</c> sets how long each
-    /// one stays resident. Under continuous replacement, residency is held at one either way, so <c>W</c>
+    /// one stays resident. Residency is pinned at one by construction here, so <c>W</c>
     /// should come out flat in <c>K_retry</c> while the attacker's cost per unit of node work falls by
     /// exactly the factor <see cref="FrameTxProducerRetryMeasurement"/> measures. If that holds, the retry
     /// policy is an attacker-economics lever, not a node-latency one, and belongs in the recommendation as
