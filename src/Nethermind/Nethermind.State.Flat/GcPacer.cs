@@ -82,8 +82,10 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
     // (the runtime's authoritative no-GC-region flag) rather than the GCScheduler gate: GCKeeper holds
     // that gate for the whole engine_newPayload even when no real region starts, so gating on it would
     // suppress gen0 fission exactly when a gigagas payload needs it; and GCScheduler.GCCollect also runs
-    // a native MallocTrim that at a subsecond gen0 cadence stalls RocksDB. A real no-GC region is still
-    // preserved - the tick skips so a coincident induced collection can't end it. Returns whether it ran.
+    // a native MallocTrim that at a subsecond gen0 cadence stalls RocksDB. The check is best-effort: a
+    // region opened between this read and GC.Collect is ended by the tick, but that is benign because
+    // GCKeeper.NoGCRegion.Dispose re-checks LatencyMode and swallows the resulting InvalidOperationException.
+    // Returns whether it ran.
     private static bool PacedCollect(int generation)
     {
         if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return false;
