@@ -728,6 +728,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(
                     () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
                     Is.True.After(Timeout, 10));
+                Assert.That(storage.ReleaseTimedOut, Is.False, "the deadlock guard released the update, so it was no longer in flight");
                 Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
             }
             finally
@@ -4472,6 +4473,11 @@ namespace Nethermind.TxPool.Test
             ISpecChangeValidationStorage,
             IDisposable
         {
+            // Breaks a deadlock when a test never releases the blocked update. It has to outlast the
+            // polling assertions tests make while holding one, or the update resumes mid-test and the
+            // pool stops seeing an in-flight write.
+            private static readonly TimeSpan BlockedUpdateReleaseTimeout = TimeSpan.FromMilliseconds(Timeout * 3);
+
             private readonly BlobTxStorage _inner = new();
             private readonly ManualResetEventSlim _firstUpdateEntered = new();
             private readonly ManualResetEventSlim _releaseFirstUpdate = new();
@@ -4481,10 +4487,13 @@ namespace Nethermind.TxPool.Test
             private int _remainingDeleteFailures = failedDeleteCount;
             private int _successfulDeleteCount;
             private int _addCount;
+            private int _releaseTimedOut;
 
             public ConcurrentQueue<int> DeleteBatchSizes { get; } = [];
 
             public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
+
+            public bool ReleaseTimedOut => Volatile.Read(ref _releaseTimedOut) != 0;
 
             public bool WaitForFirstUpdate(TimeSpan timeout) => _firstUpdateEntered.Wait(timeout);
 
@@ -4536,8 +4545,9 @@ namespace Nethermind.TxPool.Test
                 if (addCount == 2)
                 {
                     _firstUpdateEntered.Set();
-                    if (!_releaseFirstUpdate.Wait(TimeSpan.FromSeconds(10)))
+                    if (!_releaseFirstUpdate.Wait(BlockedUpdateReleaseTimeout))
                     {
+                        Volatile.Write(ref _releaseTimedOut, 1);
                         throw new TimeoutException("Timed out waiting to release the first sparse blob update.");
                     }
 
