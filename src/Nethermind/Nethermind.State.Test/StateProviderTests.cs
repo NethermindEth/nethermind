@@ -302,6 +302,34 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Code_staged_before_a_snapshot_survives_a_restore_dropping_later_code()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] keptCode = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        byte[] revertedCode = [0x60, 0x01, 0x60, 0x00, 0xf3];
+        ValueHash256 keptCodeHash = ValueKeccak.Compute(keptCode);
+        ValueHash256 revertedCodeHash = ValueKeccak.Compute(revertedCode);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, keptCode, spec);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.CreateAccount(TestItem.AddressC, 0);
+        provider.InsertCode(TestItem.AddressC, revertedCode, spec);
+
+        provider.Restore(snapshot);
+        provider.Commit(spec);
+
+        Assert.That(provider.GetCode(keptCodeHash), Is.EqualTo(keptCode));
+        Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void Code_committed_before_a_restore_is_still_persisted()
     {
         using Context ctx = new(useFlat);
