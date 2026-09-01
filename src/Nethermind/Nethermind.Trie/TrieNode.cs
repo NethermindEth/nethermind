@@ -56,6 +56,16 @@ namespace Nethermind.Trie
         /// Atomically read _rlp using seqlock: retry if a concurrent write is detected.
         /// Memory barriers ensure ARM64 correctness (matching SeqlockCache/KeccakCache patterns).
         /// </summary>
+#if ZK_EVM
+        // Single-threaded guest: no writer can race a reader, so the seqlock collapses to two loads.
+        // Being this small also lets it inline into the several call sites that read the RLP per node.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private CappedArray<byte> ReadRlp()
+        {
+            byte[]? array = _rlpArray;
+            return array is null ? default : new CappedArray<byte>(array, (int)(uint)_rlpSeqAndLength);
+        }
+#else
         private CappedArray<byte> ReadRlp()
         {
             SpinWait spin = default;
@@ -75,6 +85,7 @@ namespace Nethermind.Trie
 
             return array is null ? default : new CappedArray<byte>(array, (int)(seqBefore & 0xFFFFFFFF));
         }
+#endif
 
         /// <summary>
         /// Atomically write _rlp using seqlock: odd sequence signals write-in-progress.
@@ -82,6 +93,11 @@ namespace Nethermind.Trie
         /// Last writer wins: all writers write the same resolved data for a given node.
         /// Sequence uses bits 1-31 (31 bits, ~2 billion writes before wrap); bit 0 is the lock flag.
         /// </summary>
+#if ZK_EVM
+        // No competing writer in the guest, so the publish is just the two field stores.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
+#else
         [MethodImpl(MethodImplOptions.NoInlining)] // CAS dominates latency; avoid code bloat at 5+ call sites
         internal void WriteRlp(CappedArray<byte> value)
         {
@@ -109,6 +125,7 @@ namespace Nethermind.Trie
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
             }
         }
+#endif
 
         /// <summary>
         /// Direct field initialization — no seqlock needed during single-threaded construction.
