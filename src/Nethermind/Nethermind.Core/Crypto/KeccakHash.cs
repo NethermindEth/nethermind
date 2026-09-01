@@ -456,7 +456,20 @@ public sealed partial class KeccakHash
         {
             int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
             ref byte inputRef = ref MemoryMarshal.GetReference(input);
-            for (int i = 0; i < ulongLength; i += sizeof(ulong))
+            int i = 0;
+            // Unrolled by four: this is the whole absorb on targets without vector acceleration, and
+            // at one lane per iteration the loop bookkeeping costs as much again as the XOR itself.
+            for (; i <= ulongLength - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+            {
+                ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                ref byte in0 = ref Unsafe.Add(ref inputRef, i);
+                s0 ^= Unsafe.As<byte, ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+            }
+
+            for (; i < ulongLength; i += sizeof(ulong))
             {
                 ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
                 ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
