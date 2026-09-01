@@ -154,7 +154,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchedTrieReader
     {
         public Account? GetAccount(Address address)
         {
@@ -230,6 +230,31 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
+
+        void IBatchedTrieReader.TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (inner is IBatchedTrieReader batched)
+            {
+                batched.TryLoadStateRlpBatch(paths, values, flags);
+                return;
+            }
+
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = inner.TryLoadStateRlp(paths[i], flags);
+        }
+
+        void IBatchedTrieReader.TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (inner is IBatchedTrieReader batched)
+            {
+                batched.TryLoadStorageRlpBatch(address, paths, values, flags);
+                return;
+            }
+
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = inner.TryLoadStorageRlp(address, paths[i], flags);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);

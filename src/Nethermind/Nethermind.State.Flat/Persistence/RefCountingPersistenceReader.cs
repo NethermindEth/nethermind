@@ -11,7 +11,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IBatchedTrieReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
@@ -51,6 +51,30 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
         _innerReader.TryLoadStorageRlp(address, in path, flags);
+
+    void IBatchedTrieReader.TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        if (_innerReader is IBatchedTrieReader batched)
+        {
+            batched.TryLoadStateRlpBatch(paths, values, flags);
+            return;
+        }
+
+        for (int i = 0; i < paths.Length; i++)
+            values[i] = _innerReader.TryLoadStateRlp(paths[i], flags);
+    }
+
+    void IBatchedTrieReader.TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        if (_innerReader is IBatchedTrieReader batched)
+        {
+            batched.TryLoadStorageRlpBatch(address, paths, values, flags);
+            return;
+        }
+
+        for (int i = 0; i < paths.Length; i++)
+            values[i] = _innerReader.TryLoadStorageRlp(address, paths[i], flags);
+    }
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);
