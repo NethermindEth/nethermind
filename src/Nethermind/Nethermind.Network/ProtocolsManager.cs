@@ -93,9 +93,9 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
-            if (session.BestStateReached == SessionState.Initialized)
+            if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
-                if (_logger.IsTrace) TraceSessionDisconnected(session, e);
+                TraceSessionDisconnected(session, e);
             }
 
             if (session.Node is not null

@@ -35,6 +35,7 @@ public class PeerPoolTests
 
         TestNodeSource nodeSource = new();
         TestLogger logger = new();
+        ImmediateTimeProvider timeProvider = new();
         PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -45,7 +46,8 @@ public class PeerPoolTests
                 MaxCandidatePeerCount = 10
             },
             new OneLoggerLogManager(new ILogger(logger)),
-            trustedNodesManager);
+            trustedNodesManager,
+            timeProvider);
 
         Random rand = new(0);
         PrivateKeyGenerator keyGen = new(new TestRandom((m) => rand.Next(m), (s) =>
@@ -75,7 +77,7 @@ public class PeerPoolTests
         try
         {
             Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
-            await Task.Delay(1200);
+            await timeProvider.SecondDelayRequested.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(logger.LogList, Has.Exactly(1).EqualTo("Peer cleanup threshold reached. Throttling discovery."));
         }
         finally
@@ -360,6 +362,20 @@ public class PeerPoolTests
         "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
         "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
         "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
+
+    private sealed class ImmediateTimeProvider : TimeProvider
+    {
+        private readonly TaskCompletionSource _secondDelayRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _delayCount;
+
+        public Task SecondDelayRequested => _secondDelayRequested.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (Interlocked.Increment(ref _delayCount) == 2) _secondDelayRequested.TrySetResult();
+            return System.CreateTimer(callback, state, TimeSpan.Zero, period);
+        }
+    }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,

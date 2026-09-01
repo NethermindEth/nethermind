@@ -33,6 +33,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly TimeProvider _timeProvider;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -52,7 +53,18 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager)
+            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System)
+        {
+        }
 
+        internal PeerPool(
+            INodeSource nodeSource,
+            INodeStatsManager nodeStatsManager,
+            INetworkStorage peerStorage,
+            INetworkConfig networkConfig,
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager,
+            TimeProvider timeProvider)
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -61,6 +73,7 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger<PeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
+            _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
@@ -338,7 +351,7 @@ namespace Nethermind.Network
                         if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                         throttlingLogged = true;
                     }
-                    await Task.Delay(1000, token);
+                    await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, token);
                 }
 
                 GetOrAdd(node);

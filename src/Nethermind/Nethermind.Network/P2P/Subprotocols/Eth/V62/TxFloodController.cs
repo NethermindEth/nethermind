@@ -85,13 +85,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 if (!accepted)
                 {
-                    if (accepted == AcceptTxResult.Invalid && !_isInvalidTransactionDisconnectRequested)
+                    if (accepted == AcceptTxResult.Invalid)
                     {
-                        _isInvalidTransactionDisconnectRequested = true;
-                        disconnectRequest ??= new(
-                            DisconnectReason.InvalidTxReceived,
-                            "invalid tx",
-                            $"Disconnecting {_protocolHandler} due to invalid tx received");
+                        if (!_isInvalidTransactionDisconnectRequested && disconnectRequest is null)
+                        {
+                            _isInvalidTransactionDisconnectRequested = true;
+                            disconnectRequest = new(
+                                DisconnectReason.InvalidTxReceived,
+                                "invalid tx",
+                                "invalid tx received");
+                        }
                     }
                     else if (accepted == AcceptTxResult.InvalidBlobProofs)
                     {
@@ -113,7 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,
                                 $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds}",
-                                $"Disconnecting {_protocolHandler} due to tx flooding");
+                                "tx flooding");
                         }
                     }
                 }
@@ -218,6 +221,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _notAcceptedSinceLastCheck = 0;
                 _isLegacyDowngraded = false;
                 _isLegacyDisconnectRequested = false;
+                _isInvalidTransactionDisconnectRequested = false;
                 _previousPooledTransactionSample.Clear();
                 (_currentPooledTransactionSample, _previousPooledTransactionSample) =
                     (_previousPooledTransactionSample, _currentPooledTransactionSample);
@@ -237,7 +241,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return new(
                             DisconnectReason.TxFlooding,
                             $"pooled transaction flooding: returned requested transactions in {useful} of {sampled} sampled request messages",
-                            $"Disconnecting {_protocolHandler} due to unproductive pooled transaction announcements");
+                            "unproductive pooled transaction announcements");
                     }
                 }
                 else
@@ -272,17 +276,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (_logger.IsTrace) TraceDisconnect(disconnect.TraceMessage);
+            if (_logger.IsTrace) TraceDisconnect(disconnect.TraceReason);
             _protocolHandler.Disconnect(disconnect.Reason, disconnect.Details);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceDisconnect(string message) => _logger.Trace(message);
+            void TraceDisconnect(string reason) =>
+                _logger.Trace($"Disconnecting {_protocolHandler} due to {reason}");
         }
 
         private readonly record struct DisconnectRequest(
             DisconnectReason Reason,
             string Details,
-            string TraceMessage);
+            string TraceReason);
 
         private sealed class PooledTransactionSample(int capacity)
         {

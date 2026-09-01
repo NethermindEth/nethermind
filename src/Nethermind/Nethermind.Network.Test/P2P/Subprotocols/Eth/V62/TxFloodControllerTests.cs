@@ -386,13 +386,48 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Will_disconnect_on_invalid_tx()
         {
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 1000; i++)
             {
                 _controller.Report(AcceptTxResult.Invalid);
             }
 
-            _session.Received(1)
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1)
+                    .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+                Assert.That(_controller.IsDowngraded, Is.False);
+            }
+        }
+
+        [Test]
+        public void Invalid_tx_disconnect_can_be_requested_again_after_window_reset()
+        {
+            _controller.Report(AcceptTxResult.Invalid);
+            AdvanceWindow();
+
+            _controller.Report(AcceptTxResult.Invalid);
+
+            _session.Received(2)
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+        }
+
+        [Test]
+        public void Pending_disconnect_does_not_suppress_next_invalid_tx_disconnect()
+        {
+            ReportPooledRequestWindow(32_768, 0);
+            ReportPooledRequestWindow(32_768, 0);
+            AdvanceWindow();
+
+            _controller.Report(AcceptTxResult.Invalid);
+            _controller.Report(AcceptTxResult.Invalid);
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1)
+                    .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+                _session.Received(1)
+                    .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+            }
         }
 
         [TestCase(false)]

@@ -147,7 +147,7 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
-            Assert.That(logger.LogList, Has.Some.Contains("received disconnect [BreachOfProtocol]"));
+            Assert.That(logger.LogList, Has.Some.Contains("P2P received disconnect [BreachOfProtocol]"));
         }
 
         [Test]

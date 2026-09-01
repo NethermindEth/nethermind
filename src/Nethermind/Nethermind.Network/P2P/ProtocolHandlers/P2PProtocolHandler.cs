@@ -471,7 +471,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedDisconnect(EthDisconnectReason reason)
-            => Logger.Trace($"{Session} received disconnect [{reason}]");
+            => Logger.Trace($"{Session} P2P received disconnect [{reason}]");
     }
 
     public override string Name => Protocol.P2P;

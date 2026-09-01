@@ -53,6 +53,7 @@ namespace Nethermind.Network
             int hostStart = hostSeparator + 1;
             int queryStart = nodeString.IndexOf('?', hostStart);
             int endpointEnd = queryStart < 0 ? nodeString.Length : queryStart;
+            // The persisted legacy format always ends its endpoint with :port, including unbracketed IPv6 hosts.
             int portSeparator = nodeString.LastIndexOf(':', endpointEnd - 1);
             if (portSeparator <= hostStart)
             {
