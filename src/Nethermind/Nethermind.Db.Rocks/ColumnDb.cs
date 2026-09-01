@@ -154,9 +154,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public void IngestStagedFiles(IReadOnlyList<string> files)
     {
         if (files.Count == 0) return;
-        _testIngestFailureHook?.Invoke();
         try
         {
+            _testIngestFailureHook?.Invoke();
             _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
         }
         catch (RocksDbSharpException x)

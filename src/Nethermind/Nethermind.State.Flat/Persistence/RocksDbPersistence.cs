@@ -192,7 +192,7 @@ public class RocksDbPersistence : IPersistence
                 if (_rlpWrapSlots)
                     BasePersistence.RecordLayoutOnFirstBatch(metadata, ref _layoutPersisted, FlatLayout.Flat);
             }
-            _db.Flush(onlyWal: true);
+            _db.SyncWal();
 
             _ingestGate.EnterWriteLock();
             try
@@ -275,22 +275,21 @@ public class RocksDbPersistence : IPersistence
 
     private void RollbackFailedIngest(ISstIngestWriteBatch[] batches, in StateId to)
     {
-        bool markerIsOurs = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is not { } marker || marker.To == to;
-        if (markerIsOurs)
+        try
         {
-            try
+            // The marker must be gone before staged files are deleted: a marker surviving its files would
+            // roll the pointer forward past missing data on the next open.
+            if (BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is not { } marker || marker.To == to)
             {
-                // The marker must be gone before staged files are deleted: a marker surviving its files would
-                // roll the pointer forward past missing data on the next open.
                 using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
                     BasePersistence.ClearIngestMarker(batch.GetColumnBatch(FlatDbColumns.Metadata));
-                _db.Flush(onlyWal: true);
+                _db.SyncWal();
             }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
-                return;
-            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
+            return;
         }
 
         foreach (ISstIngestWriteBatch batch in batches)
@@ -366,7 +365,7 @@ public class RocksDbPersistence : IPersistence
             BasePersistence.SetCurrentState(metadata, pending.To);
             BasePersistence.ClearIngestMarker(metadata);
         }
-        db.Flush(onlyWal: true);
+        db.SyncWal();
 
         if (logger.IsInfo)
             logger.Info($"Rolled interrupted flat DB persist forward to {pending.To}: re-ingested {reingested} of {pending.Files.Length} staged SST file(s)");

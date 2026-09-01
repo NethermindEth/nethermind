@@ -324,6 +324,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <param name="scheduleRepairMarker">
+    /// When <c>false</c>, a reported <c>Corruption:</c> is treated as originating from an external artifact
+    /// (an SST staged for ingestion) rather than the live DB files, so the fast-shutdown still happens but no
+    /// repair marker is written and no lossy repair of a healthy DB is scheduled.
+    /// </param>
     internal void HandleFatalDbError(RocksDbSharpException rocksDbException, bool scheduleRepairMarker = true)
     {
         bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
