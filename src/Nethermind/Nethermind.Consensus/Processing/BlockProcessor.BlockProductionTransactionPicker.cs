@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -79,7 +80,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
-                if (!TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
+                if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
                     return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
                 }
@@ -125,20 +126,6 @@ namespace Nethermind.Consensus.Processing
 
                 OnAddingTransaction(args);
                 return args;
-            }
-
-            private static bool TryGetBlockGasReservations(Transaction currentTx, IReleaseSpec spec, out ulong executionReservation, out ulong stateReservation)
-            {
-                if (currentTx.SupportsFrames)
-                {
-                    return FrameTxValidation.TryCalculateBlockGasReservations(currentTx, spec, out executionReservation, out stateReservation);
-                }
-
-                executionReservation = spec.IsEip8037Enabled
-                    ? Math.Min(Eip7825Constants.DefaultTxGasLimitCap, currentTx.GasLimit)
-                    : currentTx.GasLimit;
-                stateReservation = spec.IsEip8037Enabled ? currentTx.GasLimit : 0;
-                return true;
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
