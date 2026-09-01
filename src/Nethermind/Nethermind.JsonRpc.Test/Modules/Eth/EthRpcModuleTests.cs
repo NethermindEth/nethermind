@@ -1558,15 +1558,12 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
-    [TestCase("hash")]
-    [TestCase("nonce")]
-    [TestCase("miner")]
-    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields(string field)
+    [Test]
+    public async Task EthGetHeaderByNumber_WhenPending_ReturnsNull()
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
-        JToken json = JToken.Parse(serialized);
-        Assert.That(json["result"]![field]!.Type, Is.EqualTo(JTokenType.Null));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
     [Test]
