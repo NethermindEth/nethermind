@@ -166,9 +166,9 @@ public class BlockCachePreWarmerTests
 
     [TestCase(false, "validation")]
     [TestCase(true, "preparation")]
-    public async Task PreWarmCaches_TraceLogsPurposeAndTransactionCount(bool speculative, string purpose)
+    public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose)
     {
-        TestLogger logger = new() { IsDebug = false };
+        TestLogger logger = new();
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(
             parallelExecution: false,
             parallelExecutionBatchRead: false,

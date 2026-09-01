@@ -330,9 +330,14 @@ namespace Nethermind.Network
             {
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
+                bool throttlingLogged = false;
                 while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
-                    if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                    if (!throttlingLogged)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                        throttlingLogged = true;
+                    }
                     await Task.Delay(1000, token);
                 }
 

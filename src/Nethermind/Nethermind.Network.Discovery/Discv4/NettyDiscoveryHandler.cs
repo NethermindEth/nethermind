@@ -229,14 +229,14 @@ public class NettyDiscoveryHandler(
             if (timeToExpire < 0)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
-                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
+                if (_logger.IsTrace) TraceExpiredMessage(-timeToExpire, type, address, msg);
                 return false;
             }
 
             if (timeToExpire > MaxFutureExpirationOffset.TotalSeconds)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} far future", size);
-                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that expires too far in the future ({timeToExpire} seconds), type: {type}, sender: {address}, message: {msg}");
+                if (_logger.IsTrace) TraceFarFutureMessage(timeToExpire, type, address, msg);
                 return false;
             }
         }
@@ -244,25 +244,45 @@ public class NettyDiscoveryHandler(
         if (msg.FarAddress is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid far address {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceMissingFarAddress(type, address, msg);
             return false;
         }
 
         if (!msg.FarAddress.Equals(address))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has incorrect far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceFakeIp(type, address, msg);
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far public key", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceMissingPublicKey(type, address, msg);
             return false;
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceExpiredMessage(long secondsAgo, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Received a discovery message that has expired {secondsAgo} seconds ago, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceFarFutureMessage(long seconds, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Received a discovery message that expires too far in the future ({seconds} seconds), type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMissingFarAddress(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery message without a valid far address {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceFakeIp(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMissingPublicKey(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery message without a valid signature {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
     }
 
     private static void ReportMsgByType(DiscoveryMsg msg, int size)

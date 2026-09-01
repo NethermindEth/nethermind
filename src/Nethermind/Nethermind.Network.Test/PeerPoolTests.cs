@@ -34,6 +34,7 @@ public class PeerPoolTests
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new();
+        TestLogger logger = new();
         PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -43,7 +44,7 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
-            LimboLogs.Instance,
+            new OneLoggerLogManager(new ILogger(logger)),
             trustedNodesManager);
 
         Random rand = new(0);
@@ -71,9 +72,16 @@ public class PeerPoolTests
             nodeSource.AddNode(node);
         }
 
-        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
-
-        await pool.StopAsync();
+        try
+        {
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
+            await Task.Delay(1200);
+            Assert.That(logger.LogList, Has.Exactly(1).EqualTo("Peer cleanup threshold reached. Throttling discovery."));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
     }
 
     [Test]
