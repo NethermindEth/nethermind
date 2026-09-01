@@ -242,7 +242,7 @@ public class VmState<TGasPolicy> : IDisposable
     {
         if (!_isDisposed)
         {
-            Console.Error.WriteLine($"Warning: {nameof(VmState<TGasPolicy>)} was not disposed. Created at: {_creationStackTrace}");
+            Console.Error.WriteLine($"Warning: {nameof(VmState<>)} was not disposed. Created at: {_creationStackTrace}");
         }
     }
 #endif
