@@ -38,6 +38,16 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    protected override void ReleaseUnmanagedResources()
+    {
+        foreach (KeyValuePair<T, ColumnDb> column in _columnDbs)
+        {
+            column.Value.Dispose();
+        }
+
+        base.ReleaseUnmanagedResources();
+    }
+
     protected override long FetchTotalPropertyValue(string propertyName)
     {
         long total = 0;
@@ -144,6 +154,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Clear() => _writeBatch.WriteBatch.Clear();
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
     }

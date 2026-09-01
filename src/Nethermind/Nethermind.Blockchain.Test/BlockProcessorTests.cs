@@ -124,12 +124,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -195,12 +193,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -259,7 +255,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -282,6 +278,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -562,6 +559,56 @@ public class BlockProcessorTests
         processor.TransactionsExecuted -= handler;
     }
 
+    // Regression: a top-frame EIP-8037 state-gas OOG tx halts before EVM dispatch but is a valid,
+    // executed transaction — a block must include it between successful txs with a failed receipt.
+    [Test]
+    public async Task Block_with_top_frame_state_gas_oog_tx_processes_with_failed_receipt()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider));
+
+        IReleaseSpec spec = Amsterdam.Instance;
+        Address freshRecipient = Address.FromNumber(0x8037);
+
+        // Senders B and C only: A has code at genesis and Amsterdam enforces EIP-3607.
+        Transaction okTx1 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+        Transaction oogTx = Build.A.Transaction
+            .WithTo(freshRecipient)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyB, spec.IsEip155Enabled)
+            .TestObject;
+        oogTx.GasLimit = IntrinsicGasCalculator.Calculate(oogTx, spec).Standard + (ulong)GasCostOf.NewAccountState - 1;
+        Transaction okTx2 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+
+        Block block = await chain.AddBlock(okTx1, oogTx, okTx2);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        int failedIndex = Array.FindIndex(receipts, r => r.TxHash == oogTx.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(3), "all txs, including the halted one, must be included");
+            Assert.That(receipts, Has.Length.EqualTo(3));
+            Assert.That(failedIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(receipts[failedIndex].StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipts[failedIndex].GasUsed, Is.EqualTo(oogTx.GasLimit), "the halted tx burns its full gas limit");
+            Assert.That(Array.FindAll(receipts, r => r.TxHash != oogTx.Hash && r.StatusCode == StatusCode.Success), Has.Length.EqualTo(2));
+        }
+    }
+
     [Test]
     public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
     {
@@ -686,12 +733,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -731,12 +776,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -1212,6 +1255,52 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_stops_executing_tail_once_inclusion_check_rejects()
+    {
+        const int txCount = 2048;
+        // 3 * cap is spent and under one cap remains, so tx 3 provably cannot fit.
+        const int rejectIndex = 3;
+        ulong txGasLimit = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong blockGasLimit = (ulong)(rejectIndex + 1) * txGasLimit - 1;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithTransactions(CreateParallelValidationTransactions(txCount, txGasLimit))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using ManualResetEventSlim validationFinished = new(false);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(rejectIndex, txGasLimit, validationFinished);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor)
+            {
+                IncrementalValidationAction = (b, gasResults) => ReplayInclusionChecks(b, gasResults, validationFinished)
+            },
+            LimboLogs.Instance);
+
+        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            new BlockReceiptsTracer(),
+            CancellationToken.None));
+
+        // The decisive prefix has to run. The upper bound stays well clear of the in-flight window
+        // so it asserts that the tail stopped without depending on how fast cancellation propagates.
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
+            Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
+        });
+    }
+
+    [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
@@ -1232,12 +1321,10 @@ public class BlockProcessorTests
     private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
         new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
@@ -1259,6 +1346,26 @@ public class BlockProcessorTests
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
 
         Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering: wait for
+    /// each worker's gas result, then run the production EIP-8037 inclusion check.</summary>
+    private static void ReplayInclusionChecks(Block block, GasValidationResultSlot[] gasResults, ManualResetEventSlim validationFinished)
+    {
+        try
+        {
+            ulong totalExecutionGas = 0;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                GasValidationResult gasResult = gasResults[i].GetResult();
+                BlockAccessListManager.CheckPerTxInclusion(block, i, block.Transactions[i], Amsterdam.Instance, totalExecutionGas, 0);
+                totalExecutionGas += gasResult.BlockGasUsed;
+            }
+        }
+        finally
+        {
+            validationFinished.Set();
+        }
     }
 
     private static GasValidationResultSlot[] ResultsForCount(int count)
@@ -1293,14 +1400,14 @@ public class BlockProcessorTests
         return slots;
     }
 
-    private static Transaction[] CreateParallelValidationTransactions(int txCount)
+    private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {
         Transaction[] transactions = new Transaction[txCount];
         for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
                  .WithNonce(i)
-                 .WithGasLimit(21_000ul)
+                 .WithGasLimit(gasLimit)
                 .TestObject;
         }
 
@@ -1440,6 +1547,8 @@ public class BlockProcessorTests
         {
         }
 
+        public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
@@ -1481,8 +1590,7 @@ public class BlockProcessorTests
         }
 
         public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
-        {
-        }
+            => IncrementalValidationAction?.Invoke(block, gasResults);
 
         public void SetBlockAccessList(Block block)
         {
@@ -1520,6 +1628,39 @@ public class BlockProcessorTests
             balIndexes.Add((txIndex, balIndex));
 
             ulong gasUsed = 21_000ul + (ulong)txIndex;
+            transaction.BlockGasUsed = gasUsed;
+            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
+
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+    }
+
+    /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
+    /// validation finishes so the count reflects cancellation, not scheduling.</summary>
+    private sealed class GatedTailTransactionProcessorAdapter(
+        int decisiveIndex,
+        ulong gasUsed,
+        ManualResetEventSlim validationFinished) : ITransactionProcessorAdapter
+    {
+        private int _executedCount;
+
+        public int ExecutedCount => Volatile.Read(ref _executedCount);
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            if ((int)transaction.Nonce > decisiveIndex)
+            {
+                // Bounded so a regression fails the assertion instead of wedging the run; the spin
+                // then outlasts the gap between validation failing and the workers observing it.
+                validationFinished.Wait(TimeSpan.FromSeconds(10));
+                Thread.SpinWait(50_000);
+            }
+
+            Interlocked.Increment(ref _executedCount);
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 

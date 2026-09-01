@@ -27,6 +27,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
+    public object ReturnData;
+
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
     /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
@@ -65,7 +67,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
             _worldState.Restore(child.Snapshot);
-            RevertParityTouchBugAccount();
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
             RemoveAdvancedStateGasRefund(child, ref child.Gas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
             // EIP-8037: the failed call did not create its (dead) recipient; refund NEW_ACCOUNT.
@@ -113,6 +115,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         if (reverted)
         {
             _worldState.Restore(child.Snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
         }
         else
         {

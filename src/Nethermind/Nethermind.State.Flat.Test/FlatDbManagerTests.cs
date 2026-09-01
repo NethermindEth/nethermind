@@ -63,7 +63,9 @@ public class FlatDbManagerTests
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, _config);
+        _historyReader = new HistoryReader(_historyDb, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         _accountStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }
@@ -96,6 +98,28 @@ public class FlatDbManagerTests
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
         return new StateId(blockNumber, new ValueHash256(bytes));
+    }
+
+    private (FlatDbManager Manager, StateId SnapshotTo) CreateManagerWithQueuedSnapshot(
+        bool processExitAlreadyCancelled = false)
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = false };
+        StateId snapshotFrom = CreateStateId(10);
+        StateId snapshotTo = CreateStateId(11);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
+        _persistenceManager.AddToPersistence(snapshotTo).Returns(Task.CompletedTask);
+
+        if (processExitAlreadyCancelled) _cts.Cancel();
+
+        ResourcePool realResourcePool = new(_config);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(
+            snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+        return (manager, snapshotTo);
     }
 
     [Test]
@@ -135,6 +159,78 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    public async Task DisposeAsync_CallsFlushOnce(int disposeCalls)
+    {
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
+
+        FlatDbManager manager = CreateManager();
+        for (int i = 0; i < disposeCalls; i++) await manager.DisposeAsync();
+
+        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedBeforeFlushOnDispose(
+        bool processExitAlreadyCancelled)
+    {
+        (FlatDbManager manager, StateId snapshotTo) =
+            CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(snapshotTo);
+
+        await manager.DisposeAsync();
+
+        _snapshotRepository.Received(1).AddStateId(snapshotTo);
+        await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
+        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
+        Received.InOrder(() =>
+        {
+            _snapshotRepository.AddStateId(snapshotTo);
+            _ = _persistenceManager.AddToPersistence(snapshotTo);
+            _persistenceManager.FlushToPersistence(CancellationToken.None);
+        });
+    }
+
+    [Test]
+    public async Task DisposeAsync_FlushThrows_AwaitsWorkerCleanup()
+    {
+        TaskCompletionSource populateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releasePopulate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource flushAttempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        InvalidOperationException flushFailure = new("Flush failed");
+        _trieNodeCache.When(cache => cache.Add(Arg.Any<TransientResource>())).Do(_ =>
+        {
+            populateStarted.TrySetResult();
+            releasePopulate.Task.GetAwaiter().GetResult();
+        });
+
+        (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(_ =>
+        {
+            flushAttempted.TrySetResult();
+            throw flushFailure;
+        });
+
+        await populateStarted.Task;
+        Task disposeTask = manager.DisposeAsync().AsTask();
+        await flushAttempted.Task;
+        await Task.Yield();
+
+        try
+        {
+            Assert.That(disposeTask.IsCompleted, Is.False);
+        }
+        finally
+        {
+            releasePopulate.TrySetResult();
+        }
+
+        await Assert.ThatAsync(async () => await disposeTask,
+            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo(flushFailure.Message));
     }
 
     [Test]
@@ -359,13 +455,83 @@ public class FlatDbManagerTests
         }
     }
 
+    // A block covered by the watermark but pruned below the retention floor must never fall through to the inner
+    // (non-history) manager, whose tiers only reach the finalization barrier — answering "no state here" that far
+    // back risks being read upstream as "account/slot does not exist" (e.g. a false zero balance) instead of the
+    // deliberate unavailable this represents.
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_pruned_below_floor_throws_instead_of_falling_through()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        Assert.That(() => manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5)),
+            Throws.TypeOf<StateUnavailableException>());
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_at_or_above_floor_still_serves_history()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(CreateStateId(10, rootByte: 10));
+
+        Assert.That(bundle, Is.Not.Null);
+    }
+
+    // HasStateForBlock is a plain existence query, not a read-serving path — a pruned block genuinely has no state
+    // available, which is a true "false", not the silent-wrong-answer risk GatherReadOnlySnapshotBundle guards
+    // against. It must not throw.
+    [Test]
+    public async Task HasStateForBlock_pruned_below_floor_reports_false_without_throwing()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(false);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        Assert.That(() => manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Throws.Nothing);
+        Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.False);
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_below_floor_with_a_slice_scope_routes_to_the_restricted_reader()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        availability.PublishGlobalFloor(10);
+        availability.PublishScope(HistoryAddr.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength], floor: 0);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5));
+
+        Assert.That(bundle, Is.Not.Null, "below the general floor with a slice configured, the block is served restricted instead of refused");
+        Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.True);
+    }
+
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
         inner,
         _persistenceManager,
         _historyReader,
         _trieNodeCache,
         _resourcePool,
-        enableDetailedMetrics: false);
+        enableDetailedMetrics: false,
+        new HistoryScopeGate());
 
     private void RecordHistoryWindow()
     {
@@ -390,17 +556,16 @@ public class FlatDbManagerTests
             IWriteBatch available = batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
             for (ulong block = fromInclusive; block < toExclusive; block++)
             {
-                HistoryAvailability.MarkBlock(available, block, stateAt(block).StateRoot);
+                HistoryAvailability.MarkBlock(available, block, stateAt(block).StateRoot, HistoryAvailability.FormatVersion);
             }
         }
 
-        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(toExclusive - 1);
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(toExclusive - 1, HistoryAvailability.FormatVersion);
     }
 
     private void RecordAccount(ulong block, Account? account)
     {
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], HistoryAddr.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryAddr.ToAccountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);

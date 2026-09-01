@@ -366,7 +366,6 @@ public class WireTests
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
-            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
         return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
@@ -421,7 +420,7 @@ public class WireTests
     {
         foreach (NSubstitute.Core.ICall call in kademlia.ReceivedCalls())
         {
-            if (call.GetMethodInfo().Name == nameof(IKademlia<PublicKey, Node>.AddOrRefresh) &&
+            if (call.GetMethodInfo().Name == nameof(IKademlia<,>.AddOrRefresh) &&
                 call.GetArguments()[0] is Node node &&
                 node.Id.Equals(publicKey) &&
                 HasEnrSequence(node, sequence))

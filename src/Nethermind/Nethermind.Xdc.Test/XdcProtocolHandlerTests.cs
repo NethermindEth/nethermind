@@ -55,11 +55,11 @@ public class XdcProtocolHandlerTests
             : Build.A.BlockHeader.WithNumber(headHeader.Number + (ulong)suggestedAheadOfHead).TestObject;
         blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
+        XdcConsensusMessageHandler.Factory consensusMessages =
+            new(timeoutManager, votesManager, syncInfoManager, blockTree, LimboLogs.Instance);
+
         XdcProtocolHandler handler = new(
-            timeoutManager,
-            votesManager,
-            syncInfoManager,
-            blockTree,
+            consensusMessages,
             session,
             serializer,
             nodeStatsManager,
@@ -138,7 +138,7 @@ public class XdcProtocolHandlerTests
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            timeoutManager.Received(1).OnReceiveTimeout(Arg.Any<Timeout>());
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
         }
     }
 
@@ -189,7 +189,7 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 1);
 
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -203,8 +203,8 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 7);
 
-            handler.SendVote(vote);
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -219,8 +219,8 @@ public class XdcProtocolHandlerTests
             Vote vote1 = CreateVote(round: 1);
             Vote vote2 = CreateVote(round: 2);
 
-            handler.SendVote(vote1);
-            handler.SendVote(vote2);
+            ((IXdcConsensusPeer)handler).SendVote(vote1);
+            ((IXdcConsensusPeer)handler).SendVote(vote2);
 
             session.Received(2).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -234,7 +234,7 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 1);
 
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -248,8 +248,8 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 4);
 
-            handler.SendTimeout(timeout);
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -264,8 +264,8 @@ public class XdcProtocolHandlerTests
             Timeout timeout1 = CreateTimeout(round: 1);
             Timeout timeout2 = CreateTimeout(round: 2);
 
-            handler.SendTimeout(timeout1);
-            handler.SendTimeout(timeout2);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout1);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout2);
 
             session.Received(2).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -279,7 +279,7 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
             session.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
@@ -294,8 +294,8 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncInfo(syncInfo);
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
             session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }

@@ -5,7 +5,9 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://checkpoint-sync.hoodi.ethpandaops.io",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "chiado",
@@ -13,7 +15,9 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "http://139.144.26.89:4000/",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "sepolia",
@@ -21,7 +25,9 @@
     "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
     "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "gnosis",
@@ -29,7 +35,9 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://checkpoint.gnosischain.com",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "mainnet",
@@ -37,7 +45,9 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
     "timeout": 360,
-    "agent": "g6-standard-8"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 2,
+    "spot": false
   },
   {
     "network": "op-sepolia",
@@ -45,7 +55,9 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "world-sepolia",
@@ -53,7 +65,9 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": true
   },
   {
     "network": "op-mainnet",
@@ -61,7 +75,9 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-8"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 2,
+    "spot": false
   },
   {
     "network": "world-mainnet",
@@ -69,7 +85,9 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": false
   },
   {
     "network": "taiko-alethia",
@@ -77,7 +95,9 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": false
   },
   {
     "network": "taiko-hoodi",
@@ -85,6 +105,8 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-6"
+    "machine_type": "c2-standard-8",
+    "local_ssd_count": 1,
+    "spot": false
   }
 ]

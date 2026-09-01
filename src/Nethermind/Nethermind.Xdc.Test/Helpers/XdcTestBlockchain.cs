@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -182,12 +183,14 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<IChainHeadInfoProvider>(),
                     ctx.Resolve<ITxPoolConfig>(),
                     ctx.Resolve<ITxValidator>(),
+                    new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),
-                    new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
-                    ctx.Resolve<ITxValidator>()
-                );
+                    [
+                        new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
+                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
+                    ]);
 
                 return txPool;
             })
@@ -228,7 +231,6 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024UL;
         xdcSpec.LimitPenaltyEpoch = 4;
-        xdcSpec.LimitPenaltyEpochV2 = 0;
 
         xdcSpec.BlackListedAddresses =
             [
