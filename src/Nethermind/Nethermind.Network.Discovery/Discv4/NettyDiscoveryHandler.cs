@@ -379,9 +379,13 @@ public class NettyDiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {packet.Type}, sender: {packet.Address}, msg: {msgBytes.AsSpan(0, packet.Size).ToHexString()}, {e.Message}");
+            if (_logger.IsTrace) TraceDeserializationFailure(packet, msgBytes, e);
             return false;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, byte[] messageBytes, Exception exception) =>
+            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {messageBytes.AsSpan(0, failedPacket.Size).ToHexString()}, {exception.Message}");
     }
 
     private static void ForwardPacket(InboundDiscoveryPacket packet)
