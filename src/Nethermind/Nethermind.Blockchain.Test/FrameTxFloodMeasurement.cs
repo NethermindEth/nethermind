@@ -590,7 +590,14 @@ public class FrameTxFloodMeasurement
     /// run, so a single-threaded generator saturates at roughly <c>1 / t_reject</c> and the ramp is expected
     /// to confirm that rather than discover something larger.
     /// </para>
+    /// <para>
+    /// 100k is the plan's control point: without it <c>R_max</c> at the higher ceilings has nothing to be
+    /// compared against, and the incremental cost of raising the ceiling cannot be stated. Expect
+    /// <c>censored=yes</c> there, because <c>1 / t_reject</c> is well above the grid's top rate and a lower
+    /// bound is the honest result.
+    /// </para>
     /// </remarks>
+    [TestCase(100_000ul)]
     [TestCase(236_285ul)]
     [TestCase(300_000ul)]
     [TestCase(500_000ul)]
