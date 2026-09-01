@@ -733,7 +733,9 @@ What that file has to get right:
   `period`, and the DEX contract only takes effect under the bound spelling, `XDCXAddressBinary` — which is
   what the skeleton above uses.
 
-Each node then needs a config pointing at the chainspec:
+The node config only has to point at the chainspec and turn on block production; everything else about a node
+— JSON-RPC, ports, peers, keys, data directory — is per-node and belongs in its own CLI options or
+`NETHERMIND_*` environment variables, not in the chain description:
 
 ```json
 {
@@ -746,10 +748,7 @@ Each node then needs a config pointing at the chainspec:
   "Blocks": { "TargetBlockGasLimit": 420000000 },
   "Sync": { "FastSync": true, "NeedToWaitForHeader": true, "VerifyTrieOnStateSyncFinished": true },
   "Merge": { "Enabled": false },
-  "TraceStore": { "Enabled": false },
-  "Mining": { "Enabled": true },
-  "JsonRpc": { "Enabled": true, "EnabledModules": ["Eth", "Xdc"] },
-  "KeyStore": { "TestNodeKey": "<masternode private key>" }
+  "Mining": { "Enabled": true }
 }
 ```
 
@@ -766,12 +765,11 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
   the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
   node's enode key). Its address has to be in the committee for the node's blocks and votes to count.
-- `JsonRpc.EnabledModules` has to include `Xdc` for the `XDPoS_*` methods — it is not in the default set.
-- Everything per-node stays out of the shared config file, as CLI options or `NETHERMIND_*` environment
-  variables. A generated deployment runs a dedicated bootnode and gives each node `Network.Bootnodes`, its own
-  `Network.P2PPort` and `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to the address
-  peers should dial, its own `KeyStore.TestNodeKey`, and its own `--data-dir`; the chainspec's `nodes` array
-  stays empty. `Network.StaticPeers` works instead when there is no bootnode.
+- Per node: `Network.Bootnodes` (a generated deployment runs a dedicated bootnode, and leaves the chainspec's
+  `nodes` array empty — `Network.StaticPeers` works instead when there is none), `Network.P2PPort` and
+  `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to the address peers should dial,
+  `KeyStore.TestNodeKey`, `--data-dir`, and the `JsonRpc` settings — with `Xdc` among
+  `JsonRpc.EnabledModules`, since the `XDPoS_*` methods are not in the default set.
 - Sanity checks once it runs: `net_peerCount` should see the other nodes, `XDPoS_getMasternodesByNumber`
   should list the committee, and `XDPoS_getV2BlockByNumber` should show rounds advancing and blocks being
   committed.
