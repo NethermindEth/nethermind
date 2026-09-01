@@ -11,16 +11,7 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public enum PbtTiling : byte
 {
-    /// <summary>Six-level independent tiles.</summary>
-    SixLevel = 1,
-
-    /// <summary>Eight-level independent tiles.</summary>
-    EightLevel = 2,
-
     /// <summary>Four-level independent tiles.</summary>
     FourLevel = 3,
-
-    /// <summary>Five-level independent tiles.</summary>
-    FiveLevel = 4,
 }
 

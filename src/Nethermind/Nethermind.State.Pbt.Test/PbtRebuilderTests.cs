@@ -23,13 +23,11 @@ namespace Nethermind.State.Pbt.Test;
 
 /// <param name="layout">
 /// The rebuild is a producer of its own — it folds windows of sorted leaves rather than a block's
-/// writes — so it is run under every tiling, against the same reference root.
+/// writes — so it is run under each of the three four-level layouts, against the same reference root.
 /// </param>
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
-[TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelEvery3Depth)]
-[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
+[TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
+[TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
 public class PbtRebuilderTests(PbtTrieLayout layout)
 {
     private PbtConfig Config => new() { TrieNodeLayout = layout };

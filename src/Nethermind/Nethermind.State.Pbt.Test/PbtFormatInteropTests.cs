@@ -29,7 +29,6 @@ public class PbtFormatInteropTests
     {
         List<(byte[], byte[]?)> writes = RandomWrites(seed: 7, count: 400);
 
-        // Every4Depth shares BoundaryOnly's tile bytes; its interop is covered below.
         PbtTreeHarness[] harnesses =
         [
             new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelEveryLevel),
@@ -54,27 +53,17 @@ public class PbtFormatInteropTests
         }
     }
 
-    /// <summary>Verifies that rewriting across layouts matches a fresh fold in the target layout.</summary>
-    /// <remarks>The eight-level pair covers <see cref="PbtGroupFormat.Every4Depth"/>.</remarks>
+    /// <summary>Verifies that rewriting across four-level layouts matches a fresh fold in the target layout.</summary>
     [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelInterleaved)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelBoundaryOnly)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelEveryLevel)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved)]
-    [TestCase(PbtTrieLayout.EightLevelInterleaved, PbtTrieLayout.EightLevelEvery4Depth)]
-    [TestCase(PbtTrieLayout.EightLevelEvery4Depth, PbtTrieLayout.EightLevelInterleaved)]
-    [TestCase(PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.SixLevelEvery3Depth)]
-    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved)]
     public void MixedLayoutRewrite_MatchesAFreshFoldInTheNewLayout(PbtTrieLayout initial, PbtTrieLayout then)
     {
         // A full tile leaves unchanged subtrees for the copy-verbatim path after one-slot rewrites.
-        int levelsPerGroup = initial.Tiling() switch
-        {
-            PbtTiling.SixLevel => PbtSixLevelTileLayout.LevelsPerGroup,
-            PbtTiling.EightLevel => PbtEightLevelTileLayout.LevelsPerGroup,
-            _ => Layout.LevelsPerGroup,
-        };
+        int levelsPerGroup = Layout.LevelsPerGroup;
         int slots = 1 << levelsPerGroup;
         List<(byte[], byte[]?)> writes = [];
         for (int slot = 0; slot < slots; slot++) writes.Add((RootTileSlotKey(slot, levelsPerGroup), Value));
@@ -96,31 +85,6 @@ public class PbtFormatInteropTests
         foreach ((TrieNodeKey key, byte[] blob) in fresh.Nodes)
         {
             Assert.That(harness.Nodes[key], Is.EqualTo(blob), $"node {key} must match a fresh {then} fold, not splice {initial} bytes");
-        }
-    }
-
-    [Test]
-    public void SixLevelEvery3Depth_WritesEvery3GroupsAndInterleavedLeaves()
-    {
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.SixLevelEvery3Depth);
-        harness.ApplyBatch(RandomWrites(seed: 19, count: 80));
-
-        Assert.That(harness.Nodes, Is.Not.Empty);
-        foreach (byte[] group in harness.Nodes.Values)
-        {
-            Assert.That(group[^1], Is.EqualTo((byte)PbtGroupFormat.Every3Depth), "trie group format");
-        }
-
-        Assert.That(harness.Blobs, Is.Not.Empty);
-        foreach (byte[] leaf in harness.Blobs.Values)
-        {
-            Assert.That(leaf[^1], Is.EqualTo((byte)PbtLeafFormat.Interleaved), "leaf blob format");
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((byte)PbtGroupFormat.Every3Depth, Is.EqualTo(0x09));
-            Assert.That((byte)PbtLeafFormat.Interleaved, Is.EqualTo(0x03));
         }
     }
 

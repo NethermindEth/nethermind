@@ -14,17 +14,12 @@ namespace Nethermind.State.Pbt.Test;
 /// Verifies that parallel and serial folds produce identical trees.
 /// </summary>
 /// <remarks>
-/// Covers layouts with boundary masks wider than a machine word.
+/// Covers parallel/serial equivalence across the retained four-level layouts.
 /// </remarks>
 /// <param name="layout"><inheritdoc cref="PbtTilingTests" path="/param[@name='layout']"/></param>
 [TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
-[TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelEvery3Depth)]
-[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
-[TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
 public class ParallelUpdateRootTests(PbtTrieLayout layout)
 {
     private const int Workers = 8;

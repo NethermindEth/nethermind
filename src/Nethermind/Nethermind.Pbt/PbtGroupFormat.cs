@@ -36,8 +36,8 @@ public enum PbtGroupFormat : byte
     /// Widths 64, 8 and 1, anchored at the boundary: every third depth and the mandatory boundary.
     /// </summary>
     /// <remarks>
-    /// In its intended six-level tile, only width-8 intermediate hashes are stored because the parent
-    /// caches the width-64 group root. 0x09 is distinct from the group and chain sentinels.
+    /// This legacy format is retained for decoding persisted groups. 0x09 is distinct from the group
+    /// and chain sentinels.
     /// </remarks>
     Every3Depth = 0x09,
 }

@@ -56,14 +56,7 @@ public sealed class PbtStoreCache : IDisposable
     internal static int EstimateTrieNodeSize(PbtTrieLayout layout)
     {
         PbtGroupFormat format = layout.GroupFormat();
-        return layout.Tiling() switch
-        {
-            PbtTiling.FourLevel => EstimateGroupSize<PbtFourLevelTileLayout>(format),
-            PbtTiling.FiveLevel => EstimateGroupSize<PbtFiveLevelTileLayout>(format),
-            PbtTiling.SixLevel => EstimateGroupSize<PbtSixLevelTileLayout>(format),
-            PbtTiling.EightLevel => EstimateGroupSize<PbtEightLevelTileLayout>(format),
-            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
-        };
+        return EstimateGroupSize<PbtFourLevelTileLayout>(format);
     }
 
     private static int EstimateGroupSize<TLayout>(PbtGroupFormat format) where TLayout : IPbtTileLayout

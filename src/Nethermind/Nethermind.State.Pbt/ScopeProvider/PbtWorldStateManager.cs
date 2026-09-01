@@ -33,6 +33,8 @@ public class PbtWorldStateManager(
 
     public ISnapServer SnapServer => NoopSnapServer.Instance;
 
+    public ISnapStateServer SnapStateServer => NoopSnapServer.Instance;
+
     public IReadOnlyKeyValueStore? HashServer => null;
 
     public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeLayout, _rootFoldConcurrency, trieWarmer);

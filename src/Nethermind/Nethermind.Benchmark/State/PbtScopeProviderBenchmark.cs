@@ -79,10 +79,7 @@ public class PbtScopeProviderBenchmark
     [Params(
         PbtTrieLayout.FourLevelEveryLevel,
         PbtTrieLayout.FourLevelInterleaved,
-        PbtTrieLayout.FiveLevelInterleaved,
-        PbtTrieLayout.SixLevelInterleaved,
-        PbtTrieLayout.SixLevelEvery3Depth,
-        PbtTrieLayout.EightLevelInterleaved)]
+        PbtTrieLayout.FourLevelBoundaryOnly)]
     public PbtTrieLayout Layout { get; set; }
 
     [Params(1)]
@@ -139,7 +136,7 @@ public class PbtScopeProviderBenchmark
             config, new BenchFinalizedStateProvider(), persistence, repository, compactor, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, _pbtStoreCache, compactor, new BenchProcessExitSource(_cts), new MetricsConfig(), LimboLogs.Instance);
+            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             config.TrieNodeLayout, RootFoldConcurrency, new NoopTrieWarmer());

@@ -423,13 +423,17 @@ public class PbtStoreCacheTests
     [TestCase(PbtTrieLayout.FourLevelEveryLevel, 977)]
     [TestCase(PbtTrieLayout.FourLevelInterleaved, 657)]
     [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, 529)]
-    [TestCase(PbtTrieLayout.FiveLevelInterleaved, 1371)]
-    [TestCase(PbtTrieLayout.SixLevelInterleaved, 2735)]
-    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, 2351)]
-    [TestCase(PbtTrieLayout.EightLevelInterleaved, 11049)]
-    [TestCase(PbtTrieLayout.EightLevelEvery4Depth, 8361)]
     public void TrieNodeEstimateIsDerivedFromLayout(PbtTrieLayout layout, int expected) =>
         Assert.That(PbtStoreCache.EstimateTrieNodeSize(layout), Is.EqualTo(expected));
+
+    [Test]
+    public void InvalidTrieNodeLayoutIsRejectedBeforeCacheConstruction()
+    {
+        PbtConfig config = EmptyConfig();
+        config.TrieNodeLayout = (PbtTrieLayout)0;
+
+        Assert.That(() => new PbtStoreCache(config), Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
 
     private static PbtConfig ConfigWithBudget(bool trieNode, PbtPartition partition, ulong budget)
     {

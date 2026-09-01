@@ -89,14 +89,10 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         Dictionary<TrieNodeKey, byte[]> flattened = new(_nodes);
         foreach ((TrieNodeKey key, byte[] blob) in _nodes)
         {
-            switch (WriteLayout.Tiling())
-            {
-                case PbtTiling.FourLevel: FlattenChains<PbtFourLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.FiveLevel: FlattenChains<PbtFiveLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.SixLevel: FlattenChains<PbtSixLevelTileLayout>(flattened, key, blob); break;
-                case PbtTiling.EightLevel: FlattenChains<PbtEightLevelTileLayout>(flattened, key, blob); break;
-                default: throw new ArgumentOutOfRangeException(nameof(WriteLayout));
-            }
+            if (WriteLayout.Tiling() is not PbtTiling.FourLevel)
+                throw new ArgumentOutOfRangeException(nameof(WriteLayout));
+
+            FlattenChains<PbtFourLevelTileLayout>(flattened, key, blob);
         }
 
         return flattened;

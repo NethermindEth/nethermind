@@ -16,36 +16,23 @@ using Nethermind.Pbt.Tiles;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// What every tiling of the stem trie must do, whichever it is: fold to the EIP-8297 root, keep the
+/// What every four-level layout of the stem trie must do: fold to the EIP-8297 root, keep the
 /// canonical store shape a fresh rebuild would produce, and key nothing past its deepest tile.
 /// </summary>
 /// <remarks>
-/// <see cref="StemTrieTests"/> covers the four-level tiling in structural detail — the depths its
-/// groups sit at, the counts its runs collapse to — none of which carries over to a tiling of another
-/// width. What does carry over is here, run under every layout, with <see cref="EipReferenceTree"/> as
-/// the oracle throughout: a tiling changes where the bytes live and nothing else.
+/// <see cref="StemTrieTests"/> covers the four-level tiling in structural detail. What does carry over
+/// is here, run under every level encoding, with <see cref="EipReferenceTree"/> as the oracle throughout:
+/// a layout changes where the bytes live and nothing else.
 /// </remarks>
 [TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
 [TestFixture(PbtTrieLayout.FourLevelInterleaved)]
 [TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
-[TestFixture(PbtTrieLayout.FiveLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelInterleaved)]
-[TestFixture(PbtTrieLayout.SixLevelEvery3Depth)]
-[TestFixture(PbtTrieLayout.EightLevelInterleaved)]
-[TestFixture(PbtTrieLayout.EightLevelEvery4Depth)]
 public class PbtTilingTests(PbtTrieLayout layout)
 {
     private static readonly byte[] Value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
     private static readonly byte[] Rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-    private int LevelsPerGroup => layout.Tiling() switch
-    {
-        PbtTiling.FourLevel => PbtFourLevelTileLayout.LevelsPerGroup,
-        PbtTiling.FiveLevel => PbtFiveLevelTileLayout.LevelsPerGroup,
-        PbtTiling.SixLevel => PbtSixLevelTileLayout.LevelsPerGroup,
-        PbtTiling.EightLevel => PbtEightLevelTileLayout.LevelsPerGroup,
-        _ => throw new ArgumentOutOfRangeException(nameof(layout)),
-    };
+    private int LevelsPerGroup => PbtFourLevelTileLayout.LevelsPerGroup;
 
     private const PbtPartition Partition = PbtPartition.Storage;
 
@@ -70,8 +57,8 @@ public class PbtTilingTests(PbtTrieLayout layout)
     [TestCase(10)]
     [TestCase(163)]
     [TestCase(164)]
-    [TestCase(245)]  // inside the deepest tile of either tiling
-    [TestCase(247)]  // the last stem bit: the six-level tiling's deepest tile reaches past it
+    [TestCase(245)]  // inside the deepest tile
+    [TestCase(247)]  // the last stem bit in the deepest four-level tile
     public void StemsPartingAtAnyBit_FoldToTheReferenceRootAndCollapseBack(int divergenceBit)
     {
         byte[] stemA = StorageStem();
@@ -100,9 +87,8 @@ public class PbtTilingTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// Two stems agreeing on every bit but the last part inside the deepest tile of the tiling — the one
-    /// that reaches past the 248-bit stem where six levels do not divide it. Each lands alone in a slot
-    /// of its own, so the fold hoists both to their shortest unique prefix and no node is built below
+    /// Two stems agreeing on every bit but the last part inside the deepest tile. Each lands alone in a
+    /// slot of its own, so the fold hoists both to their shortest unique prefix and no node is built below
     /// the stem level, which is what leaves the root the reference's.
     /// </summary>
     [Test]
@@ -131,8 +117,8 @@ public class PbtTilingTests(PbtTrieLayout layout)
 
     /// <summary>
     /// One contract's storage stems share their first 61 bits, so the trie is single-child from wherever
-    /// the contract parts from others down to the tile the shared prefix ends in — one run whatever the
-    /// tiling, only its target depth moving with the tile width.
+    /// the contract parts from others down to the tile the shared prefix ends in — one run for every
+    /// level encoding.
     /// </summary>
     /// <remarks>
     /// Below that target the stems part over a few bits, and whether they finish parting inside the
@@ -282,11 +268,11 @@ public class PbtTilingTests(PbtTrieLayout layout)
     }
 
     /// <summary>
-    /// The tilings describe the same trie, so the same writes fold to the same root under any of them —
-    /// which is the whole claim a second tiling rests on.
+    /// The level encodings describe the same trie, so the same writes fold to the same root under any of
+    /// them.
     /// </summary>
     [Test]
-    public void EveryTiling_FoldsTheSameWritesToTheSameRoot()
+    public void EveryFourLevelLayout_FoldsTheSameWritesToTheSameRoot()
     {
         Random random = new(Seed: 7);
         Dictionary<string, byte[]> live = [];
@@ -304,9 +290,13 @@ public class PbtTilingTests(PbtTrieLayout layout)
             writes.Add((PbtKeyDerivation.StorageKey(TestItem.AddressB, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), Value));
         }
 
-        PbtTrieLayout otherLayout = layout.Tiling() == PbtTiling.FourLevel
-            ? PbtTrieLayout.SixLevelInterleaved
-            : PbtTrieLayout.FourLevelInterleaved;
+        PbtTrieLayout otherLayout = layout switch
+        {
+            PbtTrieLayout.FourLevelEveryLevel => PbtTrieLayout.FourLevelInterleaved,
+            PbtTrieLayout.FourLevelInterleaved => PbtTrieLayout.FourLevelBoundaryOnly,
+            PbtTrieLayout.FourLevelBoundaryOnly => PbtTrieLayout.FourLevelEveryLevel,
+            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
+        };
         PbtTreeHarness other = new(PooledRefCountingMemoryProvider.Instance, otherLayout);
         Assert.That(NewHarness().ApplyBatch(writes), Is.EqualTo(other.ApplyBatch(writes)));
         Assert.That(other.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));

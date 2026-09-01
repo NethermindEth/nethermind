@@ -64,6 +64,7 @@ public static partial class TrieUpdater
         IPbtStore store, PbtPartitionRoots currentRoots, PbtWriteBatchSet changes, IRefCountingMemoryProvider memoryProvider,
         PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
     {
+        layout.GroupFormat();
         PbtPartitionRoot[] partitionRoots = new PbtPartitionRoot[PbtPartitions.Count];
         PbtSubtreeStats[] partitionDeltas = new PbtSubtreeStats[PbtPartitions.Count];
         for (int i = 0; i < PbtPartitions.Count; i++)
@@ -99,21 +100,15 @@ public static partial class TrieUpdater
         IPbtStore store, PbtPartitionRoots currentRoots, PbtPartition partition, PbtWriteBatch changes,
         IRefCountingMemoryProvider memoryProvider, PbtTrieLayout layout, int concurrency, out PbtSubtreeStats delta)
     {
+        PbtGroupFormat groupFormat = layout.GroupFormat();
         if (changes.Count == 0)
         {
             delta = default;
             return currentRoots;
         }
 
-        PbtGroupFormat groupFormat = layout.GroupFormat();
-        PbtPartitionRoot root = layout.Tiling() switch
-        {
-            PbtTiling.SixLevel => UpdatePartition<PbtSixLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
-            PbtTiling.EightLevel => UpdatePartition<PbtEightLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
-            PbtTiling.FourLevel => UpdatePartition<PbtFourLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
-            PbtTiling.FiveLevel => UpdatePartition<PbtFiveLevelTileLayout>(store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta),
-            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
-        };
+        PbtPartitionRoot root = UpdatePartition<PbtFourLevelTileLayout>(
+            store, currentRoots[partition], memoryProvider, groupFormat, changes, concurrency, partition, out delta);
         return currentRoots.With(partition, root);
     }
 

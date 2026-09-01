@@ -25,24 +25,9 @@ public class PbtTrieNodeGroupTests
         [PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved, PbtGroupFormat.BoundaryOnly, PbtGroupFormat.Every3Depth];
 
     [Test]
-    public void FiveLevelMasks_UseSingleWordsAndRejectTheUnusedPositionBit()
-    {
-        byte[] encoded = new byte[PbtTrieNodeGroup<PbtFiveLevelTileLayout>.MaxEncodedLength];
-        PbtGroupEncoder<PbtFiveLevelTileLayout> encoder = new(encoded, PbtGroupFormat.Interleaved);
-        encoder.AppendInternal(0, default);
-        int length = encoder.Finish(new PbtSubtreeStats(1));
-
-        int expectedTrailerLength = 2 * sizeof(ulong) + sizeof(uint) + PbtSubtreeStats.EncodedLength + sizeof(byte);
-        Assert.That(length, Is.EqualTo(PbtTrieNodeGroup.Slot.InternalLength + expectedTrailerLength));
-        Assert.That(() => PbtTrieNodeGroup<PbtFiveLevelTileLayout>.Decode(encoded.AsSpan(0, length)), Throws.Nothing);
-
-        byte[] highBit = encoded[..length];
-        highBit[PbtTrieNodeGroup.Slot.InternalLength + sizeof(ulong) - 1] |= 0x80;
-        Assert.That(() => PbtTrieNodeGroup<PbtFiveLevelTileLayout>.Decode(highBit), Throws.TypeOf<InvalidDataException>());
-    }
-
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
+    [TestCase(PbtGroupFormat.BoundaryOnly)]
     [TestCase(PbtGroupFormat.Every3Depth)]
     public void PositionMath_EncodeDecodeRoundTrip_AndValidation(PbtGroupFormat format)
     {
@@ -72,7 +57,12 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[Layout.PositionCount];
-        int retainedInternalPosition = format == PbtGroupFormat.Every3Depth ? 14 : 13;
+        int retainedInternalPosition = format switch
+        {
+            PbtGroupFormat.BoundaryOnly => PbtLayout.TrieNodeGroupBoundarySlotPosition(2),
+            PbtGroupFormat.Every3Depth => 14,
+            _ => 13
+        };
         slots[retainedInternalPosition] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
         slots[PbtLayout.TrieNodeGroupBoundarySlotPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
@@ -302,20 +292,6 @@ public class PbtTrieNodeGroupTests
 
         Assert.That(PbtLayout.GatherBoundary(positions, Layout.BoundarySlots), Is.EqualTo(expected), $"0x{positions:x8}");
         Assert.That(expected >> Layout.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
-    }
-
-    [Test]
-    public void Every3Depth_SelectsTheSixLevelWidths64_8_And1()
-    {
-        int width = PbtSixLevelTileLayout.BoundarySlots;
-        while (width != 0)
-        {
-            Assert.That(
-                PbtLayout.TrieNodeGroupStoresInternalAtWidth(PbtGroupFormat.Every3Depth, width),
-                Is.EqualTo(width is 64 or 8 or 1),
-                $"width {width}");
-            width /= 2;
-        }
     }
 
     [Test]

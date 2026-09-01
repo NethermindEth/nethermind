@@ -102,6 +102,19 @@ public class StemTrieTests(PbtGroupFormat format)
     }
 
     [Test]
+    public void UpdateRoot_RejectsInvalidLayoutBeforeAnEmptyBatchReturns()
+    {
+        using PbtWriteBatch batch = new(estimatedStems: 0, buckets: null);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, PbtTrieLayout.FourLevelInterleaved);
+
+        Assert.That(
+            () => TrieUpdater.UpdateRoot(
+                harness, PbtPartitionRoots.Empty, PbtPartition.Account, batch,
+                PooledRefCountingMemoryProvider.Instance, (PbtTrieLayout)0, concurrency: 1, out _),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    [Test]
     public void UnmergedStem_IsRejectedOnceTheDescentRunsOutOfStem()
     {
         // the producer must merge a stem's writes itself; two entries for one stem partition
