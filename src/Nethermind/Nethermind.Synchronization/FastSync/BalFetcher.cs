@@ -97,44 +97,54 @@ public class BalFetcher(
                      && snap.SnapProtocolVersion >= SnapVersions.Snap2;
         if (!snap2 && !syncPeer.SupportsBlockAccessLists()) return 0;
 
+        int requested = snap2 ? missing.Count : Math.Min(missing.Count, GethSyncLimits.MaxBodyFetch);
         int stored = 0;
+        bool peerAtFault = false;
         try
         {
+            IByteArrayList response;
             if (snap2)
             {
-                using ArrayPoolList<ValueHash256> hashes = new(missing.Count);
+                using ArrayPoolList<ValueHash256> hashes = new(requested);
                 foreach (BlockHeader header in missing) hashes.Add(header.Hash!.ValueHash256);
 
-                using IByteArrayList response = await snap.GetBlockAccessLists(hashes, token);
-                for (int i = 0; i < missing.Count; i++)
-                    if (TryStore(missing[i], i < response.Count ? response[i] : default)) stored++;
+                response = await snap.GetBlockAccessLists(hashes, token);
             }
             else
             {
-                // eth/71 caps the hash list on both the request and the response decoder; going over it
-                // makes the peer reject the frame as a breach of protocol and disconnect.
-                int count = Math.Min(missing.Count, GethSyncLimits.MaxBodyFetch);
-                using ArrayPoolList<Hash256> hashes = new(count);
-                for (int i = 0; i < count; i++) hashes.Add(missing[i].Hash!);
+                using ArrayPoolList<Hash256> hashes = new(requested);
+                for (int i = 0; i < requested; i++) hashes.Add(missing[i].Hash!);
 
-                using IOwnedReadOnlyList<byte[]?> response = await syncPeer.GetBlockAccessLists(hashes, token);
-                for (int i = 0; i < count; i++)
-                    if (TryStore(missing[i], i < response.Count ? response[i] : null)) stored++;
+                response = new ByteArrayListAdapter(await syncPeer.GetBlockAccessLists(hashes, token)!);
+            }
+
+            using (response)
+            {
+                for (int i = 0; i < requested; i++)
+                {
+                    ReadOnlySpan<byte> rlp = i < response.Count ? response[i] : default;
+                    if (rlp.IsEmpty) continue;
+                    if (TryStore(missing[i], rlp)) stored++;
+                    else peerAtFault = true;
+                }
             }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception e)
         {
+            peerAtFault = true;
             if (_logger.IsDebug) _logger.Debug($"Error fetching block access lists from {peer}: {e}");
         }
 
-        if (stored == 0) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+        // An empty entry is a well-formed answer from a peer that does not have that BAL; only a failed
+        // request or a list that does not match its header is the peer's own fault.
+        if (peerAtFault) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
         return stored;
     }
 
     private bool TryStore(BlockHeader header, ReadOnlySpan<byte> rlp)
     {
-        if (rlp.IsEmpty || !BlockAccessListHashValidator.Validate(header, rlp, out _)) return false;
+        if (!BlockAccessListHashValidator.Validate(header, rlp, out _)) return false;
         balStore.Insert(header.Number, header.Hash!, rlp);
         return true;
     }

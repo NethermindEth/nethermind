@@ -336,13 +336,13 @@ public class FlatBalHealingTests
         Hash256? root = _healing.Reassemble([StorageOf(TestItem.AddressA)], default);
         if (blockByBlock)
         {
-            root = _healing.ApplyRange(root!, firstPivot, write, default);
-            root = _healing.ApplyRange(root!, write, delete, default);
-            root = _healing.ApplyRange(root!, delete, writeAgain, default);
+            root = _healing.ApplyRange(root!, firstPivot, write, default).Root;
+            root = _healing.ApplyRange(root!, write, delete, default).Root;
+            root = _healing.ApplyRange(root!, delete, writeAgain, default).Root;
         }
         else
         {
-            root = _healing.ApplyRange(root!, firstPivot, writeAgain, default);
+            root = _healing.ApplyRange(root!, firstPivot, writeAgain, default).Root;
         }
 
         UInt256[] watched = [1, 3, 4, 5];
@@ -439,7 +439,7 @@ public class FlatBalHealingTests
         Hash256? root = healing.Reassemble(updatedStorages, token);
         if (root is null) return Task.FromResult(false);
 
-        root = healing.ApplyRange(root, firstPivot, lastPivot, token);
+        root = healing.ApplyRange(root, firstPivot, lastPivot, token).Root;
         if (root is null) return Task.FromResult(false);
 
         healing.FinalizeSync(lastPivot);

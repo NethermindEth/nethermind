@@ -163,14 +163,21 @@ public class StateSyncRunner(
                 continue;
             }
 
-            Hash256? newRoot = balHealing.ApplyRange(root, currentPivot, roundPivot, token);
+            (bool baseRootIntact, Hash256? newRoot) = balHealing.ApplyRange(root, currentPivot, roundPivot, token);
 
             // The round is collected by block number, so a reorg under either end of it invalidates the result.
             if (!blockTree.IsMainChain(currentPivot)) throw new PivotReorgedException(currentPivot);
             if (!blockTree.IsMainChain(roundPivot)) throw new PivotReorgedException(roundPivot);
 
             if (newRoot is null)
-                throw new InvalidOperationException($"BAL healing failed - could not apply BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number}.");
+            {
+                if (!baseRootIntact)
+                    throw new InvalidOperationException($"BAL healing failed - could not apply BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number}.");
+
+                if (_logger.IsDebug) _logger.Debug($"BAL healing stalled - BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number} went missing, retrying.");
+                await Task.Delay(1000, token);
+                continue;
+            }
 
             root = newRoot;
             currentPivot = roundPivot;

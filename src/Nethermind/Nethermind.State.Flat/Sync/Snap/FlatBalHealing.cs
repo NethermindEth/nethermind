@@ -48,7 +48,7 @@ public class FlatBalHealing(
         return reassembledRoot;
     }
 
-    public Hash256? ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token)
+    public (bool BaseRootIntact, Hash256? Root) ApplyRange(Hash256 baseRoot, BlockHeader from, BlockHeader to, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Applying BALs for blocks {from.Number + 1}..{to.Number} on {baseRoot} to reach {to.StateRoot}.");
 
@@ -56,8 +56,9 @@ public class FlatBalHealing(
         ArrayPoolListRef<(ulong Number, Hash256 Hash)> toApply = new(capacity);
         try
         {
+            // Collecting is read-only, so a gap here leaves the state at baseRoot and the range can be retried.
             if (!TryCollectBals(from, to, ref toApply, token))
-                return null;
+                return (true, null);
 
             if (_logger.IsDebug) _logger.Debug($"All {toApply.Count} BALs present for blocks {from.Number + 1}..{to.Number}.");
 
@@ -96,7 +97,7 @@ public class FlatBalHealing(
         return true;
     }
 
-    private Hash256? ApplyBals(Hash256 baseRoot, BlockHeader to, ReadOnlySpan<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
+    private (bool BaseRootIntact, Hash256? Root) ApplyBals(Hash256 baseRoot, BlockHeader to, ReadOnlySpan<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
         Hash256 currentRoot = baseRoot;
 
@@ -108,7 +109,9 @@ public class FlatBalHealing(
             int chunkSize = Math.Min(BalsChunkSize, toApply.Length - cursor);
             ReadOnlySpan<(ulong Number, Hash256 Hash)> chunk = toApply.Slice(cursor, chunkSize);
             Hash256? nextRoot = ApplyChunk(currentRoot, chunk, token);
-            if (nextRoot is null) return null;
+            // A chunk fails before it writes anything, so until the first one commits the state is still at
+            // baseRoot and the range can be applied again.
+            if (nextRoot is null) return (cursor == 0, null);
             currentRoot = nextRoot;
             cursor += chunkSize;
             Metrics.BalHealingBalsApplied += chunkSize;
@@ -123,11 +126,11 @@ public class FlatBalHealing(
         if (currentRoot != to.StateRoot)
         {
             if (_logger.IsError) _logger.Error($"BAL apply of {toApply.Length} blocks up to {to.Number} produced {currentRoot}, expected {to.StateRoot}.");
-            return null;
+            return (false, null);
         }
 
         if (_logger.IsDebug) _logger.Debug($"BAL apply reached target state root {currentRoot}.");
-        return currentRoot;
+        return (false, currentRoot);
     }
 
     private Hash256? ApplyChunk(Hash256 baseRoot, ReadOnlySpan<(ulong Number, Hash256 Hash)> chunk, CancellationToken token)
@@ -168,7 +171,7 @@ public class FlatBalHealing(
                 {
                     Dictionary<UInt256, EvmWord> slots = delta.Slots ??= [];
                     foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
-                        slots[slot.Key] = slot.Changes[^1].Value;
+                        if (slot.Changes.Length > 0) slots[slot.Key] = slot.Changes[^1].Value;
                 }
             }
         }

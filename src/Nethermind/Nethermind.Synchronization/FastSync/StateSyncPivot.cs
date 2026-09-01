@@ -56,15 +56,17 @@ namespace Nethermind.Synchronization.FastSync
                 : Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1UL);
 
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
-            if (bestHeader is not null)
+
+            if (bestHeader is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
-                _bestHeader = bestHeader;
+                if (syncConfig.StaticSnapPivot && _logger.IsDebug) _logger.Debug($"Snap - {msg} - Pivot header {targetBlockNumber} not yet available in the block tree; waiting for fast headers.");
+                return;
             }
-            else if (syncConfig.StaticSnapPivot && _logger.IsDebug)
-            {
-                _logger.Debug($"Snap - static pivot header {targetBlockNumber} not yet available in the block tree; waiting for fast headers.");
-            }
+
+            if (bestHeader.Hash == _bestHeader?.Hash) return;
+
+            if (_logger.IsDebug) _logger.Debug($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
+            _bestHeader = bestHeader;
         }
 
         public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];

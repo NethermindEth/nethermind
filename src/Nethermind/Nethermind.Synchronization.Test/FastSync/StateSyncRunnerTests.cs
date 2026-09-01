@@ -41,8 +41,8 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
         // Each round must be applied on the root the previous one produced, so the second stub only matches
         // when the runner threads TestItem.KeccakB through.
-        _healing.ApplyRange(TestItem.KeccakA, firstPivot, secondPivot, Arg.Any<CancellationToken>()).Returns(TestItem.KeccakB);
-        _healing.ApplyRange(TestItem.KeccakB, secondPivot, lastPivot, Arg.Any<CancellationToken>()).Returns(lastPivot.StateRoot);
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, secondPivot, Arg.Any<CancellationToken>()).Returns((false, TestItem.KeccakB));
+        _healing.ApplyRange(TestItem.KeccakB, secondPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, lastPivot.StateRoot));
 
         await runner.RunBalHealing(firstPivot, default);
 
@@ -81,6 +81,30 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     }
 
     [Test]
+    public async Task Retries_the_round_when_a_collected_bal_goes_missing()
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+
+        BlockHeader firstPivot = blockTree.FindHeader(10)!;
+        BlockHeader lastPivot = blockTree.FindHeader(11)!;
+        SeedBals(container, lastPivot);
+
+        _pivot.GetPivotHeader().Returns(lastPivot);
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
+        // Nothing was written when a BAL goes missing while collecting, so the same range must be applied again
+        // rather than ending state sync.
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>())
+            .Returns((true, null), (false, lastPivot.StateRoot));
+
+        await runner.RunBalHealing(firstPivot, default);
+
+        _healing.Received(2).ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>());
+        _healing.Received(1).FinalizeSync(lastPivot);
+    }
+
+    [Test]
     public void Does_not_finalize_when_the_healed_root_does_not_match_the_pivot()
     {
         using IContainer container = BuildRunnerContainer();
@@ -93,7 +117,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 
         _pivot.GetPivotHeader().Returns(lastPivot);
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
-        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns(TestItem.KeccakF);
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, TestItem.KeccakF));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
 

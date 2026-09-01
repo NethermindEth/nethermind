@@ -31,6 +31,7 @@ public class BalFetcherTests
 
     private readonly Dictionary<ValueHash256, byte[]> _balByHash = [];
     private int _largestRequest;
+    private int _responseLimit;
     private IBlockTree _blockTree = null!;
     private MemDb _balDb = null!;
     private BlockAccessListStore _balStore = null!;
@@ -42,6 +43,7 @@ public class BalFetcherTests
     {
         _balByHash.Clear();
         _largestRequest = 0;
+        _responseLimit = int.MaxValue;
         _blockTree = Substitute.For<IBlockTree>();
         _balDb = new MemDb();
         _balStore = new BlockAccessListStore(_balDb);
@@ -117,6 +119,70 @@ public class BalFetcherTests
     }
 
     [Test]
+    public async Task Does_not_report_a_peer_that_simply_has_no_bals()
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        // The peer answers correctly, with an empty entry for a BAL it does not have.
+        _balByHash.Remove(b11.Hash!.ValueHash256);
+        AllocatePeer(Snap2Peer());
+
+        bool result = await _fetcher.EnsureRange(from, b11, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        }
+
+        _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+    }
+
+    [Test]
+    public async Task Stores_what_a_short_response_carries()
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        BlockHeader b12 = Block(12, [0x03, 0x04]);
+        // A peer may answer with fewer entries than it was asked for.
+        _responseLimit = 1;
+        AllocatePeer(Snap2Peer());
+
+        bool result = await _fetcher.EnsureRange(from, b12, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+            Assert.That(_balStore.Exists(12, b12.Hash!), Is.True);
+        }
+
+        _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+    }
+
+    [Test]
+    public async Task Stores_the_present_entries_of_a_partly_empty_response()
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        BlockHeader b12 = Block(12, [0x03, 0x04]);
+        // The peer holds the first BAL and answers empty for the second.
+        _balByHash.Remove(b12.Hash!.ValueHash256);
+        AllocatePeer(Snap2Peer());
+
+        bool result = await _fetcher.EnsureRange(from, b12, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.True);
+            Assert.That(_balStore.Exists(12, b12.Hash!), Is.False);
+        }
+
+        _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+    }
+
+    [Test]
     public async Task Does_not_fetch_when_all_bals_already_present()
     {
         BlockHeader from = Block(10, bal: null);
@@ -174,8 +240,9 @@ public class BalFetcherTests
             {
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
-                ArrayPoolList<byte[]> response = new(requested.Count);
-                foreach (ValueHash256 hash in requested) response.Add(_balByHash.GetValueOrDefault(hash, []));
+                int served = Math.Min(requested.Count, _responseLimit);
+                ArrayPoolList<byte[]> response = new(served);
+                for (int i = 0; i < served; i++) response.Add(_balByHash.GetValueOrDefault(requested[i], []));
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
             });
 
