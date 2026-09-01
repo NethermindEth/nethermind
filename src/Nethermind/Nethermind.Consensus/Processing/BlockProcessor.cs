@@ -182,9 +182,10 @@ public partial class BlockProcessor(
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts))
         {
+            ParallelOptions? bloomOptions = SelectBackgroundBloomOptions(receipts.Length);
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
-                CalculateBlooms(receipts);
+                CalculateBlooms(receipts, bloomOptions);
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
@@ -297,8 +298,28 @@ public partial class BlockProcessor(
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
     }
 
+    /// <summary>
+    /// Receipt count from which the background bloom computation is capped.
+    /// </summary>
+    internal const int BackgroundBloomCapThreshold = 256;
+
+    /// <summary>
+    /// Worker count the capped background bloom computation is limited to.
+    /// </summary>
+    internal const int BackgroundBloomMaxParallelism = 4;
+
+    private static readonly ParallelOptions s_backgroundBloomOptions =
+        new() { MaxDegreeOfParallelism = BackgroundBloomMaxParallelism };
+
+    /// <summary>
+    /// Parallelism for background bloom computation, or <c>null</c> for the default full width.
+    /// </summary>
+    internal static ParallelOptions? SelectBackgroundBloomOptions(int receiptCount) =>
+        receiptCount >= BackgroundBloomCapThreshold ? s_backgroundBloomOptions : null;
+
+    /// <param name="parallelOptions">Parallelism to use, or <c>null</c> for the default full width.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts)
+    internal static void CalculateBlooms(TxReceipt[] receipts, ParallelOptions? parallelOptions = null)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
 
@@ -316,7 +337,7 @@ public partial class BlockProcessor(
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
-            ParallelUnbalancedWork.DefaultOptions,
+            parallelOptions ?? ParallelUnbalancedWork.DefaultOptions,
             receipts,
             static (i, receipts) =>
             {
