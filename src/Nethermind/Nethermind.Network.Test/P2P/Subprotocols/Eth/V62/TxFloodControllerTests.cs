@@ -391,12 +391,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.Report(AcceptTxResult.Invalid);
             }
 
-            using (Assert.EnterMultipleScope())
-            {
-                _session.Received(1)
-                    .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
-                Assert.That(_controller.IsDowngraded, Is.False);
-            }
+            Assert.That(_controller.IsDowngraded, Is.False);
+            _session.Received(1)
+                .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
 
         [Test]
@@ -421,13 +418,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(AcceptTxResult.Invalid);
             _controller.Report(AcceptTxResult.Invalid);
 
-            using (Assert.EnterMultipleScope())
-            {
-                _session.Received(1)
-                    .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
-                _session.Received(1)
-                    .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
-            }
+            _session.Received(1)
+                .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+            _session.Received(1)
+                .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
 
         [TestCase(false)]

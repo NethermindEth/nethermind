@@ -35,7 +35,7 @@ public class PeerPoolTests
 
         TestNodeSource nodeSource = new();
         TestLogger logger = new();
-        ImmediateTimeProvider timeProvider = new();
+        FirstTwoDelaysImmediateTimeProvider timeProvider = new();
         PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -363,7 +363,7 @@ public class PeerPoolTests
         "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
         "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
 
-    private sealed class ImmediateTimeProvider : TimeProvider
+    private sealed class FirstTwoDelaysImmediateTimeProvider : TimeProvider
     {
         private readonly TaskCompletionSource _secondDelayRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _delayCount;
@@ -372,8 +372,31 @@ public class PeerPoolTests
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            if (Interlocked.Increment(ref _delayCount) == 2) _secondDelayRequested.TrySetResult();
-            return System.CreateTimer(callback, state, TimeSpan.Zero, period);
+            int delayCount = Interlocked.Increment(ref _delayCount);
+            if (delayCount == 2) _secondDelayRequested.TrySetResult();
+            return delayCount <= 2
+                ? new ImmediateTimer(callback, state, dueTime, period)
+                : TimeProvider.System.CreateTimer(callback, state, dueTime, period);
+        }
+
+        private sealed class ImmediateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private readonly ITimer _timer =
+                TimeProvider.System.CreateTimer(callback, state, GetDueTime(dueTime), period);
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) =>
+                _timer.Change(GetDueTime(dueTime), period);
+
+            public void Dispose() => _timer.Dispose();
+
+            public ValueTask DisposeAsync() => _timer.DisposeAsync();
+
+            private static TimeSpan GetDueTime(TimeSpan dueTime) =>
+                dueTime == Timeout.InfiniteTimeSpan ? dueTime : TimeSpan.Zero;
         }
     }
 
