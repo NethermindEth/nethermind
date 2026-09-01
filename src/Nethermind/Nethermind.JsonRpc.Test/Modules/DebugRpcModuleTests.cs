@@ -371,4 +371,63 @@ public partial class DebugRpcModuleTests
                 "the persisted-code hint must not survive overlay reset");
         }
     }
+
+    private const string RevertingContractAddress = "0xc300000000000000000000000000000000000000";
+
+    // Error(string) revert payload for "user error", unpadded, as the execution-apis calltree contract emits it.
+    private const string RevertPayload =
+        "08c379a0" +
+        "0000000000000000000000000000000000000000000000000000000000000020" +
+        "000000000000000000000000000000000000000000000000000000000000000a" +
+        "75736572206572726f72";
+
+    // PUSH1 0x4e PUSH1 0x0c PUSH1 0 CODECOPY PUSH1 0x4e PUSH1 0 REVERT, then the payload as trailing data.
+    private const string RevertingContractCode = "0x604e600c600039604e6000fd" + RevertPayload;
+
+    [Test]
+    public async Task Debug_traceCall_with_callTracer_reports_revert_in_the_frame()
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = RevertingContractAddress, gas = "0x100000" },
+            null,
+            new
+            {
+                tracer = "callTracer",
+                stateOverrides = JsonSerializer.Deserialize<object>(
+                    $$$"""{"{{{RevertingContractAddress}}}":{"code":"{{{RevertingContractCode}}}"}}""")
+            });
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
+
+        JToken frame = parsed["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
+            Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
+            Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
+            Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
+        });
+    }
+
+    [Test]
+    public async Task Debug_traceCall_with_callTracer_omits_to_on_failed_top_level_create()
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), data = "0x60006000fd", gas = "0x100000" },
+            null,
+            new { tracer = "callTracer" });
+
+        JToken frame = JToken.Parse(response)["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
+            Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
+            Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+        });
+    }
 }

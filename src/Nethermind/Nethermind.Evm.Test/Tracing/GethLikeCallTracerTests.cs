@@ -609,7 +609,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
         if (revert)
+        {
             Assert.That(frame.Error, Is.Not.Null, "expected error description on reverted CREATE");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+        }
         else
         {
             Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
