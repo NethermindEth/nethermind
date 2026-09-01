@@ -21,7 +21,9 @@ public class FlatStateReader(
 ) : IStateReader
 {
     // Content-addressed (node hash -> RLP): entries are immutable, so no invalidation is needed.
-    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(flatDbConfig.TrieNodeRlpCacheCapacity);
+    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(flatDbConfig.TrieNodeRlpCacheCapacity >= 0
+        ? flatDbConfig.TrieNodeRlpCacheCapacity
+        : throw new ArgumentOutOfRangeException(nameof(IFlatDbConfig.TrieNodeRlpCacheCapacity), flatDbConfig.TrieNodeRlpCacheCapacity, "must be >= 0 (0 disables the cache)"));
 
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {

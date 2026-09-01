@@ -19,7 +19,7 @@ public class FlatStateReaderTests
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
     private static FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, LimboLogs.Instance);
+        new(new MemDb(), manager, new FlatDbConfig(), LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -43,6 +43,17 @@ public class FlatStateReaderTests
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
         Assert.That(exception!.Message, Does.Contain("historical"));
+    }
+
+    [TestCase(-1)]
+    [TestCase(int.MinValue)]
+    public void Rejects_negative_trie_node_rlp_cache_capacity(int capacity)
+    {
+        FlatDbConfig config = new() { TrieNodeRlpCacheCapacity = capacity };
+
+        Assert.That(
+            () => new FlatStateReader(null!, null!, config, LimboLogs.Instance),
+            Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     private class ThrowingFlatDbManager : IFlatDbManager
