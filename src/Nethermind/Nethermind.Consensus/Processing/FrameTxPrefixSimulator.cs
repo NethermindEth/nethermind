@@ -58,7 +58,12 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.Undecided("no chain head to simulate against");
         }
 
-        lock (_lock)
+        if (!Monitor.TryEnter(_lock, _wallClockBudget))
+        {
+            return FrameTxSimulationResult.Undecided("validation-prefix simulation timed out waiting for the simulator");
+        }
+
+        try
         {
             if (_disposed)
             {
@@ -128,6 +133,10 @@ public sealed class FrameTxPrefixSimulator(
                 if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
                 return FrameTxSimulationResult.Reject("validation-prefix simulation error");
             }
+        }
+        finally
+        {
+            Monitor.Exit(_lock);
         }
     }
 

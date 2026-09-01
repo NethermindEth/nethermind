@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -163,12 +164,12 @@ public class FrameTxPrefixSimulatorTests
     public void Simulate_ExceedsWallClockBudget_LeavesUndecidedInsteadOfBlocking()
     {
         FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, wallClockBudget: TimeSpan.FromMilliseconds(20));
+        bool tracerCancelled = false;
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
             .Returns(callInfo =>
             {
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
-                bool cancelled = SpinWait.SpinUntil(() => tracer.IsCancelled, TimeSpan.FromSeconds(5));
-                Assert.That(cancelled, Is.True, "the budget did not cancel the tracer");
+                tracerCancelled = SpinWait.SpinUntil(() => tracer.IsCancelled, TimeSpan.FromSeconds(5));
                 throw new OperationCanceledException();
             });
 
@@ -176,8 +177,37 @@ public class FrameTxPrefixSimulatorTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(tracerCancelled, Is.True, "the budget did not cancel the tracer");
             Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
             Assert.That(result.Reason, Does.Contain("budget"));
+        }
+    }
+
+    [Test]
+    public void Simulate_BlockedBehindAnotherSimulation_TimesOutWaitingInsteadOfBlocking()
+    {
+        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, wallClockBudget: TimeSpan.FromMilliseconds(100));
+        using ManualResetEventSlim holding = new();
+        using ManualResetEventSlim release = new();
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns(_ =>
+            {
+                holding.Set();
+                release.Wait(TimeSpan.FromSeconds(5));
+                return TransactionResult.Ok;
+            });
+
+        Task<FrameTxSimulationResult> first = Task.Run(() => simulator.Simulate(Tx()));
+        Assert.That(holding.Wait(TimeSpan.FromSeconds(5)), Is.True, "the first simulation never entered");
+
+        FrameTxSimulationResult second = simulator.Simulate(Tx());
+        release.Set();
+        first.Wait(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
+            Assert.That(second.Reason, Does.Contain("waiting"));
         }
     }
 
