@@ -20,24 +20,11 @@ namespace Nethermind.Evm;
 using HalfWord = Vector128<byte>;
 
 [StructLayout(LayoutKind.Auto)]
-public ref struct EvmStack
+public ref partial struct EvmStack
 {
-
-#if ZK_EVM
-    // RISC-V has no byte-swap instruction, so the BCL's ReverseEndianness expands to a byte-at-a-time
-    // shuffle. ZkEvmBitOperations.Bswap64 does it with three masked shift/or pairs on whole words.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReverseBytes(ulong value) => Nethermind.Core.Extensions.ZkEvmBitOperations.Bswap64(value);
-#else
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReverseBytes(ulong value) => BinaryPrimitives.ReverseEndianness(value);
-#endif
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReverseBytes(uint value) => BinaryPrimitives.ReverseEndianness(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ushort ReverseBytes(ushort value) => BinaryPrimitives.ReverseEndianness(value);
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
     public const int WordSize = 32;

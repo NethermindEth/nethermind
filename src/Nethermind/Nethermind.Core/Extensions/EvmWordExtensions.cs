@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
@@ -9,18 +8,8 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Core.Extensions;
 
-public static class EvmWordExtensions
+public static partial class EvmWordExtensions
 {
-#if ZK_EVM
-    // RISC-V has no byte-swap instruction, so the BCL expands to a byte-at-a-time shuffle;
-    // Bswap64 does it with three masked shift/or pairs on whole words.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReverseBytes(ulong value) => ZkEvmBitOperations.Bswap64(value);
-#else
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReverseBytes(ulong value) => BinaryPrimitives.ReverseEndianness(value);
-#endif
-
     extension(EvmWord word)
     {
         /// <summary>
