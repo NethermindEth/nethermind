@@ -10,6 +10,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
@@ -94,6 +96,35 @@ public class XdcBlockForRpcTests
 
         Assert.That(_factory.Create(block, false, SpecProvider()), Is.TypeOf<BlockForRpc>());
         Assert.That(_factory.CreateHeader(header), Is.TypeOf<BlockHeaderForRpc>());
+    }
+
+    /// <remarks>
+    /// <c>newHeads</c> declares its payload as <see cref="BlockForRpc"/>, so this covers the declared-type
+    /// serialization the model-shape tests above (which serialize at the runtime type) cannot see.
+    /// </remarks>
+    [Test]
+    public void Subscription_payload_keeps_the_xdpos_fields()
+    {
+        XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader().WithNextValidators(NextMasternodes);
+        builder.WithValidator(Seal()).WithValidators(Masternodes).WithPenalties(Penalised);
+        Block block = Build.A.Block.WithHeader(builder.TestObject).TestObject;
+
+        JsonRpcSubscriptionResponse<BlockForRpc> response = new()
+        {
+            MethodName = SubscriptionMethodName.EthSubscription,
+            Params = new JsonRpcSubscriptionResult<BlockForRpc>
+            {
+                Result = _factory.Create(block, false, SpecProvider()),
+                Subscription = "0x1"
+            }
+        };
+
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(serialized, Does.Contain($"\"validator\":\"{Hex(Seal())}\""));
+        Assert.That(serialized, Does.Contain("\"validators\":["));
+        Assert.That(serialized, Does.Contain("\"nextValidators\":["));
+        Assert.That(serialized, Does.Contain("\"penalties\":["));
     }
 
     [Test]
