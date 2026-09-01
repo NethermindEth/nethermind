@@ -558,23 +558,12 @@ public class FastHeadersSyncTests
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
-        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        BlockHeader pivotHeader = peerChain.FindHeader(998)!;
-        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
-
-        IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
-        localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
+        using DependentBatchScenario scenario = new();
+        IBlockTree peerChain = scenario.PeerChain;
+        TestableHeadersSyncFeed feed = scenario.Feed;
+        HeadersSyncBatch firstBatch = scenario.FirstBatch;
+        HeadersSyncBatch dependentBatch = scenario.DependentBatch;
         const ulong lowestInserted = 999UL;
-        localBlockTree.Insert(peerChain.Head!, BlockTreeInsertBlockOptions.SaveHeader);
-
-        ISyncReport report = new NullSyncReport();
-        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, Substitute.For<IPoSSwitcher>(), LimboLogs.Instance,
-            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>());
-        feed.InitializeFeed();
-        using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
-        using HeadersSyncBatch? dependentBatch = await feed.PrepareRequest();
-        dependentBatch!.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         void FillBatch(HeadersSyncBatch batch, ulong start, bool applyNulls)
         {
@@ -596,7 +585,7 @@ public class FastHeadersSyncTests
             batch.Response = list.ToPooledList();
         }
 
-        FillBatch(firstBatch!, lowestInserted - (ulong)firstBatch!.RequestSize, false);
+        FillBatch(firstBatch, lowestInserted - (ulong)firstBatch.RequestSize, false);
         FillBatch(dependentBatch, lowestInserted - (ulong)(dependentBatch.RequestSize * 2), true);
         ulong targetHeaderInDependentBatch = dependentBatch.StartNumber;
 
@@ -611,8 +600,8 @@ public class FastHeadersSyncTests
         feed.HandleResponse(fourthBatch);
         using HeadersSyncBatch? fifthBatch = await feed.PrepareRequest();
 
-        Assert.That(localBlockTree.LowestInsertedHeader!.Number, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
-        syncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Assert.That(scenario.LowestInserted, Is.LessThanOrEqualTo(targetHeaderInDependentBatch));
+        scenario.SyncPeerPool.Received(shouldReport ? 1 : 0).ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     /// <summary>
@@ -650,7 +639,7 @@ public class FastHeadersSyncTests
                 PeerChain.FindBlock((ulong)pivotNumber + 1, BlockTreeLookupOptions.None)!,
                 BlockTreeInsertBlockOptions.SaveHeader);
 
-            Feed = new TestableHeadersSyncFeed(_localBlockTree, SyncPeerPool, syncConfig, new NullSyncReport(), LimboLogs.Instance) { ThrowOnInsert = false };
+            Feed = new TestableHeadersSyncFeed(_localBlockTree, SyncPeerPool, syncConfig, new NullSyncReport(), LimboLogs.Instance);
             Feed.InitializeFeed();
 
             FirstBatch = Feed.PrepareRequest().GetAwaiter().GetResult()!;
@@ -705,8 +694,8 @@ public class FastHeadersSyncTests
         Assert.That(retry.EndNumber, Is.LessThanOrEqualTo(endNumber));
     }
 
-    // Highest header correct for its position so the batch becomes a dependency, but one number
-    // above the request. Full length, so it is keyed at EndNumber and this test can process it.
+    // The highest header is correct for its position, so the batch is parked; every header below it
+    // repeats that number. On drain it no longer links, so the peer is reported and the range re-requested.
     [Test]
     public async Task Reports_peer_and_retries_after_dependency_drains()
     {
@@ -733,7 +722,7 @@ public class FastHeadersSyncTests
         using HeadersSyncBatch? retry = await feed.PrepareRequest();
 
         scenario.SyncPeerPool.Received().ReportBreachOfProtocol(
-            dependentBatch.ResponseSourcePeer!, Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            dependentBatch.ResponseSourcePeer!, DisconnectReason.HeaderBatchOnDifferentBranch, Arg.Any<string>());
         Assert.That(retry, Is.Not.Null);
         Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
         Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
@@ -761,11 +750,35 @@ public class FastHeadersSyncTests
 
         // A fault here would end the dispatch loop and finish the feed, so the drain recovers the
         // range and returns rather than propagating. PrepareRequest hands the range straight back.
-        feed.ThrowOnInsert = true;
+        feed.ThrowOnInsert = new InvalidOperationException("insert failed");
         using HeadersSyncBatch? retry = await feed.PrepareRequest();
         Assert.That(retry, Is.Not.Null);
         Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
         Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+    }
+
+    // Cancellation is not a failed insert: it ends the dispatch loop and finishes the feed, which
+    // disposes the queue. It must propagate untouched rather than be treated as recoverable.
+    [Test]
+    public void Propagates_cancellation_from_a_dependency_drain()
+    {
+        using DependentBatchScenario scenario = new();
+        TestableHeadersSyncFeed feed = scenario.Feed;
+        HeadersSyncBatch dependentBatch = scenario.DependentBatch;
+
+        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        for (int i = 0; i < dependentBatch.RequestSize; i++)
+        {
+            response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
+        }
+        dependentBatch.Response = response;
+        feed.HandleResponse(dependentBatch);
+
+        RespondWithChainHeaders(scenario, scenario.FirstBatch);
+
+        feed.ThrowOnInsert = new OperationCanceledException();
+        Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
+        Assert.That(feed.Pending, Is.Empty);
     }
 
     // A dependency is keyed by its highest header's number, so its EndNumber must equal that
@@ -803,21 +816,10 @@ public class FastHeadersSyncTests
         Assert.That(scenario.LowestInserted!.Value, Is.LessThanOrEqualTo(dependentBatch.StartNumber));
     }
 
-    private static IReadOnlyCollection<KeyValuePair<ulong, HeadersSyncBatch>> Dependencies(HeadersSyncFeed feed)
-    {
-        object dependencies = typeof(HeadersSyncFeed)
+    private static IDictionary<ulong, HeadersSyncBatch> Dependencies(HeadersSyncFeed feed) =>
+        (IDictionary<ulong, HeadersSyncBatch>)typeof(HeadersSyncFeed)
             .GetField("_dependencies", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(feed)!;
-        return ((IEnumerable<KeyValuePair<ulong, HeadersSyncBatch>>)dependencies).ToList();
-    }
-
-    private static int DependencyCount(HeadersSyncFeed feed)
-    {
-        object dependencies = typeof(HeadersSyncFeed)
-            .GetField("_dependencies", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(feed)!;
-        return (int)dependencies.GetType().GetProperty("Count")!.GetValue(dependencies)!;
-    }
 
     private static void RespondWithChainHeaders(DependentBatchScenario scenario, HeadersSyncBatch batch)
     {
@@ -853,7 +855,7 @@ public class FastHeadersSyncTests
 
         // Accounted for, so the batch is not re-queued whole.
         Assert.That(scenario.Feed.HandleResponse(dependentBatch), Is.EqualTo(SyncResponseHandlingResult.OK));
-        Assert.That(DependencyCount(scenario.Feed), Is.Zero, "batch must not reach _dependencies");
+        Assert.That(Dependencies(scenario.Feed).Count, Is.Zero, "batch must not reach _dependencies");
 
         using HeadersSyncBatch? next = await scenario.Feed.PrepareRequest();
         Assert.That(next, Is.Not.Null);
@@ -867,6 +869,37 @@ public class FastHeadersSyncTests
             // Nothing of this range is outstanding, so sync must have moved below it.
             Assert.That(next!.EndNumber, Is.LessThan(dependentBatch.StartNumber));
         }
+    }
+
+    // A range can overlap a dependency once `RequeueAsNewBatch` re-queues it whole, so a response's
+    // highest header can collide with an existing key. That exit used to queue the batch that the
+    // `added <= 0` path queues anyway, and one instance in `_pending` twice is dispatched twice.
+    [Test]
+    public void Does_not_queue_a_batch_twice_when_a_dependency_already_exists()
+    {
+        using DependentBatchScenario scenario = new();
+        HeadersSyncBatch dependentBatch = scenario.DependentBatch;
+
+        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        for (int i = 0; i < dependentBatch.RequestSize; i++)
+        {
+            response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
+        }
+        dependentBatch.Response = response;
+
+        // Disposed with the feed.
+        Dependencies(scenario.Feed)[dependentBatch.EndNumber] =
+            new HeadersSyncBatch { StartNumber = dependentBatch.StartNumber, RequestSize = dependentBatch.RequestSize };
+
+        scenario.Feed.HandleResponse(dependentBatch);
+
+        scenario.SyncPeerPool.Received().ReportBreachOfProtocol(
+            dependentBatch.ResponseSourcePeer!, DisconnectReason.MultipleHeaderDependencies, Arg.Any<string>());
+        Assert.That(scenario.Feed.Pending, Has.Exactly(1).Items);
+        HeadersSyncBatch queued = scenario.Feed.Pending.Single();
+        Assert.That(queued.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+        Assert.That(queued.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+        Assert.That(queued.Response, Is.Null, "queued through the added <= 0 path, which drops the response");
     }
 
     // Hand-picked shapes miss combinations: the trailing-null-after-a-gap bug needed two conditions
@@ -905,7 +938,7 @@ public class FastHeadersSyncTests
             }
 
             // And the range must not vanish: either it is held, or it comes back to download.
-            bool becameDependency = DependencyCount(scenario.Feed) > 0;
+            bool becameDependency = Dependencies(scenario.Feed).Count > 0;
             using HeadersSyncBatch? next = await scenario.Feed.PrepareRequest();
             bool requeued = next is not null && next.StartNumber >= startNumber && next.EndNumber <= endNumber;
             Assert.That(becameDependency || requeued, Is.True, $"mask {mask} - range neither held nor requeued");
@@ -1254,6 +1287,7 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
 
         HeadersSyncBatch sent = (await feed.PrepareRequest())!;
+        feed.ThrowOnInsert = new InvalidOperationException("insert failed");
         sent.Response = new ArrayPoolList<BlockHeader?>(1) { Build.A.BlockHeader.WithNumber(999).TestObject };
 
         Assert.Throws<InvalidOperationException>(() => feed.HandleResponse(sent));
@@ -1439,8 +1473,9 @@ public class FastHeadersSyncTests
         ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
             Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
     {
-        public bool ThrowOnInsert { get; set; } = true;
+        public Exception? ThrowOnInsert { get; set; }
         public BlockHeader? PinnedLowestInserted { get; set; }
+        public IReadOnlyCollection<HeadersSyncBatch> Pending => _pending;
 
         protected override BlockHeader? LowestInsertedBlockHeader
         {
@@ -1449,7 +1484,7 @@ public class FastHeadersSyncTests
         }
 
         protected override int InsertHeaders(HeadersSyncBatch batch) =>
-            ThrowOnInsert ? throw new InvalidOperationException("insert failed") : base.InsertHeaders(batch);
+            ThrowOnInsert is null ? base.InsertHeaders(batch) : throw ThrowOnInsert;
     }
 
     private class DestinationHeaderSyncFeed(

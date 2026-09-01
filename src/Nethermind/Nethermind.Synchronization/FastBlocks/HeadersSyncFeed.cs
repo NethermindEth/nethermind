@@ -330,13 +330,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         InsertHeaders(dependentBatch);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
                     catch (Exception e)
                     {
-                        // Faults here reach the dispatch loop, which ends it and finishes the feed for good.
-                        // Recover the range first, then rethrow only cancellation.
+                        // Propagating would end the dispatch loop and finish the feed, disposing the
+                        // queue. The range is only recoverable while the feed runs, so stop draining here.
                         RequeueAsNewBatch(dependentBatch);
-                        if (e is OperationCanceledException) throw;
-
                         if (_logger.IsError) _logger.Error($"Failed to insert dependent batch {dependentBatch}", e);
                         return;
                     }
@@ -579,9 +581,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
         /// <summary>
         /// Queues <paramref name="batch"/>'s range for download again, after inserting it failed.
-        /// A new batch is used because <c>InsertHeaders</c> may already have queued this one.
         /// </summary>
         /// <remarks>
+        /// A new batch is used because <c>InsertHeaders</c> may already have queued this one, and one
+        /// instance in <c>_pending</c> twice would be dispatched twice. A range it already queued a
+        /// filler for is therefore requested twice; the duplicate is dropped as already inserted.
         /// <see cref="ProcessPersistedPortion"/> is skipped: it inserts headers too, so it can fail
         /// the same way. The range may therefore include headers already on disk.
         /// </remarks>
@@ -861,8 +865,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     if (_dependencies.ContainsKey(header.Number))
                     {
-                        EnqueueBatch(batch, true);
-
+                        // Returning false with nothing added re-queues the whole batch already.
                         if (_logger.IsDebug) _logger.Debug($"{batch} - Only one header dependency expected");
                         _syncPeerPool.ReportBreachOfProtocol(
                             batch.ResponseSourcePeer,
