@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -170,5 +175,94 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertStorage(0, (UInt256)0);
         // InvalidJumpDestination consumes all remaining gas per EVM spec.
         AssertGas(r, 100000);
+    }
+
+    [TestCaseSource(nameof(Push1DupDifferentialCases))]
+    public void PUSH1_DUP_UntracedExecutionMatchesTracedReference(byte[] code, ulong gasLimit)
+    {
+        TestAllTracerWithOutput reference = ExecuteWithTracer(new TestAllTracerWithOutput(), gasLimit, code);
+        int referenceOpCodeCount = Machine.OpCodeCount;
+
+        TestAllTracerWithOutput fused = ExecuteWithTracer(new NoInstructionTracer(), gasLimit, code);
+        int fusedOpCodeCount = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fused.StatusCode, Is.EqualTo(reference.StatusCode));
+            Assert.That(fused.GasSpent, Is.EqualTo(reference.GasSpent));
+            Assert.That(fused.ReturnValue, Is.EqualTo(reference.ReturnValue));
+            Assert.That(fused.Error, Is.EqualTo(reference.Error));
+            Assert.That(fusedOpCodeCount, Is.EqualTo(referenceOpCodeCount));
+        }
+    }
+
+    [Test]
+    public void PUSH1_DUP1_InstructionTracingReportsBothOpcodes()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(
+            (byte)Instruction.PUSH1,
+            0x42,
+            (byte)Instruction.DUP1,
+            (byte)Instruction.STOP);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Count, Is.EqualTo(3));
+            Assert.That(trace.Entries[0].Opcode, Is.EqualTo(nameof(Instruction.PUSH1)));
+            Assert.That(trace.Entries[1].Opcode, Is.EqualTo(nameof(Instruction.DUP1)));
+            Assert.That(trace.Entries[2].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> Push1DupDifferentialCases()
+    {
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP1), 100000UL)
+            .SetName("DUP1_Success");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP8, 7), 100000UL)
+            .SetName("DUP8_Success");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP1, 1024), 100000UL)
+            .SetName("PUSH1_StackOverflow");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP1, 1023), 100000UL)
+            .SetName("DUP1_StackOverflow");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP8), 100000UL)
+            .SetName("DUP8_StackUnderflow");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP1), 21002UL)
+            .SetName("PUSH1_OutOfGas");
+        yield return new TestCaseData(BuildPush1DupCode(Instruction.DUP1), 21005UL)
+            .SetName("DUP1_OutOfGas");
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH1 }, 100000UL)
+            .SetName("PUSH1_Truncated");
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH1, 0x42 }, 100000UL)
+            .SetName("PUSH1_EndOfCode");
+    }
+
+    private static byte[] BuildPush1DupCode(Instruction duplicate, int initialStackDepth = 0)
+    {
+        List<byte> code = [];
+        for (int i = 0; i < initialStackDepth; i++)
+        {
+            code.Add((byte)Instruction.PUSH1);
+            code.Add(0x01);
+        }
+
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x42);
+        code.Add((byte)duplicate);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x00);
+        code.Add((byte)Instruction.MSTORE);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x20);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x00);
+        code.Add((byte)Instruction.RETURN);
+        return code.ToArray();
+    }
+
+    private TestAllTracerWithOutput ExecuteWithTracer(TestAllTracerWithOutput tracer, ulong gasLimit, byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer;
     }
 }

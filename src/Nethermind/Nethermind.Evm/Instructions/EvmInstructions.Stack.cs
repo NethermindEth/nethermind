@@ -897,6 +897,25 @@ public static partial class EvmInstructions
     {
         // Deduct a very low gas cost for the push operation.
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+
+        if (!TTracingInst.IsActive
+            && !vm.TxTracer.IsCancelable
+            && TOpCount.Count == Op1.Count
+            && stack.CodeLength - programCounter > Op1.Count
+            && Unsafe.Add(ref stack.Code, programCounter + Op1.Count) is >= (byte)Instruction.DUP1 and <= (byte)Instruction.DUP8)
+        {
+            EvmExceptionType pushResult = stack.PushByte<TTracingInst>(Unsafe.Add(ref stack.Code, programCounter));
+            programCounter += Op1.Count;
+            if (pushResult != EvmExceptionType.None || TGasPolicy.IsOutOfGas(in gas))
+                return pushResult;
+
+            vm.OpCodeCount++;
+            TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+            EvmExceptionType dupResult = stack.Dup<TTracingInst>(Unsafe.Add(ref stack.Code, programCounter) - (byte)Instruction.DUP1 + 1);
+            programCounter++;
+            return dupResult;
+        }
+
         // Use the push method defined by the specific push operation.
         EvmExceptionType result = TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
