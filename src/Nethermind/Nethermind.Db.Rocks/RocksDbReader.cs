@@ -37,37 +37,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     private readonly bool _ownsReadOptions;
     private int _disposed;
 
-    // Null unless a caller supplied them, and never owned here. A session caches raw native
-    // pointers, so releasing it while a read is in flight frees the options underneath that read.
-    // Only an owner that already may not dispose concurrently with its own reads can hold one —
-    // ColumnDbSnapshot, whose Dispose already releases the native snapshot those reads use. A
-    // reader disposed at database teardown has no such guarantee, so it takes a lease per call.
-    private readonly RocksDbReadSession? _session;
-    private readonly RocksDbReadSession? _hintCacheMissSession;
-
-    /// <summary>
-    /// Reads through caller-owned sessions instead of taking a lease per call.
-    /// </summary>
-    /// <remarks>
-    /// Internal because the sessions must be the ones opened over <paramref name="options"/> and
-    /// <paramref name="hintCacheMissOptions"/> on <paramref name="mainDb"/>; a session from
-    /// anywhere else would read through the wrong native handles. The caller keeps ownership and
-    /// must dispose them before those options and before the database closes.
-    /// </remarks>
-    internal RocksDbReader(DbOnTheRocks mainDb,
-        ReadOptions options,
-        ReadOptions hintCacheMissOptions,
-        Func<ReadOptions> readOptionsFactory,
-        DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager,
-        IColumnFamilyHandle? columnFamily,
-        RocksDbReadSession session,
-        RocksDbReadSession hintCacheMissSession)
-        : this(mainDb, options, hintCacheMissOptions, readOptionsFactory, iteratorManager, columnFamily)
-    {
-        _session = session;
-        _hintCacheMissSession = hintCacheMissSession;
-    }
-
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
@@ -100,29 +69,20 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             }
         }
 
-        bool hintCacheMiss = (flags & ReadFlags.HintCacheMiss) != 0;
-        RocksDbReadSession? session = hintCacheMiss ? _hintCacheMissSession : _session;
-        return session is not null
-            ? _mainDb.Get(key, _columnFamily, session)
-            : _mainDb.Get(key, _columnFamily, hintCacheMiss ? _hintCacheMissOptions : _options);
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.Get(key, _columnFamily, readOptions);
     }
 
     public int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
     {
-        bool hintCacheMiss = (flags & ReadFlags.HintCacheMiss) != 0;
-        RocksDbReadSession? session = hintCacheMiss ? _hintCacheMissSession : _session;
-        return session is not null
-            ? _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, session)
-            : _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, hintCacheMiss ? _hintCacheMissOptions : _options);
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
     }
 
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        bool hintCacheMiss = (flags & ReadFlags.HintCacheMiss) != 0;
-        RocksDbReadSession? session = hintCacheMiss ? _hintCacheMissSession : _session;
-        return session is not null
-            ? _mainDb.GetSpanWithColumnFamily(key, _columnFamily, session)
-            : _mainDb.GetSpanWithColumnFamily(key, _columnFamily, hintCacheMiss ? _hintCacheMissOptions : _options);
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
