@@ -4613,6 +4613,8 @@ namespace Nethermind.TxPool.Test
 
             public void Dispose()
             {
+                // Unpark a writer left blocked by a test that failed before releasing it.
+                _releaseFirstUpdate.Set();
                 _firstUpdateEntered.Dispose();
                 _releaseFirstUpdate.Dispose();
                 _deleteEntered.Dispose();
