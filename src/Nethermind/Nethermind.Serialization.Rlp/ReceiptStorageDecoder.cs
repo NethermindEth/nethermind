@@ -78,32 +78,27 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            if (!allowExtraBytes)
+            if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
             {
-                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
+                if (decoderContext.PeekByte() == MarkTxHashByte)
                 {
-                    // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
-                    if (decoderContext.PeekByte() == MarkTxHashByte)
-                    {
-                        decoderContext.ReadByte();
-                        txReceipt.TxHash = decoderContext.DecodeKeccakOrNull();
-                    }
-                }
-
-                // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position < receiptEnd)
-                {
-                    txReceipt.Error = decoderContext.DecodeString();
-                }
-
-                if (txReceipt.TxType == TxType.FrameTx && decoderContext.Position < receiptEnd)
-                {
-                    txReceipt.Payer = decoderContext.DecodeAddress();
-                    txReceipt.FrameReceipts = DecodeFrameReceipts(ref decoderContext);
+                    decoderContext.ReadByte();
+                    txReceipt.TxHash = decoderContext.DecodeKeccakOrNull();
                 }
             }
 
             if (decoderContext.Position < receiptEnd)
+            {
+                txReceipt.Error = decoderContext.DecodeString();
+            }
+
+            if (txReceipt.TxType == TxType.FrameTx && decoderContext.Position < receiptEnd)
+            {
+                txReceipt.Payer = decoderContext.DecodeAddress();
+                txReceipt.FrameReceipts = DecodeFrameReceipts(ref decoderContext);
+            }
+
+            if (decoderContext.Position < receiptEnd && allowExtraBytes)
             {
                 decoderContext.Position = receiptEnd;
             }
