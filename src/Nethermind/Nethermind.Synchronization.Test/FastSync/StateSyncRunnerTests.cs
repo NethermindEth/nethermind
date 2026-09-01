@@ -104,8 +104,9 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Received(1).FinalizeSync(lastPivot);
     }
 
-    [Test]
-    public void Does_not_finalize_when_the_healed_root_does_not_match_the_pivot()
+    [TestCase(false, TestName = "Does_not_finalize_when_the_healed_root_does_not_match_the_pivot")]
+    [TestCase(true, TestName = "Does_not_finalize_when_the_range_is_lost")]
+    public void Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
@@ -117,7 +118,8 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 
         _pivot.GetPivotHeader().Returns(lastPivot);
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
-        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, TestItem.KeccakF));
+        Hash256? healedRoot = rangeLost ? null : TestItem.KeccakF;
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, healedRoot));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
 
