@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -46,107 +45,12 @@ namespace Nethermind.Trie
 
         private byte _blockAndFlags = 0;
 
-#if ZK_EVM
-        // Single-threaded guest: no publication or compare-and-swap is needed, so both collapse to
-        // plain field access and inline into the flag properties, which are read per node touch.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private byte ReadBlockAndFlags() => _blockAndFlags;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
-        {
-            _blockAndFlags = newValue;
-            return comparand;
-        }
-#else
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private byte ReadBlockAndFlags() => Volatile.Read(ref _blockAndFlags);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
-            => Interlocked.CompareExchange(ref _blockAndFlags, newValue, comparand);
-#endif
         // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
         // not atomically readable on x64. Split into two 8-byte fields that are
         // individually atomic, with a sequence counter to detect concurrent writes.
         private byte[]? _rlpArray;
         private ulong _rlpSeqAndLength; // bits 0-31: length, bits 32-63: sequence (even = stable, odd = writing)
         private INodeData? _nodeData;
-
-        /// <summary>
-        /// Atomically read _rlp using seqlock: retry if a concurrent write is detected.
-        /// Memory barriers ensure ARM64 correctness (matching SeqlockCache/KeccakCache patterns).
-        /// </summary>
-#if ZK_EVM
-        // Single-threaded guest: no writer can race a reader, so the seqlock collapses to two loads.
-        // Being this small also lets it inline into the several call sites that read the RLP per node.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private CappedArray<byte> ReadRlp()
-        {
-            byte[]? array = _rlpArray;
-            return array is null ? default : new CappedArray<byte>(array, (int)(uint)_rlpSeqAndLength);
-        }
-#else
-        private CappedArray<byte> ReadRlp()
-        {
-            SpinWait spin = default;
-            ulong seqBefore, seqAfter;
-            byte[]? array;
-            while (true)
-            {
-                seqBefore = Volatile.Read(ref _rlpSeqAndLength);
-                if ((seqBefore >> 32 & 1) != 0) { spin.SpinOnce(); continue; }
-                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-                array = _rlpArray;
-                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-                seqAfter = Volatile.Read(ref _rlpSeqAndLength);
-                if (seqBefore == seqAfter) break;
-                spin.SpinOnce();
-            }
-
-            return array is null ? default : new CappedArray<byte>(array, (int)(seqBefore & 0xFFFFFFFF));
-        }
-#endif
-
-        /// <summary>
-        /// Atomically write _rlp using seqlock: odd sequence signals write-in-progress.
-        /// CAS on even sequences only — if another writer is active (odd), spin until it completes.
-        /// Last writer wins: all writers write the same resolved data for a given node.
-        /// Sequence uses bits 1-31 (31 bits, ~2 billion writes before wrap); bit 0 is the lock flag.
-        /// </summary>
-#if ZK_EVM
-        // No competing writer in the guest, so the publish is just the two field stores.
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
-#else
-        [MethodImpl(MethodImplOptions.NoInlining)] // CAS dominates latency; avoid code bloat at 5+ call sites
-        internal void WriteRlp(CappedArray<byte> value)
-        {
-            SpinWait spin = default;
-            while (true)
-            {
-                ulong current = Volatile.Read(ref _rlpSeqAndLength);
-                ulong seq = current >> 32;
-                if ((seq & 1) != 0)
-                {
-                    // Another writer is active — spin until it completes
-                    spin.SpinOnce();
-                    continue;
-                }
-                // Set lock bit (odd) — seq | 1 is always odd regardless of overflow
-                ulong writing = (seq | 1) << 32;
-                if (Interlocked.CompareExchange(ref _rlpSeqAndLength, writing, current) == current)
-                {
-                    Volatile.Write(ref _rlpArray, value.UnderlyingArray);
-                    // Advance sequence by 2 and clear lock bit (even), store final length
-                    ulong doneSeq = (seq + 2) & 0xFFFFFFFE;
-                    Volatile.Write(ref _rlpSeqAndLength, doneSeq << 32 | (uint)value.Length);
-                    return;
-                }
-                spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
-            }
-        }
-#endif
 
         /// <summary>
         /// Direct field initialization — no seqlock needed during single-threaded construction.
@@ -174,7 +78,7 @@ namespace Nethermind.Trie
                 {
                     currentValue = previousValue;
                     byte newValue = (byte)(value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask));
-                    previousValue = ExchangeBlockAndFlags( newValue, currentValue);
+                    previousValue = ExchangeBlockAndFlags(newValue, currentValue);
                 } while (previousValue != currentValue);
             }
         }
@@ -190,7 +94,7 @@ namespace Nethermind.Trie
                 {
                     currentValue = previousValue;
                     byte newValue = (byte)(value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof));
-                    previousValue = ExchangeBlockAndFlags( newValue, currentValue);
+                    previousValue = ExchangeBlockAndFlags(newValue, currentValue);
                 } while (previousValue != currentValue);
             }
         }
@@ -209,7 +113,7 @@ namespace Nethermind.Trie
                 if ((previousValue & _warmerOwnedMask) != 0) return;
 
                 byte newValue = (byte)(previousValue | _warmerOwnedMask);
-                byte currentValue = ExchangeBlockAndFlags( newValue, previousValue);
+                byte currentValue = ExchangeBlockAndFlags(newValue, previousValue);
                 if (currentValue == previousValue) return;
 
                 previousValue = currentValue;
@@ -232,7 +136,7 @@ namespace Nethermind.Trie
 
                 currentValue = previousValue;
                 byte newValue = (byte)(currentValue & ~_dirtyMask);
-                previousValue = ExchangeBlockAndFlags( newValue, currentValue);
+                previousValue = ExchangeBlockAndFlags(newValue, currentValue);
             } while (previousValue != currentValue);
 
             [DoesNotReturn, StackTraceHidden]
@@ -436,7 +340,6 @@ namespace Nethermind.Trie
 #else
             $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
-
 
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
@@ -700,7 +603,7 @@ namespace Nethermind.Trie
                 }
 
                 byte newValue = (byte)(currentValue | _warmerResolvingMask);
-                if (ExchangeBlockAndFlags( newValue, currentValue) == currentValue)
+                if (ExchangeBlockAndFlags(newValue, currentValue) == currentValue)
                 {
                     return true;
                 }
@@ -720,7 +623,7 @@ namespace Nethermind.Trie
                     newValue |= _warmerResolvedMask;
                 }
 
-                byte currentValue = ExchangeBlockAndFlags( newValue, previousValue);
+                byte currentValue = ExchangeBlockAndFlags(newValue, previousValue);
                 if (currentValue == previousValue) return;
 
                 previousValue = currentValue;
@@ -766,7 +669,6 @@ namespace Nethermind.Trie
 
             return true;
         }
-
 
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
