@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
+using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -119,7 +120,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
-        if (exception is SocketException or RlpException)
+        if (exception is SocketException or RlpException or ReadTimeoutException)
         {
             if (_logger.IsTrace) TraceCommunicationError(exception);
         }

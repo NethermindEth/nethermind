@@ -272,14 +272,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug(disconnect.DebugMessage);
+            if (_logger.IsTrace) TraceDisconnect(disconnect.TraceMessage);
             _protocolHandler.Disconnect(disconnect.Reason, disconnect.Details);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceDisconnect(string message) => _logger.Trace(message);
         }
 
         private readonly record struct DisconnectRequest(
             DisconnectReason Reason,
             string Details,
-            string DebugMessage);
+            string TraceMessage);
 
         private sealed class PooledTransactionSample(int capacity)
         {

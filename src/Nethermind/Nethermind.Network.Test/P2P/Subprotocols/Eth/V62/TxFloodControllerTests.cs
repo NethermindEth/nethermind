@@ -395,6 +395,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Disconnect_message_is_trace_only(bool traceEnabled)
+        {
+            _testLogger.IsDebug = true;
+            _testLogger.IsTrace = traceEnabled;
+            _controller = new TxFloodController(_handler, _timestamper, new ILogger(_testLogger), new Random(0));
+
+            _controller.Report(AcceptTxResult.Invalid);
+
+            if (traceEnabled)
+                Assert.That(_testLogger.LogList, Has.One.EndsWith("due to invalid tx received"));
+            else
+                Assert.That(_testLogger.LogList, Is.Empty);
+        }
+
         [TestCase(1)]
         [TestCase(101)]
         public void Will_downgrade_without_disconnect_on_invalid_blob_proofs(int reports)

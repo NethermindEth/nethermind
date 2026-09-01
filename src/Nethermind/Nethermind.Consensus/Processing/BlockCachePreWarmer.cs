@@ -659,7 +659,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DebugPreWarming(string state, ulong blockNumber, bool isPreparation, int transactionCount) =>
             _logger.Debug(
-                $"{state} pre-warming caches for {(isPreparation ? "preparation" : "validation")} of block {blockNumber} with {transactionCount} transactions.");
+                $"{state} pre-warming caches for {(isPreparation ? "preparation" : "validation")} of block {blockNumber} with {transactionCount} {(isPreparation ? "new transactions" : "transactions")}.");
     }
 
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)

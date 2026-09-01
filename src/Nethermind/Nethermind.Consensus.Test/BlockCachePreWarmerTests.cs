@@ -164,9 +164,9 @@ public class BlockCachePreWarmerTests
         Assert.That(created, Is.Empty, "tiny blocks must not rent reactive warming environments");
     }
 
-    [TestCase(false, "validation")]
-    [TestCase(true, "preparation")]
-    public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose)
+    [TestCase(false, "validation", "transactions")]
+    [TestCase(true, "preparation", "new transactions")]
+    public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose, string transactionDescription)
     {
         TestLogger logger = new();
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(
@@ -187,9 +187,9 @@ public class BlockCachePreWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logger.LogList, Has.Some.EqualTo(
-                $"Started pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+                $"Started pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} {transactionDescription}."));
             Assert.That(logger.LogList, Has.Some.EqualTo(
-                $"Finished pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+                $"Finished pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} {transactionDescription}."));
         }
     }
 
