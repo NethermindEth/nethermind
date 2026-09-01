@@ -474,7 +474,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchedTrieReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -499,6 +499,36 @@ public static class BasePersistence
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        void IBatchedTrieReader.TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (paths.Length != values.Length)
+                throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+
+            if (_trieReader is IBatchedTrieReader batched)
+            {
+                batched.TryLoadStateRlpBatch(paths, values, flags);
+                return;
+            }
+
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = _trieReader.TryLoadStateRlp(paths[i], flags);
+        }
+
+        void IBatchedTrieReader.TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (paths.Length != values.Length)
+                throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+
+            if (_trieReader is IBatchedTrieReader batched)
+            {
+                batched.TryLoadStorageRlpBatch(address, paths, values, flags);
+                return;
+            }
+
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = _trieReader.TryLoadStorageRlp(address, paths[i], flags);
+        }
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

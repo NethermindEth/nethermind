@@ -1386,6 +1386,83 @@ namespace Nethermind.Trie.Test
             }
         }
 
+        [TestCase(false, 0)]
+        [TestCase(false, 1)]
+        [TestCase(false, 2)]
+        [TestCase(false, 3)]
+        [TestCase(true, 0)]
+        [TestCase(true, 1)]
+        [TestCase(true, 2)]
+        [TestCase(true, 3)]
+        public void WarmUpPaths_BatchesStateAndStorageFrontiers_AndRejectsUnverifiedRlp(bool storage, int invalidNode)
+        {
+            BatchWarmerTrieStore trieStore = new(invalidNode);
+            IScopedTrieStore scopedTrieStore = storage
+                ? (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(TestItem.KeccakA)
+                : trieStore;
+            PatriciaTree tree = new(scopedTrieStore, _logManager)
+            {
+                RootRef = new TrieNode(NodeType.Unknown, trieStore.RootHash, trieStore.RootRlp)
+            };
+
+            ValueHash256[] keys =
+            [
+                ValueHashFromNibbles([1, 3, 4]),
+                ValueHashFromNibbles([1, 3, 5]),
+                ValueHashFromNibbles([2])
+            ];
+            Array.Sort(keys, static (left, right) => left.CompareTo(right));
+
+            Assert.That(() => tree.WarmUpPaths(keys), Throws.Nothing);
+
+            TreePath extensionPath = TreePath.FromNibble([1]);
+            TreePath branchPath = TreePath.FromNibble([1, 3]);
+            TreePath firstLeafPath = TreePath.FromNibble([1, 3, 4]);
+            TreePath secondLeafPath = TreePath.FromNibble([1, 3, 5]);
+            TreePath otherLeafPath = TreePath.FromNibble([2]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trieStore.BatchCalls, Is.EqualTo(3));
+                Assert.That(trieStore.SingleLoads, Is.EqualTo(0));
+                Assert.That(trieStore.BatchPaths, Is.EqualTo(new[]
+                {
+                    extensionPath,
+                    otherLeafPath,
+                    branchPath,
+                    firstLeafPath,
+                    secondLeafPath
+                }));
+
+                AssertResolved(trieStore.Nodes[extensionPath], NodeType.Extension);
+                AssertResolved(trieStore.Nodes[branchPath], NodeType.Branch);
+                AssertResolved(trieStore.Nodes[otherLeafPath], NodeType.Leaf);
+
+                TrieNode firstLeaf = trieStore.Nodes[firstLeafPath];
+                if (invalidNode == 0)
+                {
+                    AssertResolved(firstLeaf, NodeType.Leaf);
+                }
+                else
+                {
+                    Assert.That(firstLeaf.NodeType, Is.EqualTo(NodeType.Unknown));
+                    Assert.That(firstLeaf.IsWarmerOwned, Is.True);
+                    Assert.That(firstLeaf.IsWarmerResolved, Is.False);
+                    Assert.That(firstLeaf.HasRlp, Is.False);
+                }
+
+                AssertResolved(trieStore.Nodes[secondLeafPath], NodeType.Leaf);
+            }
+
+            static void AssertResolved(TrieNode node, NodeType expectedType)
+            {
+                Assert.That(node.NodeType, Is.EqualTo(expectedType));
+                Assert.That(node.IsWarmerOwned, Is.True);
+                Assert.That(node.IsWarmerResolved, Is.True);
+                Assert.That(node.IsPersisted, Is.True);
+            }
+        }
+
         [Test]
         public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
         {
@@ -1451,5 +1528,114 @@ namespace Nethermind.Trie.Test
             public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
                 throw new NotSupportedException();
         }
+
+        private sealed class BatchWarmerTrieStore : IScopedTrieStore, ITrieNodeBatchResolver
+        {
+            private readonly Dictionary<TreePath, byte[]?> _rlpByPath = [];
+
+            public BatchWarmerTrieStore(int invalidNode)
+            {
+                TrieNode firstLeaf = CreateLeaf([0x0], 0x1);
+                TrieNode secondLeaf = CreateLeaf([0x0], 0x2);
+                TrieNode otherLeaf = CreateLeaf([0x0], 0x3);
+
+                TrieNode branch = TrieNodeFactory.CreateBranch();
+                branch.SetChild(4, firstLeaf);
+                branch.SetChild(5, secondLeaf);
+                ResolveKey(branch);
+
+                TrieNode extension = TrieNodeFactory.CreateExtension([0x3], branch);
+                ResolveKey(extension);
+
+                TrieNode root = TrieNodeFactory.CreateBranch();
+                root.SetChild(1, extension);
+                root.SetChild(2, otherLeaf);
+                ResolveKey(root);
+
+                RootHash = root.Keccak!;
+                RootRlp = root.FullRlp.ToArray()!;
+
+                AddRlp([1], extension.FullRlp.ToArray()!);
+                AddRlp([1, 3], branch.FullRlp.ToArray()!);
+                AddRlp([1, 3, 4], invalidNode switch
+                {
+                    1 => null,
+                    2 => secondLeaf.FullRlp.ToArray()!,
+                    3 => [0xff],
+                    _ => firstLeaf.FullRlp.ToArray()!
+                });
+                AddRlp([1, 3, 5], secondLeaf.FullRlp.ToArray()!);
+                AddRlp([2], otherLeaf.FullRlp.ToArray()!);
+
+                static TrieNode CreateLeaf(byte[] path, byte value)
+                {
+                    byte[] leafValue = new byte[32];
+                    leafValue[^1] = value;
+                    return TrieNodeFactory.CreateLeaf(path, leafValue);
+                }
+
+                static void ResolveKey(TrieNode node)
+                {
+                    TreePath path = TreePath.Empty;
+                    node.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+                }
+            }
+
+            public Hash256 RootHash { get; }
+
+            public byte[] RootRlp { get; }
+
+            public int BatchCalls { get; private set; }
+
+            public int SingleLoads { get; private set; }
+
+            public List<TreePath> BatchPaths { get; } = [];
+
+            public Dictionary<TreePath, TrieNode> Nodes { get; } = [];
+
+            public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+            {
+                if (Nodes.TryGetValue(path, out TrieNode? node))
+                    return node;
+
+                node = new TrieNode(NodeType.Unknown, hash);
+                node.MarkWarmerOwned();
+                Nodes[path] = node;
+                return node;
+            }
+
+            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                SingleLoads++;
+                return _rlpByPath.TryGetValue(path, out byte[]? value) ? value : null;
+            }
+
+            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                SingleLoads++;
+                return _rlpByPath.TryGetValue(path, out byte[]? value) ? value : null;
+            }
+
+            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
+
+            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+                throw new NotSupportedException();
+
+            public void TryLoadRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+            {
+                BatchCalls++;
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    BatchPaths.Add(paths[i]);
+                    values[i] = _rlpByPath.TryGetValue(paths[i], out byte[]? value) ? value : null;
+                }
+            }
+
+            private void AddRlp(ReadOnlySpan<byte> path, byte[]? rlp) => _rlpByPath[TreePath.FromNibble(path)] = rlp;
+        }
+
+        private static ValueHash256 ValueHashFromNibbles(ReadOnlySpan<byte> nibbles) => TreePath.FromNibble(nibbles).Path;
     }
 }

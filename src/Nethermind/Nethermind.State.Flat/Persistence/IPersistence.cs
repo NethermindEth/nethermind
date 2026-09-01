@@ -15,6 +15,13 @@ public enum ReaderFlags
     Sync = 1,
 }
 
+internal interface IBatchedTrieReader
+{
+    void TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags);
+
+    void TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags);
+}
+
 public interface IPersistence
 {
     IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None);

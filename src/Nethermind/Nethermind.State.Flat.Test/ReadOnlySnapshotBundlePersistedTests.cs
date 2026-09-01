@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -161,6 +163,55 @@ public class ReadOnlySnapshotBundlePersistedTests
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TryLoadRlpBatch_PreservesPersistedPrecedence(bool storage)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        Hash256 address = Keccak.Compute("address");
+        TreePath persistedPath = new(Keccak.Compute("persisted"), 4);
+        TreePath fallbackPath = new(Keccak.Compute("fallback"), 4);
+        byte[] persistedRlp = [0xC2, 0x80, 0x80];
+        byte[] databaseRlp = [0xC1, 0x80];
+
+        SnapshotContent content = new();
+        if (storage)
+            content.StorageNodes[(address, persistedPath)] = new TrieNode(NodeType.Branch, persistedRlp);
+        else
+            content.StateNodes[persistedPath] = new TrieNode(NodeType.Leaf, persistedRlp);
+
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
+        PersistedSnapshotList list = new(1) { persisted };
+        BatchPersistenceReader reader = new(databaseRlp);
+
+        using ReadOnlySnapshotBundle bundle = new(
+            new SnapshotPooledList(0),
+            reader,
+            recordDetailedMetrics: false,
+            persistedSnapshots: AlwaysTrueStack(list));
+
+        TreePath[] paths = [persistedPath, fallbackPath];
+        byte[]?[] values = new byte[]?[paths.Length];
+        ReadFlags flags = ReadFlags.HintReadAhead;
+        if (storage)
+            bundle.TryLoadStorageRlpBatch(address, paths, values, flags);
+        else
+            bundle.TryLoadStateRlpBatch(paths, values, flags);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values[0], Is.EqualTo(persistedRlp));
+            Assert.That(values[1], Is.EqualTo(databaseRlp));
+            Assert.That(reader.BatchCalls, Is.EqualTo(1));
+            Assert.That(reader.BatchPaths, Is.EqualTo(new[] { fallbackPath }));
+            Assert.That(reader.Flags, Is.EqualTo(flags));
+            Assert.That(reader.SingleReads, Is.Zero);
+        }
+    }
+
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue
     // placeholder — the stack probes every snapshot unfiltered, which is what these tests want.
     private static PersistedSnapshotStack AlwaysTrueStack(PersistedSnapshotList list) =>
@@ -168,4 +219,61 @@ public class ReadOnlySnapshotBundlePersistedTests
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
         TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
+
+    private sealed class BatchPersistenceReader(byte[] databaseRlp) : IPersistence.IPersistenceReader, IBatchedTrieReader
+    {
+        public int BatchCalls { get; private set; }
+        public int SingleReads { get; private set; }
+        public List<TreePath> BatchPaths { get; } = [];
+        public ReadFlags Flags { get; private set; }
+
+        public Account? GetAccount(Address address) => null;
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+
+        public StateId CurrentState => StateId.PreGenesis;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            SingleReads++;
+            return databaseRlp;
+        }
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        {
+            SingleReads++;
+            return databaseRlp;
+        }
+
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            throw new NotSupportedException();
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            throw new NotSupportedException();
+
+        public bool IsPreimageMode => false;
+
+        public void Dispose() { }
+
+        void IBatchedTrieReader.TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+            ReadBatch(paths, values, flags);
+
+        void IBatchedTrieReader.TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+            ReadBatch(paths, values, flags);
+
+        private void ReadBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            BatchCalls++;
+            Flags = flags;
+            for (int i = 0; i < paths.Length; i++)
+            {
+                BatchPaths.Add(paths[i]);
+                values[i] = databaseRlp;
+            }
+        }
+    }
 }

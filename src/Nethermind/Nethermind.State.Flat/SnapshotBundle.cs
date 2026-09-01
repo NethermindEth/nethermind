@@ -465,6 +465,12 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
+    internal void TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+        _readOnlySnapshotBundle.TryLoadStateRlpBatch(paths, values, flags);
+
+    internal void TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+        _readOnlySnapshotBundle.TryLoadStorageRlpBatch(address, paths, values, flags);
+
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {

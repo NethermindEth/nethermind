@@ -43,7 +43,7 @@ internal sealed class StateTrieStoreAdapter(
 
 internal sealed class StateTrieStoreWarmerAdapter(
     SnapshotBundle bundle
-) : AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore, ITrieNodeBatchResolver
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -59,6 +59,9 @@ internal sealed class StateTrieStoreWarmerAdapter(
         if (address is null) return this;
         return new StorageTrieStoreWarmerAdapter(bundle, address);
     }
+
+    void ITrieNodeBatchResolver.TryLoadRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+        bundle.TryLoadStateRlpBatch(paths, values, flags);
 }
 
 internal sealed class StorageTrieStoreAdapter(
@@ -97,7 +100,7 @@ internal sealed class StorageTrieStoreAdapter(
 internal sealed class StorageTrieStoreWarmerAdapter(
     SnapshotBundle bundle,
     Hash256AsKey addressHash
-) : AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore, ITrieNodeBatchResolver
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -107,4 +110,7 @@ internal sealed class StorageTrieStoreWarmerAdapter(
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+
+    void ITrieNodeBatchResolver.TryLoadRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags) =>
+        bundle.TryLoadStorageRlpBatch(addressHash, paths, values, flags);
 }

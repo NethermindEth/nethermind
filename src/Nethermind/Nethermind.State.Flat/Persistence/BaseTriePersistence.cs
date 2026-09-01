@@ -306,7 +306,7 @@ public static class BaseTriePersistence
         IReadOnlyKeyValueStore stateNodes,
         IReadOnlyKeyValueStore storageNodes,
         IReadOnlyKeyValueStore fallbackNodes
-    ) : BasePersistence.ITrieReader
+    ) : BasePersistence.ITrieReader, IBatchedTrieReader
     {
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             path.Length switch
@@ -320,5 +320,119 @@ public static class BaseTriePersistence
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
                 : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
+
+        void IBatchedTrieReader.TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (paths.Length != values.Length)
+                throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+
+            int[] indices = new int[paths.Length];
+            byte[]?[] batchValues = new byte[]?[paths.Length];
+
+            for (int column = 0; column < 3; column++)
+            {
+                int count = 0;
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    bool belongsToColumn = column switch
+                    {
+                        0 => paths[i].Length <= StateNodesTopThreshold,
+                        1 => paths[i].Length > StateNodesTopThreshold && paths[i].Length <= ShortenedPathThreshold,
+                        _ => paths[i].Length > ShortenedPathThreshold,
+                    };
+
+                    if (belongsToColumn)
+                        indices[count++] = i;
+                }
+
+                if (count == 0) continue;
+
+                byte[][] keys = new byte[count][];
+                IReadOnlyKeyValueStore store = column switch
+                {
+                    0 => stateTopNodes,
+                    1 => stateNodes,
+                    _ => fallbackNodes,
+                };
+
+                for (int i = 0; i < count; i++)
+                {
+                    TreePath path = paths[indices[i]];
+                    byte[] key = column switch
+                    {
+                        0 => new byte[StateNodesTopPathLength],
+                        1 => new byte[ShortenedPathLength],
+                        _ => new byte[FullStateNodesKeyLength],
+                    };
+                    switch (column)
+                    {
+                        case 0:
+                            EncodeStateTopNodeKey(key, in path);
+                            break;
+                        case 1:
+                            EncodeShortenedStateNodeKey(key, in path);
+                            break;
+                        default:
+                            EncodeFullStateNodeKey(key, in path);
+                            break;
+                    }
+
+                    keys[i] = key;
+                }
+
+                batchValues.AsSpan(0, count).Clear();
+                store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
+                for (int i = 0; i < count; i++)
+                    values[indices[i]] = batchValues[i];
+            }
+        }
+
+        void IBatchedTrieReader.TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+        {
+            if (paths.Length != values.Length)
+                throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+
+            int[] indices = new int[paths.Length];
+            byte[]?[] batchValues = new byte[]?[paths.Length];
+
+            for (int column = 0; column < 2; column++)
+            {
+                int count = 0;
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    bool belongsToColumn = column == 0
+                        ? paths[i].Length <= ShortenedPathThreshold
+                        : paths[i].Length > ShortenedPathThreshold;
+                    if (belongsToColumn) indices[count++] = i;
+                }
+
+                if (count == 0) continue;
+
+                byte[][] keys = new byte[count][];
+                IReadOnlyKeyValueStore store = column == 0 ? storageNodes : fallbackNodes;
+                for (int i = 0; i < count; i++)
+                {
+                    TreePath path = paths[indices[i]];
+                    byte[] key = column == 0
+                        ? new byte[ShortenedStorageNodesKeyLength]
+                        : new byte[FullStorageNodesKeyLength];
+                    if (column == 0)
+                    {
+                        EncodeShortenedStorageNodeKey(key, address, in path);
+                    }
+                    else
+                    {
+                        EncodeFullStorageNodeKey(key, address, in path);
+                    }
+
+                    keys[i] = key;
+                }
+
+                batchValues.AsSpan(0, count).Clear();
+                store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
+                for (int i = 0; i < count; i++)
+                    values[indices[i]] = batchValues[i];
+            }
+        }
     }
 }

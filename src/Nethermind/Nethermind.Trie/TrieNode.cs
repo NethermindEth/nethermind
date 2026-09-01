@@ -705,16 +705,8 @@ namespace Nethermind.Trie
                     IsPersisted = true;
                 }
 
-                if (!VerifyWarmerOwnedRlp(rlp)) return false;
-                if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
-
-                if (!HasRlp)
-                {
-                    WriteRlp(rlp);
-                }
-
-                resolved = true;
-                return true;
+                resolved = TryResolveWarmerOwnedRlp(in rlp, bufferPool);
+                return resolved;
             }
             catch (RlpException)
             {
@@ -732,6 +724,55 @@ namespace Nethermind.Trie
             {
                 CompleteWarmerResolution(resolved);
             }
+        }
+
+        internal bool TryResolveWarmerOwnedNodeFromRlp(byte[]? fullRlp, ICappedArrayPool? bufferPool)
+        {
+            if (!TryAcquireWarmerResolution()) return true;
+
+            bool resolved = false;
+            try
+            {
+                CappedArray<byte> rlp = ReadRlp();
+                if (rlp.IsNull)
+                {
+                    if (fullRlp is null) return false;
+                    rlp = new CappedArray<byte>(fullRlp);
+                    IsPersisted = true;
+                }
+
+                resolved = TryResolveWarmerOwnedRlp(in rlp, bufferPool);
+                return resolved;
+            }
+            catch (RlpException)
+            {
+                return false;
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return false;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+            finally
+            {
+                CompleteWarmerResolution(resolved);
+            }
+        }
+
+        private bool TryResolveWarmerOwnedRlp(in CappedArray<byte> rlp, ICappedArrayPool? bufferPool)
+        {
+            if (!VerifyWarmerOwnedRlp(rlp)) return false;
+            if (!DecodeRlp(new RlpReader(rlp), bufferPool, out _)) return false;
+
+            if (!HasRlp)
+            {
+                WriteRlp(rlp);
+            }
+
+            return true;
         }
 
         private bool TryAcquireWarmerResolution()

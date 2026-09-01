@@ -1045,8 +1045,189 @@ namespace Nethermind.Trie
         {
             if (sortedKeys.Length == 0) return;
 
+            if (TrieStore is ITrieNodeBatchResolver batchResolver)
+            {
+                WarmUpPathsBatched(sortedKeys, batchResolver);
+                return;
+            }
+
             TreePath emptyPath = TreePath.Empty;
             DoWarmUpPaths(sortedKeys, 0, ref emptyPath, RootRef);
+        }
+
+        private const int WarmUpRlpBatchSize = 128;
+
+        private void WarmUpPathsBatched(ReadOnlySpan<ValueHash256> sortedKeys, ITrieNodeBatchResolver batchResolver)
+        {
+            ArrayPoolListRef<WarmUpEntry> frontier = new(1);
+            ArrayPoolListRef<WarmUpEntry> next = new(16);
+            TrieNode[]? batchNodes = null;
+            TreePath[]? batchPaths = null;
+            byte[]?[]? batchValues = null;
+
+            try
+            {
+                batchNodes = ArrayPool<TrieNode>.Shared.Rent(WarmUpRlpBatchSize);
+                batchPaths = ArrayPool<TreePath>.Shared.Rent(WarmUpRlpBatchSize);
+                batchValues = ArrayPool<byte[]?>.Shared.Rent(WarmUpRlpBatchSize);
+
+                frontier.Add(new WarmUpEntry(TreePath.Empty, RootRef, 0, 0, sortedKeys.Length));
+                while (frontier.Count > 0)
+                {
+                    next.Clear();
+                    Span<WarmUpEntry> entries = frontier.AsSpan();
+                    int batchCount = 0;
+
+                    for (int i = 0; i < entries.Length; i++)
+                    {
+                        ref WarmUpEntry entry = ref entries[i];
+                        TrieNode? node = entry.Node;
+                        if (node is null) continue;
+
+                        try
+                        {
+                            if (node.IsSealed && node.Keccak is not null && entry.Path.Length % 2 == 1)
+                            {
+                                node = TrieStore.FindCachedOrUnknown(entry.Path, node.Keccak);
+                                entry.Node = node;
+                            }
+
+                            if (node.IsWarmerOwned && !node.IsWarmerResolved && !node.HasRlp)
+                            {
+                                batchNodes![batchCount] = node;
+                                batchPaths![batchCount++] = entry.Path;
+                                if (batchCount == WarmUpRlpBatchSize)
+                                {
+                                    ResolveWarmUpBatch(batchResolver, batchNodes, batchPaths, batchValues!, batchCount);
+                                    batchCount = 0;
+                                }
+
+                                continue;
+                            }
+
+                            if (!node.TryResolveNode(TrieStore, ref entry.Path)) continue;
+                        }
+                        catch (TrieNodeException)
+                        {
+                        }
+                    }
+
+                    if (batchCount > 0)
+                        ResolveWarmUpBatch(batchResolver, batchNodes!, batchPaths!, batchValues!, batchCount);
+
+                    for (int i = 0; i < entries.Length; i++)
+                    {
+                        WarmUpEntry entry = entries[i];
+                        TrieNode? node = entry.Node;
+                        if (node is null || node.NodeType == NodeType.Unknown) continue;
+
+                        try
+                        {
+                            ExpandWarmUpEntry(sortedKeys, in entry, node, ref next);
+                        }
+                        catch (TrieNodeException)
+                        {
+                        }
+                    }
+
+                    ArrayPoolListRef<WarmUpEntry> oldFrontier = frontier;
+                    frontier = next;
+                    next = oldFrontier;
+                }
+            }
+            finally
+            {
+                frontier.Dispose();
+                next.Dispose();
+
+                if (batchNodes is not null)
+                {
+                    Array.Clear(batchNodes, 0, batchNodes.Length);
+                    ArrayPool<TrieNode>.Shared.Return(batchNodes);
+                }
+
+                if (batchPaths is not null)
+                {
+                    Array.Clear(batchPaths, 0, batchPaths.Length);
+                    ArrayPool<TreePath>.Shared.Return(batchPaths);
+                }
+
+                if (batchValues is not null)
+                {
+                    Array.Clear(batchValues, 0, batchValues.Length);
+                    ArrayPool<byte[]?>.Shared.Return(batchValues);
+                }
+            }
+        }
+
+        private void ResolveWarmUpBatch(
+            ITrieNodeBatchResolver batchResolver,
+            TrieNode[] nodes,
+            TreePath[] paths,
+            byte[]?[] values,
+            int count)
+        {
+            batchResolver.TryLoadRlpBatch(paths.AsSpan(0, count), values.AsSpan(0, count));
+            for (int i = 0; i < count; i++)
+            {
+                nodes[i].TryResolveWarmerOwnedNodeFromRlp(values[i], _bufferPool);
+                values[i] = null;
+            }
+        }
+
+        private void ExpandWarmUpEntry(
+            ReadOnlySpan<ValueHash256> sortedKeys,
+            in WarmUpEntry entry,
+            TrieNode node,
+            ref ArrayPoolListRef<WarmUpEntry> next)
+        {
+            if (node.IsLeaf || entry.Depth >= 64) return;
+
+            if (node.IsExtension)
+            {
+                byte[] nodeKey = node.Key!;
+                int start = entry.KeyStart;
+                int end = start + entry.KeyCount;
+                while (start < end && !MatchesNibbles(sortedKeys[start], entry.Depth, nodeKey)) start++;
+                int matchedEnd = start;
+                while (matchedEnd < end && MatchesNibbles(sortedKeys[matchedEnd], entry.Depth, nodeKey)) matchedEnd++;
+                if (start == matchedEnd) return;
+
+                TreePath childPath = entry.Path;
+                childPath.AppendMut(nodeKey);
+                TrieNode? child = node.GetChildWithChildPath(TrieStore, ref childPath, 0, keepChildRef: true);
+                if (child is not null)
+                    next.Add(new WarmUpEntry(childPath, child, entry.Depth + nodeKey.Length, start, matchedEnd - start));
+                return;
+            }
+
+            if (!node.IsBranch) return;
+
+            int rangeStart = entry.KeyStart;
+            int rangeEnd = rangeStart + entry.KeyCount;
+            while (rangeStart < rangeEnd)
+            {
+                int nibble = NibbleAt(sortedKeys[rangeStart], entry.Depth);
+                int childEnd = rangeStart + 1;
+                while (childEnd < rangeEnd && NibbleAt(sortedKeys[childEnd], entry.Depth) == nibble) childEnd++;
+
+                TreePath childPath = entry.Path;
+                childPath.AppendMut(nibble);
+                TrieNode? child = node.GetChildWithChildPath(TrieStore, ref childPath, nibble, keepChildRef: true);
+                if (child is not null)
+                    next.Add(new WarmUpEntry(childPath, child, entry.Depth + 1, rangeStart, childEnd - rangeStart));
+
+                rangeStart = childEnd;
+            }
+        }
+
+        private struct WarmUpEntry(TreePath path, TrieNode? node, int depth, int keyStart, int keyCount)
+        {
+            public TreePath Path = path;
+            public TrieNode? Node = node;
+            public int Depth = depth;
+            public int KeyStart = keyStart;
+            public int KeyCount = keyCount;
         }
 
         private void DoWarmUpPaths(ReadOnlySpan<ValueHash256> keys, int depth, ref TreePath path, TrieNode? node)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -279,6 +280,180 @@ public sealed class ReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
+    }
+
+    internal void TryLoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        GuardDispose();
+
+        if (paths.Length != values.Length)
+            throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+        if (paths.IsEmpty) return;
+
+        bool readsPersistence = _persistedSnapshotCount == 0;
+        long sw = readsPersistence && recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        if (_persistedSnapshotCount == 0)
+        {
+            LoadStateRlpBatch(paths, values, flags);
+        }
+        else
+        {
+            TreePath[]? missingPaths = null;
+            int[]? missingIndices = null;
+            int missingCount = 0;
+            try
+            {
+                missingPaths = ArrayPool<TreePath>.Shared.Rent(paths.Length);
+                missingIndices = ArrayPool<int>.Shared.Rent(paths.Length);
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    if (persistedSnapshots.TryLoadStateRlp(in paths[i], out byte[]? persistedRlp))
+                    {
+                        values[i] = persistedRlp;
+                    }
+                    else
+                    {
+                        missingPaths[missingCount] = paths[i];
+                        missingIndices[missingCount++] = i;
+                    }
+                }
+
+                if (missingCount > 0)
+                {
+                    readsPersistence = true;
+                    sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+                    byte[]?[] missingValues = ArrayPool<byte[]?>.Shared.Rent(missingCount);
+                    try
+                    {
+                        LoadStateRlpBatch(missingPaths!.AsSpan(0, missingCount), missingValues.AsSpan(0, missingCount), flags);
+                        for (int i = 0; i < missingCount; i++)
+                            values[missingIndices![i]] = missingValues[i];
+                    }
+                    finally
+                    {
+                        Array.Clear(missingValues, 0, missingCount);
+                        ArrayPool<byte[]?>.Shared.Return(missingValues);
+                    }
+                }
+            }
+            finally
+            {
+                if (missingPaths is not null)
+                {
+                    Array.Clear(missingPaths, 0, missingCount);
+                    ArrayPool<TreePath>.Shared.Return(missingPaths);
+                }
+
+                if (missingIndices is not null)
+                    ArrayPool<int>.Shared.Return(missingIndices);
+            }
+        }
+
+        if (readsPersistence && recordDetailedMetrics)
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
+    }
+
+    internal void TryLoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        GuardDispose();
+
+        if (paths.Length != values.Length)
+            throw new ArgumentException("Paths and values must have the same length.", nameof(values));
+        if (paths.IsEmpty) return;
+
+        bool readsPersistence = _persistedSnapshotCount == 0;
+        long sw = readsPersistence && recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        if (_persistedSnapshotCount == 0)
+        {
+            LoadStorageRlpBatch(address, paths, values, flags);
+        }
+        else
+        {
+            TreePath[]? missingPaths = null;
+            int[]? missingIndices = null;
+            int missingCount = 0;
+            try
+            {
+                missingPaths = ArrayPool<TreePath>.Shared.Rent(paths.Length);
+                missingIndices = ArrayPool<int>.Shared.Rent(paths.Length);
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    if (persistedSnapshots.TryLoadStorageRlp(address, in paths[i], out byte[]? persistedRlp))
+                    {
+                        values[i] = persistedRlp;
+                    }
+                    else
+                    {
+                        missingPaths[missingCount] = paths[i];
+                        missingIndices[missingCount++] = i;
+                    }
+                }
+
+                if (missingCount > 0)
+                {
+                    readsPersistence = true;
+                    sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+                    byte[]?[] missingValues = ArrayPool<byte[]?>.Shared.Rent(missingCount);
+                    try
+                    {
+                        LoadStorageRlpBatch(address, missingPaths!.AsSpan(0, missingCount), missingValues.AsSpan(0, missingCount), flags);
+                        for (int i = 0; i < missingCount; i++)
+                            values[missingIndices![i]] = missingValues[i];
+                    }
+                    finally
+                    {
+                        Array.Clear(missingValues, 0, missingCount);
+                        ArrayPool<byte[]?>.Shared.Return(missingValues);
+                    }
+                }
+            }
+            finally
+            {
+                if (missingPaths is not null)
+                {
+                    Array.Clear(missingPaths, 0, missingCount);
+                    ArrayPool<TreePath>.Shared.Return(missingPaths);
+                }
+
+                if (missingIndices is not null)
+                    ArrayPool<int>.Shared.Return(missingIndices);
+            }
+        }
+
+        if (readsPersistence && recordDetailedMetrics)
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+    }
+
+    private void LoadStateRlpBatch(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        for (int i = 0; i < paths.Length; i++)
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+
+        if (persistenceReader is IBatchedTrieReader batched)
+        {
+            batched.TryLoadStateRlpBatch(paths, values, flags);
+        }
+        else
+        {
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = persistenceReader.TryLoadStateRlp(paths[i], flags);
+        }
+    }
+
+    private void LoadStorageRlpBatch(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags)
+    {
+        for (int i = 0; i < paths.Length; i++)
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+
+        if (persistenceReader is IBatchedTrieReader batched)
+        {
+            batched.TryLoadStorageRlpBatch(address, paths, values, flags);
+        }
+        else
+        {
+            for (int i = 0; i < paths.Length; i++)
+                values[i] = persistenceReader.TryLoadStorageRlp(address, paths[i], flags);
+        }
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
