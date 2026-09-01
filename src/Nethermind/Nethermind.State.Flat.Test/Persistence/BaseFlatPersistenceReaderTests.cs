@@ -48,21 +48,22 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateTop.MultiGetCalls, Is.EqualTo(1));
-            Assert.That(state.MultiGetCalls, Is.EqualTo(1));
-            Assert.That(fallback.MultiGetCalls, Is.EqualTo(1));
-            Assert.That(stateTop.Keys![0], Has.Length.EqualTo(3));
-            Assert.That(state.Keys![0], Has.Length.EqualTo(8));
-            Assert.That(fallback.Keys![0], Has.Length.EqualTo(34));
-            Assert.That(fallback.Keys[0][0], Is.EqualTo(0));
+            Assert.That(stateTop.GetCalls, Is.EqualTo(2));
+            Assert.That(state.GetCalls, Is.EqualTo(2));
+            Assert.That(fallback.GetCalls, Is.EqualTo(1));
+            Assert.That(stateTop.MultiGetCalls, Is.Zero);
+            Assert.That(state.MultiGetCalls, Is.Zero);
+            Assert.That(fallback.MultiGetCalls, Is.Zero);
             Assert.That(values[0]![0], Is.EqualTo(0x10));
             Assert.That(values[1]![0], Is.EqualTo(0x10));
             Assert.That(values[2]![0], Is.EqualTo(0x20));
             Assert.That(values[3]![0], Is.EqualTo(0x20));
             Assert.That(values[4], Is.Null);
-            Assert.That(stateTop.Flags, Is.EqualTo(ReadFlags.HintCacheMiss));
-            Assert.That(state.Flags, Is.EqualTo(ReadFlags.HintCacheMiss));
-            Assert.That(fallback.Flags, Is.EqualTo(ReadFlags.HintCacheMiss));
+            Assert.That(values[0]![1], Is.EqualTo(3));
+            Assert.That(values[2]![1], Is.EqualTo(8));
+            Assert.That(stateTop.GetFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
+            Assert.That(state.GetFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
+            Assert.That(fallback.GetFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
         }
     }
 
@@ -86,17 +87,110 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.MultiGetCalls, Is.EqualTo(1));
-            Assert.That(fallback.MultiGetCalls, Is.EqualTo(1));
-            Assert.That(storage.Keys![0], Has.Length.EqualTo(28));
-            Assert.That(fallback.Keys![0], Has.Length.EqualTo(54));
-            Assert.That(fallback.Keys[0][0], Is.EqualTo(1));
+            Assert.That(storage.GetCalls, Is.EqualTo(2));
+            Assert.That(fallback.GetCalls, Is.EqualTo(1));
+            Assert.That(storage.MultiGetCalls, Is.Zero);
+            Assert.That(fallback.MultiGetCalls, Is.Zero);
             Assert.That(values[0]![0], Is.EqualTo(0x50));
             Assert.That(values[1], Is.Null);
             Assert.That(values[2]![0], Is.EqualTo(0x60));
-            Assert.That(storage.Flags, Is.EqualTo(ReadFlags.HintReadAhead));
-            Assert.That(fallback.Flags, Is.EqualTo(ReadFlags.HintReadAhead));
+            Assert.That(values[0]![1], Is.EqualTo(28));
+            Assert.That(values[2]![1], Is.EqualTo(54));
+            Assert.That(storage.GetFlags, Is.EqualTo(ReadFlags.HintReadAhead));
+            Assert.That(fallback.GetFlags, Is.EqualTo(ReadFlags.HintReadAhead));
         }
+    }
+
+    [TestCase(false, 7)]
+    [TestCase(false, 8)]
+    [TestCase(true, 7)]
+    [TestCase(true, 8)]
+    public void TrieReader_BatchedRlp_UsesPointReadsBelowThresholdPerColumn(bool storage, int count)
+    {
+        RecordingBatchStore[] stores = storage
+            ? [new(0x50, missingIndex: 3), new(0x60, missingIndex: 3)]
+            : [new(0x10, missingIndex: 3), new(0x20, missingIndex: 3), new(0x30, missingIndex: 3)];
+        BaseTriePersistence.Reader reader = storage
+            ? new(new RecordingBatchStore(0x40), new RecordingBatchStore(0x41), stores[0], stores[1])
+            : new(stores[0], stores[1], new RecordingBatchStore(0x40), stores[2]);
+        IBatchedTrieReader batched = reader;
+        TreePath[] paths = CreateThresholdPaths(storage, count);
+        byte[]?[] values = new byte[]?[paths.Length];
+        ReadFlags flags = ReadFlags.HintCacheMiss;
+
+        if (storage)
+            batched.TryLoadStorageRlpBatch(Keccak.Compute("threshold address"), paths, values, flags);
+        else
+            batched.TryLoadStateRlpBatch(paths, values, flags);
+
+        int columnCount = stores.Length;
+        int[] keyLengths = storage ? [28, 54] : [3, 8, 34];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int column = 0; column < columnCount; column++)
+            {
+                RecordingBatchStore store = stores[column];
+                bool usesMultiGet = count >= 8;
+                bool isFallback = storage ? column == 1 : column == 2;
+                Assert.That(store.GetCalls, Is.EqualTo(usesMultiGet ? 0 : count), $"column {column} point reads");
+                Assert.That(store.MultiGetCalls, Is.EqualTo(usesMultiGet ? 1 : 0), $"column {column} multi-get calls");
+                Assert.That(usesMultiGet ? store.Flags : store.GetFlags, Is.EqualTo(flags), $"column {column} read flags");
+                if (usesMultiGet)
+                {
+                    Assert.That(store.Keys![0], Has.Length.EqualTo(keyLengths[column]), $"column {column} multi-get key length");
+                    if (isFallback)
+                        Assert.That(store.Keys[0][0], Is.EqualTo(storage ? 1 : 0), $"column {column} fallback prefix");
+                }
+                else
+                {
+                    Assert.That(store.LastGetKey, Has.Length.EqualTo(keyLengths[column]), $"column {column} point-read key length");
+                    if (isFallback)
+                        Assert.That(store.LastGetKey![0], Is.EqualTo(storage ? 1 : 0), $"column {column} fallback prefix");
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    byte[]? value = values[i * columnCount + column];
+                    if (i == 3)
+                    {
+                        Assert.That(value, Is.Null, $"column {column}, value {i}");
+                    }
+                    else
+                    {
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(value, Is.Not.Null, $"column {column}, value {i}");
+                            Assert.That(value![0], Is.EqualTo(stores[column].Marker), $"column {column}, value {i} marker");
+                            Assert.That(value![1], Is.EqualTo(keyLengths[column]), $"column {column}, value {i} key length");
+                            Assert.That(value![2], Is.EqualTo(i), $"column {column}, value {i} order");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static TreePath[] CreateThresholdPaths(bool storage, int count)
+    {
+        int columnCount = storage ? 2 : 3;
+        TreePath[] paths = new TreePath[count * columnCount];
+        for (int i = 0; i < count; i++)
+        {
+            for (int column = 0; column < columnCount; column++)
+            {
+                int pathLength = storage
+                    ? column == 0 ? 15 : 16
+                    : column switch
+                    {
+                        0 => 5,
+                        1 => 6,
+                        _ => 16,
+                    };
+                paths[i * columnCount + column] = TreePath.FromHexString(i.ToString($"x{pathLength}"));
+            }
+        }
+
+        return paths;
     }
 
     [Test]
@@ -222,12 +316,21 @@ public class BaseFlatPersistenceReaderTests
 
     private sealed class RecordingBatchStore(byte marker, int missingIndex = -1) : ISortedKeyValueStore
     {
+        public byte Marker => marker;
         public int MultiGetCalls { get; private set; }
+        public int GetCalls { get; private set; }
         public byte[][]? Keys { get; private set; }
+        public byte[]? LastGetKey { get; private set; }
         public ReadFlags Flags { get; private set; }
+        public ReadFlags GetFlags { get; private set; }
 
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-            throw new AssertionException("Point reads are not expected.");
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            int readIndex = GetCalls++;
+            LastGetKey = key.ToArray();
+            GetFlags = flags;
+            return readIndex == missingIndex ? null : [marker, (byte)key.Length, (byte)readIndex];
+        }
 
         public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
         {
@@ -235,7 +338,7 @@ public class BaseFlatPersistenceReaderTests
             Keys = keys;
             Flags = flags;
             for (int i = 0; i < values.Length; i++)
-                values[i] = i == missingIndex ? null : [marker, (byte)keys[i].Length];
+                values[i] = i == missingIndex ? null : [marker, (byte)keys[i].Length, (byte)i];
         }
 
         public byte[]? FirstKey => null;

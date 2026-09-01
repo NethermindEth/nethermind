@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -72,6 +73,7 @@ public static class BaseTriePersistence
     // Note to self: Splitting the storage tree have been shown to not improve block cache hit rate
     private const int StateNodesTopThreshold = 5;
     private const int StateNodesTopPathLength = 3;
+    private const int MultiGetEntryThreshold = 8;
 
     private const int FullStateNodesKeyLength = 1 + FullPathLength + PathLengthLength;
 
@@ -326,64 +328,83 @@ public static class BaseTriePersistence
             if (paths.Length != values.Length)
                 throw new ArgumentException("Paths and values must have the same length.", nameof(values));
 
-            int[] indices = new int[paths.Length];
-            byte[]?[] batchValues = new byte[]?[paths.Length];
-
-            for (int column = 0; column < 3; column++)
+            int[]? indices = null;
+            byte[]?[]? batchValues = null;
+            try
             {
-                int count = 0;
-                for (int i = 0; i < paths.Length; i++)
+                for (int column = 0; column < 3; column++)
                 {
-                    bool belongsToColumn = column switch
+                    int count = 0;
+                    for (int i = 0; i < paths.Length; i++)
                     {
-                        0 => paths[i].Length <= StateNodesTopThreshold,
-                        1 => paths[i].Length > StateNodesTopThreshold && paths[i].Length <= ShortenedPathThreshold,
-                        _ => paths[i].Length > ShortenedPathThreshold,
-                    };
-
-                    if (belongsToColumn)
-                        indices[count++] = i;
-                }
-
-                if (count == 0) continue;
-
-                byte[][] keys = new byte[count][];
-                IReadOnlyKeyValueStore store = column switch
-                {
-                    0 => stateTopNodes,
-                    1 => stateNodes,
-                    _ => fallbackNodes,
-                };
-
-                for (int i = 0; i < count; i++)
-                {
-                    TreePath path = paths[indices[i]];
-                    byte[] key = column switch
-                    {
-                        0 => new byte[StateNodesTopPathLength],
-                        1 => new byte[ShortenedPathLength],
-                        _ => new byte[FullStateNodesKeyLength],
-                    };
-                    switch (column)
-                    {
-                        case 0:
-                            EncodeStateTopNodeKey(key, in path);
-                            break;
-                        case 1:
-                            EncodeShortenedStateNodeKey(key, in path);
-                            break;
-                        default:
-                            EncodeFullStateNodeKey(key, in path);
-                            break;
+                        if (StateColumn(paths[i]) == column) count++;
                     }
 
-                    keys[i] = key;
+                    if (count == 0) continue;
+                    if (count < MultiGetEntryThreshold)
+                    {
+                        LoadStateRlpPoints(paths, values, flags, column);
+                        continue;
+                    }
+
+                    indices ??= ArrayPool<int>.Shared.Rent(paths.Length);
+                    int indexCount = 0;
+                    for (int i = 0; i < paths.Length; i++)
+                    {
+                        if (StateColumn(paths[i]) == column)
+                            indices[indexCount++] = i;
+                    }
+
+                    byte[][] keys = new byte[count][];
+                    IReadOnlyKeyValueStore store = column switch
+                    {
+                        0 => stateTopNodes,
+                        1 => stateNodes,
+                        _ => fallbackNodes,
+                    };
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        TreePath path = paths[indices[i]];
+                        byte[] key = column switch
+                        {
+                            0 => new byte[StateNodesTopPathLength],
+                            1 => new byte[ShortenedPathLength],
+                            _ => new byte[FullStateNodesKeyLength],
+                        };
+                        switch (column)
+                        {
+                            case 0:
+                                EncodeStateTopNodeKey(key, in path);
+                                break;
+                            case 1:
+                                EncodeShortenedStateNodeKey(key, in path);
+                                break;
+                            default:
+                                EncodeFullStateNodeKey(key, in path);
+                                break;
+                        }
+
+                        keys[i] = key;
+                    }
+
+                    batchValues ??= ArrayPool<byte[]?>.Shared.Rent(paths.Length);
+                    batchValues.AsSpan(0, count).Clear();
+                    store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
+                    for (int i = 0; i < count; i++)
+                        values[indices[i]] = batchValues[i];
+                }
+            }
+            finally
+            {
+                if (batchValues is not null)
+                {
+                    Array.Clear(batchValues, 0, paths.Length);
+                    ArrayPool<byte[]?>.Shared.Return(batchValues);
                 }
 
-                batchValues.AsSpan(0, count).Clear();
-                store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
-                for (int i = 0; i < count; i++)
-                    values[indices[i]] = batchValues[i];
+                if (indices is not null)
+                    ArrayPool<int>.Shared.Return(indices);
             }
         }
 
@@ -392,47 +413,109 @@ public static class BaseTriePersistence
             if (paths.Length != values.Length)
                 throw new ArgumentException("Paths and values must have the same length.", nameof(values));
 
-            int[] indices = new int[paths.Length];
-            byte[]?[] batchValues = new byte[]?[paths.Length];
-
-            for (int column = 0; column < 2; column++)
+            int[]? indices = null;
+            byte[]?[]? batchValues = null;
+            try
             {
-                int count = 0;
-                for (int i = 0; i < paths.Length; i++)
+                for (int column = 0; column < 2; column++)
                 {
-                    bool belongsToColumn = column == 0
-                        ? paths[i].Length <= ShortenedPathThreshold
-                        : paths[i].Length > ShortenedPathThreshold;
-                    if (belongsToColumn) indices[count++] = i;
-                }
-
-                if (count == 0) continue;
-
-                byte[][] keys = new byte[count][];
-                IReadOnlyKeyValueStore store = column == 0 ? storageNodes : fallbackNodes;
-                for (int i = 0; i < count; i++)
-                {
-                    TreePath path = paths[indices[i]];
-                    byte[] key = column == 0
-                        ? new byte[ShortenedStorageNodesKeyLength]
-                        : new byte[FullStorageNodesKeyLength];
-                    if (column == 0)
+                    int count = 0;
+                    for (int i = 0; i < paths.Length; i++)
                     {
-                        EncodeShortenedStorageNodeKey(key, address, in path);
-                    }
-                    else
-                    {
-                        EncodeFullStorageNodeKey(key, address, in path);
+                        if (StorageColumn(paths[i]) == column) count++;
                     }
 
-                    keys[i] = key;
+                    if (count == 0) continue;
+                    if (count < MultiGetEntryThreshold)
+                    {
+                        LoadStorageRlpPoints(address, paths, values, flags, column);
+                        continue;
+                    }
+
+                    indices ??= ArrayPool<int>.Shared.Rent(paths.Length);
+                    int indexCount = 0;
+                    for (int i = 0; i < paths.Length; i++)
+                    {
+                        if (StorageColumn(paths[i]) == column)
+                            indices[indexCount++] = i;
+                    }
+
+                    byte[][] keys = new byte[count][];
+                    IReadOnlyKeyValueStore store = column == 0 ? storageNodes : fallbackNodes;
+                    for (int i = 0; i < count; i++)
+                    {
+                        TreePath path = paths[indices[i]];
+                        byte[] key = column == 0
+                            ? new byte[ShortenedStorageNodesKeyLength]
+                            : new byte[FullStorageNodesKeyLength];
+                        if (column == 0)
+                        {
+                            EncodeShortenedStorageNodeKey(key, address, in path);
+                        }
+                        else
+                        {
+                            EncodeFullStorageNodeKey(key, address, in path);
+                        }
+
+                        keys[i] = key;
+                    }
+
+                    batchValues ??= ArrayPool<byte[]?>.Shared.Rent(paths.Length);
+                    batchValues.AsSpan(0, count).Clear();
+                    store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
+                    for (int i = 0; i < count; i++)
+                        values[indices[i]] = batchValues[i];
+                }
+            }
+            finally
+            {
+                if (batchValues is not null)
+                {
+                    Array.Clear(batchValues, 0, paths.Length);
+                    ArrayPool<byte[]?>.Shared.Return(batchValues);
                 }
 
-                batchValues.AsSpan(0, count).Clear();
-                store.MultiGet(keys, batchValues.AsSpan(0, count), flags);
-                for (int i = 0; i < count; i++)
-                    values[indices[i]] = batchValues[i];
+                if (indices is not null)
+                    ArrayPool<int>.Shared.Return(indices);
             }
         }
+
+        private static int StateColumn(in TreePath path) =>
+            path.Length <= StateNodesTopThreshold ? 0 : path.Length <= ShortenedPathThreshold ? 1 : 2;
+
+        private static int StorageColumn(in TreePath path) => path.Length <= ShortenedPathThreshold ? 0 : 1;
+
+        private void LoadStateRlpPoints(ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags, int column)
+        {
+            for (int i = 0; i < paths.Length; i++)
+            {
+                if (StateColumn(paths[i]) != column) continue;
+
+                TreePath path = paths[i];
+                values[i] = LoadStateRlpPoint(in path, flags, column);
+            }
+        }
+
+        private void LoadStorageRlpPoints(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values, ReadFlags flags, int column)
+        {
+            for (int i = 0; i < paths.Length; i++)
+            {
+                if (StorageColumn(paths[i]) != column) continue;
+
+                TreePath path = paths[i];
+                values[i] = LoadStorageRlpPoint(address, in path, flags, column);
+            }
+        }
+
+        private byte[]? LoadStateRlpPoint(in TreePath path, ReadFlags flags, int column) => column switch
+        {
+            0 => stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags),
+            1 => stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags),
+            _ => fallbackNodes.Get(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags),
+        };
+
+        private byte[]? LoadStorageRlpPoint(Hash256 address, in TreePath path, ReadFlags flags, int column) => column == 0
+            ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags)
+            : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags);
     }
 }
