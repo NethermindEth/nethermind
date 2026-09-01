@@ -411,16 +411,13 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
-        // The feed persists a completion marker when it reaches its own latched barrier, so the release
-        // never has to reconstruct a barrier that drifts with the pruning cutoff. The static barrier is a
-        // term of the feed's ComputeBarrier and so always releasable, and a pointer parked at the barrier
-        // the feed recorded when it last started is a finished descent even if the marker predates this
-        // build - only for a descent whose barrier never moved, since a rolling cutoff climbs during a
-        // long descent and parks the pointer above the recorded value; a legacy database self-heals
-        // regardless, because the feed activates once and writes the marker. A written pointer above
-        // those with no marker is a descent in progress - the persisted pointer only moves every flush
-        // interval, so its quietness proves nothing and the hold stays; an absent pointer is a feed that
-        // has not run yet, which a synchronizing process eventually runs.
+        // The feed persists a completion marker when it reaches its own latched barrier. For a database
+        // from a build that predates the marker, the release mirrors the feed's own stop condition
+        // instead: the feed never fetches below max(static barrier, pruning cutoff), so a pointer at or
+        // below that is a parked descent no matter where its barrier was latched when it ran. A pointer
+        // above it with no marker is a descent in progress - the persisted pointer only moves every
+        // flush interval, so its quietness proves nothing and the hold stays; an absent pointer is a
+        // feed that has not run yet, which a synchronizing process eventually runs.
         if (_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete))
         {
             return false;
@@ -429,21 +426,9 @@ public class HistoryPruner : IHistoryPruner
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
         ulong barrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
-        if (pointer <= barrier)
+        if (pointer <= ulong.Max(barrier, CutoffBlockNumber ?? 0))
         {
             return false;
-        }
-
-        byte[]? barrierWhenStartedBytes = _metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted);
-        if (pointer is not null && barrierWhenStartedBytes is not null)
-        {
-            ulong barrierWhenStarted = barrierWhenStartedBytes.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros();
-            // Only while the feed still targets at least that barrier: a config edit that lowered it reopens
-            // the descent, and the recorded value then describes the descent that finished, not the current one.
-            if (barrierWhenStarted <= ulong.Max(barrier, CutoffBlockNumber ?? 0) && pointer <= barrierWhenStarted)
-            {
-                return false;
-            }
         }
 
         bool firstHoldLog = _ancientHoldLastLogged == 0;

@@ -305,7 +305,8 @@ public class HistoryPrunerTests
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
-    [TestCase(7000UL, false, TestName = "SetDeletePointerToOldestBlock_holds_above_the_static_barrier")]
+    [TestCase(7000UL, false, TestName = "SetDeletePointerToOldestBlock_holds_above_the_rolling_cutoff")]
+    [TestCase(6800UL, true, TestName = "SetDeletePointerToOldestBlock_releases_at_the_rolling_cutoff")]
     [TestCase(1UL, true, TestName = "SetDeletePointerToOldestBlock_releases_at_the_static_barrier")]
     public void SetDeletePointerToOldestBlock_holds_while_the_ancient_bodies_feed_is_descending(ulong? bodyPointer, bool searches)
     {
@@ -336,23 +337,6 @@ public class HistoryPrunerTests
         TestMemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
         metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(metadataDb);
-        dbProvider.BlocksDb.Returns(new TestMemDb());
-        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
-
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
-
-        pruner.SetDeletePointerToOldestBlock();
-        chainLevels.Received().LoadLevel(Arg.Any<ulong>());
-    }
-
-    [Test]
-    public void SetDeletePointerToOldestBlock_releases_a_pointer_parked_at_the_barrier_the_feed_last_started_with()
-    {
-        TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(5000UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)5000).ToBigEndianByteArrayWithoutLeadingZeros());
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -411,24 +395,6 @@ public class HistoryPrunerTests
 
         Assert.That(pruner.OldestUnreclaimedBlockNumber, Is.EqualTo(9_000UL),
             "with no persisted state the barrier is the whole answer, matching a never-pruned node");
-    }
-
-    [Test]
-    public void SetDeletePointerToOldestBlock_holds_when_the_barrier_dropped_below_the_one_the_feed_last_started_with()
-    {
-        TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(7000UL).Bytes);
-        metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, ((long)7000).ToBigEndianByteArrayWithoutLeadingZeros());
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(metadataDb);
-        dbProvider.BlocksDb.Returns(new TestMemDb());
-        IChainLevelInfoRepository chainLevels = Substitute.For<IChainLevelInfoRepository>();
-
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels);
-
-        Assert.That(pruner.SetDeletePointerToOldestBlock(), Is.False,
-            "a recorded barrier above the current one describes a finished descent the config since reopened");
-        chainLevels.DidNotReceive().LoadLevel(Arg.Any<ulong>());
     }
 
     [Test]
