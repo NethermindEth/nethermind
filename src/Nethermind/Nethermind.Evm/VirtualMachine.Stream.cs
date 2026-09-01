@@ -8,27 +8,17 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
+[assembly: InternalsVisibleTo("Nethermind.Init")]
+
 namespace Nethermind.Evm;
 
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
     // Enabled by default except on ARM64, where the bytecode loop measured faster on the reference part.
-    // NETHERMIND_EVM_STREAM is an escape hatch for an unbenchmarked part, not a supported setting: an IConfig
-    // item is a key we would have to keep, and this heuristic should disappear once one interpreter wins.
-    // The runner does not know the name, so it lists "Name:EVMSTREAM" among invalid settings - a warning,
-    // not a failure.
+    // JsonRpc.StreamInterpreterEnabled overrides the default at startup (RegisterRpcModules).
     // Volatile so tests can flip it in-process.
-    public static volatile bool Enabled = ParseEnabled(Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM"));
-
-    // Accepts 0/1 and the true/false spelling Nethermind config bools use; anything else keeps the default.
-    internal static bool ParseEnabled(string? value) => value?.Trim() switch
-    {
-        "0" => false,
-        "1" => true,
-        string spelling when bool.TryParse(spelling, out bool parsed) => parsed,
-        _ => IsEnabledByDefault(RuntimeInformation.ProcessArchitecture),
-    };
+    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
 
     internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
 
