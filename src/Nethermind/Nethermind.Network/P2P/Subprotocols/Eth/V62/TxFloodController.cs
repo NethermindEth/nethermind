@@ -39,6 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private int _unproductivePooledTransactionWindows;
         private bool _isLegacyDowngraded;
         private bool _isLegacyDisconnectRequested;
+        private bool _isInvalidTransactionDisconnectRequested;
         private bool _isPooledTransactionDowngraded;
 
         public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger, Random? random = null)
@@ -83,8 +84,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 if (!accepted)
                 {
-                    if (accepted == AcceptTxResult.Invalid)
+                    if (accepted == AcceptTxResult.Invalid && !_isInvalidTransactionDisconnectRequested)
                     {
+                        _isInvalidTransactionDisconnectRequested = true;
                         disconnectRequest ??= new(
                             DisconnectReason.InvalidTxReceived,
                             "invalid tx",

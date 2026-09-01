@@ -278,7 +278,7 @@ namespace Nethermind.Synchronization.Peers
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
+                if (_logger.IsTrace) TraceAddingToRefreshQueue(syncPeer);
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
                 _peerRefreshQueue.Writer.TryWrite(new RefreshTotalDiffTask(syncPeer));
             }
@@ -477,7 +477,7 @@ namespace Nethermind.Synchronization.Peers
                         }
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Refreshed peer info for {syncPeer}.");
+                    if (_logger.IsTrace) TraceRefreshedPeerInfo(syncPeer);
 
                     initCancelSource.Dispose();
                     linkedSource.Dispose();
@@ -542,6 +542,14 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TracePeerCount() =>
             _logger.Trace($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceAddingToRefreshQueue(ISyncPeer syncPeer) =>
+            _logger.Trace($"Adding {syncPeer.Node:c} to refresh queue");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRefreshedPeerInfo(ISyncPeer syncPeer) =>
+            _logger.Trace($"Refreshed peer info for {syncPeer}.");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceDroppedUselessPeers(int peersDropped) =>

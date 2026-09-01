@@ -380,7 +380,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Will_disconnect_on_invalid_tx()
         {
-            _controller.Report(AcceptTxResult.Invalid);
+            for (int i = 0; i < 100; i++)
+            {
+                _controller.Report(AcceptTxResult.Invalid);
+            }
 
             _session.Received(1)
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
