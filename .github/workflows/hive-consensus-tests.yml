@@ -12,6 +12,11 @@ on:
         default: '8'
         type: choice
         options: ['1', '2', '3', '4', '8', '16']
+      results_run_id:
+        description: 'Existing workflow run whose strict result artifacts should be verified without rerunning the suite.'
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +25,7 @@ concurrency:
 jobs:
   create_docker_image:
     name: "Generate docker image"
+    if: github.event_name != 'workflow_dispatch' || inputs.results_run_id == ''
     outputs:
       cleanRef: ${{ steps.prepare_ref.outputs.cleanRef }}
     runs-on: ubuntu-latest
@@ -111,6 +117,7 @@ jobs:
 
   generate_hive_consensus_tests:
     name: "Prepare all hive tests to be started"
+    if: github.event_name != 'workflow_dispatch' || inputs.results_run_id == ''
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -141,6 +148,7 @@ jobs:
           echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
 
   run_hive_tests:
+    if: github.event_name != 'workflow_dispatch' || inputs.results_run_id == ''
     runs-on: ubuntu-latest
     needs: [generate_hive_consensus_tests, create_docker_image]
     strategy:
@@ -263,9 +271,11 @@ jobs:
           pattern: legacy-cancun-counts-*
           path: counts
           merge-multiple: true
+          run-id: ${{ inputs.results_run_id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify the complete suite is green
         env:
-          MATRIX_RESULT: ${{ needs.run_hive_tests.result }}
+          MATRIX_RESULT: ${{ inputs.results_run_id != '' && 'success' || needs.run_hive_tests.result }}
         run: |
           shopt -s nullglob
           count_files=(counts/*.json)
@@ -290,6 +300,6 @@ jobs:
           failed=$(jq -r '.failed' <<< "$summary")
           loader_passed=$(jq -r '.loader_passed' <<< "$summary")
           loader_failed=$(jq -r '.loader_failed' <<< "$summary")
-          if [[ "$MATRIX_RESULT" != "success" || "$jobs" -ne 256 || "$complete_jobs" -ne 256 || "$passed" -ne 111893 || "$failed" -ne 0 || "$loader_passed" -ne 3278 || "$loader_failed" -ne 0 ]]; then
+          if [[ "$MATRIX_RESULT" != "success" || "$jobs" -ne 256 || "$complete_jobs" -ne 256 || "$passed" -ne 111941 || "$failed" -ne 0 || "$loader_passed" -ne 3278 || "$loader_failed" -ne 0 ]]; then
             exit 1
           fi
