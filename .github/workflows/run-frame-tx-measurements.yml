@@ -221,7 +221,11 @@ jobs:
           # The signature shape is the worst case measured so far and needs neither artifacts nor a raised
           # constant, so a run that produced no signature rows is a broken run rather than a narrower one.
           mempool_markers=('shape=groth16-' 'case=signature_reject')
-          flood_markers=()
+          # Admission_flood_actually_reaches_the_simulator carries no single-core gate and emits
+          # case=workload_block regardless, which alone satisfies the RESULT-rows check above. So if
+          # ObservedCpuSet cannot read the affinity the four measurement cases self-ignore and the leg still
+          # reports green. taskset's presence is checked; this checks its effect.
+          flood_markers=('case=flood_delay')
           if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
             # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
