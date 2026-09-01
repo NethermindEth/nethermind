@@ -3225,16 +3225,14 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // A source written against the single-property contract must still satisfy the interface, so an
-    // upgrade cannot fail at type load; it just never installs a slice and offers no diff.
     [Test]
-    public void SetGeneratingBlockAccessList_SourceWithoutTheOverride_StaysIdle()
+    public void SetGeneratingBlockAccessList_SourceWithoutTheOverride_ThrowsRatherThanSilentlyDisablingDiffs()
     {
-        IBlockAccessListSource legacy = new SinglePropertyBlockAccessListSource();
+        IBlockAccessListSource readOnly = new SinglePropertyBlockAccessListSource();
 
-        legacy.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-
-        Assert.That(legacy.GeneratedBlockAccessList, Is.Null);
+        Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessListAtIndex()),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(readOnly.GeneratedBlockAccessList, Is.Null);
     }
 
     private sealed class SinglePropertyBlockAccessListSource : IBlockAccessListSource
