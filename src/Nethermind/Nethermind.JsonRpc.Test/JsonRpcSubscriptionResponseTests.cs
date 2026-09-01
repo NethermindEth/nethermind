@@ -35,8 +35,11 @@ public class JsonRpcSubscriptionResponseTests
 
         string serialized = RpcTest.SerializeResponse(response);
 
-        Assert.That(serialized, Does.Contain("\"added\":\"added\""));
-        Assert.That(serialized, Does.Contain("\"declared\":\"declared\""));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain("\"added\":\"added\""));
+            Assert.That(serialized, Does.Contain("\"declared\":\"declared\""));
+        }
     }
 
     [Test]
