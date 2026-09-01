@@ -41,8 +41,6 @@ public static class WitnessExtensions
             foreach (byte[] stateElement in witness.State)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                // Set, not PutSpan: the element is already an owned array, and PutSpan's default
-                // implementation would copy it.
                 db.Set(hash, stateElement);
             }
 
