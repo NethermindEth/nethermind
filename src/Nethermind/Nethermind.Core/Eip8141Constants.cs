@@ -22,7 +22,7 @@ public static class Eip8141Constants
 
     // Bounds mempool validation work only, never block execution; ITxPoolConfig.FrameTxMaxVerifyGas is the
     // operator-configurable mirror.
-    public const ulong MaxVerifyGas = 300_000;
+    public const ulong MaxVerifyGas = 100_000;
 
     /// <summary>
     /// <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: the public-mempool cap on the pending frame

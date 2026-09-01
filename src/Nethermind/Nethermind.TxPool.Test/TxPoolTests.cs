@@ -2539,6 +2539,27 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void Frame_transaction_prefix_within_the_former_ceiling_is_rejected_by_the_default_bound()
+        {
+            _txPool = CreatePool(new TxPoolConfig(), new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 200_000);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        [Test]
         public void Frame_transaction_verify_gas_limit_of_zero_lifts_the_bound()
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
