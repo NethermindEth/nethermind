@@ -13,7 +13,7 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v2/forkchoice</c>, the SSZ-REST equivalent of
+/// Handles <c>POST /engine/v1/forkchoice</c>, the SSZ-REST equivalent of
 /// <c>engine_forkchoiceUpdatedV{N}</c> (the version is selected by the <c>Eth-Execution-Version</c>
 /// header). Generic over a per-version descriptor so adding V5 is one new descriptor struct + one
 /// DI line — no version switch.

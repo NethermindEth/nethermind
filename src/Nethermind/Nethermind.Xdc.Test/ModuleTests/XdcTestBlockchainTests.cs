@@ -5,8 +5,10 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
@@ -22,6 +24,12 @@ internal class XdcTestBlockchainTests
     [TearDown]
     public void TearDown() =>
         _blockchain?.Dispose();
+
+    [TestCase(typeof(IXdcRpcModule))]
+    [TestCase(typeof(IXdcExtendedEthRpcModule))]
+    [TestCase(typeof(IXdcMasternodeEthRpcModule))]
+    public void RpcModulesResolveFromTheContainer(Type moduleType) =>
+        Assert.That(_blockchain.Container.Resolve(moduleType), Is.Not.Null);
 
     [TestCase(180)]
     [TestCase(91)]

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -33,6 +33,7 @@ public sealed class SnapshotBundle : IDisposable
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
+    private readonly ConcurrentDictionary<HashedKey<Address>, byte> _addressesWithChangedSlots = new();
 
     private bool _trieChanged = false;
 
@@ -493,37 +494,41 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
         }
+
+        if (!_addressesWithChangedSlots.ContainsKey(address))
+        {
+            _addressesWithChangedSlots.TryAdd(address, 0);
+        }
     }
 
-    // Also called SelfDestruct
-    public void Clear(Address address, Hash256 addressHash)
+    internal void ClearStorage(Address address, Hash256 addressHash)
     {
         GuardDispose();
 
         Account? account = DoGetAccount(address, excludeChanged: true, out _);
-        // So... a clear is always sent even on a new account. This makes is a minor optimization as
-        // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
 
-        if (!isNewAccount)
+        _changedStorageNodes.RemoveAddress(addressHash);
+
+        if (!_addressesWithChangedSlots.TryRemove(address, out _))
         {
-            _changedStorageNodes.RemoveAddress(addressHash);
+            return;
+        }
 
-            using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
+        using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
+        {
+            if (kvp.Key.Key.Item1 == address)
             {
-                if (kvp.Key.Key.Item1 == address)
-                {
-                    slotKeysToRemove.Add(kvp.Key);
-                }
+                slotKeysToRemove.Add(kvp.Key);
             }
+        }
 
-            foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
-            {
-                _changedSlots.TryRemove(key, out _);
-            }
+        foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
+        {
+            _changedSlots.TryRemove(key, out _);
         }
     }
 
@@ -611,6 +616,7 @@ public sealed class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
+            _addressesWithChangedSlots.NoLockClear();
 
             return (snapshot, transientResource);
         }
@@ -624,6 +630,7 @@ public sealed class SnapshotBundle : IDisposable
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
+            _addressesWithChangedSlots.NoLockClear();
             _trieChanged = false;
 
             return (null, null);
