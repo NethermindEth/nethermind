@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -30,10 +32,45 @@ namespace Nethermind.Network
             string nodeString = Encoding.UTF8.GetString(firstItem);
             long reputation = decoderContext.DecodeLong();
             decoderContext.Check(contentEnd);
-            return new NetworkNode(nodeString)
+            NetworkNode node = new(NormalizeLegacyUnbracketedIpv6Enode(nodeString));
+            node.Reputation = reputation;
+            return node;
+        }
+
+        private static string NormalizeLegacyUnbracketedIpv6Enode(string nodeString)
+        {
+            if (!nodeString.StartsWith("enode://", StringComparison.OrdinalIgnoreCase))
             {
-                Reputation = reputation
-            };
+                return nodeString;
+            }
+
+            int hostSeparator = nodeString.IndexOf('@');
+            if (hostSeparator < 0)
+            {
+                return nodeString;
+            }
+
+            int hostStart = hostSeparator + 1;
+            int queryStart = nodeString.IndexOf('?', hostStart);
+            int endpointEnd = queryStart < 0 ? nodeString.Length : queryStart;
+            int portSeparator = nodeString.LastIndexOf(':', endpointEnd - 1);
+            if (portSeparator <= hostStart)
+            {
+                return nodeString;
+            }
+
+            ReadOnlySpan<char> hostText = nodeString.AsSpan(hostStart, portSeparator - hostStart);
+            if (hostText[0] == '['
+                || !IPAddress.TryParse(hostText, out IPAddress? host)
+                || host.AddressFamily != AddressFamily.InterNetworkV6)
+            {
+                return nodeString;
+            }
+
+            return string.Concat(
+                nodeString.AsSpan(0, hostStart),
+                Enode.FormatEnodeHost(host),
+                nodeString.AsSpan(portSeparator));
         }
 
         private static NetworkNode DecodeLegacyFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> publicKeyBytes)
