@@ -1549,7 +1549,8 @@ public partial class EthRpcModuleTests
     [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
     [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
     [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
-    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    [TestCase("eth_getHeaderByNumber", "pending", TestName = "Pending")]
+    public async Task EthGetHeaderByX_ReturnsNull(string method, string blockParam)
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc(method, blockParam);
@@ -1557,12 +1558,13 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields([Values("hash", "nonce", "miner")] string field)
+    public async Task EthGetHeaderByHash_WhenPendingHash_ReturnsHeader()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
-        JToken json = JToken.Parse(serialized);
-        Assert.That(json["result"]![field]!.Type, Is.EqualTo(JTokenType.Null));
+        // PendingHash resolves to the head hash, so a hash lookup of it must still return a full header.
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByHash", ctx.Test.BlockTree.Head!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.That(result["hash"]!.Value<string>(), Is.EqualTo(ctx.Test.BlockTree.Head!.Hash!.ToString()));
     }
 
     [Test]
