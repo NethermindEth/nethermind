@@ -358,6 +358,43 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Code_committed_before_a_restore_is_still_persisted_when_the_insert_filter_evicted_it()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+        provider.Commit(spec, commitRoots: false);
+
+        // Overflow the 8-way insert filter so the committed entry is evicted from it and the
+        // re-insert below reaches the code batch probe instead of the filter short-circuit.
+        const int deploysOverflowingInsertFilter = 512;
+        for (int i = 0; i < deploysOverflowingInsertFilter; i++)
+        {
+            Address address = new(Keccak.Compute(i.ToString()).Bytes[..Address.Size]);
+            provider.CreateAccountIfNotExists(address, 0);
+            provider.InsertCode(address, new byte[] { 0x60, (byte)i, 0x60, (byte)(i >> 8), 0xf3 }, spec);
+        }
+        provider.Commit(spec, commitRoots: false);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.CreateAccount(TestItem.AddressC, 0);
+        provider.InsertCode(TestItem.AddressC, code, spec);
+        provider.Restore(snapshot);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+    }
+
+    [Test]
     public void Code_staged_by_discarded_changes_is_not_persisted()
     {
         using Context ctx = new(useFlat);
