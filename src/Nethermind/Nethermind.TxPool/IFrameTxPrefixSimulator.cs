@@ -16,7 +16,8 @@ public interface IFrameTxPrefixSimulator
     /// <param name="token">Checked at entry and, once cancelled, aborts a running simulation at the next EVM
     /// cancellation checkpoint. Independently, the implementation applies a best-effort wall-clock budget over
     /// the EVM run and leaves a transaction that exceeds it undecided; the budget is opcode-granular, not a hard
-    /// deadline.</param>
+    /// deadline. The same budget bounds the wait for the shared executor, so contention alone can return
+    /// undecided before the EVM runs.</param>
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default);
 }
 

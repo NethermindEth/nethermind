@@ -10,9 +10,11 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>Simulates the validation prefix of opaque EIP-8141 frame transactions
 /// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those that do not validate.</summary>
 /// <remarks>Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast
-/// path here. Runs inside the pool's head read lock; the simulator applies a best-effort wall-clock budget
-/// over its EVM run and leaves a transaction that exceeds it undecided rather than blocking. The simulation
-/// re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.</remarks>
+/// path here. Runs inside the pool's head read lock; the simulator bounds both the wait for its shared
+/// executor and the EVM run by a best-effort wall-clock budget, so a caller holds the read lock for at most
+/// about twice the budget, and a transaction that exceeds either bound is left undecided rather than blocking.
+/// An undecided frame transaction is admitted without a payer, so it takes no exposure reservation. The
+/// simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.</remarks>
 internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)

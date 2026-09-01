@@ -202,12 +202,13 @@ public class FrameTxPrefixSimulatorTests
 
         FrameTxSimulationResult second = simulator.Simulate(Tx());
         release.Set();
-        first.Wait(TimeSpan.FromSeconds(5));
+        Assert.That(first.Wait(TimeSpan.FromSeconds(5)), Is.True, "the first simulation never completed");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(second.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
             Assert.That(second.Reason, Does.Contain("waiting"));
+            processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>());
         }
     }
 
