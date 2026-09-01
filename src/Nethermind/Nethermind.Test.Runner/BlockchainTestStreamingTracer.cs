@@ -23,20 +23,21 @@ namespace Nethermind.Test.Runner;
 /// Compatible with go-ethereum's block test tracing output format.
 /// Outputs consolidated traces across all blocks and transactions in a single stream.
 /// </summary>
+/// <param name="options">Geth trace configuration.</param>
+/// <param name="specProvider">Provider used to select the active specification for each block.</param>
+/// <param name="output">Destination for the JSONL trace; standard error when omitted.</param>
 public class BlockchainTestStreamingTracer(
     GethTraceOptions options,
-    Stream? output = null,
-    long destroyRefund = 0,
-    long? afterTransitionDestroyRefund = null,
-    ForkActivation? transitionForkActivation = null) : ITestBlockTracer, IDisposable
+    ISpecProvider specProvider,
+    Stream? output = null) : ITestBlockTracer, IDisposable
 {
     private static readonly byte[] _newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
     private readonly Stream _output = output ?? Console.OpenStandardError();
     private readonly GethTraceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
-    private readonly long _destroyRefund = destroyRefund;
-    private readonly long? _afterTransitionDestroyRefund = afterTransitionDestroyRefund;
-    private readonly ForkActivation? _transitionForkActivation = transitionForkActivation;
-    private long _currentDestroyRefund = destroyRefund;
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private IReleaseSpec? _currentSpec;
+    private ulong _currentBlockGasLimit;
+    private long _currentDestroyRefund;
     private GethLikeTxFileTracer? _currentTxTracer;
 
     // Track metrics for test end marker
@@ -51,16 +52,19 @@ public class BlockchainTestStreamingTracer(
         // Not tracing rewards in block test mode
     }
 
-    public void StartNewBlockTrace(Block block) =>
-        _currentDestroyRefund = _afterTransitionDestroyRefund is not null
-            && _transitionForkActivation is not null
-            && _transitionForkActivation.Value <= new ForkActivation(block.Number, block.Timestamp)
-                ? _afterTransitionDestroyRefund.Value
-                : _destroyRefund;
+    public void StartNewBlockTrace(Block block)
+    {
+        _currentSpec = _specProvider.GetSpec(block.Header);
+        _currentBlockGasLimit = block.Header.GasLimit;
+        _currentDestroyRefund = (long)_currentSpec.GasCosts.DestroyRefund;
+    }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options, _currentDestroyRefund);
+        ulong? standardIntrinsicGas = tx is null || _currentSpec is null
+            ? null
+            : IntrinsicGasCalculator.Calculate(tx, _currentSpec, _currentBlockGasLimit).Standard;
+        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options, _currentDestroyRefund, standardIntrinsicGas);
         return _currentTxTracer;
     }
 

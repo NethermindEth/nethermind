@@ -281,7 +281,6 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     // Geth's global opcode table names inactive EOF instructions and retains DIFFICULTY for 0x44.
     private static string GetOperationName(Instruction opcode) => (byte)opcode switch
     {
-        0x20 => "KECCAK256",
         0x44 => "DIFFICULTY",
         0xd0 => "DATALOAD",
         0xd1 => "DATALOADN",

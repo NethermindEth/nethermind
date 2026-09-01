@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -405,22 +406,9 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             input: [0],
             gasLimit: 5_000_000,
             postHash: new Hash256("0x9efbc3518d97c09664295c8fcf82ddc73ea94a770bfbd59bb98f4c2c6c8219a4"));
-        TextWriter originalError = Console.Error;
-        using StringWriter error = new();
-        EthereumTestResult result;
+        (EthereumTestResult result, string trace) = RunAndCaptureJsonl(test, traceMemory: false);
 
-        Console.SetError(error);
-        try
-        {
-            StateTestsRunner runner = new(WhenTrace.Always, traceMemory: false, traceStack: true, chainId: 1);
-            result = runner.RunSingleTest(test);
-        }
-        finally
-        {
-            Console.SetError(originalError);
-        }
-
-        using StringReader lines = new(error.ToString());
+        using StringReader lines = new(trace);
         using JsonDocument operation = JsonDocument.Parse(lines.ReadLine()!);
 
         using (Assert.EnterMultipleScope())
@@ -428,6 +416,58 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
             Assert.That(result.Pass, Is.True, result.Error);
             Assert.That(operation.RootElement.GetProperty("refund").GetInt64(), Is.Zero);
             Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(nameof(Instruction.STOP)));
+            Assert.That(operation.RootElement.TryGetProperty("memory", out _), Is.False);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Jsonl_trace_includes_memory_when_enabled()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .PushData(1)
+            .PushData((byte)0)
+            .Op(Instruction.MSTORE)
+            .PushData((byte)32)
+            .PushData((byte)0)
+            .Op(Instruction.REVERT)
+            .Done;
+        GeneralStateTest test = CreateStateTest(
+            Amsterdam.Instance,
+            code,
+            input: [],
+            gasLimit: 200_000,
+            postHash: new Hash256("0x57efb01840362d55bfc0f9b920788f3446023a16688d71bf6b80b144259e6b2e"));
+        (EthereumTestResult result, string trace) = RunAndCaptureJsonl(test, traceMemory: true);
+
+        string revertLine = trace
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Single(static line => line.Contains("\"opName\":\"REVERT\"", StringComparison.Ordinal));
+        using JsonDocument operation = JsonDocument.Parse(revertLine);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pass, Is.True, result.Error);
+            Assert.That(operation.RootElement.GetProperty("memory").GetString(), Is.EqualTo("0x" + new string('0', 63) + "1"));
+        }
+    }
+
+    private static (EthereumTestResult Result, string Trace) RunAndCaptureJsonl(GeneralStateTest test, bool traceMemory)
+    {
+        TextWriter originalError = Console.Error;
+        using StringWriter error = new();
+
+        Console.SetError(error);
+        try
+        {
+            StateTestsRunner runner = new(WhenTrace.Always, traceMemory, traceStack: true, chainId: 1);
+            return (runner.RunSingleTest(test), error.ToString());
+        }
+        finally
+        {
+            Console.SetError(originalError);
         }
     }
 

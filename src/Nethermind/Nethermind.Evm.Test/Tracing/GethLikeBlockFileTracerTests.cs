@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
@@ -83,5 +84,38 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         }
 
         Assert.That(anyMemory, Is.True, "expected at least one entry to carry a memory blob");
+    }
+
+    [Test]
+    public void Create_collision_reports_execution_gas_without_action_trace()
+    {
+        const ulong gasLimit = 100_000;
+        byte[] initCode = [0x00];
+        (Block block, Transaction transaction) = PrepareInitTx(Activation, gasLimit, initCode);
+        Address deploymentAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(deploymentAddress, 0, nonce: 1);
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        ulong standardIntrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec, block.Header.GasLimit).Standard;
+
+        using GethLikeBlockFileTracer tracer = new(
+            block,
+            GethTraceOptions.Default,
+            fileSystem,
+            (long)Spec.GasCosts.DestroyRefund,
+            Spec);
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        using JsonDocument summary = JsonDocument.Parse(fileSystem.File.ReadAllText(tracer.FileNames.Single()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(summary.RootElement.GetProperty("output").GetString(), Is.EqualTo("0x"));
+            Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo($"0x{gasLimit - standardIntrinsicGas:x}"));
+        }
     }
 }

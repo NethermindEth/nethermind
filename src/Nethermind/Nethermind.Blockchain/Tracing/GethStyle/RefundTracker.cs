@@ -52,6 +52,8 @@ public sealed class RefundTracker(long destroyRefund)
         }
     }
 
+    /// <summary>Clears all accumulated refund state.</summary>
+    /// <remarks>Used only by in-assembly tracers that reuse one instance across transactions.</remarks>
     internal void Reset()
     {
         Refund = 0;

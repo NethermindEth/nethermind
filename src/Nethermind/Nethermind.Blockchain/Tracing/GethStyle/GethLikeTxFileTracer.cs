@@ -3,7 +3,10 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -11,13 +14,26 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
     private readonly Action<GethTxFileTraceEntry> _dumpCallback;
-    private readonly RefundTracker _refundTracker;
-    private ulong? _startGas;
+    private readonly ulong? _standardIntrinsicGas;
+    private int _actionDepth;
+    private ulong _topLevelActionGas;
+    private bool _hasTopLevelActionResult;
 
-    public GethLikeTxFileTracer(Action<GethTxFileTraceEntry> dumpCallback, GethTraceOptions options, long destroyRefund = 0) : base(options)
+    /// <summary>
+    /// Creates a streaming Geth-style transaction tracer.
+    /// </summary>
+    /// <param name="dumpCallback">Callback invoked for each completed trace entry.</param>
+    /// <param name="options">Geth trace configuration.</param>
+    /// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
+    /// <param name="standardIntrinsicGas">Standard intrinsic gas removed from the receipt fallback when no action is traced.</param>
+    public GethLikeTxFileTracer(
+        Action<GethTxFileTraceEntry> dumpCallback,
+        GethTraceOptions options,
+        long destroyRefund = 0,
+        ulong? standardIntrinsicGas = null) : base(options, destroyRefund)
     {
         _dumpCallback = dumpCallback ?? throw new ArgumentNullException(nameof(dumpCallback));
-        _refundTracker = new(destroyRefund);
+        _standardIntrinsicGas = standardIntrinsicGas;
 
         IsTracingMemory = true;
         IsTracingOpLevelStorage = false;
@@ -25,63 +41,58 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         IsTracingActions = true;
     }
 
-    public override GethLikeTxTrace BuildResult()
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        GethLikeTxTrace trace = base.BuildResult();
+        base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+        SetReceiptGasFallback(in gasSpent);
+    }
 
-        if (_startGas.HasValue)
-            trace.Gas = _startGas.Value - CurrentTraceEntry.Gas;
-
-        return trace;
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    {
+        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        SetReceiptGasFallback(in gasSpent);
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         base.StartOperation(pc, opcode, gas, env);
-        CurrentTraceEntry.Refund = _refundTracker.Refund != 0 ? _refundTracker.Refund : null;
+        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
     }
-
-    public override void ReportRefund(long refund) => _refundTracker.Add(refund);
-
-    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
-        _refundTracker.CreditSelfDestruct(address);
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        _refundTracker.TakeSnapshot();
+
+        if (_actionDepth++ == 0)
+            _topLevelActionGas = gas;
     }
 
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        _refundTracker.CommitSnapshot();
+        CompleteAction(gas);
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        _refundTracker.CommitSnapshot();
+        CompleteAction(gas);
     }
 
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
-        _refundTracker.RestoreSnapshot();
+        CompleteAction(gasLeft);
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        _refundTracker.RestoreSnapshot();
+        CompleteAction(0);
     }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
-    {
-        _dumpCallback(entry);
-
-        _startGas ??= entry.Gas;
-    }
+        => _dumpCallback(entry);
 
     protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode)
     {
@@ -113,5 +124,22 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         entry.Storage = default;
 
         return entry;
+    }
+
+    private void CompleteAction(ulong gas)
+    {
+        if (_actionDepth > 0 && --_actionDepth == 0)
+        {
+            Trace.Gas = _topLevelActionGas.SaturatingSub(gas);
+            _hasTopLevelActionResult = true;
+        }
+    }
+
+    private void SetReceiptGasFallback(in GasConsumed gasSpent)
+    {
+        if (_hasTopLevelActionResult || !_standardIntrinsicGas.HasValue)
+            return;
+
+        Trace.Gas = gasSpent.SpentGas.SaturatingSub(_standardIntrinsicGas.Value);
     }
 }

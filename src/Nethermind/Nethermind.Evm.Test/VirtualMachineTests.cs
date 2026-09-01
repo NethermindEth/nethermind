@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -254,6 +255,34 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(countingTracer.StartedOperations, Is.EqualTo(2));
             Assert.That(countingTracer.CompletedOperations, Is.EqualTo(2));
         }
+    }
+
+    [Test]
+    public void Empty_code_does_not_trace_implicit_stop()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(Array.Empty<byte>());
+
+        Assert.That(trace.Entries, Is.Empty);
+    }
+
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.STATICCALL)]
+    public void Final_call_traces_implicit_stop_after_resuming_caller(Instruction instruction)
+    {
+        byte[] calleeCode = [(byte)Instruction.STOP];
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        byte[] code = instruction switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Done,
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+        };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethTxTraceEntry callerStop = trace.Entries.Last(static entry => entry is { Depth: 1, Opcode: nameof(Instruction.STOP) });
+
+        Assert.That(callerStop.ProgramCounter, Is.EqualTo(code.Length));
     }
 
     [Test]

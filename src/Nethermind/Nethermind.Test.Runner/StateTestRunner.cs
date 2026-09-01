@@ -63,8 +63,10 @@ namespace Nethermind.Test.Runner
             foreach (StateTestTxTraceEntry entry in txTrace.Entries)
             {
                 string stackJson = BuildStackJson(entry.Stack);
-                Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize},\"refund\":{entry.Refund}"));
-                Console.Error.Write($",\"opName\":{System.Text.Json.JsonSerializer.Serialize(entry.OperationName)}");
+                string operationNameJson = System.Text.Json.JsonSerializer.Serialize(entry.OperationName);
+                Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"{{\"pc\":{entry.Pc},\"op\":{entry.Operation},\"gas\":\"0x{entry.Gas:x}\",\"gasCost\":\"0x{entry.GasCost:x}\",\"stack\":[{stackJson}],\"depth\":{entry.Depth},\"memSize\":{entry.MemSize},\"refund\":{entry.Refund},\"opName\":{operationNameJson}"));
+                if (entry.Memory is not null)
+                    Console.Error.Write($",\"memory\":{System.Text.Json.JsonSerializer.Serialize(entry.Memory)}");
                 if (!string.IsNullOrEmpty(entry.Error))
                     Console.Error.Write($",\"error\":{System.Text.Json.JsonSerializer.Serialize(entry.Error)}");
                 Console.Error.WriteLine("}");

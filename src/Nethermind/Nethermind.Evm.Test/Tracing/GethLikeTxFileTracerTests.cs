@@ -7,7 +7,10 @@ using System.Linq;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -36,6 +39,101 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Gas, Is.EqualTo(24));
         Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Should_include_final_opcode_cost_in_gas_used()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, code, GethTraceOptions.Default);
+
+        Assert.That(trace.Gas, Is.EqualTo(9));
+    }
+
+    [Test]
+    public void Should_report_gas_used_for_top_level_precompile_without_opcode_entries()
+    {
+        byte[] input = [0x01];
+        Transaction transaction = Build.A.Transaction
+            .WithTo(IdentityPrecompile.Address)
+            .WithData(input)
+            .WithGasLimit(100_000)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        (Block block, _) = PrepareTx(Activation, 100_000, transaction: transaction);
+        List<GethTxFileTraceEntry> entries = [];
+
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(block, transaction, entries);
+        ulong expectedGas = IdentityPrecompile.Instance.BaseGasCost(Spec) + IdentityPrecompile.Instance.DataGasCost(input, Spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Is.Empty);
+            Assert.That(trace.Gas, Is.EqualTo(expectedGas));
+        }
+    }
+
+    [Test]
+    public void Should_include_code_deposit_in_creation_gas_used()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .PushData((byte)0)
+            .PushData((byte)0)
+            .Op(Instruction.MSTORE8)
+            .PushData((byte)1)
+            .PushData((byte)0)
+            .Op(Instruction.RETURN)
+            .Done;
+        (Block block, Transaction transaction) = PrepareInitTx(Activation, 100_000, initCode);
+        List<GethTxFileTraceEntry> entries = [];
+
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(block, transaction, entries);
+        ulong opcodeGas = entries.Aggregate(0UL, static (gas, entry) => gas + entry.GasCost);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.ReturnValue, Has.Length.EqualTo(1));
+            Assert.That(trace.Gas, Is.EqualTo(opcodeGas + GasCostOf.CodeDeposit));
+        }
+    }
+
+    [Test]
+    public void Should_consume_top_level_gas_on_action_error()
+    {
+        GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default, destroyRefund: 0);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportActionError(EvmExceptionType.OutOfGas);
+
+        Assert.That(tracer.BuildResult().Gas, Is.EqualTo(100));
+    }
+
+    [Test]
+    public void Should_report_gas_used_for_create_collision_without_action()
+    {
+        const ulong gasLimit = 100_000;
+        byte[] initCode = [0x00];
+        (Block block, Transaction transaction) = PrepareInitTx(Activation, gasLimit, initCode);
+        Address deploymentAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(deploymentAddress, UInt256.Zero, nonce: 1);
+        List<GethTxFileTraceEntry> entries = [];
+        ulong standardIntrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec).Standard;
+
+        GethLikeTxTrace trace = ExecuteAndTraceToFile(block, transaction, entries);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Is.Empty);
+            Assert.That(trace.Failed, Is.True);
+            Assert.That(trace.Gas, Is.EqualTo(gasLimit - standardIntrinsicGas));
+        }
     }
 
     [Test]
@@ -167,6 +265,17 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     /// </summary>
     private static GethTxFileTraceEntry CloneTraceEntry(GethTxFileTraceEntry entry) =>
         JsonSerializer.Deserialize<GethTxFileTraceEntry>(JsonSerializer.Serialize(entry));
+
+    private GethLikeTxTrace ExecuteAndTraceToFile(Block block, Transaction transaction, List<GethTxFileTraceEntry> entries)
+    {
+        GethLikeTxFileTracer tracer = new(
+            entry => entries.Add(CloneTraceEntry(entry)),
+            GethTraceOptions.Default,
+            (long)SpecProvider.GetSpec(block.Header).GasCosts.DestroyRefund,
+            IntrinsicGasCalculator.Calculate(transaction, SpecProvider.GetSpec(block.Header), block.Header.GasLimit).Standard);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer.BuildResult();
+    }
 
     private static byte[] GetBytecode() =>
         Prepare.EvmCode

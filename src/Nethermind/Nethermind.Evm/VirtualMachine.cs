@@ -151,7 +151,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
-        _hasImplicitStopTracerCached = HasImplicitStopTracer(txTracer);
+        _hasImplicitStopTracerCached = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -1360,6 +1360,9 @@ public partial class VirtualMachine<TGasPolicy>(
         => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, in stackValue);
 
     private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
+        => StartInstructionTrace(tracer, instruction, gasAvailable, programCounter, stackValue.Head);
+
+    private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, int stackHead)
     {
         VmState<TGasPolicy> vmState = VmState;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
@@ -1371,7 +1374,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (tracer.IsTracingStack)
         {
-            tracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackValue.Head)));
+            tracer.SetOperationStack(new TraceStack(vmState.MemoryStacks(stackHead)));
         }
 
         if (tracer.IsTracingReturnData)
@@ -1380,46 +1383,15 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private void TraceImplicitStop(ITxTracer tracer, ulong gasAvailable, int programCounter, in EvmStack stackValue)
-    {
-        if (tracer is ITraceImplicitStop && tracer.IsTracingInstructions)
-        {
-            StartInstructionTrace(tracer, Instruction.STOP, gasAvailable, programCounter, in stackValue);
-            tracer.ReportOperationRemainingGas(gasAvailable);
-        }
-        else if (tracer is ITxTracerWrapper wrapper)
-        {
-            // Only opted-in inner tracers receive implicit STOP; the caller checks cancellation before unwrapping.
-            TraceImplicitStop(wrapper.InnerTracer, gasAvailable, programCounter, in stackValue);
-        }
-        else if (tracer is CompositeTxTracer composite)
-        {
-            foreach (ITxTracer innerTracer in composite._txTracers)
+    private void TraceImplicitStop(ITxTracer tracer, ulong gasAvailable, int programCounter, int stackHead) =>
+        tracer.ForEach<ITraceImplicitStop, (VirtualMachine<TGasPolicy> Machine, ulong Gas, int ProgramCounter, int StackHead)>(
+            static implicitStopTracer => implicitStopTracer.IsTracingInstructions,
+            (this, gasAvailable, programCounter, stackHead),
+            static (implicitStopTracer, state) =>
             {
-                TraceImplicitStop(innerTracer, gasAvailable, programCounter, in stackValue);
-            }
-        }
-    }
-
-    private static bool HasImplicitStopTracer(ITxTracer tracer)
-    {
-        if (tracer is ITraceImplicitStop && tracer.IsTracingInstructions)
-            return true;
-
-        if (tracer is ITxTracerWrapper wrapper)
-            return HasImplicitStopTracer(wrapper.InnerTracer);
-
-        if (tracer is CompositeTxTracer composite)
-        {
-            foreach (ITxTracer innerTracer in composite._txTracers)
-            {
-                if (HasImplicitStopTracer(innerTracer))
-                    return true;
-            }
-        }
-
-        return false;
-    }
+                state.Machine.StartInstructionTrace(implicitStopTracer, Instruction.STOP, state.Gas, state.ProgramCounter, state.StackHead);
+                implicitStopTracer.ReportOperationRemainingGas(state.Gas);
+            });
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);

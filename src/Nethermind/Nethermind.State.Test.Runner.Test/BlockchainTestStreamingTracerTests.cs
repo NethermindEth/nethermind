@@ -11,6 +11,9 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Test.Runner;
 using NUnit.Framework;
 
@@ -20,14 +23,17 @@ namespace Nethermind.State.Test.Runner.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockchainTestStreamingTracerTests
 {
-    private const long BeforeTransitionDestroyRefund = 111;
-    private const long AfterTransitionDestroyRefund = 222;
+    private const long BeforeTransitionDestroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+    private const long AfterTransitionDestroyRefund = 0;
 
     [Test]
     public void Tracer_writes_to_provided_output()
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         Transaction tx = Build.A.Transaction.WithValue(1).TestObject;
@@ -47,7 +53,10 @@ public class BlockchainTestStreamingTracerTests
     public void Tracer_handles_blocks_and_transactions(int blockCount, int txPerBlock)
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         for (int b = 0; b < blockCount; b++)
         {
@@ -69,12 +78,16 @@ public class BlockchainTestStreamingTracerTests
     public void Tracer_disposes_cleanly()
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         Assert.DoesNotThrow(tracer.Dispose);
         Assert.DoesNotThrow(tracer.Dispose); // Double dispose should be safe
     }
 
+    [TestCase(0UL, BeforeTransitionDestroyRefund)]
     [TestCase(9UL, BeforeTransitionDestroyRefund)]
     [TestCase(10UL, AfterTransitionDestroyRefund)]
     [TestCase(11UL, AfterTransitionDestroyRefund)]
@@ -98,12 +111,13 @@ public class BlockchainTestStreamingTracerTests
     private static long TraceDestroyRefund(ForkActivation transition, ulong blockNumber, ulong timestamp)
     {
         using MemoryStream output = new();
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, Frontier.Instance),
+            (transition, London.Instance));
         using BlockchainTestStreamingTracer tracer = new(
             new GethTraceOptions(),
-            output,
-            BeforeTransitionDestroyRefund,
-            AfterTransitionDestroyRefund,
-            transition);
+            specProvider,
+            output);
         Block block = Build.A.Block.WithNumber(blockNumber).WithTimestamp(timestamp).TestObject;
 
         tracer.StartNewBlockTrace(block);

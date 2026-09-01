@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -97,19 +98,17 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
         try
         {
+            if (!_trace)
+                return await RunTest(test);
+
+            ISpecProvider specProvider = CreateSpecProvider(test);
             // Intentionally created per test: each test emits an independent JSONL trace,
             // so the tracer's block counter resetting between tests is by design.
-            using BlockchainTestStreamingTracer? tracer = _trace
-                ? new BlockchainTestStreamingTracer(
-                    new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
-                    destroyRefund: (long)test.Network!.GasCosts.DestroyRefund,
-                    afterTransitionDestroyRefund: test.NetworkAfterTransition is null
-                        ? null
-                        : (long)test.NetworkAfterTransition.GasCosts.DestroyRefund,
-                    transitionForkActivation: test.TransitionForkActivation)
-                : null;
+            using BlockchainTestStreamingTracer tracer = new(
+                new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
+                specProvider);
 
-            return await RunTest(test, tracer: tracer);
+            return await RunTest(test, tracer: tracer, specProvider: specProvider);
         }
         catch (Exception ex)
         {

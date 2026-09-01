@@ -49,8 +49,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private bool _gasCostAlreadySet;
     private bool _pendingStorageTouched;
 
-    private readonly RefundTracker _refundTracker;
-
     private byte[]? _stackBuffer;
     private int _stackByteCount;
 
@@ -76,7 +74,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         CancellationToken cancellationToken,
         int flushIntervalEntries = DefaultFlushIntervalEntries,
         long destroyRefund = 0)
-        : base(options)
+        : base(options, destroyRefund)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
@@ -86,7 +84,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
-        _refundTracker = new(destroyRefund);
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -106,7 +103,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingRefund = 0;
         _gasCostAlreadySet = false;
         _pendingStorageTouched = false;
-        _refundTracker.Reset();
+        ResetRefund();
         _stackByteCount = 0;
         _memoryByteCount = 0;
         _returnDataByteCount = 0;
@@ -139,7 +136,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingDepth = env.GetGethTraceDepth();
         _pendingError = null;
         // Snapshot the cumulative refund counter before the opcode executes (geth pre-op GetRefund()).
-        _pendingRefund = _refundTracker.Refund;
+        _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
@@ -367,38 +364,4 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _entriesSinceLastFlush = 0;
     }
 
-    public override void ReportRefund(long refund) => _refundTracker.Add(refund);
-
-    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
-        _refundTracker.CreditSelfDestruct(address);
-
-    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        _refundTracker.TakeSnapshot();
-    }
-
-    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
-    {
-        base.ReportActionEnd(gas, output);
-        _refundTracker.CommitSnapshot();
-    }
-
-    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        _refundTracker.CommitSnapshot();
-    }
-
-    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
-    {
-        base.ReportActionRevert(gasLeft, output);
-        _refundTracker.RestoreSnapshot();
-    }
-
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
-    {
-        base.ReportActionError(evmExceptionType);
-        _refundTracker.RestoreSnapshot();
-    }
 }
