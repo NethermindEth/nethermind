@@ -38,6 +38,7 @@
 /src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Specs @smartprogrammer93
 /src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski
+/src/Nethermind/Nethermind.State.Flat @asdacap @svlachakis
 /src/Nethermind/Nethermind.State.Flat.History @svlachakis
 /src/Nethermind/Nethermind.StateDiff.Core @daniilankusin
 /src/Nethermind/Nethermind.StateDiffsWriter @daniilankusin
