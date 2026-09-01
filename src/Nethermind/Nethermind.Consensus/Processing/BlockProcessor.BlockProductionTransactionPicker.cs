@@ -36,13 +36,6 @@ namespace Nethermind.Consensus.Processing
                 Block block,
                 Transaction currentTx,
                 IReadOnlySet<Transaction> transactionsInBlock,
-                IReadOnlyStateProvider stateProvider) =>
-                CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, block.GasUsed, 0);
-
-            public virtual AddingTxEventArgs CanAddTransaction(
-                Block block,
-                Transaction currentTx,
-                IReadOnlySet<Transaction> transactionsInBlock,
                 IReadOnlyStateProvider stateProvider,
                 ulong cumulativeBlockExecutionGas,
                 ulong cumulativeBlockStateGas)

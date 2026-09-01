@@ -55,7 +55,7 @@ public class FrameTxBlockProductionPickerTests
 
         Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
 
-        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), state);
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), state, block.GasUsed, 0);
 
         using (Assert.EnterMultipleScope())
         {

@@ -443,7 +443,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction * 2).TestObject;
             BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec));
 
-            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider);
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             Assert.That(args.Action, Is.EqualTo(expectedSkipReason is null ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
             if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
@@ -476,7 +476,7 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
 
-            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             if (expectedSkipped)
             {
@@ -518,7 +518,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
             BlockProcessor.AddingTxEventArgs args =
-                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
+                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
         }
