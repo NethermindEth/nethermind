@@ -121,7 +121,7 @@ public class MessageSerializationService : IMessageSerializationService
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNoSerializerRegistered<T>() where T : MessageBase
-        => throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
+        => throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<>)} registered for {typeof(T).Name}.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidSerializerType<T>(object? serializerObject)

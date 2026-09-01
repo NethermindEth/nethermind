@@ -142,7 +142,7 @@ public class StorageProviderTests(bool useFlat)
     private static int GetCapacity(object collection)
     {
         object dictionary = GetDictionary(collection);
-        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(dictionary)!;
+        return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(dictionary)!;
     }
 
     private static object GetDictionary(object collection)
@@ -157,10 +157,10 @@ public class StorageProviderTests(bool useFlat)
         owner.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
 
     private static void EnsureCapacity(object collection, int capacity) =>
-        collection.GetType().GetMethod(nameof(System.Collections.Generic.Dictionary<int, int>.EnsureCapacity), [typeof(int)])!.Invoke(collection, [capacity]);
+        collection.GetType().GetMethod(nameof(System.Collections.Generic.Dictionary<,>.EnsureCapacity), [typeof(int)])!.Invoke(collection, [capacity]);
 
     private static int GetCollectionCapacity(object collection) =>
-        (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<int, int>.Capacity))!.GetValue(collection)!;
+        (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(collection)!;
 
     [TestCase(-1)]
     [TestCase(0)]
