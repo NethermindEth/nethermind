@@ -43,34 +43,30 @@ namespace Nethermind.TxPool.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the only harness in the repository that runs a real EVM-backed
-/// <see cref="IFrameTxPrefixSimulator"/> inside a real <see cref="TxPool"/>; every other test passes a
-/// mock, so the EVM never runs and the expensive half of admission is never timed.
-/// <c>Nethermind.Evm.Test/FrameTxVerifyDosMeasurement</c> times the right work at the wrong layer (raw
-/// <see cref="ITransactionProcessor"/>, no pool, no filters), and <see cref="FrameTxPrefixRetryMeasurement"/>
-/// exercises the right layer with no simulator wired at all.
+/// The only harness that runs a real EVM-backed <see cref="IFrameTxPrefixSimulator"/> inside a real
+/// <see cref="TxPool"/>; every other test passes a mock, so the expensive half of admission goes untimed
+/// elsewhere. <c>Nethermind.Evm.Test/FrameTxVerifyDosMeasurement</c> times the right work at the wrong layer
+/// (raw <see cref="ITransactionProcessor"/>, no pool, no filters), and
+/// <see cref="FrameTxPrefixRetryMeasurement"/> exercises the right layer with no simulator wired at all.
 /// </para>
 /// <para>
-/// Two spans are timed in the same run: the outer <see cref="TxPool.SubmitTx"/> call, which is the
-/// operator-visible rejection latency, and the inner <see cref="IFrameTxPrefixSimulator.Simulate"/> call,
-/// which is the EVM stage. Their difference is what admission costs outside the EVM.
+/// Two spans are timed per run: the outer <see cref="TxPool.SubmitTx"/> call (operator-visible rejection
+/// latency) and the inner <see cref="IFrameTxPrefixSimulator.Simulate"/> call (the EVM stage). Their
+/// difference is what admission costs outside the EVM.
 /// </para>
 /// <para>
-/// Every sample is kept. Percentiles are nearest-rank over one sorted array, deliberately not the
-/// median-of-medians <c>FrameTxVerifyDosMeasurement</c> reports, which discards exactly the tail a p99
-/// is made of.
-/// </para>
-/// <para>
-/// These numbers are not comparable with that harness's. Admission runs the prefix under
-/// <c>FrameTxValidationTracer</c>, which traces instructions, stack and storage, so the EVM takes its
-/// instrumented specialisation; the Phase 1 harness times the same budget under <c>NullTxTracer</c>. The
-/// penalty falls on dispatch-bound shapes, not on shapes whose gas buys real work.
+/// Every sample is kept; percentiles are nearest-rank over one sorted array, not the median-of-medians
+/// <c>FrameTxVerifyDosMeasurement</c> reports, which discards the tail a p99 is made of. The two harnesses'
+/// numbers still aren't comparable: admission runs the prefix under <c>FrameTxValidationTracer</c>, which
+/// traces instructions, stack and storage, so the EVM takes its instrumented specialisation, while the Phase 1
+/// harness times the same budget under <c>NullTxTracer</c> — a penalty that falls on dispatch-bound shapes,
+/// not ones whose gas buys real work.
 /// </para>
 /// <para>
 /// Results are appended as <c>RESULT key=value</c> lines to the path in <c>FRAME_MEMPOOL_DOS_OUT</c> (then
-/// <c>FRAME_RETRY_OUT</c>, then <c>frame-mempool-dos.txt</c> under the temp directory), because
-/// Microsoft.Testing.Platform swallows console writers and nothing written here reaches stdout. The file is
-/// appended, so delete it before a run.
+/// <c>FRAME_RETRY_OUT</c>, then <c>frame-mempool-dos.txt</c> under the temp directory) — Microsoft.Testing.Platform
+/// swallows console writers, so nothing written here reaches stdout. Delete the file before a run; it is
+/// appended, not overwritten.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -269,16 +265,12 @@ public class FrameTxMempoolDosMeasurement
     /// buys hashing of 4 KiB per iteration at six gas a word.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// The ceiling is the axis this sweep exists to test. At the EVM layer µs/Mgas is flat across ceilings
     /// within a shape, but admission runs the prefix under <c>FrameTxValidationTracer</c>, whose overhead is
-    /// per opcode rather than per gas, so flatness there does not imply flatness here.
-    /// </para>
-    /// <para>
-    /// Every loop holds its opcodes-per-gas ratio constant across ceilings, so the tracer's per-opcode
-    /// overhead cannot bend µs/Mgas within a shape. <see cref="Warmup"/> is sized to absorb the tiered JIT's
-    /// promotion of the instrumented interpreter, which is otherwise charged to whichever ceiling runs first.
-    /// </para>
+    /// per opcode rather than per gas, so flatness there does not imply flatness here. Every loop holds its
+    /// opcodes-per-gas ratio constant across ceilings, so that per-opcode overhead cannot bend µs/Mgas within a
+    /// shape; <see cref="Warmup"/> is sized to absorb the tiered JIT's promotion of the instrumented
+    /// interpreter, which is otherwise charged to whichever ceiling runs first.
     /// </remarks>
     [TestCase("jump", Ceiling100k)]
     [TestCase("jump", Ceiling236k)]
@@ -341,26 +333,19 @@ public class FrameTxMempoolDosMeasurement
 
         Transaction probe = OrdinaryTx(0);
         AcceptTxResult probeResult = _txPool.SubmitTx(probe, TxHandlingOptions.None);
-        Assert.That(probeResult, Is.EqualTo(AcceptTxResult.InsufficientFunds),
-            $"the baseline must be rejected for want of funds, not by another filter (got {probeResult})");
-        Assert.That(probe.SenderAddress, Is.EqualTo(TestItem.AddressB), "the sender was not recovered, so no ecrecover was paid for");
-        Assert.That(_simulateMicros, Is.Empty, "an ordinary transaction must never reach the frame simulator");
-
-        Transaction[] warmup = BuildOrdinarySamples(1, Warmup);
-        for (int i = 0; i < warmup.Length; i++) _txPool.SubmitTx(warmup[i], TxHandlingOptions.None);
-
-        Transaction[] samples = BuildOrdinarySamples(1 + Warmup, Samples);
-        List<double> submitMicros = new(Samples);
-        for (int i = 0; i < samples.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            long start = Stopwatch.GetTimestamp();
-            AcceptTxResult result = _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
-            submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            if (result != AcceptTxResult.InsufficientFunds)
-            {
-                Assert.Fail($"sample {i} was not rejected for want of funds: {result}");
-            }
+            Assert.That(probeResult, Is.EqualTo(AcceptTxResult.InsufficientFunds),
+                $"the baseline must be rejected for want of funds, not by another filter (got {probeResult})");
+            Assert.That(probe.SenderAddress, Is.EqualTo(TestItem.AddressB), "the sender was not recovered, so no ecrecover was paid for");
+            Assert.That(_simulateMicros, Is.Empty, "an ordinary transaction must never reach the frame simulator");
         }
+
+        SubmitWarmup(BuildOrdinarySamples(1, Warmup));
+
+        List<double> submitMicros = TimeSamples(BuildOrdinarySamples(1 + Warmup, Samples),
+            result => result == AcceptTxResult.InsufficientFunds,
+            (i, result) => $"sample {i} was not rejected for want of funds: {result}");
 
         Assert.That(_simulateMicros, Is.Empty, "the baseline must not have run the EVM");
 
@@ -409,35 +394,29 @@ public class FrameTxMempoolDosMeasurement
         Transaction probe = FrameTx(0);
         AcceptTxResult probeResult = _txPool.SubmitTx(probe, TxHandlingOptions.None);
         string probeReason = probeResult.ToString();
-        Assert.That(probeResult, Is.EqualTo(AcceptTxResult.FrameSimulationFailed),
-            $"the probe must be rejected by the simulation stage, not by a cheaper upstream filter (got {probeReason})");
-        Assert.That(_simulateMicros, Is.Not.Empty, "the simulation decorator recorded nothing, so the EVM never ran");
-        Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a rejected frame transaction must not occupy a pool slot");
-        Assert.That(Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed),
-            Is.GreaterThan(probeFailuresBefore), "the simulation-failure counter did not move");
-        Assert.That(probeReason, Does.Contain(ExpectedRejectionReason(shape)),
-            $"the prefix was rejected, but not the way {shape} rejects, so the sample is not the shape it claims to be");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probeResult, Is.EqualTo(AcceptTxResult.FrameSimulationFailed),
+                $"the probe must be rejected by the simulation stage, not by a cheaper upstream filter (got {probeReason})");
+            Assert.That(_simulateMicros, Is.Not.Empty, "the simulation decorator recorded nothing, so the EVM never ran");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a rejected frame transaction must not occupy a pool slot");
+            Assert.That(Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed),
+                Is.GreaterThan(probeFailuresBefore), "the simulation-failure counter did not move");
+            Assert.That(probeReason, Does.Contain(ExpectedRejectionReason(shape)),
+                $"the prefix was rejected, but not the way {shape} rejects, so the sample is not the shape it claims to be");
+        }
 
-        Transaction[] warmup = BuildFrameSamples(1, Warmup);
-        for (int i = 0; i < warmup.Length; i++) _txPool.SubmitTx(warmup[i], TxHandlingOptions.None);
+        SubmitWarmup(BuildFrameSamples(1, Warmup));
 
         Transaction[] samples = BuildFrameSamples(1 + Warmup, Samples);
-        List<double> submitMicros = new(Samples);
         _simulateMicros.Clear();
 
         // Taken after the probe and the warmup, so the emitted count covers the sampled submissions alone.
         long simulationFailuresBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
 
-        for (int i = 0; i < samples.Length; i++)
-        {
-            long start = Stopwatch.GetTimestamp();
-            AcceptTxResult result = _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
-            submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            if (result != AcceptTxResult.FrameSimulationFailed)
-            {
-                Assert.Fail($"sample {i} was not rejected by the simulation stage: {result}");
-            }
-        }
+        List<double> submitMicros = TimeSamples(samples,
+            result => result == AcceptTxResult.FrameSimulationFailed,
+            (i, result) => $"sample {i} was not rejected by the simulation stage: {result}");
 
         Assert.That(_simulateMicros, Has.Count.EqualTo(Samples),
             "one simulation per submission is what makes the two spans comparable");
@@ -476,6 +455,29 @@ public class FrameTxMempoolDosMeasurement
         if (sorted.Count == 0) return double.NaN;
         int rank = (int)Math.Ceiling(quantile * sorted.Count);
         return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
+    }
+
+    /// <summary>Discards each of <paramref name="warmup"/>'s results — enough traffic to promote the tiered
+    /// JIT's instrumented specialisation before the timed samples run.</summary>
+    private void SubmitWarmup(Transaction[] warmup)
+    {
+        for (int i = 0; i < warmup.Length; i++) _txPool.SubmitTx(warmup[i], TxHandlingOptions.None);
+    }
+
+    /// <summary>Times each of <paramref name="samples"/>' submissions, asserting every one satisfies
+    /// <paramref name="isExpected"/> before recording it.</summary>
+    private List<double> TimeSamples(
+        Transaction[] samples, Func<AcceptTxResult, bool> isExpected, Func<int, AcceptTxResult, string> describeFailure)
+    {
+        List<double> submitMicros = new(samples.Length);
+        for (int i = 0; i < samples.Length; i++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            AcceptTxResult result = _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
+            submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+            if (!isExpected(result)) Assert.Fail(describeFailure(i, result));
+        }
+        return submitMicros;
     }
 
     /// <summary>Cheapest gas per interpreter dispatch: a bare jump loop.</summary>
@@ -532,18 +534,16 @@ public class FrameTxMempoolDosMeasurement
     /// Cannot share <see cref="MeasureFrameRejection"/>: this shape is refused at the signature filter, so the
     /// EVM never runs, there is no burned frame gas to divide by, and the assertions there invert. The
     /// denominator is <see cref="FrameTxValidation.ValidationWorkGas"/>, the declared budget the pool charged.
+    /// secp256k1 only — P256 costs more per signature but is priced 2.4x higher, so it buys less CPU per unit
+    /// of budget and is not the worst case.
     /// </para>
     /// <para>
-    /// secp256k1 only. P256 costs more per signature but is priced 2.4x higher, so it buys less CPU per unit of
-    /// budget and is not the worst case.
-    /// </para>
-    /// <para>
-    /// Swept over the same ceilings as the burn shapes. <see cref="Ceiling500k"/> needs no patched build
-    /// here, because <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation and a signature refusal
-    /// never reaches the simulator. It does need a <em>configured</em> 500,000: the declared-gas precheck at
+    /// Swept over the same ceilings as the burn shapes. <see cref="Ceiling500k"/> needs no patched build here,
+    /// because <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation and a signature refusal never
+    /// reaches the simulator — but it does need a <em>configured</em> 500,000: the declared-gas precheck at
     /// filter stage 7 reads <c>ITxPoolConfig.FrameTxMaxVerifyGas</c>, whose default is 300,000, so a default
-    /// node refuses this transaction for free. The pool is therefore configured at the ceiling under test, and
-    /// the row describes a node an operator could actually run. Say "no patched build", not "stock node".
+    /// node refuses this transaction for free. The pool is configured at the ceiling under test, so the row
+    /// describes "no patched build", not "stock node".
     /// </para>
     /// </remarks>
     [TestCase(Ceiling100k)]
@@ -585,19 +585,13 @@ public class FrameTxMempoolDosMeasurement
         Assert.That(_simulateMicros, Is.Empty,
             "the EVM must not run: this cost is charged before simulation, which is the point");
 
-        Transaction[] warmup = BuildFrameSamples(1, Warmup);
-        for (int i = 0; i < warmup.Length; i++) _txPool.SubmitTx(warmup[i], TxHandlingOptions.None);
+        SubmitWarmup(BuildFrameSamples(1, Warmup));
 
         Transaction[] samples = BuildFrameSamples(1 + Warmup, Samples);
-        List<double> submitMicros = new(Samples);
         long sampledFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
-        for (int i = 0; i < samples.Length; i++)
-        {
-            long start = Stopwatch.GetTimestamp();
-            AcceptTxResult result = _txPool.SubmitTx(samples[i], TxHandlingOptions.None);
-            submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            if (result == AcceptTxResult.Accepted) Assert.Fail($"sample {i} was admitted");
-        }
+        List<double> submitMicros = TimeSamples(samples,
+            result => result != AcceptTxResult.Accepted,
+            (i, _) => $"sample {i} was admitted");
 
         // Without this the row's `samples=` and `evm_ran=no` rest on the single probe above, and any sample
         // short-circuited upstream would be timed as if it had done the curve work.
@@ -692,18 +686,14 @@ public class FrameTxMempoolDosMeasurement
     /// </summary>
     /// <returns>The frame's entry gas, the gas it consumed, and how many instructions it ran.</returns>
     /// <remarks>
-    /// <para>
-    /// Two silent failures are ruled out here, and neither is visible from the pool, which sees the same
-    /// <c>"validation prefix frame reverted"</c> string in all three cases. A ceiling over
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> is clamped to the constant and runs out of gas there; a
-    /// target missing its code runs EIP-8141 default verify code, which reverts on the empty signature list
-    /// without entering the EVM at all.
-    /// </para>
-    /// <para>
-    /// Same construction as <see cref="AssertGroth16FailsAfterThePairing"/>: a direct processing scope built
-    /// exactly as the simulator builds its own, with an action-tracing probe the pool's
-    /// <c>FrameTxValidationTracer</c> leaves no room for. Not timed, and deliberately outside the sample loop.
-    /// </para>
+    /// Two silent failures are ruled out here, neither visible from the pool, which reports the same
+    /// <c>"validation prefix frame reverted"</c> string in all three cases: a ceiling over
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> clamped to the constant and run out of gas there, or a
+    /// target missing its code running EIP-8141 default verify code, which reverts on the empty signature list
+    /// without entering the EVM at all. Same construction as
+    /// <see cref="AssertGroth16FailsAfterThePairing"/>: a direct processing scope built exactly as the
+    /// simulator builds its own, with an action-tracing probe the pool's <c>FrameTxValidationTracer</c> leaves
+    /// no room for — not timed, and deliberately outside the sample loop.
     /// </remarks>
     private FrameGasReadout ProbeSyntheticShape(string shape, ulong ceiling)
     {
@@ -797,17 +787,11 @@ public class FrameTxMempoolDosMeasurement
     /// </summary>
     /// <returns>The gas the frame consumed, which is the denominator for this shape's µs/Mgas.</returns>
     /// <remarks>
-    /// <para>
-    /// The pool cannot tell these apart on its own. A codeless target runs default verify code, which reverts
-    /// on the empty signature list without entering the EVM at all and reports the same
-    /// <c>"validation prefix frame reverted"</c> string; an exhausted budget under a declared ceiling below
-    /// the constant reports that string too. So the shape is pinned here instead, on a direct processing scope
-    /// built exactly as the simulator builds its own, with an action-tracing probe the pool's
-    /// <c>FrameTxValidationTracer</c> leaves no room for.
-    /// </para>
-    /// <para>
-    /// Not timed, and deliberately outside the sample loop: action tracing is not what admission runs.
-    /// </para>
+    /// Same reasoning as <see cref="ProbeSyntheticShape"/>: the pool reports the same
+    /// <c>"validation prefix frame reverted"</c> string whether the frame failed here, ran default verify
+    /// code for a codeless target, or exhausted a declared ceiling below the constant. So the shape is pinned
+    /// on a direct processing scope built exactly as the simulator builds its own — not timed, and
+    /// deliberately outside the sample loop.
     /// </remarks>
     private FrameGasReadout AssertGroth16FailsAfterThePairing(Groth16Sweep sweep)
     {
@@ -815,6 +799,10 @@ public class FrameTxMempoolDosMeasurement
         FrameGasReadout readout = ProbeFrame(probe);
 
         DumpHistogram(sweep.Directory, probe);
+        Assert.That(readout.Available, Is.GreaterThanOrEqualTo(sweep.Ceiling - MaxFrameEntryCharge),
+            $"{sweep.Directory} entered the EVM with {readout.Available} gas against the {sweep.Ceiling} it "
+            + $"declared. CapFrameGas clamped it at Eip8141Constants.MaxVerifyGas = {Eip8141Constants.MaxVerifyGas}, "
+            + "so these are the constant's numbers wearing this ceiling's label.");
         Assert.That(probe.TopLevelRevertOutput, Is.EqualTo(ProofInvalidSelector),
             "the frame did not revert ProofInvalid(), so it failed somewhere other than the pairing equation");
         // The pairing is the expensive half and the whole point of the workload. Assert it ran, from the call
@@ -864,21 +852,19 @@ public class FrameTxMempoolDosMeasurement
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>FrameTxPayerResolver</c> returns <c>RequiresSimulation</c> unconditionally for that shape once the
-    /// sender has code, which is what carries the transaction past the two EVM-free fast paths in
-    /// <c>FrameTxSimulationFilter</c>. An empty signature list also short-circuits
-    /// <c>FrameTxSignatureFilter</c>, so the attack costs the sender no elliptic-curve work either.
+    /// <c>FrameTxPayerResolver</c> returns <c>RequiresSimulation</c> unconditionally once the sender has code,
+    /// carrying the transaction past the two EVM-free fast paths in <c>FrameTxSimulationFilter</c>; an empty
+    /// signature list also short-circuits <c>FrameTxSignatureFilter</c>, so the attack costs no
+    /// elliptic-curve work either.
     /// </para>
     /// <para>
-    /// The nonce cannot vary: a rejected transaction never enters the pool, so every sample must still be
-    /// the sender's next nonce or <c>GapNonceFilter</c> would reject it before the EVM. Distinctness comes
-    /// from the frame's calldata instead, which is what an attacker would vary anyway, and without it
-    /// <c>AlreadyKnownTxFilter</c> would short-circuit the whole run after the first sample.
-    /// </para>
-    /// <para>
-    /// The salt trails <see cref="_frameCalldataPrefix"/>, so a Groth16 payload keeps its selector and its
-    /// arguments byte-for-byte and the verifier ignores the surplus. That the surplus is also free is not
-    /// assumed: <see cref="AssertGroth16FailsAfterThePairing"/> checks the burned gas against <c>gas.txt</c>.
+    /// The nonce cannot vary: a rejected transaction never enters the pool, so every sample must still be the
+    /// sender's next nonce or <c>GapNonceFilter</c> would reject it before the EVM. Distinctness comes from the
+    /// frame's calldata instead — what an attacker would vary anyway — or <c>AlreadyKnownTxFilter</c> would
+    /// short-circuit the whole run after the first sample. The salt trails
+    /// <see cref="_frameCalldataPrefix"/>, so a Groth16 payload keeps its selector and arguments byte-for-byte;
+    /// that the verifier's surplus read is free is checked, not assumed —
+    /// <see cref="AssertGroth16FailsAfterThePairing"/> verifies the burned gas against <c>gas.txt</c>.
     /// </para>
     /// </remarks>
     private Transaction FrameTx(int salt)
@@ -925,20 +911,16 @@ public class FrameTxMempoolDosMeasurement
     /// both stores the admission path reads.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// The two stores must agree. The pool sees the chain head through a <see cref="TestReadOnlyStateProvider"/>
     /// that has no EVM and needs only a non-empty code hash for <c>HasCode</c>; the simulator needs a real
     /// <see cref="IWorldState"/> holding the actual bytes. Seeding order matters in the first of them:
     /// <c>CreateAccount</c> replaces the whole account and wipes the code hash, while <c>InsertCode</c>
-    /// preserves nonce and balance, so balance goes first and code second.
-    /// </para>
-    /// <para>
-    /// The code in the EVM store is the load-bearing half, and its absence is silent: a codeless target makes
-    /// the VERIFY frame run default verify code, which reverts on the empty signature list in microseconds and
-    /// reports the same rejection an exhausted budget does. So the seeded head is read back through the same
-    /// resettable world state the simulator will build, and the assertion below is what stands between a
-    /// measurement and a plausible number for work that never happened.
-    /// </para>
+    /// preserves nonce and balance, so balance goes first and code second. The EVM store's code is the
+    /// load-bearing half, and its absence is silent — a codeless target makes the VERIFY frame run default
+    /// verify code, reverting on the empty signature list in microseconds and reporting the same rejection an
+    /// exhausted budget does — so the seeded head is read back through the same resettable world state the
+    /// simulator will build, and the assertion below is what stands between a measurement and a plausible
+    /// number for work that never happened.
     /// </remarks>
     private void BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
     {
@@ -1004,17 +986,13 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <remarks>
-    /// <para>
     /// <paramref name="verifyGasCeiling"/> is what a node operator would configure. <c>0</c> disables the
     /// static declared-gas precheck at filter stage 7 entirely, which is what the burn shapes want: they are
     /// bounded by the <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c> in the processor regardless, so
     /// leaving the precheck on would only add a second bound at the same 300,000 and hide which one bit.
-    /// </para>
-    /// <para>
-    /// Shapes refused <em>before</em> the simulator must pass the ceiling instead. For those, <c>0</c> would
+    /// Shapes refused <em>before</em> the simulator must pass the ceiling instead — for those, <c>0</c> would
     /// measure a transaction no configured node accepts, and the emitted <c>ceiling=</c> field would name a
     /// budget nothing enforced.
-    /// </para>
     /// </remarks>
     private TxPool CreatePool(IFrameTxPrefixSimulator frameTxPrefixSimulator, ulong verifyGasCeiling = 0)
     {

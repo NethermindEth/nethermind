@@ -47,25 +47,23 @@ namespace Nethermind.Blockchain.Test;
 /// <remarks>
 /// <para>
 /// <c>FrameTxMempoolDosMeasurement</c> in <c>Nethermind.TxPool.Test</c> measures the other half of the
-/// campaign, <c>t_reject</c>, on an idle node. This harness answers the question that one cannot: what the
-/// unpaid admission work costs a node that is also trying to process blocks on the same core.
-/// </para>
-/// <para>
-/// Both halves are real and independently wired by production modules. <see cref="TestBlockchain.TxPool"/>
-/// resolves the real <c>FrameTxPrefixSimulator</c> registered in <c>BlockProcessingModule</c>, and
+/// campaign, <c>t_reject</c>, on an idle node. This harness answers what that one cannot: what the unpaid
+/// admission work costs a node that is also trying to process blocks on the same core. Both halves are real
+/// and independently wired by production modules — <see cref="TestBlockchain.TxPool"/> resolves the real
+/// <c>FrameTxPrefixSimulator</c> registered in <c>BlockProcessingModule</c>, and
 /// <see cref="TestBlockchain.BranchProcessor"/> is the same block processor the client runs. They are not
 /// made to share a world state, because the contention the plan names is for the CPU: the simulator works
 /// over its own resettable read-only state exactly as it does in production.
 /// </para>
 /// <para>
-/// The load generator is open-loop. Each submission has an absolute deadline computed from the run's start,
+/// The load generator is open-loop: each submission has an absolute deadline computed from the run's start,
 /// so a slow simulation delays that submission without shifting every later one — a closed-loop generator
 /// would silently throttle itself to the node's capacity and could never show saturation. Achieved rate and
 /// worst submission lag are reported alongside every measurement so a saturated run is visible rather than
-/// being read as a low-delay result.
+/// read as a low-delay result.
 /// </para>
 /// <para>
-/// Numbers from a developer machine are indicative only. The plan's setup is a dedicated runner, and CPU
+/// Numbers from a developer machine are indicative only: the plan's setup is a dedicated runner, and CPU
 /// frequency scaling alone moves these figures by tens of percent.
 /// </para>
 /// </remarks>
@@ -157,20 +155,16 @@ public class FrameTxFloodMeasurement
     /// The CPUs this process may actually run on, read from the OS rather than asserted.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// <b>Run this fixture under <c>taskset -c 0</c> for the plan's single-core worst case.</b> Setting
-    /// <see cref="Process.ProcessorAffinity"/> from inside the process is not sufficient on Linux: it
-    /// returns successfully and reports the new mask, but the measurement threads keep running across every
-    /// core. Measured directly — the same four cases showed no flood effect at all under in-process affinity
-    /// (3,425 µs against a 3,463 µs baseline, generator sustaining its full offered rate) and an 83% delay
-    /// under <c>taskset</c> (6,945 µs against 3,793 µs, generator falling to 60% of offered). Believing the
-    /// in-process flag means reporting "an admission flood is free" for a node that was never contended.
-    /// </para>
-    /// <para>
-    /// So this reports what the OS says rather than what was requested. <c>Cpus_allowed_list</c> from
-    /// <c>/proc/self/status</c> is authoritative on Linux; elsewhere the process's own view is the best
-    /// available. Every result line carries it, so a run that was not confined cannot be read as one that was.
-    /// </para>
+    /// <see cref="Process.ProcessorAffinity"/> from inside the process is not sufficient on Linux: it returns
+    /// successfully and reports the new mask, but the measurement threads keep running across every core.
+    /// Measured directly, the same four cases showed no flood effect at all under in-process affinity
+    /// (3,425 µs against a 3,463 µs baseline, generator sustaining its full offered rate) versus an 83% delay
+    /// under <c>taskset</c> (6,945 µs against 3,793 µs, generator falling to 60% of offered) — trusting the
+    /// in-process flag means reporting "an admission flood is free" for a node that was never contended. So
+    /// this reports what the OS says rather than what was requested: <c>Cpus_allowed_list</c> from
+    /// <c>/proc/self/status</c> is authoritative on Linux, elsewhere the process's own view is the best
+    /// available, and every result line carries it so a run that was not confined cannot be read as one that was.
     /// </remarks>
     private static string ObservedCpuSet()
     {
@@ -195,6 +189,7 @@ public class FrameTxFloodMeasurement
         catch (Exception e) when (e is IOException or UnauthorizedAccessException
                                        or PlatformNotSupportedException or Win32Exception or InvalidOperationException)
         {
+            TestContext.Out.WriteLine($"DEBUG CPU affinity could not be read: {e.GetType().Name}: {e.Message}");
             return "unknown";
         }
     }
@@ -273,6 +268,14 @@ public class FrameTxFloodMeasurement
     /// </remarks>
     private const double MaxSustainedLagPeriods = 5.0;
 
+    /// <summary>Share of the offered rate the generator must still deliver to count as keeping up rather than
+    /// falling behind and firing its backlog.</summary>
+    private const double RateHeldFloor = 0.95;
+
+    /// <summary>Share of the offered rate the generator must deliver for a saturated run to still describe a
+    /// flood at that rate, rather than one starved down to a different, unlabelled load.</summary>
+    private const double MinDeliveredRateFloor = 0.25;
+
     /// <summary>One rate point: what was offered, what landed, and what block processing cost meanwhile.</summary>
     private readonly record struct FloodOutcome(
         double OfferedRate,
@@ -330,33 +333,30 @@ public class FrameTxFloodMeasurement
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The measured operation here is a block-<em>production</em> pass, not the block-processing pass the
-    /// other cases time, because producer-side re-execution and its eviction bound only exist on the
-    /// production path. The retry gate stands in for the pool's eviction decision. Eviction resets the
-    /// attempt counter and nothing else: the same never-approving prefix stays resident, because nothing
-    /// downstream reads the transaction's identity and rebuilding one would charge the low-<c>K_retry</c>
-    /// arms a hash the high ones avoid, on the very axis this case compares. So the producer always has
-    /// exactly one never-approving prefix to burn through, and the run describes a sustained attack rather
-    /// than a decaying one.
+    /// The measured operation is a block-<em>production</em> pass, not the block-processing pass the other
+    /// cases time, since producer-side re-execution and its eviction bound exist only on the production path.
+    /// The retry gate stands in for the pool's eviction decision and resets only the attempt counter: the same
+    /// never-approving prefix stays resident, since nothing downstream reads its identity and rebuilding one
+    /// would charge the low-<c>K_retry</c> arms a hash the high ones avoid — on the very axis this case
+    /// compares. The producer therefore always has exactly one never-approving prefix to burn through,
+    /// describing a sustained attack rather than a decaying one.
     /// </para>
     /// <para>
-    /// <b>The prediction this case exists to test.</b> Writing <c>W</c> as a function of <c>K_retry</c>
-    /// suggests the retry bound moves block-building time on its own. It should not: per-pass cost is set by
-    /// how many never-approving transactions are <em>resident</em>, while <c>K_retry</c> sets how long each
-    /// one stays resident. Residency is pinned at one by construction here, so <c>W</c>
-    /// should come out flat in <c>K_retry</c> while the attacker's cost per unit of node work falls by
-    /// exactly the factor <see cref="FrameTxProducerRetryMeasurement"/> measures. If that holds, the retry
-    /// policy is an attacker-economics lever, not a node-latency one, and belongs in the recommendation as
-    /// such.
+    /// <b>The prediction under test.</b> Writing <c>W</c> as a function of <c>K_retry</c> suggests the retry
+    /// bound moves block-building time on its own, but it should not — per-pass cost is set by how many
+    /// never-approving transactions are <em>resident</em>, while <c>K_retry</c> only sets how long each stays
+    /// resident. Residency is pinned at one by construction, so <c>W</c> should come out flat in
+    /// <c>K_retry</c> while the attacker's cost per unit of node work falls by exactly the factor
+    /// <see cref="FrameTxProducerRetryMeasurement"/> measures. If that holds, <c>K_retry</c> is an
+    /// attacker-economics lever, not a node-latency one, and belongs in the recommendation as such.
     /// </para>
     /// <para>
-    /// The offered flood rate sits below what the generator can deliver here, which is not the rate the
-    /// block-processing cases use. A production pass costs about what a rejection does, so the producer alone
-    /// nearly saturates the core and the generator gets roughly the other half of it — a ceiling near
-    /// <c>1 / (2 * t_reject)</c>, measured at about 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two
-    /// arms on one run, which compares two different loads rather than two retry policies. Staying under the
-    /// ceiling is what leaves <c>K_retry</c> as the only variable, and <c>flood_achieved_rate</c> on each row
-    /// is what lets a reader confirm it.
+    /// The offered flood rate sits below what the block-processing cases use, because it must here: a
+    /// production pass costs about what a rejection does, so the producer alone nearly saturates the core and
+    /// the generator gets roughly the other half — a ceiling near <c>1 / (2 * t_reject)</c>, measured at about
+    /// 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two arms on one run, comparing two different
+    /// loads rather than two retry policies. Staying under the ceiling leaves <c>K_retry</c> as the only
+    /// variable, and <c>flood_achieved_rate</c> on each row is what lets a reader confirm it.
     /// </para>
     /// </remarks>
     [TestCase(1, 0)]
@@ -373,7 +373,7 @@ public class FrameTxFloodMeasurement
         using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, Ceiling);
 
         using CancellationTokenSource cts = new();
-        FloodHandle? flood = offeredRate > 0 ? StartFlood(Ceiling, offeredRate, cts) : null;
+        FloodGenerator? flood = offeredRate > 0 ? StartFlood(Ceiling, offeredRate, cts) : null;
         if (flood is not null) Thread.Sleep(FloodSettle);
 
         rig.RunFor(WarmupWindow);
@@ -390,10 +390,9 @@ public class FrameTxFloodMeasurement
         int floodSubmitted = flood is null ? 0 : Volatile.Read(ref flood.Submitted) - floodSubmittedAtStart;
         int floodRejected = flood is null ? 0 : Volatile.Read(ref flood.Rejected) - floodRejectedAtStart;
 
-        cts.Cancel();
         if (flood is not null)
         {
-            Assert.That(flood.Thread.Join(TimeSpan.FromSeconds(30)), Is.True,
+            Assert.That(flood.Stop(cts), Is.True,
                 "the generator did not stop, so its counters are being read while it still writes them");
         }
 
@@ -401,7 +400,7 @@ public class FrameTxFloodMeasurement
         // the row is labelled with. Reporting what it achieved keeps the label from standing in for it.
         double floodWindowSeconds = (floodWindowEnd - floodWindowStart) / (double)Stopwatch.Frequency;
         double floodAchieved = floodWindowSeconds > 0 ? floodSubmitted / floodWindowSeconds : 0;
-        bool floodStarved = offeredRate > 0 && floodAchieved < offeredRate * 0.95;
+        bool floodStarved = offeredRate > 0 && floodAchieved < offeredRate * RateHeldFloor;
 
         double p50 = Percentile(passMicros, 0.50);
         double p95 = Percentile(passMicros, 0.95);
@@ -431,52 +430,78 @@ public class FrameTxFloodMeasurement
                 // Not an equality with the offered rate: on a saturated core the generator legitimately cannot
                 // keep up, and that is a result rather than a fault. It must still deliver a flood worth the
                 // name, and flood_achieved_rate on the row says what it actually delivered.
-                Assert.That(floodAchieved, Is.GreaterThan(offeredRate * 0.25),
+                Assert.That(floodAchieved, Is.GreaterThan(offeredRate * MinDeliveredRateFloor),
                     $"the generator delivered {floodAchieved:F1} tx/s against {offeredRate} offered, too far "
                     + "below the label for this row to describe a flood at that rate");
             }
         }
     }
 
-    /// <summary>A running generator plus the counters that prove it did what it claims.</summary>
-    private sealed class FloodHandle
-    {
-        public Thread Thread = null!;
-        public int Submitted;
-        public int Rejected;
-    }
-
     /// <summary>
-    /// Starts the open-loop generator without measuring block processing on this thread.
+    /// An open-loop generator: submits pre-built transactions on a fixed-rate schedule from a background
+    /// thread, counting submissions, simulator rejections, and how far behind schedule each submission ran.
     /// </summary>
     /// <remarks>
-    /// Counts submissions and simulator rejections separately. A generator that cannot get scheduled, or
-    /// whose transactions are dropped by a cheaper filter, otherwise leaves no trace and the run reads as
-    /// "a flood made no difference" when the truth is that there was no flood.
+    /// Shared by both cases that run a flood concurrently with something else being measured — block
+    /// processing/production time on the caller's thread, this generator on its own — so a generator that
+    /// cannot get scheduled, or whose transactions are dropped by a cheaper filter, cannot silently read as
+    /// "no flood effect" on one case while being caught by the other's assertions.
     /// </remarks>
-    private FloodHandle StartFlood(ulong ceiling, int offeredRate, CancellationTokenSource cts)
+    private sealed class FloodGenerator
+    {
+        public int Submitted;
+        public int Rejected;
+        private double _maxLagUs;
+
+        public double MaxLagUs => Volatile.Read(ref _maxLagUs);
+        public Thread Thread { get; }
+
+        public FloodGenerator(FloodTestBlockchain chain, Transaction[] txs, int offeredRate, CancellationTokenSource cts) =>
+            Thread = new Thread(() =>
+            {
+                double ticksPerTx = (double)Stopwatch.Frequency / offeredRate;
+                long start = Stopwatch.GetTimestamp();
+                for (int i = 0; !cts.IsCancellationRequested; i++)
+                {
+                    long due = start + (long)(i * ticksPerTx);
+                    WaitUntil(due, cts.Token);
+                    if (cts.IsCancellationRequested) break;
+
+                    long lag = Stopwatch.GetTimestamp() - due;
+                    double lagUs = lag * 1_000_000.0 / Stopwatch.Frequency;
+                    if (lagUs > MaxLagUs) Volatile.Write(ref _maxLagUs, lagUs);
+
+                    AcceptTxResult result = chain.TxPool.SubmitTx(txs[i % txs.Length], TxHandlingOptions.None);
+                    // Rejected first: the reader snapshots submitted then rejected, so this order cannot show
+                    // more submissions than rejections for a flood in which every submission is rejected.
+                    if (result == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref Rejected);
+                    Interlocked.Increment(ref Submitted);
+                }
+            })
+            { IsBackground = true, Name = "frame-tx-flood" };
+
+        public void Start() => Thread.Start();
+
+        /// <summary>Zeroes the running lag maximum, so a caller can exclude a settle/warmup phase's spikes
+        /// from the window it actually samples.</summary>
+        public void ResetMaxLag() => Volatile.Write(ref _maxLagUs, 0);
+
+        public bool Stop(CancellationTokenSource cts)
+        {
+            cts.Cancel();
+            return Thread.Join(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    /// <summary>Starts the open-loop generator without measuring block processing on this thread.</summary>
+    private FloodGenerator StartFlood(ulong ceiling, int offeredRate, CancellationTokenSource cts)
     {
         _floodTxs = BuildFloodTransactions(ceiling, _saltCursor);
         _saltCursor += FloodPoolSize;
 
-        FloodHandle handle = new();
-        handle.Thread = new Thread(() =>
-        {
-            double ticksPerTx = (double)Stopwatch.Frequency / offeredRate;
-            long start = Stopwatch.GetTimestamp();
-            for (int i = 0; !cts.IsCancellationRequested; i++)
-            {
-                WaitUntil(start + (long)(i * ticksPerTx), cts.Token);
-                if (cts.IsCancellationRequested) break;
-                AcceptTxResult result = _chain.TxPool.SubmitTx(_floodTxs[i % _floodTxs.Length], TxHandlingOptions.None);
-                if (result == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref handle.Rejected);
-                Interlocked.Increment(ref handle.Submitted);
-            }
-        })
-        { IsBackground = true, Name = "frame-tx-flood" };
-
-        handle.Thread.Start();
-        return handle;
+        FloodGenerator generator = new(_chain, _floodTxs, offeredRate, cts);
+        generator.Start();
+        return generator;
     }
 
     /// <summary>
@@ -555,7 +580,7 @@ public class FrameTxFloodMeasurement
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} max_lag_us={flooded.MaxLagUs:F0} "
              + $"queue_growth={flooded.QueueGrowth} "
-             + $"saturated={(flooded.AchievedRate < offeredRate * 0.95 ? "yes" : "no")} "
+             + $"saturated={(flooded.AchievedRate < offeredRate * RateHeldFloor ? "yes" : "no")} "
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
              + $"W_p50_us={w:F1} W_p95_us={wp95:F1} "
@@ -583,22 +608,15 @@ public class FrameTxFloodMeasurement
     /// ramping the rate until the generator can no longer place its submissions on schedule.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Reported without reference to <c>B</c>, which the team has not fixed. This is the saturation half of
-    /// <c>R_max</c>'s definition — the rate above which a backlog builds — and it is measurable now. The
-    /// other half, the highest rate keeping <c>Δ ≤ B</c>, follows from the <c>Δ</c> table once <c>B</c> exists.
-    /// </para>
-    /// <para>
+    /// <c>R_max</c>'s definition — the rate above which a backlog builds — and it is measurable now; the other
+    /// half, the highest rate keeping <c>Δ ≤ B</c>, follows from the <c>Δ</c> table once <c>B</c> exists.
     /// Admission is serialised by design: <c>FrameTxPrefixSimulator</c> holds one lock around the whole EVM
-    /// run, so a single-threaded generator saturates at roughly <c>1 / t_reject</c> and the ramp is expected
-    /// to confirm that rather than discover something larger.
-    /// </para>
-    /// <para>
-    /// 100k is the plan's control point: without it <c>R_max</c> at the higher ceilings has nothing to be
-    /// compared against, and the incremental cost of raising the ceiling cannot be stated. Expect
-    /// <c>censored=yes</c> there, because <c>1 / t_reject</c> is well above the grid's top rate and a lower
-    /// bound is the honest result.
-    /// </para>
+    /// run, so a single-threaded generator saturates at roughly <c>1 / t_reject</c> and the ramp is expected to
+    /// confirm that rather than discover something larger. 100k is the plan's control point: without it
+    /// <c>R_max</c> at the higher ceilings has nothing to be compared against, and the incremental cost of
+    /// raising the ceiling cannot be stated. Expect <c>censored=yes</c> there, since <c>1 / t_reject</c> is
+    /// well above the grid's top rate and a lower bound is the honest result.
     /// </remarks>
     [TestCase(100_000ul)]
     [TestCase(236_285ul)]
@@ -627,7 +645,7 @@ public class FrameTxFloodMeasurement
             // Both conditions, because either alone is satisfiable by a node that is not keeping up: the rate
             // test by a generator firing its backlog, the lag test by one that never got going.
             double periodUs = 1_000_000.0 / rate;
-            bool rateHeld = outcome.AchievedRate >= rate * 0.95;
+            bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
             bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
 
             // An Undecided simulation outcome admits the transaction, so a growing pool is both a backlog by
@@ -704,34 +722,7 @@ public class FrameTxFloodMeasurement
         _saltCursor += FloodPoolSize;
 
         using CancellationTokenSource cts = new();
-        int submitted = 0;
-        int rejected = 0;
-        double maxLagUs = 0;
-        long floodStart = 0;
-
-        Thread generator = new(() =>
-        {
-            double ticksPerTx = (double)Stopwatch.Frequency / offeredRate;
-            floodStart = Stopwatch.GetTimestamp();
-            for (int i = 0; !cts.IsCancellationRequested; i++)
-            {
-                long due = floodStart + (long)(i * ticksPerTx);
-                WaitUntil(due, cts.Token);
-                if (cts.IsCancellationRequested) break;
-
-                long lag = Stopwatch.GetTimestamp() - due;
-                double lagUs = lag * 1_000_000.0 / Stopwatch.Frequency;
-                if (lagUs > Volatile.Read(ref maxLagUs)) Volatile.Write(ref maxLagUs, lagUs);
-
-                AcceptTxResult result = _chain.TxPool.SubmitTx(_floodTxs[i % _floodTxs.Length], TxHandlingOptions.None);
-                // Rejected first: the reader snapshots submitted then rejected, so this order cannot show
-                // more submissions than rejections for a flood in which every submission is rejected.
-                if (result == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref rejected);
-                Interlocked.Increment(ref submitted);
-            }
-        })
-        { IsBackground = true, Name = "frame-tx-flood" };
-
+        FloodGenerator generator = new(_chain, _floodTxs, offeredRate, cts);
         generator.Start();
 
         RunFor(FloodSettle);
@@ -739,31 +730,30 @@ public class FrameTxFloodMeasurement
 
         // Counters are snapshotted around the sampled window only, so the reported rate describes the
         // period the block-processing distribution came from rather than the whole thread lifetime.
-        int submittedAtStart = Volatile.Read(ref submitted);
-        int rejectedAtStart = Volatile.Read(ref rejected);
+        int submittedAtStart = Volatile.Read(ref generator.Submitted);
+        int rejectedAtStart = Volatile.Read(ref generator.Rejected);
         int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
 
         // Reset rather than differenced: lag is a running maximum, and the settle and warmup phases are the
         // slowest part of the run, so carrying their spikes into the window would understate the sustainable
         // rate — the quantity this gate exists to protect.
-        Volatile.Write(ref maxLagUs, 0);
+        generator.ResetMaxLag();
         long windowStart = Stopwatch.GetTimestamp();
 
         List<double> processMicros = MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero);
 
         long windowEnd = Stopwatch.GetTimestamp();
-        int submittedInWindow = Volatile.Read(ref submitted) - submittedAtStart;
-        int rejectedInWindow = Volatile.Read(ref rejected) - rejectedAtStart;
+        int submittedInWindow = Volatile.Read(ref generator.Submitted) - submittedAtStart;
+        int rejectedInWindow = Volatile.Read(ref generator.Rejected) - rejectedAtStart;
         int queueGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
 
-        cts.Cancel();
-        Assert.That(generator.Join(TimeSpan.FromSeconds(30)), Is.True,
+        Assert.That(generator.Stop(cts), Is.True,
             "the generator did not stop, so its counters are being read while it still writes them");
 
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, Volatile.Read(ref maxLagUs), queueGrowth, processMicros);
+        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, queueGrowth, processMicros);
     }
 
     /// <summary>
@@ -941,7 +931,7 @@ public class FrameTxFloodMeasurement
     /// A test chain whose pool does not apply the static declared-gas precheck.
     /// </summary>
     /// <remarks>
-    /// <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> defaults to 300,000 and gates filter stage 6, well before the
+    /// <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> defaults to 300,000 and gates filter stage 7, well before the
     /// EVM. Left at its default, every ceiling above it is rejected on declared gas alone and never reaches
     /// the simulator, which is a different measurement wearing this ceiling's label. Setting it to <c>0</c>
     /// lifts that precheck only; the processor still caps each prefix frame at the

@@ -37,6 +37,9 @@ public class FrameTxProducerRetryMeasurement
     private const long BlockGasLimit = 30_000_000;
     private const int Attempts = 20;
 
+    /// <summary>The share of its granted budget a never-approving attempt must consume to count as a burn.</summary>
+    private const double BudgetBurnFloor = 0.99;
+
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Beneficiary = TestItem.AddressE;
 
@@ -150,7 +153,7 @@ public class FrameTxProducerRetryMeasurement
             {
                 Assert.That(included, Is.Zero, "a prefix that never approves must not be built into a block");
                 Assert.That(adapter.Attempts, Is.EqualTo(Attempts), "each block attempt must re-execute the transaction");
-                Assert.That(firstBurn, Is.GreaterThan(verifyGas * 99 / 100), "the whole verification budget must be burned per attempt");
+                Assert.That(firstBurn, Is.GreaterThan((ulong)(verifyGas * BudgetBurnFloor)), "the whole verification budget must be burned per attempt");
                 Assert.That(beneficiaryDelta, Is.EqualTo(UInt256.Zero), "the work was paid for after all");
                 Assert.That(senderDelta, Is.EqualTo(UInt256.Zero), "the sender was charged after all");
             }
@@ -166,20 +169,16 @@ public class FrameTxProducerRetryMeasurement
     /// <c>K_retry</c> is a client-policy parameter, not a spec rule — <c>ethereum/EIPs#12213</c> proposed a
     /// normative producer bound and was reframed as non-normative guidance to match this sweep. Production
     /// today is effectively <c>K_retry = 1</c>: <c>EvictUnpaidFrameTx</c> asks the pool to evict on the first
-    /// <c>MalformedTransaction</c> result. This sweep is what makes the other values measurable without
-    /// touching production code.
+    /// <c>MalformedTransaction</c> result. This sweep makes the other values measurable without touching
+    /// production code.
     /// </para>
     /// <para>
-    /// The gate stands in for the pool's eviction decision, which is the only thing that ends the retry
-    /// series: nothing else removes a transaction whose prefix never approves, because it never pays and so
-    /// never advances its nonce. Once the gate reports the transaction evicted, the loop stops offering it,
-    /// which is what a real pool would do by no longer returning it to the producer.
-    /// </para>
-    /// <para>
-    /// <see cref="ProducerRetriesAFailingPrefix"/> passes <c>NullTxPool.Instance</c>, whose
-    /// <c>EvictTransaction</c> always returns <c>false</c>, so it measures the unbounded case — the same
-    /// shape as this sweep with no eviction at all. Read the two together: that case is the ceiling this one
-    /// bounds.
+    /// The gate stands in for the pool's eviction decision, the only thing that ends the retry series: nothing
+    /// else removes a transaction whose prefix never approves, since it never pays and so never advances its
+    /// nonce. Once the gate reports the transaction evicted, the loop stops offering it, as a real pool would
+    /// by no longer returning it to the producer. <see cref="ProducerRetriesAFailingPrefix"/> passes
+    /// <c>NullTxPool.Instance</c>, whose <c>EvictTransaction</c> always returns <c>false</c>, measuring the
+    /// same shape with no eviction at all — read the two together, and that case is the ceiling this one bounds.
     /// </para>
     /// </remarks>
     [TestCase(1)]
@@ -251,9 +250,9 @@ public class FrameTxProducerRetryMeasurement
         {
             Assert.That(adapter.Attempts, Is.EqualTo(kRetry),
                 "the producer must re-execute the prefix exactly K_retry times before the pool evicts it");
-            Assert.That(firstBurn, Is.GreaterThan(VerifyGas * 99 / 100),
+            Assert.That(firstBurn, Is.GreaterThan((ulong)(VerifyGas * BudgetBurnFloor)),
                 "each attempt must burn the whole verification budget, or the amplification is measured against the wrong unit");
-            Assert.That(burned, Is.GreaterThan(firstBurn * (ulong)kRetry * 99 / 100),
+            Assert.That(burned, Is.GreaterThan((ulong)(firstBurn * (ulong)kRetry * BudgetBurnFloor)),
                 "total unpaid burn must scale with K_retry, which is the quantity this sweep exists to report");
             Assert.That(_stateProvider.GetBalance(Beneficiary) - beneficiaryBefore, Is.EqualTo(UInt256.Zero),
                 "the work was paid for after all, so it is not unpaid burn");
