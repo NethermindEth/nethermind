@@ -14,7 +14,7 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v2/identity</c>, the HTTP/REST equivalent of
+/// Handles <c>GET /engine/v1/identity</c>, the HTTP/REST equivalent of
 /// <c>engine_getClientVersionV1</c>.
 /// </summary>
 public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogManager logManager) : SszEndpointHandlerBase

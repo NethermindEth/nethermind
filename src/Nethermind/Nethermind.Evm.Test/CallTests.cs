@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
@@ -104,6 +105,102 @@ namespace Nethermind.Evm.Test
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(TestState.AccountExists(target), Is.False);
         }
+
+        [TestCase(Instruction.INVALID)]
+        [TestCase(Instruction.REVERT)]
+        public void Nested_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        {
+            Address child = TestItem.AddressC;
+            TestState.CreateAccount(child, UInt256.Zero);
+            byte[] childCode = BuildRipemdTouchThenHalt(halt);
+            TestState.InsertCode(child, childCode, SpecProvider.GenesisSpec);
+            byte[] code = Prepare.EvmCode
+                .Call(child, 150_000)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
+        }
+
+        [TestCase(Instruction.INVALID)]
+        [TestCase(Instruction.REVERT)]
+        public void Top_level_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        {
+            byte[] code = BuildRipemdTouchThenHalt(halt);
+            AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
+        }
+
+        [Test]
+        public void Failed_nested_code_deposit_preserves_ripemd_empty_account_deletion()
+        {
+            byte[] initCode = BuildRipemdTouchThenReturnInvalidCode();
+            byte[] code = Prepare.EvmCode
+                .Create(initCode, UInt256.Zero)
+                .Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            AssertRipemdTouchPreserved(code, (MainnetSpecProvider.LondonBlockNumber, 0), 500_000);
+        }
+
+        [Test]
+        public void Failed_top_level_code_deposit_preserves_ripemd_empty_account_deletion()
+        {
+            byte[] initCode = BuildRipemdTouchThenReturnInvalidCode();
+            AssertRipemdTouchPreserved(initCode, (MainnetSpecProvider.LondonBlockNumber, 0), 500_000, contractCreation: true);
+        }
+
+        private void AssertRipemdTouchPreserved(
+            byte[] code,
+            ForkActivation activation,
+            ulong gasLimit,
+            bool contractCreation = false)
+        {
+            TestState.CreateAccount(Ripemd160Precompile.Address, UInt256.Zero);
+            (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code, value: 0);
+            if (contractCreation)
+            {
+                transaction.To = null;
+                transaction.Data = code;
+            }
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.AccountExists(Ripemd160Precompile.Address), Is.False);
+            }
+        }
+
+        private static byte[] BuildRipemdTouchThenHalt(Instruction halt)
+        {
+            Prepare code = Prepare.EvmCode
+                .Call(Ripemd160Precompile.Address, 50_000)
+                .Op(Instruction.POP)
+                .Call(BN254PairingCheckPrecompile.Address, 0)
+                .Op(Instruction.POP);
+
+            return halt switch
+            {
+                Instruction.INVALID => code.Op(Instruction.INVALID).Done,
+                Instruction.REVERT => code.Revert(0, 0).Done,
+                _ => throw new ArgumentOutOfRangeException(nameof(halt), halt, null),
+            };
+        }
+
+        private static byte[] BuildRipemdTouchThenReturnInvalidCode() => Prepare.EvmCode
+            .Call(Ripemd160Precompile.Address, 50_000)
+            .Op(Instruction.POP)
+            .PushData(0xef)
+            .PushData(0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
 
         [TestCase(false)]
         [TestCase(true)]

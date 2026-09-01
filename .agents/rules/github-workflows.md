@@ -14,7 +14,7 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 
 ## Actions (composite or custom)
 
-- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `runner-setup.sh.j2`, `runner-configure.sh`).
+- Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `create.sh`, `startup-script.sh`).
 - Scripts must be executable and safe for the runner OS (Linux unless noted).
 - Prefer `actions/checkout` and standard `actions/*` where possible; document any third-party action version and reason.
 
