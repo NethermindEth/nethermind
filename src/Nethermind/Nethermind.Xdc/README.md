@@ -596,25 +596,34 @@ Example — mainnet's current entry:
 
 ### Setting up a subnet
 
-A subnet is a standalone chain, so bringing one up is a chainspec plus one node config per node. A chainspec
-for a three-masternode local subnet looks like this:
+A subnet is a standalone chain shared by Go (`xinfinorg/xdcsubnets`) and Nethermind nodes, and both clients
+have to be configured from the *same* description of it. In a generated deployment that is a pair of files —
+`genesis.json` for the Go nodes, `chainspec.json` for the Nethermind ones — emitted together by
+`xinfinorg/subnet-generator` with `CHAINSPEC_ENGINE=XDPoSSubnet`. Translate rather than hand-write: the
+generator image carries a `check-chainspec` converter that regenerates the chainspec from `genesis.json` and
+reports drift, and a stale chainspec is the usual reason Nethermind nodes never sync with the Go ones.
+
+A generated subnet chainspec looks like this (four masternodes, chain id 63473):
 
 ```json
 {
-  "name": "xdc-subnet-local",
+  "name": "xdpos-chain",
   "engine": {
     "XDPoSSubnet": {
       "params": {
-        "period": 1,
         "epoch": 90,
         "gap": 45,
         "reward": 2,
         "switchBlock": 0,
         "switchEpoch": 0,
         "tip2019Block": 1,
+        "TipTrc21Fee": 1,
         "MergeSignRange": 15,
         "RangeReturnSigner": 150,
-        "foundationWalletAddr": "0x5cb041be27deb4a506ad63d082c6043b4a5c6898",
+        "DynamicGasLimitBlock": 99999999999999,
+        "BlackListHFNumber": 99999999999999,
+        "blackListedAddresses": [],
+        "foundationWalletAddr": "0xe03629a8664f947f1bea4bced2ce5475e801ac94",
         "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
         "blockSignerContract": "0x0000000000000000000000000000000000000089",
         "randomizeSMCBinary": "0x0000000000000000000000000000000000000090",
@@ -624,23 +633,56 @@ for a three-masternode local subnet looks like this:
         "XDCXLendingFinalizedTradeAddressBinary": "0x0000000000000000000000000000000000000094",
         "v2Configs": [
           {
-            "SwitchRound": 0,
-            "MaxMasternodes": 108,
-            "CertificateThreshold": 0.5,
-            "TimeoutSyncThreshold": 3,
-            "TimeoutPeriod": 10,
-            "MinePeriod": 1
+            "switchRound": 0,
+            "maxMasternodes": 108,
+            "certificateThreshold": 0.667,
+            "timeoutSyncThreshold": 3,
+            "timeoutPeriod": 10,
+            "minePeriod": 1
           }
         ]
       }
     }
   },
-  "params": { "chainId": 26381 },
+  "params": {
+    "chainId": 63473,
+    "eip7Transition": 1,
+    "eip150Transition": 2,
+    "eip155Transition": 3,
+    "eip160Transition": 3,
+    "eip161abcTransition": 3,
+    "eip161dTransition": 3,
+    "MaxCodeSizeTransition": 3,
+    "MaxCodeSize": 24576,
+    "eip140Transition": 4,
+    "eip211Transition": 4,
+    "eip214Transition": 4,
+    "eip658Transition": 4,
+    "eip145Transition": 0,
+    "eip1014Transition": 0,
+    "eip1052Transition": 0,
+    "eip1283Transition": 0,
+    "eip152Transition": 0,
+    "eip1108Transition": 0,
+    "eip1344Transition": 0,
+    "eip1884Transition": 0,
+    "eip2200Transition": 0,
+    "eip3198Transition": 0,
+    "eip3855Transition": 0,
+    "eip2718Transition": 999999999999,
+    "eip2930Transition": 999999999999,
+    "eip1559Transition": 999999999999,
+    "eip2929Transition": 999999999999,
+    "eip1153Transition": 999999999999,
+    "eip4844Transition": 999999999999,
+    "eip1559ElasticityMultiplier": "0x1"
+  },
   "genesis": {
     "difficulty": "0x1",
     "gasLimit": "0x47b760",
-    "timestamp": "0x6a0ed3e2",
+    "timestamp": "0x6a9368ff",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "baseFeePerGas": "0x2e90edd00",
     "extraData": "0x…"
   },
   "accounts": {
@@ -657,10 +699,21 @@ for a three-masternode local subnet looks like this:
 What that file has to get right:
 
 - **Engine key** — `engine.XDPoSSubnet` is what activates [`XdcSubnetPlugin`](XdcSubnetPlugin.cs); the seal
-  engine type is derived from it, and it has to be the only engine in the file.
+  engine type is derived from it, and it has to be the only engine in the file. Keys bind case-insensitively,
+  so the generator's `switchRound`/`minePeriod` spelling works as well as `SwitchRound`/`MinePeriod`.
 - **No V1 era** — keep `switchBlock` and `switchEpoch` at `0`. The genesis committee then comes from the
   genesis `extraData`, laid out as 32 bytes of vanity, one 20-byte masternode address each, and 65 bytes of
-  (zero) seal — 157 bytes for three masternodes. `genesisMasternodes` is only read when `switchBlock > 0`.
+  (zero) seal — 177 bytes for four masternodes. `genesisMasternodes` is only read when `switchBlock > 0`.
+- **Fork schedule** — the part that most needs to be exact, and where "set everything to `0`" is wrong: the
+  subnet runs the *Go* client's EVM, which is neither current Ethereum nor mainnet XDC's schedule. A generated
+  subnet stages the pre-Byzantium forks at blocks 1–4, mirroring the Go `config` block (`homesteadBlock` →
+  `eip7Transition`, `eip150Block`, `eip155Block`/`eip158Block`, `byzantiumBlock`); enables a specific
+  Constantinople/Istanbul/Shanghai subset from `0` — note `eip3198` and `eip3855` are in it and `eip2028` is
+  not; and pushes Berlin and later out of reach with `999999999999`, so there are no typed transactions, no
+  EIP-1559, no 2929/3529 repricing and no transient storage. Copying mainnet's `params` from
+  [`Chains/xdc.json`](../Chains/xdc.json) does not work either — its activation heights are tens of millions
+  of blocks up, so a chain starting at block 0 lands somewhere else again. Take the block from the generated
+  chainspec, and if the two clients disagree here they will diverge on execution rather than fail loudly.
 - **Genesis fields** — only the members of
   [`ChainSpecGenesisJson`](../Nethermind.Specs/ChainSpecStyle/Json/ChainSpecGenesisJson.cs) are bound, and
   unmapped JSON members are dropped without a warning: the beneficiary key is `author`, not `coinbase`, and a
@@ -670,34 +723,32 @@ What that file has to get right:
 - **Voting contract** — `extraData` seeds the genesis committee only; every later epoch takes its candidates
   from `masternodeVotingContract`, so that contract must be pre-deployed under `accounts` with its storage
   seeded (candidate list, stakes, owners). Without it the committee is empty from the first gap block on.
-- **`params`** — the block above is trimmed to `chainId`. Copy the rest of the `params` block from
-  [`Chains/xdc.json`](../Chains/xdc.json), change the chain id, and then rewrite the `eip…Transition` values:
-  the ones in that file are mainnet activation heights (`eip1559Transition` is block 98,800,200,
-  `eip1153Transition` 98,802,000), which a chain starting at block 0 never reaches, so set every fork the
-  subnet should run with to `0` and drop the rest. Nethermind chainspecs use parity-style `eip…Transition`
-  keys, and geth genesis-config names (`homesteadBlock`, `eip150Block`, `byzantiumBlock`, …) are silently
-  ignored, which leaves the chain on Frontier rules.
 - **Epoch geometry** — `gap` must be non-zero and smaller than `epoch`; in both degenerate cases the switch
   block is the only block that ever gets a snapshot, silently. The snapshot for an epoch is taken at
-  `epochStart - gap`. `CertificateThreshold` is a fraction of the epoch's committee size, so `0.5` with three
-  masternodes means two votes per certificate. Block spacing is `v2Configs[].MinePeriod` — the top-level
-  `period` is carried for parity with the Go client and is not read.
+  `epochStart - gap`. `CertificateThreshold` is a fraction of the epoch's committee size, so `0.667` with four
+  masternodes means three votes per certificate.
+- **Keys that look active but are not** — a generated chainspec also carries `period`, `rewardCheckpoint`,
+  `eip1234Transition` and `XDCXAddrBinary`, none of which Nethermind binds; unmapped members are dropped
+  silently here too. Harmless for a subnet, but block spacing comes from `v2Configs[].minePeriod` rather than
+  `period`, and the DEX contract only takes effect under the bound spelling, `XDCXAddressBinary` — which is
+  what the skeleton above uses.
 
 Each node then needs a config pointing at the chainspec:
 
 ```json
 {
   "Init": {
-    "ChainSpecPath": "chainspec/xdc-subnet.json",
+    "ChainSpecPath": "/work/chainspec.json",
     "BaseDbPath": "nethermind_db/xdc-subnet",
     "LogFileName": "xdc-subnet.log"
   },
-  "Network": { "FilterDiscoveryNodesByRecentIp": false, "EnableEnrDiscovery": false },
-  "Discovery": { "DiscoveryVersion": "V4" },
   "TxPool": { "BlobsSupport": "Disabled" },
+  "Blocks": { "TargetBlockGasLimit": 420000000 },
+  "Sync": { "FastSync": true, "NeedToWaitForHeader": true, "VerifyTrieOnStateSyncFinished": true },
   "Merge": { "Enabled": false },
-  "JsonRpc": { "Enabled": true, "EnabledModules": ["Eth", "Net", "Web3", "Xdc"] },
+  "TraceStore": { "Enabled": false },
   "Mining": { "Enabled": true },
+  "JsonRpc": { "Enabled": true, "EnabledModules": ["Eth", "Xdc"] },
   "KeyStore": { "TestNodeKey": "<masternode private key>" }
 }
 ```
@@ -715,10 +766,15 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
   the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
   node's enode key). Its address has to be in the committee for the node's blocks and votes to count.
-- Give every node its own `--data-dir`, and point them at each other with the chainspec `nodes` array or
-  `Network.StaticPeers`.
-- Sanity checks once it runs: `XDPoS_getMasternodesByNumber` should list the committee, and
-  `XDPoS_getV2BlockByNumber` should show rounds advancing and blocks being committed.
+- `JsonRpc.EnabledModules` has to include `Xdc` for the `XDPoS_*` methods — it is not in the default set.
+- Everything per-node stays out of the shared config file, as CLI options or `NETHERMIND_*` environment
+  variables. A generated deployment runs a dedicated bootnode and gives each node `Network.Bootnodes`, its own
+  `Network.P2PPort` and `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to the address
+  peers should dial, its own `KeyStore.TestNodeKey`, and its own `--data-dir`; the chainspec's `nodes` array
+  stays empty. `Network.StaticPeers` works instead when there is no bootnode.
+- Sanity checks once it runs: `net_peerCount` should see the other nodes, `XDPoS_getMasternodesByNumber`
+  should list the committee, and `XDPoS_getV2BlockByNumber` should show rounds advancing and blocks being
+  committed.
 
 ---
 
