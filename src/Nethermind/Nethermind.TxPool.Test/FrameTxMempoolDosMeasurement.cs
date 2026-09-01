@@ -110,6 +110,11 @@ public class FrameTxMempoolDosMeasurement
     /// is skipped unless the constant was raised and the tree rebuilt — a clamped run would otherwise report
     /// the constant's numbers under this ceiling's label. 236,285 is the plan's point, not a round number.
     /// </remarks>
+    private const ulong Ceiling100k = 100_000;
+    private const ulong Ceiling236k = 236_285;
+    private const ulong Ceiling300k = 300_000;
+    private const ulong Ceiling500k = 500_000;
+
     /// <summary>Frame budget for the signature shape: well-formed, and small enough that the declared total is
     /// signature gas. The frame never executes, so this only has to clear the 100-gas entry charge.</summary>
     private const ulong MinimalFrameGas = 400;
@@ -123,11 +128,6 @@ public class FrameTxMempoolDosMeasurement
     /// </summary>
     private static int StuffedSignatureCount(ulong ceiling) =>
         (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
-
-    private const ulong Ceiling100k = 100_000;
-    private const ulong Ceiling236k = 236_285;
-    private const ulong Ceiling300k = 300_000;
-    private const ulong Ceiling500k = 500_000;
 
     /// <summary>
     /// The share of its granted budget a burn shape must consume for the run to count as a burn.
@@ -240,6 +240,7 @@ public class FrameTxMempoolDosMeasurement
         _simulateMicros = new List<double>(Warmup + Samples + 1);
         _frameExecutionGasLimit = VerifyGas;
         _frameCalldataPrefix = [];
+        _frameSignatures = [];
 
         // The fixture is one instance for all its tests, so a case that skips before BuildHarness would
         // otherwise leave the previous case's already-disposed objects for TearDown to dispose again.
