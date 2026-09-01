@@ -55,7 +55,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         StreamInterpreter.FramesExecuted++;
 
         int programCounter = VmState.ProgramCounter;
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
         ulong[] blockGas = stream.BlockGas;
         Int256.UInt256[] constants = stream.Constants;
@@ -69,7 +69,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         int entryIndex = programCounter == 0
             ? 0
             : (uint)programCounter < (uint)pcToEntry.Length ? pcToEntry[programCounter] : ops.Length;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods = &opcodeArray[0])
         {
             while ((uint)entryIndex < (uint)ops.Length)
             {
@@ -317,12 +317,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     opCodeCount++;
 
                     int mpc = entry.Pc + 1;
-                    exceptionType = instruction switch
+                    OpcodeResult memoryResult = instruction switch
                     {
-                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
-                        _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
+                        Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, mpc),
+                        Instruction.MLOAD => EvmInstructions.InstructionMLoad<TGasPolicy, OffFlag>(this, ref stack, ref gas, mpc),
+                        _ => EvmInstructions.InstructionMCopy<TGasPolicy, OffFlag>(this, ref stack, ref gas, mpc),
                     };
+                    exceptionType = memoryResult.Exception;
 
                     if (TGasPolicy.IsOutOfGas(in gas))
                     {
@@ -349,10 +350,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 programCounter++;
                 opCodeCount++;
 
-                // Stack temp by ref keeps programCounter register-resident across the loop.
-                int pc = programCounter;
-                exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
-                programCounter = pc;
+                OpcodeResult opcodeResult = opcodeMethods[(int)instruction](this, ref stack, ref gas, programCounter);
+                programCounter = opcodeResult.ProgramCounter;
+                exceptionType = opcodeResult.Exception;
 
                 if (TGasPolicy.IsOutOfGas(in gas))
                 {
@@ -474,7 +474,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
         uint codeLength = (uint)stack.CodeLength;
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeMethods = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] opcodeMethods = _opcodeMethods;
 
         while (true)
         {
@@ -492,7 +492,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             programCounter++;
             opCodeCount++;
 
-            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
+            OpcodeResult opcodeResult = opcodeMethods[(int)instruction](this, ref stack, ref gas, programCounter);
+            programCounter = opcodeResult.ProgramCounter;
+            exceptionType = opcodeResult.Exception;
 
             if (TGasPolicy.IsOutOfGas(in gas))
                 return new MeteredResult(MeteredOutcome.OutOfGas, programCounter, opCodeCount, entryIndex, metered, exceptionType);

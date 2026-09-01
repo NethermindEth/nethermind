@@ -46,7 +46,7 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
 
-    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, ref int, EvmExceptionType>[] _opcodes = null!;
+    private delegate*<VirtualMachine<EthereumGasPolicy>, ref EvmStack, ref EthereumGasPolicy, int, OpcodeResult>[] _opcodes = null!;
     private BenchmarkVm _vm = null!;
     private byte[] _stackBuffer = null!;
     private int _stackOffset;
@@ -264,7 +264,9 @@ public unsafe class EvmOpcodesBenchmark
             {
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                OpcodeResult opcodeResult = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
+                pc = opcodeResult.ProgramCounter;
+                result = opcodeResult.Exception;
                 DisposeNestedReturnFrame();
             }
 
@@ -285,7 +287,9 @@ public unsafe class EvmOpcodesBenchmark
 
             EthereumGasPolicy gas = _gas;
             int pc = 0;
-            result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+            OpcodeResult opcodeResult = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
+                pc = opcodeResult.ProgramCounter;
+                result = opcodeResult.Exception;
             DisposeNestedReturnFrame();
         }
 
@@ -307,7 +311,9 @@ public unsafe class EvmOpcodesBenchmark
 
                 EthereumGasPolicy gas = _gas;
                 int pc = 0;
-                result = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+                OpcodeResult opcodeResult = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc);
+                pc = opcodeResult.ProgramCounter;
+                result = opcodeResult.Exception;
                 DisposeNestedReturnFrame();
             }
 
@@ -664,7 +670,7 @@ public unsafe class EvmOpcodesBenchmark
 
         EthereumGasPolicy gas = _gas;
         int pc = 0;
-        _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
+        pc = _opcodes[(int)Opcode](_vm, ref stack, ref gas, pc).ProgramCounter;
         DisposeNestedReturnFrame();
 
         return (long)(_gas.Value - gas.Value);

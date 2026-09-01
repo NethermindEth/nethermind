@@ -51,14 +51,14 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
         TGasPolicy.Consume<TOpMath>(ref gas);
 
-        return Math1ParamCore<TOpMath>(ref stack);
+        return new OpcodeResult(programCounter, Math1ParamCore<TOpMath>(ref stack));
     }
 
     /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>, also run directly by the stream executor inside precharged blocks.</summary>
@@ -132,7 +132,7 @@ public static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -149,17 +149,17 @@ public static partial class EvmInstructions
         // and skips the overflow-check path of `(int)a`.
         if (!a.IsUint64 || a.u0 >= 32)
         {
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // PopWord256 always returns 32 bytes and we've just checked a.u0 < 32, so bypass the
         // span bounds check: JIT can't prove 0 <= (int)a.u0 < bytes.Length across the ulong->int cast.
-        return stack.PushByte<TTracingInst>(
-            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0));
+        return new OpcodeResult(programCounter, stack.PushByte<TTracingInst>(
+            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0)));
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 
 #if !ZK_EVM
@@ -186,7 +186,7 @@ public static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         TGasPolicy.Consume<LowGasCost>(ref gas);
@@ -199,7 +199,7 @@ public static partial class EvmInstructions
             // If the index is out-of-range, no extension is needed.
             if (!stack.EnsureDepth(1))
                 goto StackUnderflow;
-            return EvmExceptionType.None;
+            return new OpcodeResult(programCounter);
         }
 
         int position = 31 - (int)a;
@@ -227,9 +227,9 @@ public static partial class EvmInstructions
         Vector256.ConditionalSelect(mask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
 #endif
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

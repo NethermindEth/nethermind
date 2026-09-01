@@ -19,7 +19,7 @@ public static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath3Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
@@ -43,10 +43,10 @@ public static partial class EvmInstructions
         }
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
     StackUnderflow:
         // Jump forward to be unpredicted by the branch predictor
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     public struct OpAddMod : IOpMath3Param

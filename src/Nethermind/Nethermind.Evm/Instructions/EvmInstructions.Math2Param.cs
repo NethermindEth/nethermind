@@ -49,7 +49,7 @@ public static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
@@ -57,7 +57,7 @@ public static partial class EvmInstructions
         // Deduct the gas cost for the specific math operation.
         TGasPolicy.Consume<TOpMath>(ref gas);
 
-        return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
+        return new OpcodeResult(programCounter, Math2ParamCore<TOpMath, TTracingInst>(ref stack));
     }
 
     /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
@@ -270,7 +270,7 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -288,7 +288,7 @@ public static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return stack.PushOne<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushOne<TTracingInst>());
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
@@ -297,18 +297,18 @@ public static partial class EvmInstructions
 
         if (a.IsZero)
         {
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
         if (a.IsOne)
         {
-            return stack.PushOne<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushOne<TTracingInst>());
         }
 
         // Perform exponentiation and push the 256-bit result onto the stack.
         UInt256.Exp(in a, in exponent, out UInt256 expResult);
-        return stack.PushUInt256<TTracingInst>(in expResult);
+        return new OpcodeResult(programCounter, stack.PushUInt256<TTracingInst>(in expResult));
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

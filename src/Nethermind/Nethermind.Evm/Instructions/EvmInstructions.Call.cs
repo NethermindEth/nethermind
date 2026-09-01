@@ -82,10 +82,10 @@ public static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
@@ -130,7 +130,7 @@ public static partial class EvmInstructions
         bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.VmState.IsStatic && hasValueTransfer && TOpCall.ExecutionType != ExecutionType.CALLCODE)
-            return EvmExceptionType.StaticCallViolation;
+            return new OpcodeResult(programCounter, EvmExceptionType.StaticCallViolation);
 
         // Determine caller and target based on the call type.
         Address caller = TOpCall.ExecutionType == ExecutionType.DELEGATECALL ? env.Caller : env.ExecutingAccount;
@@ -238,7 +238,7 @@ public static partial class EvmInstructions
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
             }
-            return pushResult;
+            return new OpcodeResult(programCounter, pushResult);
         }
 
         // Fast-path for calls to externally owned accounts (non-contracts)
@@ -247,7 +247,7 @@ public static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
             EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
-            if (pushResult != EvmExceptionType.None) return pushResult;
+            if (pushResult != EvmExceptionType.None) return new OpcodeResult(programCounter, pushResult);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             // Self-call (always true for CALLCODE; runtime for CALL/STATICCALL when target == executing account):
             // the +/- value balance ops cancel and target is the currently-executing account (alive),
@@ -264,7 +264,7 @@ public static partial class EvmInstructions
             }
             vm.MetricsCounters.IncrementEmptyCalls();
             vm.ReturnData = null;
-            return EvmExceptionType.None;
+            return new OpcodeResult(programCounter);
         }
 
         if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.IsPrecompile &&
@@ -272,10 +272,10 @@ public static partial class EvmInstructions
                 vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
                 codeInfo.Precompile!, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
         {
-            return inlineResult;
+            return new OpcodeResult(programCounter, inlineResult);
         }
 
-        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+        return new OpcodeResult(programCounter, CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount));
 
         // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
         // has no icache and counts instructions, so the NoInlining call and its wide argument
@@ -366,9 +366,9 @@ public static partial class EvmInstructions
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     }
 
     /// <summary>
@@ -409,10 +409,10 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.OutOfGas"/>, or <see cref="EvmExceptionType.BadInstruction"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionReturn<TGasPolicy>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Pop memory position and length for the return data.
@@ -428,11 +428,11 @@ public static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

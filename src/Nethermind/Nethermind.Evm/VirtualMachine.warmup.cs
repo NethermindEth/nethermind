@@ -149,7 +149,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         const int WarmUpIterations = 40;
 
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] opcodes = vm.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         vmState.InitializeStacks(txTracer, vmState.Env.CodeInfo.CodeSpan, out EvmStack stack);
@@ -168,7 +168,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 stack.PushOne<TTracingInst>();
                 stack.PushOne<TTracingInst>();
 
-                opcodes[i](vm, ref stack, ref gas, ref pc);
+                pc = opcodes[i](vm, ref stack, ref gas, pc).ProgramCounter;
                 if (vm.ReturnData is VmState<TGasPolicy> returnState)
                 {
                     returnState.Dispose();

@@ -64,38 +64,38 @@ public static partial class EvmInstructions
     /// Sources bytes from <c>stack.Code</c>/<c>stack.CodeLength</c> (hoisted at frame entry)
     /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
     /// </summary>
-    public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TTracingInst>(
+    public static OpcodeResult InstructionCodeCopy<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength));
+        => new(programCounter, DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
+            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength)));
 
     /// <summary>
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
     /// </summary>
-    public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
+    public static OpcodeResult InstructionCallDataCopy<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
-        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            vm.VmState.Env.InputData.Span);
+        => new(programCounter, DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
+            vm.VmState.Env.InputData.Span));
 
     /// <summary>
     /// Copies data from the previous call's return buffer into memory.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
+    public static OpcodeResult InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -125,13 +125,13 @@ public static partial class EvmInstructions
             }
         }
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     AccessViolation:
-        return EvmExceptionType.AccessViolation;
+        return new OpcodeResult(programCounter, EvmExceptionType.AccessViolation);
     }
 
     /// <summary>
@@ -151,10 +151,10 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionExtCodeCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -208,12 +208,12 @@ public static partial class EvmInstructions
             vm.WorldState.RecordBytecodeAccess(address);
         }
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>
@@ -233,10 +233,10 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -298,9 +298,9 @@ public static partial class EvmInstructions
                 }
 
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
-                return !isCodeLengthNotZero
+                return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>();
+                    : stack.PushZero<TTracingInst>());
             }
         }
 
@@ -308,11 +308,11 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

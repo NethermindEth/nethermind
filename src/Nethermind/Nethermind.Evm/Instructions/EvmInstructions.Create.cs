@@ -67,11 +67,11 @@ public static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
+    public static OpcodeResult InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
@@ -131,7 +131,7 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Load the initialization code from memory based on the specified position and length.
@@ -143,7 +143,7 @@ public static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
@@ -151,7 +151,7 @@ public static partial class EvmInstructions
         if (accountNonce >= ulong.MaxValue)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
 
         // Compute the contract address:
@@ -204,7 +204,7 @@ public static partial class EvmInstructions
             }
 
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            return new OpcodeResult(programCounter, stack.PushZero<TTracingInst>());
         }
 
         state.ClearStorage(contractAddress);
@@ -236,14 +236,14 @@ public static partial class EvmInstructions
             snapshot: in snapshot,
             isCreateStateGasCharged: chargeCreateStateGas);
 
-        return EvmExceptionType.None;
+        return new OpcodeResult(programCounter);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     StaticCallViolation:
-        return EvmExceptionType.StaticCallViolation;
+        return new OpcodeResult(programCounter, EvmExceptionType.StaticCallViolation);
 
     }
 }

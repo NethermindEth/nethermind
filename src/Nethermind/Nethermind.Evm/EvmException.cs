@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm;
 
@@ -58,4 +59,35 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.InvalidCode => nameof(EvmExceptionType.InvalidCode),
         _ => ((int)type).ToString(),
     };
+}
+
+/// <summary>The result of one opcode handler: the next program counter packed with the exception classification.</summary>
+/// <remarks>
+/// The program counter occupies the low 32 bits and the <see cref="EvmExceptionType"/> the high 32,
+/// so any non-<see cref="EvmExceptionType.None"/> result (including <see cref="EvmExceptionType.Stop"/>,
+/// whose negative value sets every high bit) makes <see cref="Value"/> exceed any code length. The
+/// dispatch loop's single unsigned bounds compare then doubles as the exception check, and passing the
+/// counter by value keeps it in a register instead of an address-taken stack slot.
+/// </remarks>
+public readonly struct OpcodeResult
+{
+    public readonly ulong Value;
+
+    public int ProgramCounter
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (int)(uint)Value;
+    }
+
+    public EvmExceptionType Exception
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => (EvmExceptionType)(uint)(Value >> 32);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public OpcodeResult(int pc, EvmExceptionType ex) => Value = ((ulong)(uint)ex << 32) | (uint)pc;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public OpcodeResult(int pc) => Value = (uint)pc;
 }

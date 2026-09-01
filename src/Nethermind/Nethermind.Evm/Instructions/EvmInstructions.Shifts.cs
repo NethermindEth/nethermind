@@ -50,7 +50,7 @@ public static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
@@ -58,7 +58,7 @@ public static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume<TOpShift>(ref gas);
 
-        return ShiftCore<TOpShift, TTracingInst>(ref stack);
+        return new OpcodeResult(programCounter, ShiftCore<TOpShift, TTracingInst>(ref stack));
     }
 
     /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
@@ -100,7 +100,7 @@ public static partial class EvmInstructions
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static OpcodeResult InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -112,15 +112,15 @@ public static partial class EvmInstructions
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
-            return As<UInt256, Int256>(ref b).Sign >= 0
+            return new OpcodeResult(programCounter, As<UInt256, Int256>(ref b).Sign >= 0
                 ? stack.PushZero<TTracingInst>()
-                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne));
         }
 
         As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-        return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+        return new OpcodeResult(programCounter, stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result)));
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 
     /// <summary>

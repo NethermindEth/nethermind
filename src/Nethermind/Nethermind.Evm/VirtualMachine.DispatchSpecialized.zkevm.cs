@@ -26,98 +26,101 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TShift : struct, IFlag
         where TPush0 : struct, IFlag
     {
-        EvmExceptionType exceptionType = EvmExceptionType.None;
 #if DEBUG
         DebugTracer<TGasPolicy>? debugger = _txTracer.GetTracer<DebugTracer<TGasPolicy>>();
 #endif
-        // Hoisted: reading through the ref parameter would reload from the frame every opcode.
-        int pc = programCounter;
         // Pinned pointer drops the per-dispatch bounds check (opcode is a byte, always in range).
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>[] opcodeArray = _opcodeMethods;
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, int, OpcodeResult>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
-            uint codeLength = (uint)stack.CodeLength;
+            // Held as ulong so the packed-compare loop guard does not re-widen it every iteration.
+            ulong codeLength = (uint)stack.CodeLength;
             // Hoisted: a no-op OnBeforeInstructionTrace would otherwise chase VmState.Env per instruction.
             int callDepth = VmState.Env.CallDepth;
-            while ((uint)pc < codeLength)
+            // The packed value keeps the program counter in the low half and the exception in the high
+            // half, so this single unsigned compare is both the bounds check and the exception exit.
+            OpcodeResult result = new(programCounter);
+            while (result.Value < codeLength)
             {
 #if DEBUG
-                debugger?.TryWait(ref _currentState, ref pc, ref gas, ref stack.Head);
+                if (debugger is not null)
+                {
+                    int debugPc = result.ProgramCounter;
+                    debugger.TryWait(ref _currentState, ref debugPc, ref gas, ref stack.Head);
+                    result = new(debugPc);
+                }
 #endif
-                Instruction instruction = Unsafe.Add(ref code, pc);
+                Instruction instruction = Unsafe.Add(ref code, (nuint)result.Value);
 
                 // IsCancelled is an interface call; per-opcode polling is measurable, and 1024 still aborts in microseconds.
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
-                TGasPolicy.OnBeforeInstructionTrace(in gas, pc, instruction, callDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, result.ProgramCounter, instruction, callDepth);
 
                 if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), pc, in stack);
+                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), result.ProgramCounter, in stack);
 
-                pc++;
                 opCodeCount++;
+                int nextPc = (int)(result.Value + 1);
 
-                // Temp by ref: ref pc handed to the handlers would address-take it and spill it every opcode.
-                int opPc = pc;
                 // The guest has no I-cache, so inlining the hot handlers always wins; it never takes the table
                 // path. Narrow and frequency-ordered (~78% of executed opcodes): a wide switch exhausts the
                 // inline budget and degrades every case to a call.
                 switch (instruction)
                 {
                     case Instruction.PUSH1:
-                        exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.PUSH2:
-                        exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.ADD:
-                        exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.SWAP1:
-                        exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.DUP2:
-                        exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.MSTORE:
-                        exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.MLOAD:
-                        exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.DUP1:
-                        exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.POP:
-                        exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionPop(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.DUP3:
-                        exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.SWAP2:
-                        exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.ISZERO:
-                        exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.DUP5:
-                        exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     case Instruction.JUMPDEST:
-                        exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, nextPc);
                         break;
                     // GAS is hot on the guest but absent from mainline's curated eth_call set.
                     case Instruction.GAS:
-                        exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref opPc);
+                        result = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, nextPc);
                         break;
                     default:
-                        exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref opPc);
+                        result = opcodeMethods[(int)instruction](this, ref stack, ref gas, nextPc);
                         break;
                 }
-                pc = opPc;
 
                 // The inline budget is exhausted here, so these trivial policy calls go out-of-line once per
                 // opcode (~5% of guest execution); the typeof folds, letting EthereumGasPolicy read the flag.
@@ -131,19 +134,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     OpCodeCount += opCodeCount;
                     TGasPolicy.SetOutOfGas(ref gas);
-                    exceptionType = EvmExceptionType.OutOfGas;
-                    goto Halted;
+                    programCounter = result.ProgramCounter;
+                    return EvmExceptionType.OutOfGas;
                 }
 
                 if (typeof(TGasPolicy) != typeof(EthereumGasPolicy))
                     TGasPolicy.OnAfterInstructionTrace(in gas);
 
-                if (exceptionType != EvmExceptionType.None)
-                    break;
-
                 // typeof folds where the inliner gives up on the IsActive getter. == OnFlag, not != OffFlag,
                 // so a third IFlag would fail closed.
-                if (typeof(TTracingInst) == typeof(OnFlag))
+                if (typeof(TTracingInst) == typeof(OnFlag) && result.Exception == EvmExceptionType.None)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
                 Debug.Assert(typeof(TTracingInst) == typeof(OnFlag) == TTracingInst.IsActive,
                     "Tracing fast path assumes OnFlag/OffFlag are the only dispatch flags");
@@ -156,10 +156,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             OpCodeCount += opCodeCount;
+            programCounter = result.ProgramCounter;
+            return result.Exception;
         }
-
-    Halted:
-        programCounter = pc;
-        return exceptionType;
     }
 }
