@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -141,7 +142,7 @@ public class NettyDiscoveryHandler(
         byte msgTypeByte = content.GetByte(readerIndex + 97);
         if (FromMsgTypeByte(msgTypeByte) is not { } resolvedType)
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {msgTypeByte}, sender: {address}");
+            if (_logger.IsTrace) TraceUnsupportedMessageType(msgTypeByte, address);
             return false;
         }
 
@@ -162,6 +163,10 @@ public class NettyDiscoveryHandler(
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceUnsupportedMessageType(byte messageType, EndPoint sender) =>
+            _logger.Trace($"Unsupported message type: {messageType}, sender: {sender}");
     }
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
