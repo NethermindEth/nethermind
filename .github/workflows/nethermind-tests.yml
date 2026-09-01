@@ -98,7 +98,7 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test on ARM/macOS is chunked (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # Synchronization.Test is chunked on every runner (see include block) — its unchunked variant hits the 15-min wall.
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
