@@ -41,7 +41,9 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
                     if (_logger.IsError) _logger!.Error($"Verify trie failed");
                 }
             }
-            catch (Exception e) when (IsCancellation(e))
+            // Only a shutdown-driven cancellation is expected here; an OCE from any other token means the
+            // sweep never completed, so it is treated as a fault rather than a benign cancellation.
+            catch (Exception e) when (exitSource.Token.IsCancellationRequested && IsCancellation(e))
             {
                 if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
             }

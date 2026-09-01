@@ -40,9 +40,22 @@ public class VerifyTrieStarterTests
             new AggregateException(new TaskCanceledException(), new InvalidOperationException("boom")));
 
         Assert.That(() => logManager.Errors, Has.Some.Contains("Error in verify trie").After(5000, 20));
+        Assert.That(logManager.Infos, Has.None.Contains("Verify trie cancelled"));
     }
 
-    private static CapturingLogManager RunVerifyTrieThatThrows(Exception toThrow)
+    [Test]
+    public void Logs_error_when_cancelled_without_process_exit()
+    {
+        // A cancellation that did not originate from process exit is unexpected: the sweep never
+        // finished, so it must surface as an error rather than a benign "Verify trie cancelled".
+        CapturingLogManager logManager = RunVerifyTrieThatThrows(
+            new OperationCanceledException(), processExiting: false);
+
+        Assert.That(() => logManager.Errors, Has.Some.Contains("Error in verify trie").After(5000, 20));
+        Assert.That(logManager.Infos, Has.None.Contains("Verify trie cancelled"));
+    }
+
+    private static CapturingLogManager RunVerifyTrieThatThrows(Exception toThrow, bool processExiting = true)
     {
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager
@@ -50,7 +63,7 @@ public class VerifyTrieStarterTests
             .Returns(_ => throw toThrow);
 
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
-        exitSource.Token.Returns(CancellationToken.None);
+        exitSource.Token.Returns(new CancellationToken(processExiting));
 
         CapturingLogManager logManager = new();
         VerifyTrieStarter starter = new(worldStateManager, exitSource, logManager);

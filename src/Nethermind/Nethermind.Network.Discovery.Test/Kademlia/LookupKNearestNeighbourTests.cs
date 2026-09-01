@@ -285,7 +285,9 @@ public class LookupKNearestNeighbourTests
         public IEnumerable<LogEntry> Entries => _entries;
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-        public bool IsEnabled(LogLevel logLevel) => true;
+        // Mirror a production node's default Info floor so the warning-gate is actually exercised:
+        // Trace/Debug are disabled, so a warning wrongly gated behind them would log nothing.
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             => _entries.Enqueue(new LogEntry(logLevel, formatter(state, exception)));

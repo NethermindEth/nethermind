@@ -281,7 +281,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                     || e.InnerException is SocketException or IOException;
                 if (!isTransportFailure)
                 {
-                    if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogWarning($"Find neighbour op failed: {e}");
+                    if (_logger.IsEnabled(LogLevel.Warning)) _logger.LogWarning($"Find neighbour op failed: {e}");
                 }
                 else if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Find neighbour op failed: {e.Message}");
                 return null;
