@@ -146,17 +146,22 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
             }
 
-            byte[] codeBytes = MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                && codeArray.Offset == 0
-                && codeArray.Count == code.Length
-                ? codeArray.Array!
-                : code.ToArray();
-
             // Only first-time additions are journaled; an entry staged by an already committed
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
-            if (_codeBatchAlternate.TryAdd(codeHash, codeBytes))
+            if (!_codeBatchAlternate.ContainsKey(codeHash))
             {
                 _codeInsertJournal.Add((_changes.Count - 1, codeHash));
+            }
+
+            if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                && codeArray.Offset == 0
+                && codeArray.Count == code.Length)
+            {
+                _codeBatchAlternate[codeHash] = codeArray.Array;
+            }
+            else
+            {
+                _codeBatchAlternate[codeHash] = code.ToArray();
             }
 
             _blockCodeInsertFilter.Set(codeHash);
@@ -450,9 +455,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// leaves no runtime bytecode that committed state no longer references.
     /// </summary>
     /// <remarks>
-    /// A code insert made at change-log position <c>p</c> records its account update at <c>p + 1</c>,
-    /// hence it is rolled back exactly when <c>p >= snapshot</c>. The insert filter is rolled back with
-    /// the batch, otherwise a later surviving deployment of the same code would be suppressed and lost.
+    /// An entry is anchored to the change-log position current when the code was staged. The account
+    /// changes referencing it are pushed above that position and no snapshot can be taken in between,
+    /// so <c>position >= snapshot</c> selects exactly the entries whose account changes are being
+    /// unwound. The insert filter is rolled back with the batch, otherwise a later surviving deployment
+    /// of the same code would be suppressed and lost.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
