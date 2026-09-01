@@ -110,16 +110,19 @@ public class FrameTxMempoolDosMeasurement
     /// is skipped unless the constant was raised and the tree rebuilt — a clamped run would otherwise report
     /// the constant's numbers under this ceiling's label. 236,285 is the plan's point, not a round number.
     /// </remarks>
-    /// <summary>
-    /// The most secp256k1 entries <see cref="Ceiling300k"/> admits. EIP-8141 rule 6 charges
-    /// <see cref="Eip8141Constants.Secp256k1VerificationGasCost"/> per entry against the same budget the
-    /// validation prefix draws from, so one more is refused on declared gas before any curve work happens.
-    /// </summary>
-    private const int StuffedSignatureCount = 107;
-
     /// <summary>Frame budget for the signature shape: well-formed, and small enough that the declared total is
     /// signature gas. The frame never executes, so this only has to clear the 100-gas entry charge.</summary>
     private const ulong MinimalFrameGas = 400;
+
+    /// <summary>
+    /// The most secp256k1 entries <paramref name="ceiling"/> admits once <see cref="MinimalFrameGas"/> is
+    /// reserved for the frame. EIP-8141 rule 6 charges
+    /// <see cref="Eip8141Constants.Secp256k1VerificationGasCost"/> per entry against the same budget the
+    /// validation prefix draws from, so this is the whole ceiling spent on recovery instead of on execution,
+    /// which is what makes it comparable to a burn shape at the same ceiling.
+    /// </summary>
+    private static int StuffedSignatureCount(ulong ceiling) =>
+        (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
 
     private const ulong Ceiling100k = 100_000;
     private const ulong Ceiling236k = 236_285;
@@ -528,18 +531,30 @@ public class FrameTxMempoolDosMeasurement
     /// secp256k1 only. P256 costs more per signature but is priced 2.4x higher, so it buys less CPU per unit of
     /// budget and is not the worst case.
     /// </para>
+    /// <para>
+    /// Swept over the same ceilings as the burn shapes, and <see cref="Ceiling500k"/> needs no patched build
+    /// here: <see cref="Eip8141Constants.MaxVerifyGas"/> bounds simulation, and a signature refusal never
+    /// reaches the simulator. Only the declared-gas precheck could bound this, and it reads the configurable
+    /// mirror. So this shape reaches the one sweep point the burn shapes cannot.
+    /// </para>
     /// </remarks>
-    [Test]
-    public void Reject_cost_of_a_signature_stuffed_prefix()
+    [TestCase(Ceiling100k)]
+    [TestCase(Ceiling236k)]
+    [TestCase(Ceiling300k)]
+    [TestCase(Ceiling500k)]
+    public void Reject_cost_of_a_signature_stuffed_prefix(ulong ceiling)
     {
+        int count = StuffedSignatureCount(ceiling);
+
         // The frame never executes, so its code is irrelevant; only its declared limit enters the budget.
         BuildHarness(PrefixCode("banned-opcode"));
         _frameExecutionGasLimit = MinimalFrameGas;
-        _frameSignatures = BuildSecp256k1Signatures(StuffedSignatureCount);
+        _frameSignatures = BuildSecp256k1Signatures(count);
 
         ulong declaredGas = FrameTxValidation.ValidationWorkGas(FrameTx(0));
-        Assert.That(declaredGas, Is.LessThanOrEqualTo(VerifyGas),
-            "the declared budget must fit the ceiling, or FrameTxVerifyGasFilter refuses before any curve work");
+        Assert.That(declaredGas, Is.LessThanOrEqualTo(ceiling),
+            "the declared budget must fit the ceiling it claims, or the row is labelled with a budget the "
+            + "transaction never asked for");
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
@@ -563,14 +578,14 @@ public class FrameTxMempoolDosMeasurement
 
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
-        double perSignature = p50 / StuffedSignatureCount;
+        double perSignature = p50 / count;
 
         // The failure this shape is most exposed to: a memoised verification would collapse the cost and still
         // emit a plausible row. A public-key recovery cannot be this cheap.
         Assert.That(perSignature, Is.GreaterThan(10.0),
             $"{perSignature:F1} us per signature is too cheap for real curve work; suspect a cached result");
 
-        Emit($"case=signature_reject scheme=secp256k1 signatures={StuffedSignatureCount} "
+        Emit($"case=signature_reject scheme=secp256k1 ceiling={ceiling} signatures={count} "
              + $"declared_gas={declaredGas} samples={Samples} submit_p50_us={p50:F1} "
              + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} per_signature_us={perSignature:F2} "
              + $"submit_us_per_Mgas={p50 / declaredGas * 1_000_000:F1} basis=declared_signature_gas evm_ran=no");
