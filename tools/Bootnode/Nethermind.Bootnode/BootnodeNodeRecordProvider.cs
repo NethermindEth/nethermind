@@ -72,21 +72,21 @@ internal sealed class BootnodeNodeRecordProvider(
             ? resolvedExternalIpV6
             : null;
 
-        if (_logger.IsWarn)
+        if (_logger.IsDebug)
         {
             if (resolvedExternalIpV4 is not null && externalIpV4 is null)
             {
-                _logger.Warn("External IPv4 address is available but not advertised because the bootnode does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+                _logger.Debug("External IPv4 address is available but not advertised because the bootnode does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
             }
 
             if (resolvedExternalIpV6 is not null && externalIpV6 is null)
             {
-                _logger.Warn("External IPv6 address is available but not advertised because the bootnode does not listen on IPv6 (set LocalIp to an IPv6 address).");
+                _logger.Debug("External IPv6 address is available but not advertised because the bootnode does not listen on IPv6 (set LocalIp to an IPv6 address).");
             }
 
             if (externalIpV4 is null && externalIpV6 is null)
             {
-                _logger.Warn("No external IP address is advertised; the bootnode will not be discoverable by peers.");
+                _logger.Debug("No external IP address is advertised; the bootnode will not be discoverable by peers.");
             }
         }
 

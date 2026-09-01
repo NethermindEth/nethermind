@@ -183,6 +183,15 @@ public class NodeFilterTests
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
     public void IPAddressExtensions_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsLoopbackOrPrivateOrLinkLocal, Is.EqualTo(expected));
 
+    [TestCase("0.0.0.0", true, Description = "Unspecified IPv4")]
+    [TestCase("::", true, Description = "Unspecified IPv6")]
+    [TestCase("255.255.255.255", true, Description = "IPv4 None sentinel")]
+    [TestCase("::ffff:0.0.0.0", true, Description = "IPv4-mapped unspecified address")]
+    [TestCase("::ffff:255.255.255.255", true, Description = "IPv4-mapped None sentinel")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressExtensions_IsUnspecified(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsUnspecified, Is.EqualTo(expected));
+
     [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
     [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]
     [TestCase("192.0.2.1", true, Description = "IPv4 documentation TEST-NET-1")]

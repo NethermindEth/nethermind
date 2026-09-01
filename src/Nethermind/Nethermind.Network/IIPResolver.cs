@@ -85,7 +85,7 @@ namespace Nethermind.Network
                     ipAddress = ipAddress.MapToIPv4();
                 }
 
-                if (IsUnspecified(ipAddress))
+                if (ipAddress.IsUnspecified)
                 {
                     return null;
                 }
@@ -100,11 +100,6 @@ namespace Nethermind.Network
                     _ => null
                 };
             }
-
-            internal static bool IsUnspecified(IPAddress ipAddress)
-                => ipAddress.Equals(IPAddress.Any)
-                   || ipAddress.Equals(IPAddress.IPv6Any)
-                   || ipAddress.Equals(IPAddress.None);
         }
     }
 }

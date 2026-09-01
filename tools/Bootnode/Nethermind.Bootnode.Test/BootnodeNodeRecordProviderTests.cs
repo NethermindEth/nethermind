@@ -111,7 +111,7 @@ public class BootnodeNodeRecordProviderTests
             DiscoveryPort = 30303,
             P2PPort = 0
         };
-        WarningLogManager logManager = new();
+        DebugLogManager logManager = new();
         IIPResolver.NethermindIp resolvedIp = new(
             IPAddress.Any,
             IPAddress.None,
@@ -129,8 +129,8 @@ public class BootnodeNodeRecordProviderTests
         AssertEndpointEntries(decoded, expectedIp: null, expectedIp6: null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(logManager.Warnings, Has.Some.StartsWith("External IPv6 address"));
-            Assert.That(logManager.Warnings, Has.Some.StartsWith("No external IP address"));
+            Assert.That(logManager.DebugMessages, Has.Some.StartsWith("External IPv6 address"));
+            Assert.That(logManager.DebugMessages, Has.Some.StartsWith("No external IP address"));
         }
     }
 
@@ -263,29 +263,29 @@ public class BootnodeNodeRecordProviderTests
             logManager ?? LimboLogs.Instance,
             dataDir);
 
-    private sealed class WarningLogManager : ILogManager
+    private sealed class DebugLogManager : ILogManager
     {
         private readonly RecordingLogger _logger;
 
-        public WarningLogManager() => _logger = new(Warnings);
+        public DebugLogManager() => _logger = new(DebugMessages);
 
-        public List<string> Warnings { get; } = [];
+        public List<string> DebugMessages { get; } = [];
 
         public ILogger GetClassLogger<T>() => new(_logger);
 
         public ILogger GetLogger(string loggerName) => new(_logger);
 
-        private sealed class RecordingLogger(List<string> warnings) : InterfaceLogger
+        private sealed class RecordingLogger(List<string> debugMessages) : InterfaceLogger
         {
             public void Info(string text) { }
-            public void Warn(string text) => warnings.Add(text);
-            public void Debug(string text) { }
+            public void Warn(string text) { }
+            public void Debug(string text) => debugMessages.Add(text);
             public void Trace(string text) { }
             public void Error(string text, Exception? ex = null) { }
 
             public bool IsInfo => false;
-            public bool IsWarn => true;
-            public bool IsDebug => false;
+            public bool IsWarn => false;
+            public bool IsDebug => true;
             public bool IsTrace => false;
             public bool IsError => false;
         }
