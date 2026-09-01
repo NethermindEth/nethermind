@@ -7,6 +7,7 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie;
 
+#pragma warning disable NETH003 // Build variant: only one of TrackingCappedArrayPool.std.cs / TrackingCappedArrayPool.zkevm.cs is compiled per build
 /// <summary>
 /// Allocating buffer source for the zkVM guest &mdash; see the std counterpart for the tracking pool.
 /// </summary>
@@ -16,7 +17,7 @@ namespace Nethermind.Trie;
 /// software <c>Log2</c> per rent and return) is all main-loop instructions. Allocating outright is
 /// measurably cheaper here.
 /// </remarks>
-public sealed partial class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
+public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
 {
     // The std counterpart's parameters size and shape its rental tracking; the guest keeps none.
     public TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null, bool canBeParallel = true) { }
