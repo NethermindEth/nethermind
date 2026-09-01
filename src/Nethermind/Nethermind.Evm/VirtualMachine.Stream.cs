@@ -54,8 +54,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         EvmExceptionType exceptionType = EvmExceptionType.None;
         StreamInterpreter.FramesExecuted++;
 
-        int programCounter = VmState.ProgramCounter;
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
+        nint programCounter = VmState.ProgramCounter;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
         ulong[] blockGas = stream.BlockGas;
         Int256.UInt256[] constants = stream.Constants;
@@ -69,7 +69,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         int entryIndex = programCounter == 0
             ? 0
             : (uint)programCounter < (uint)pcToEntry.Length ? pcToEntry[programCounter] : ops.Length;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
+        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             while ((uint)entryIndex < (uint)ops.Length)
             {
@@ -316,7 +316,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
                     opCodeCount++;
 
-                    int mpc = entry.Pc + 1;
+                    nint mpc = entry.Pc + 1;
                     exceptionType = instruction switch
                     {
                         Instruction.MSTORE => EvmInstructions.InstructionMStore<TGasPolicy, OffFlag>(this, ref stack, ref gas, ref mpc),
@@ -345,12 +345,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                     ThrowStreamOperationCanceledException();
 
-                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                TGasPolicy.OnBeforeInstructionTrace(in gas, (int)programCounter, instruction, callDepth);
                 programCounter++;
                 opCodeCount++;
 
                 // Stack temp by ref keeps programCounter register-resident across the loop.
-                int pc = programCounter;
+                nint pc = programCounter;
                 exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                 programCounter = pc;
 
@@ -375,7 +375,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                int landing = pcToEntry[programCounter];
+                int landing = pcToEntry[(int)programCounter];
                 if (landing == InstructionStream.InvalidEntry)
                 {
                     // Nothing may land between entries — fail loudly rather than silently succeed.
@@ -397,7 +397,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
-            UpdateCurrentState(programCounter, in gas, stack.Head);
+            UpdateCurrentState((int)programCounter, in gas, stack.Head);
         }
         else
         {
@@ -462,7 +462,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         InstructionStream stream,
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        int programCounter,
+        nint programCounter,
         int opCodeCount,
         int callDepth)
         where TCancelable : struct, IFlag
@@ -474,13 +474,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
         uint codeLength = (uint)stack.CodeLength;
-        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeMethods = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodeMethods = _opcodeMethods;
 
         while (true)
         {
             if ((uint)programCounter >= codeLength)
             {
-                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, ops.Length, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
 
             Instruction instruction = (Instruction)Unsafe.Add(ref code, programCounter);
@@ -488,42 +488,42 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                 throw new OperationCanceledException("Cancellation Requested");
 
-            TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+            TGasPolicy.OnBeforeInstructionTrace(in gas, (int)programCounter, instruction, callDepth);
             programCounter++;
             opCodeCount++;
 
             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
 
             if (TGasPolicy.IsOutOfGas(in gas))
-                return new MeteredResult(MeteredOutcome.OutOfGas, programCounter, opCodeCount, entryIndex, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.OutOfGas, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             TGasPolicy.OnAfterInstructionTrace(in gas);
 
             if (exceptionType != EvmExceptionType.None)
-                return new MeteredResult(MeteredOutcome.BreakLoop, programCounter, opCodeCount, entryIndex, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             if (ReturnData is not null)
-                return new MeteredResult(MeteredOutcome.BreakLoop, programCounter, opCodeCount, entryIndex, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             if ((uint)programCounter >= (uint)pcToEntry.Length)
             {
-                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, ops.Length, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
 
-            int landing = pcToEntry[programCounter];
+            int landing = pcToEntry[(int)programCounter];
             if (landing == InstructionStream.InvalidEntry)
                 continue; // interior pc: keep stepping raw code
 
             entryIndex = landing;
             if ((uint)entryIndex >= (uint)ops.Length)
-                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
+                return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             StreamOpKind kind = ops[entryIndex].Kind;
             if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
                 continue;
 
             // Block-charging entry or boundary op: hand back so the stream loop re-evaluates the charge.
-            return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, Metered: false, Exception: exceptionType);
+            return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, entryIndex, Metered: false, Exception: exceptionType);
         }
     }
 }

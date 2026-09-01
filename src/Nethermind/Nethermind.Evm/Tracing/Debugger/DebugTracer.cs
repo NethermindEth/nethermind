@@ -82,7 +82,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
         if (CurrentPhase is DebugPhase.Blocked or DebugPhase.Starting) _globalBreakCondition = condition;
     }
 
-    public void TryWait(ref VmState<TGasPolicy> vmState, ref int programCounter, ref TGasPolicy gas, ref int stackHead)
+    public void TryWait(ref VmState<TGasPolicy> vmState, ref nint programCounter, ref TGasPolicy gas, ref int stackHead)
     {
         if (CurrentPhase is DebugPhase.Aborted)
         {
