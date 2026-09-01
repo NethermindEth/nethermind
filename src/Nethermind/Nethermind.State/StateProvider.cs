@@ -41,6 +41,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // the lifetime of the durable storage, not the StateProvider — otherwise a transient
     // (overlay) codeDb could poison the hint with non-durable entries.
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
+    // Code staged for CodeDb by the current transaction, paired with the change-log position of the
+    // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
+    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
     private readonly List<Change> _keptInCache = [];
@@ -131,6 +134,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         bool inserted = false;
+        bool journalCode = false;
 
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -142,6 +146,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 _codeBatch = new(Hash256AsKeyComparer.Instance);
                 _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
             }
+
+            // Only first-time additions are journaled; an entry staged by an already committed
+            // transaction must stay in the batch even if a later frame re-inserts and reverts.
+            journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
 
             if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                 && codeArray.Offset == 0
@@ -169,6 +177,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
             PushUpdate(address, changedAccount);
+            if (journalCode) _codeInsertJournal.Add((_changes.Count - 1, codeHash));
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
@@ -381,6 +390,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -437,6 +447,33 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPosition(int expected, int actual)
             => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {expected}");
+    }
+
+    /// <summary>
+    /// Drops code staged for CodeDb after the given snapshot, so that a reverted contract creation
+    /// leaves no runtime bytecode that committed state no longer references.
+    /// </summary>
+    /// <remarks>
+    /// An entry is anchored to the change-log position of the code-hash update referencing it, so
+    /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
+    /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
+    /// same code would be suppressed and lost.
+    /// </remarks>
+    private void RestoreCodeInserts(int snapshot)
+    {
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        int keep = entries.Length;
+        while (keep > 0)
+        {
+            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            if (entry.Position <= snapshot) break;
+
+            _codeBatchAlternate.Remove(entry.CodeHash);
+            _blockCodeInsertFilter.Delete(entry.CodeHash);
+            keep--;
+        }
+
+        CollectionsMarshal.SetCount(_codeInsertJournal, keep);
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -500,6 +537,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
     {
+        // Committed code can no longer be reverted, and the change-log positions it was journaled
+        // against are about to be discarded.
+        _codeInsertJournal.Clear();
+
         Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
             ? Task.CompletedTask
             : CommitCodeAsync(_codeDb);
@@ -898,6 +939,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
             _codeBatch?.Clear();
+            _codeInsertJournal.Clear();
+        }
+        else
+        {
+            // The batch survives this reset, but the changes being discarded are exactly the ones the
+            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
+            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
