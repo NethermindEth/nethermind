@@ -9,11 +9,13 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,6 +42,18 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+    }
+
+    [Test]
+    public void Rlp_exception_is_not_logged_at_debug_by_netty_handler()
+    {
+        TestLogger logger = new() { IsTrace = false };
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, new OneLoggerLogManager(new ILogger(logger)));
+
+        handler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), new RlpException("malformed message"));
+
+        Assert.That(logger.LogList, Is.Empty);
     }
 
     [TestCase(true)]

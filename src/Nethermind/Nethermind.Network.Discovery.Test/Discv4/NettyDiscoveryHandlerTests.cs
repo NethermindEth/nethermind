@@ -14,6 +14,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -168,7 +169,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             int? globalInboundMessageBurst = null,
             int? inboundMessageQueueCapacity = null,
             int? inboundMessageWorkerCount = null,
-            IMessageSerializationService? messageSerializationService = null)
+            IMessageSerializationService? messageSerializationService = null,
+            ILogManager? logManager = null)
         {
             IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
@@ -179,7 +181,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 channel,
                 service,
                 Timestamper.Default,
-                LimboLogs.Instance,
+                logManager ?? LimboLogs.Instance,
                 nodeFilter,
                 globalInboundMessageBurst,
                 inboundMessageQueueCapacity,
@@ -215,6 +217,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             ctx.FireChannelRead(Arg.Is<DatagramPacket>(
                 p => p.Content.ReadAllBytesAsArray().SequenceEqual(data)
             ));
+        }
+
+        [Test]
+        public void ForwardsDiscv5MinimumSizePacketWithoutDebugLogging()
+        {
+            TestLogger logger = new() { IsTrace = false };
+            (IKademliaAdapter _, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) =
+                CreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+            byte[] data = new byte[63];
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), _address2, _address);
+
+            handler.ChannelRead(ctx, packet);
+
+            ctx.Received().FireChannelRead(Arg.Any<DatagramPacket>());
+            Assert.That(logger.LogList, Is.Empty);
         }
 
         [Test]

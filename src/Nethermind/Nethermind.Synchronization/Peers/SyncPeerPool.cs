@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
+            if (_logger.IsTrace) TraceAddingPeer(syncPeer);
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -268,7 +268,7 @@ namespace Nethermind.Synchronization.Peers
                 Interlocked.Increment(ref PriorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
-            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+            if (_logger.IsTrace) TracePeerCount();
 
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void RemovePeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
+            if (_logger.IsTrace) TraceRemovingPeer(syncPeer);
 
             if (!_isStarted)
             {
@@ -314,7 +314,7 @@ namespace Nethermind.Synchronization.Peers
                 Interlocked.Decrement(ref PriorityPeerCount);
                 Metrics.PriorityPeers = PriorityPeerCount;
             }
-            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+            if (_logger.IsTrace) TracePeerCount();
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
@@ -528,8 +528,24 @@ namespace Nethermind.Synchronization.Peers
                 peersDropped += DropWorstPeer();
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+            if (peersDropped > 0 && _logger.IsTrace) TraceDroppedUselessPeers(peersDropped);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceAddingPeer(ISyncPeer syncPeer) =>
+            _logger.Trace($"Adding sync peer {syncPeer.Node:c}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRemovingPeer(ISyncPeer syncPeer) =>
+            _logger.Trace($"Removing sync peer {syncPeer.Node:c}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TracePeerCount() =>
+            _logger.Trace($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceDroppedUselessPeers(int peersDropped) =>
+            _logger.Trace($"Dropped {peersDropped} useless peers");
 
         private int DropWorstPeer()
         {

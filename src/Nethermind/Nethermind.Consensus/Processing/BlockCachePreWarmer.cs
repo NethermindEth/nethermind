@@ -605,7 +605,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             if (cancellationToken.IsCancellationRequested) return;
 
-            if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) DebugPreWarming("Started", suggestedBlock.Number);
 
             if (!addressWarmer.HasBal)
             {
@@ -613,7 +613,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number);
         }
         catch (Exception ex)
         {
@@ -625,6 +625,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             addressWarmer.Wait();
             addressWarmer.Dispose();
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DebugPreWarming(string state, ulong blockNumber) =>
+            _logger.Debug($"{state} pre-warming caches for block {blockNumber}.");
     }
 
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)

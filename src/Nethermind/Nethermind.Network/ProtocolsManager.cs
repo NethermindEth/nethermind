@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -92,9 +93,9 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
-            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
+            if (session.BestStateReached == SessionState.Initialized)
             {
-                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
+                if (_logger.IsTrace) TraceSessionDisconnected(session, e);
             }
 
             if (session.Node is not null
@@ -121,6 +122,10 @@ namespace Nethermind.Network
                 _txPool.RemovePeer(session.Node.Id);
             }
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceSessionDisconnected(ISession session, DisconnectEventArgs e) =>
+            _logger.Trace($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
 
         private void SessionInitialized(object sender, EventArgs e)
         {

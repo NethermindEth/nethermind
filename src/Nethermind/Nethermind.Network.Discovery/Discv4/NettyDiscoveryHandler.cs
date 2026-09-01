@@ -134,7 +134,7 @@ public class NettyDiscoveryHandler(
 
         if (size < 98)
         {
-            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {size}, sender: {address}");
+            if (_logger.IsTrace) TraceNonDiscv4Message(size, address);
             return false;
         }
 
@@ -163,6 +163,10 @@ public class NettyDiscoveryHandler(
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceNonDiscv4Message(int messageSize, EndPoint sender) =>
+            _logger.Trace($"Forwarding non-discv4 discovery message, length: {messageSize}, sender: {sender}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUnsupportedMessageType(byte messageType, EndPoint sender) =>

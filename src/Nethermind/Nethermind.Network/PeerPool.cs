@@ -103,7 +103,7 @@ namespace Nethermind.Network
             Peer peer = Peers.GetOrAdd(node.Id, created);
             if (ReferenceEquals(peer, created))
             {
-                if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
+                if ((node.IsBootnode || node.IsStatic) && _logger.IsTrace) TraceAddingCandidatePeer(node);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
             else
@@ -114,8 +114,8 @@ namespace Nethermind.Network
             return peer;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugAddingCandidatePeer(Node n)
-                => _logger.Debug($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
+            void TraceAddingCandidatePeer(Node n)
+                => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
         }
 
         // A node id can reach the pool through several sources (the persisted peers db, discovery, the
