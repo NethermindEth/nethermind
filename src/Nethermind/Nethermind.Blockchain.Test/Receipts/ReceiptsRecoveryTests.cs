@@ -92,10 +92,13 @@ public class ReceiptsRecoveryTests
 
         ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: false);
 
-        Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
-        for (int i = 0; i < receipts.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipts[i].TxHash, Is.EqualTo(transactions[i].Hash), $"receipt {i}");
+            Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                Assert.That(receipts[i].TxHash, Is.EqualTo(transactions[i].Hash), $"receipt {i}");
+            }
         }
     }
 }

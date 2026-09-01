@@ -12,7 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Rpc
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class RpcDbTests
     {
         private IJsonSerializer _jsonSerializer;

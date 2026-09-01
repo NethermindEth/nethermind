@@ -199,8 +199,7 @@ public class RlpDecoderTests
             static (ref RlpReader _) => throw new InvalidOperationException(),
             defaultElement: 42);
 
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0], Is.EqualTo(42));
+        Assert.That(result, Is.EqualTo(new[] { 42 }));
     }
 
     [Test]
@@ -210,8 +209,7 @@ public class RlpDecoderTests
 
         Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccakOrNull());
 
-        Assert.That(result, Has.Length.EqualTo(1));
-        Assert.That(result[0], Is.Null);
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
     }
 
     [Test]
@@ -245,8 +243,7 @@ public class RlpDecoderTests
             static (ref RlpReader _) => throw new InvalidOperationException(),
             defaultElement: TestItem.KeccakA);
 
-        Assert.That(result, Has.Length.EqualTo(1));
-        Assert.That(result[0], Is.EqualTo(TestItem.KeccakA));
+        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
     [Test]
@@ -256,8 +253,7 @@ public class RlpDecoderTests
 
         using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull());
 
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0], Is.Null);
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
     }
 
     [Test]
@@ -269,8 +265,7 @@ public class RlpDecoderTests
             static (ref RlpReader _) => throw new InvalidOperationException(),
             defaultElement: TestItem.KeccakA);
 
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0], Is.EqualTo(TestItem.KeccakA));
+        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)

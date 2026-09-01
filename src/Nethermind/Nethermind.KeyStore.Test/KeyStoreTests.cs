@@ -59,8 +59,11 @@ public class KeyStoreTests
 
         (KeyStoreItem keyData, Result result) = test.Store.Verify("null");
 
-        Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(keyData, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
     }
 
     [Test]
@@ -70,8 +73,11 @@ public class KeyStoreTests
 
         (KeyStoreItem keyData, Result result) = test.Store.GetKeyData(Address.Zero);
 
-        Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(keyData, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
     }
 
     [Test]
@@ -82,8 +88,11 @@ public class KeyStoreTests
 
         (IReadOnlyCollection<Address> addresses, Result result) = test.Store.GetKeyAddresses();
 
-        Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(addresses, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(addresses, Is.Empty);
+        }
     }
 
     [TestCase("{\"address\":\"20b2e4bb8688a44729780d15dc64adb42f9f5a0a\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"d30cbb0f5b30ef86e57b7fa111307398b911b8c0a3eab4ac4edc4b2c8839afbe\",\"cipherparams\":{\"iv\":\"1e29e79023d73be3f3bb065ca9ddc078\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"fffcd979c3223b3cdfcb2cf21b07bd4313e6f8d02af8a79a5c5dc879a25680d3\"},\"mac\":\"3ac5a539775c33bd73adfd2c0d4ef8c9154e4b404e2a15c77b0e6c78cb90df20\"},\"id\":\"68462de1-4114-4f92-828b-883fae5f779c\",\"version\":3}")]
