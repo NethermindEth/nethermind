@@ -65,6 +65,24 @@ public class MintedRecordContract : IMintedRecordContract
         worldState.IncrementNonce(MintedRecordAddress, 1UL, out _);
     }
 
+    public bool TryGetOnsetEpoch(IWorldState worldState, out UInt256 onsetEpoch)
+    {
+        // The accounting account's nonce is bumped on every update, so a zero nonce means the upgrade never ran.
+        if (worldState.GetNonce(MintedRecordAddress) == 0)
+        {
+            onsetEpoch = UInt256.Zero;
+            return false;
+        }
+
+        onsetEpoch = ReadStorage(worldState, MintedRecordOnsetEpochSlot);
+        return true;
+    }
+
+    public MintedRecordAccounting GetEpochAccounting(IWorldState worldState, UInt256 epoch) => new(
+        ReadStorage(worldState, MintedRecordPostMintedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostBurnedBase + epoch),
+        ReadStorage(worldState, MintedRecordPostRewardBlockBase + epoch));
+
     private static UInt256 ReadStorage(IWorldState worldState, UInt256 slot)
     {
         ReadOnlySpan<byte> value = worldState.Get(new StorageCell(MintedRecordAddress, slot));
