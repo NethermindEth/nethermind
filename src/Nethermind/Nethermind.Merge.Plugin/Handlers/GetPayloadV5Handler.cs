@@ -21,5 +21,9 @@ public class GetPayloadV5Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV5Result>(EngineApiVersions.GetPayload.V5, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
-    protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV5DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
+    protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context)
+    {
+        Block block = context.CurrentBestBlock!;
+        return new GetPayloadV5DirectResponse(block, context.BlockFees, new BlobsBundleV2(block), block.ExecutionRequests!, ShouldOverrideBuilder(block));
+    }
 }

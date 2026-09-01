@@ -21,5 +21,9 @@ public class GetPayloadV6Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV6Result>(EngineApiVersions.GetPayload.V6, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
-    protected override GetPayloadV6Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV6DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
+    protected override GetPayloadV6Result GetPayloadResultFromBlock(IBlockProductionContext context)
+    {
+        Block block = context.CurrentBestBlock!;
+        return new GetPayloadV6DirectResponse(block, context.BlockFees, new BlobsBundleV2(block), block.ExecutionRequests!, ShouldOverrideBuilder(block));
+    }
 }
