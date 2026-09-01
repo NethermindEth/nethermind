@@ -91,7 +91,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
 
         lock (_lock)
         {
-            vmState.ProgramCounter = programCounter;
+            vmState.ProgramCounter = (int)programCounter;
             vmState.Gas = gas;
             vmState.DataStackHead = stackHead;
             CurrentState = vmState;
