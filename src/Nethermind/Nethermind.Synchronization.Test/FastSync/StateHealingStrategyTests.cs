@@ -40,7 +40,7 @@ public class StateHealingStrategyTests
     public void Withholds_the_decision_until_a_pivot_is_set() =>
         Assert.That(CreateStrategy().CanBalHeal, Is.False);
 
-   [Test]
+    [Test]
     public void Keeps_bal_healing_on_once_decided()
     {
         StateHealingStrategy strategy = CreateStrategy();

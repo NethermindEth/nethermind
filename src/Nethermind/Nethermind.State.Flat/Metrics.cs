@@ -316,7 +316,7 @@ public static class Metrics
     [CounterMetric]
     [Description("Block access lists replayed onto the reassembled state by BAL healing")]
     public static long BalHealingBalsApplied { get; set; }
-   
+
     [GaugeMetric]
     [Description("Lowest block still answerable from flat history (the retention floor); 0 when no window is configured or none has been pruned yet")]
     public static long FlatHistoryFloor { get; set; }
