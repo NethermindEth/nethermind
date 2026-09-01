@@ -133,6 +133,17 @@ jobs:
             cp "${GITHUB_WORKSPACE}/${source}" "${BASE_WORKTREE}/${source}"
           done
 
+          # A PR that changes an EVM API the harness calls (e.g. the opcode delegate signature) leaves
+          # the PR harness uncompilable against base. Fall back to base's own harness so the comparison
+          # still runs; the compare step flags that the two sides measured with different sources.
+          pushd "${BASE_WORKTREE}/src/Nethermind" >/dev/null
+          dotnet restore Benchmarks.slnx --locked-mode
+          if ! dotnet build Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj -c Release --no-restore; then
+            git -C "${BASE_WORKTREE}" checkout -- "${benchmark_sources[@]}"
+            echo "BASE_HARNESS_FALLBACK=true" >> "${GITHUB_ENV}"
+          fi
+          popd >/dev/null
+
       - name: Run base benchmark
         shell: bash
         run: |
@@ -293,6 +304,11 @@ jobs:
           summary_lines.append("## EVM Opcode Benchmark Diff")
           summary_lines.append("")
           summary_lines.append(f"Aggregated runs: base={len(base_logs)}, pr={len(pr_logs)}")
+          if os.environ.get("BASE_HARNESS_FALLBACK") == "true":
+              summary_lines.append(
+                  "⚠️ The PR benchmark harness does not compile against the base commit, so the base "
+                  "side ran its own harness sources. Treat the comparison as indicative if the harness itself changed."
+              )
           if os.path.exists("evm-rerun-opcodes.txt"):
               with open("evm-rerun-opcodes.txt", "r", encoding="utf-8") as f:
                   rerun_ops = [line.strip() for line in f if line.strip()]
