@@ -53,7 +53,6 @@ public static class WitnessExtensions
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                // See CreateNodeStorage: Set stores the array as-is, PutSpan would copy it.
                 db.Set(hash, code);
             }
 
