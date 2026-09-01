@@ -358,6 +358,29 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Code_staged_by_discarded_changes_is_not_persisted()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+
+        // Drops the uncommitted changes while keeping block-level state, as CallAndRestore does.
+        provider.Reset(resetBlockChanges: false);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);
+        Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
         IContainer? containerToDispose = null;

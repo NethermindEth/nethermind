@@ -461,15 +461,19 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
-        for (int i = _codeInsertJournal.Count - 1; i >= 0; i--)
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        int keep = entries.Length;
+        while (keep > 0)
         {
-            (int position, ValueHash256 codeHash) = _codeInsertJournal[i];
-            if (position <= snapshot) break;
+            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            if (entry.Position <= snapshot) break;
 
-            _codeBatchAlternate.Remove(codeHash);
-            _blockCodeInsertFilter.Delete(codeHash);
-            _codeInsertJournal.RemoveAt(i);
+            _codeBatchAlternate.Remove(entry.CodeHash);
+            _blockCodeInsertFilter.Delete(entry.CodeHash);
+            keep--;
         }
+
+        CollectionsMarshal.SetCount(_codeInsertJournal, keep);
     }
 
     public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -935,13 +939,19 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
             _codeBatch?.Clear();
+            _codeInsertJournal.Clear();
+        }
+        else
+        {
+            // The batch survives this reset, but the changes being discarded are exactly the ones the
+            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
+            RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
         _changes.Clear();
-        _codeInsertJournal.Clear();
         _needsStateRootUpdate = false;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
