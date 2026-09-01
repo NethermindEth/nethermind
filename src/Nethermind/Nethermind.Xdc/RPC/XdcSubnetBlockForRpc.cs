@@ -8,15 +8,15 @@ using Nethermind.Facade.Eth;
 namespace Nethermind.Xdc.RPC;
 
 /// <summary>
-/// Subnet-flavoured RPC block model: the same XDPoS seal as <see cref="XdcBlockForRpc"/>, but with the
-/// masternode and penalty lists spelled out as address arrays and the extra <c>nextValidators</c> list.
+/// Subnet RPC block model: the mainnet seal, but with the lists as address arrays and an added
+/// <c>nextValidators</c>.
 /// </summary>
 /// <remarks>
-/// The subnet fork's header carries <c>[]common.Address</c> where mainnet packs the addresses into a
-/// byte string, and its <c>RPCMarshalHeader</c> (XDC-Subnet <c>internal/ethapi/api.go</c>) marshals them
-/// as-is; only <c>validator</c> stays a byte string in both. The lists are unpacked from the raw header
-/// bytes rather than through the headers' cached <c>...Address</c> projections, whose lazy
-/// <see cref="System.Nullable{T}"/> write would not be atomic under concurrent RPC reads.
+/// XDC-Subnet's header holds <c>[]common.Address</c> where mainnet packs the addresses into a byte
+/// string, and its <c>RPCMarshalHeader</c> (<c>internal/ethapi/api.go</c>) marshals them as-is; only
+/// <c>validator</c> stays a byte string in both. Unpacking reads the raw header bytes rather than the
+/// headers' cached <c>...Address</c> projections, whose lazy <see cref="System.Nullable{T}"/> write is
+/// not atomic and so can tear under concurrent RPC reads.
 /// </remarks>
 public sealed class XdcSubnetBlockForRpc : BlockForRpc
 {

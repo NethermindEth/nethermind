@@ -7,15 +7,11 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Xdc.RPC;
 
-/// <summary>
-/// XDC-flavoured RPC block model: adds the XDPoS seal (<c>validator</c>) and the masternode
-/// (<c>validators</c>) and penalty (<c>penalties</c>) lists the base model has no place for.
-/// </summary>
+/// <summary>XDC RPC block model: adds the XDPoS seal and the masternode and penalty lists.</summary>
 /// <remarks>
-/// Field names and encodings follow XDPoSChain's <c>RPCMarshalHeader</c> (<c>internal/ethapi/api.go</c>),
-/// which emits all three as <c>hexutil.Bytes</c> — packed 20-byte addresses rather than JSON arrays —
-/// on every header, empty ones included. The subnet fork encodes the lists as address arrays and adds
-/// <c>nextValidators</c>; see <see cref="XdcSubnetBlockForRpc"/>.
+/// Shape follows XDPoSChain's <c>RPCMarshalHeader</c> (<c>internal/ethapi/api.go</c>): all three are
+/// <c>hexutil.Bytes</c> — packed 20-byte addresses, not JSON arrays — and all three are emitted even
+/// when empty. The subnet fork differs on both counts; see <see cref="XdcSubnetBlockForRpc"/>.
 /// </remarks>
 public sealed class XdcBlockForRpc : BlockForRpc
 {
@@ -42,10 +38,11 @@ public sealed class XdcBlockHeaderForRpc(XdcBlockHeader header, ISpecProvider? s
     public byte[] Penalties { get; set; } = header.Penalties ?? [];
 }
 
-/// <summary>
-/// Produces the XDC RPC block/header models, picking the subnet shape for subnet headers and falling
-/// back to the base (seal-agnostic) models for anything that isn't an XDC header.
-/// </summary>
+/// <summary>Produces the XDC RPC block/header models.</summary>
+/// <remarks>
+/// Subnet is matched before mainnet because <see cref="XdcSubnetBlockHeader"/> derives from
+/// <see cref="XdcBlockHeader"/>; the reverse order would give subnet blocks the mainnet shape.
+/// </remarks>
 public sealed class XdcBlockForRpcFactory : BlockForRpcFactory
 {
     public override BlockForRpc Create(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false) =>

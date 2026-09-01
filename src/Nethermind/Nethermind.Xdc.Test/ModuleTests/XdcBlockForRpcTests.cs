@@ -18,11 +18,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
-/// <summary>
-/// Guards the XDPoS header fields that <c>eth_getBlockBy*</c> and <c>newHeads</c> must carry, against the
-/// shapes the reference clients emit from <c>RPCMarshalHeader</c>: packed byte strings on XDPoSChain,
-/// address arrays plus <c>nextValidators</c> on the subnet fork.
-/// </summary>
 [TestFixture]
 public class XdcBlockForRpcTests
 {
@@ -111,7 +106,7 @@ public class XdcBlockForRpcTests
         Assert.That(factory.Create(chain.BlockTree.Head!, false, chain.SpecProvider), Is.TypeOf<XdcBlockForRpc>());
     }
 
-    /// <summary>Both the block and the standalone-header model, which must agree on the XDPoS fields.</summary>
+    /// <summary>The block and standalone-header models, which must agree on the XDPoS fields.</summary>
     private JsonElement[] Serialize(XdcBlockHeader header)
     {
         ISpecProvider specProvider = SpecProvider();
