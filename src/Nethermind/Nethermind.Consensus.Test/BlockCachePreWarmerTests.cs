@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -161,6 +162,32 @@ public class BlockCachePreWarmerTests
         }
 
         Assert.That(created, Is.Empty, "tiny blocks must not rent reactive warming environments");
+    }
+
+    [TestCase(false, "validation")]
+    [TestCase(true, "preparation")]
+    public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose)
+    {
+        TestLogger logger = new();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(
+            parallelExecution: false,
+            parallelExecutionBatchRead: false,
+            new OneLoggerLogManager(new(logger)));
+        Block block = BuildReactiveWarmBlock();
+
+        if (speculative)
+        {
+            RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance, block);
+        }
+        else
+        {
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        }
+
+        Assert.That(logger.LogList, Has.Some.EqualTo(
+            $"Started pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+        Assert.That(logger.LogList, Has.Some.EqualTo(
+            $"Finished pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
     }
 
     /// <summary>
@@ -1332,7 +1359,10 @@ public class BlockCachePreWarmerTests
             delta ?? BuildTwoSenderBlock(),
             () => preWarmer.SpeculativeMarkerPublished);
 
-    private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
+    private BlockCachePreWarmer CreatePreWarmerFromConfig(
+        bool parallelExecution,
+        bool parallelExecutionBatchRead,
+        ILogManager? logManager = null)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -1346,7 +1376,7 @@ public class BlockCachePreWarmerTests
             ParallelExecutionBatchRead = parallelExecutionBatchRead
         };
 
-        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, logManager ?? LimboLogs.Instance);
     }
 
     private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
