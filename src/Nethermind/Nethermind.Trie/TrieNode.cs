@@ -45,6 +45,27 @@ namespace Nethermind.Trie
         private const byte _warmerResolvedMask = 0b0010_0000;
 
         private byte _blockAndFlags = 0;
+
+#if ZK_EVM
+        // Single-threaded guest: no publication or compare-and-swap is needed, so both collapse to
+        // plain field access and inline into the flag properties, which are read per node touch.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte ReadBlockAndFlags() => _blockAndFlags;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
+        {
+            _blockAndFlags = newValue;
+            return comparand;
+        }
+#else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte ReadBlockAndFlags() => Volatile.Read(ref _blockAndFlags);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
+            => Interlocked.CompareExchange(ref _blockAndFlags, newValue, comparand);
+#endif
         // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
         // not atomically readable on x64. Split into two 8-byte fields that are
         // individually atomic, with a sequence counter to detect concurrent writes.
@@ -144,51 +165,51 @@ namespace Nethermind.Trie
 
         public bool IsPersisted
         {
-            get => (Volatile.Read(ref _blockAndFlags) & _persistedMask) != 0;
+            get => (ReadBlockAndFlags() & _persistedMask) != 0;
             set
             {
-                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte previousValue = ReadBlockAndFlags();
                 byte currentValue;
                 do
                 {
                     currentValue = previousValue;
                     byte newValue = (byte)(value ? (currentValue | _persistedMask) : (currentValue & ~_persistedMask));
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                    previousValue = ExchangeBlockAndFlags( newValue, currentValue);
                 } while (previousValue != currentValue);
             }
         }
 
         public bool IsBoundaryProofNode
         {
-            get => (Volatile.Read(ref _blockAndFlags) & _boundaryProof) != 0;
+            get => (ReadBlockAndFlags() & _boundaryProof) != 0;
             set
             {
-                byte previousValue = Volatile.Read(ref _blockAndFlags);
+                byte previousValue = ReadBlockAndFlags();
                 byte currentValue;
                 do
                 {
                     currentValue = previousValue;
                     byte newValue = (byte)(value ? (currentValue | _boundaryProof) : (currentValue & ~_boundaryProof));
-                    previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                    previousValue = ExchangeBlockAndFlags( newValue, currentValue);
                 } while (previousValue != currentValue);
             }
         }
 
-        public bool IsDirty => (Volatile.Read(ref _blockAndFlags) & _dirtyMask) != 0;
+        public bool IsDirty => (ReadBlockAndFlags() & _dirtyMask) != 0;
 
-        internal bool IsWarmerOwned => (Volatile.Read(ref _blockAndFlags) & _warmerOwnedMask) != 0;
+        internal bool IsWarmerOwned => (ReadBlockAndFlags() & _warmerOwnedMask) != 0;
 
-        internal bool IsWarmerResolved => (Volatile.Read(ref _blockAndFlags) & _warmerResolvedMask) != 0;
+        internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
 
         internal void MarkWarmerOwned()
         {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte previousValue = ReadBlockAndFlags();
             while (true)
             {
                 if ((previousValue & _warmerOwnedMask) != 0) return;
 
                 byte newValue = (byte)(previousValue | _warmerOwnedMask);
-                byte currentValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, previousValue);
+                byte currentValue = ExchangeBlockAndFlags( newValue, previousValue);
                 if (currentValue == previousValue) return;
 
                 previousValue = currentValue;
@@ -200,7 +221,7 @@ namespace Nethermind.Trie
         /// </summary>
         public void Seal()
         {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte previousValue = ReadBlockAndFlags();
             byte currentValue;
             do
             {
@@ -211,7 +232,7 @@ namespace Nethermind.Trie
 
                 currentValue = previousValue;
                 byte newValue = (byte)(currentValue & ~_dirtyMask);
-                previousValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue);
+                previousValue = ExchangeBlockAndFlags( newValue, currentValue);
             } while (previousValue != currentValue);
 
             [DoesNotReturn, StackTraceHidden]
@@ -669,7 +690,7 @@ namespace Nethermind.Trie
             SpinWait spinWait = default;
             while (true)
             {
-                byte currentValue = Volatile.Read(ref _blockAndFlags);
+                byte currentValue = ReadBlockAndFlags();
                 if ((currentValue & _warmerResolvedMask) != 0) return false;
 
                 if ((currentValue & _warmerResolvingMask) != 0)
@@ -679,7 +700,7 @@ namespace Nethermind.Trie
                 }
 
                 byte newValue = (byte)(currentValue | _warmerResolvingMask);
-                if (Interlocked.CompareExchange(ref _blockAndFlags, newValue, currentValue) == currentValue)
+                if (ExchangeBlockAndFlags( newValue, currentValue) == currentValue)
                 {
                     return true;
                 }
@@ -690,7 +711,7 @@ namespace Nethermind.Trie
 
         private void CompleteWarmerResolution(bool resolved)
         {
-            byte previousValue = Volatile.Read(ref _blockAndFlags);
+            byte previousValue = ReadBlockAndFlags();
             while (true)
             {
                 byte newValue = (byte)(previousValue & ~_warmerResolvingMask);
@@ -699,7 +720,7 @@ namespace Nethermind.Trie
                     newValue |= _warmerResolvedMask;
                 }
 
-                byte currentValue = Interlocked.CompareExchange(ref _blockAndFlags, newValue, previousValue);
+                byte currentValue = ExchangeBlockAndFlags( newValue, previousValue);
                 if (currentValue == previousValue) return;
 
                 previousValue = currentValue;
