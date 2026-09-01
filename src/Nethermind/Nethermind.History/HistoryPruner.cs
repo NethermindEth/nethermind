@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -45,6 +46,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IHeaderStore _headerStore;
     private readonly IDb _metadataDb;
+    private readonly IDb _blocksDb;
+    private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
+    private readonly ulong _persistedUnreclaimedFloor;
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
@@ -56,6 +60,13 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
+    private readonly ISyncConfig _syncConfig;
+    private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
+    private const int AncientHoldStaticRelogsBeforeWarn = 3;
+    private long _ancientHoldLastLogged;
+    private ulong? _ancientHoldLastLoggedPointer;
+    private int _ancientHoldStaticRelogs;
+    private bool _frontierFrozen;
     private readonly IDb _defaultReceiptsColumn;
     private readonly ulong _minDeletableBlockNumber;
 
@@ -106,6 +117,7 @@ public class HistoryPruner : IHistoryPruner
         _chainLevelInfoRepository = chainLevelInfoRepository;
         _headerStore = headerStore;
         _metadataDb = dbProvider.MetadataDb;
+        _blocksDb = dbProvider.BlocksDb;
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
@@ -116,8 +128,15 @@ public class HistoryPruner : IHistoryPruner
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
         _fastSync = syncConfig.FastSync;
+        _syncConfig = syncConfig;
         _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
+
+        (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
+        ulong snapshotPointer = persistedPointer ?? 0;
+        ulong barrierFloor = _blockTree.GetLowestBlock(); // still the config barrier here - nothing has raised it yet
+        // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
+        _persistedUnreclaimedFloor = ulong.Max(ulong.Min(persistedCursor ?? snapshotPointer, snapshotPointer), barrierFloor);
 
         CheckConfig();
 
@@ -182,6 +201,14 @@ public class HistoryPruner : IHistoryPruner
             return _oldestBlockHeader;
         }
     }
+
+    // Deliberately lock-free - this sits on the eth_getLogs path, and the first pruning pass or
+    // OldestBlockHeader access drives the load, which the ancient-bodies hold can defer for the whole
+    // backfill. Until then the answer is the later of the constructor's snapshot of the persisted cursors
+    // - exact, since nothing moves them in this process before the load - and the configured barrier:
+    // refusing more than necessary beats serving a reclaimed height silently short.
+    public ulong OldestUnreclaimedBlockNumber =>
+        _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
     private ulong? CalculateRollingCutoff(uint retentionEpochs)
     {
@@ -274,8 +301,13 @@ public class HistoryPruner : IHistoryPruner
                 // Before the interval gate: the read side refuses every sliced address until this has validated
                 // the stamps, and the first interval boundary can be most of an hour away. The flag keeps the
                 // uncontended fast path honest - another caller loading the pointers must not skip this tick.
-                _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
-                _stampsValidated = true;
+                // A frozen frontier must not stamp: the stamp never lowers, and this one would cap slice
+                // coverage at a mid-backfill depth forever.
+                if (!_frontierFrozen)
+                {
+                    _receiptRetention.OnPruningPassStarting(OldestStoredReceipts(), _blocksReclaimCursor, _sliceCleanupCursor);
+                    _stampsValidated = true;
+                }
 
                 if (!ShouldPruneHistory())
                 {
@@ -331,6 +363,21 @@ public class HistoryPruner : IHistoryPruner
 
     internal bool SetDeletePointerToOldestBlock()
     {
+        // While the ancient bodies feed is still descending, the oldest existing body is the download
+        // frontier, not the truth - a pointer latched from it would over-report forever.
+        bool frontierFrozen = false;
+        if (AncientBodiesStillDownloading())
+        {
+            if (_syncConfig.SynchronizationEnabled)
+            {
+                return false;
+            }
+
+            // With synchronization disabled no feed can move the frontier, so it is the truth for this
+            // process - but it is never persisted, so the next syncing process re-derives the boundary.
+            frontierFrozen = true;
+        }
+
         ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
             _minDeletableBlockNumber,
             _blockTree.SyncPivot.BlockNumber,
@@ -340,11 +387,87 @@ public class HistoryPruner : IHistoryPruner
         if (oldestBlockNumber is not null)
         {
             UpdateBlocksDeletePointer(oldestBlockNumber.Value);
-            SaveDeletePointers();
+            if (frontierFrozen)
+            {
+                _frontierFrozen = true;
+                _lastSavedBlocksDeletePointer = _blocksDeletePointer;
+            }
+            else
+            {
+                SaveDeletePointers();
+            }
             return true;
         }
 
         return false;
+    }
+
+    private bool AncientBodiesStillDownloading()
+    {
+        // Keyed on the tree pivot, like the feed itself: a CL-discovered pivot never reaches the sync config.
+        ulong pivot = _blockTree.SyncPivot.BlockNumber;
+        if (!_fastSync || pivot == 0 || !_syncConfig.DownloadBodiesInFastSync)
+        {
+            return false;
+        }
+
+        // The feed persists a completion marker when it reaches its own latched barrier, so the release
+        // never has to reconstruct a barrier that drifts with the pruning cutoff. The static barrier is a
+        // term of the feed's ComputeBarrier and so always releasable, and a pointer parked at the barrier
+        // the feed recorded when it last started is a finished descent even if the marker predates this
+        // build - only for a descent whose barrier never moved, since a rolling cutoff climbs during a
+        // long descent and parks the pointer above the recorded value; a legacy database self-heals
+        // regardless, because the feed activates once and writes the marker. A written pointer above
+        // those with no marker is a descent in progress - the persisted pointer only moves every flush
+        // interval, so its quietness proves nothing and the hold stays; an absent pointer is a feed that
+        // has not run yet, which a synchronizing process eventually runs.
+        if (_metadataDb.KeyExists(MetadataDbKeys.AncientBodiesDownloadComplete))
+        {
+            return false;
+        }
+
+        byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
+        ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
+        ulong barrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
+        if (pointer <= barrier)
+        {
+            return false;
+        }
+
+        byte[]? barrierWhenStartedBytes = _metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted);
+        if (pointer is not null && barrierWhenStartedBytes is not null)
+        {
+            ulong barrierWhenStarted = barrierWhenStartedBytes.AsSpan().ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+            // Only while the feed still targets at least that barrier: a config edit that lowered it reopens
+            // the descent, and the recorded value then describes the descent that finished, not the current one.
+            if (barrierWhenStarted <= ulong.Max(barrier, CutoffBlockNumber ?? 0) && pointer <= barrierWhenStarted)
+            {
+                return false;
+            }
+        }
+
+        bool firstHoldLog = _ancientHoldLastLogged == 0;
+        if (_syncConfig.SynchronizationEnabled && (firstHoldLog || Stopwatch.GetElapsedTime(_ancientHoldLastLogged) >= AncientHoldRelogInterval))
+        {
+            _ancientHoldLastLogged = Stopwatch.GetTimestamp();
+            // Info while the frontier moved since the last relog - a descending backfill is the healthy shape
+            // in every pruning mode - and Warn once it sat still for several intervals: that is the stuck hold
+            // worth alerting on, in-memory movement over a ten-minute window being a fair progress signal even
+            // though the persisted pointer's flush resolution makes it useless as a release signal.
+            _ancientHoldStaticRelogs = !firstHoldLog && pointer == _ancientHoldLastLoggedPointer ? _ancientHoldStaticRelogs + 1 : 0;
+            _ancientHoldLastLoggedPointer = pointer;
+            string holdMessage = $"Holding the history boundary while the ancient bodies backfill is descending (currently #{pointer?.ToString() ?? "none"}).";
+            if (_ancientHoldStaticRelogs >= AncientHoldStaticRelogsBeforeWarn)
+            {
+                if (_logger.IsWarn) _logger.Warn(holdMessage);
+            }
+            else if (_logger.IsInfo)
+            {
+                _logger.Info(holdMessage);
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -874,6 +997,14 @@ public class HistoryPruner : IHistoryPruner
         return ulong.Max(_blocksDeletePointer, ulong.Max(_ancientReceiptsBarrier, receiptsFloor));
     }
 
+    private static (ulong? Pointer, ulong? Cursor) ReadPersistedPointers(IDb metadataDb)
+    {
+        byte[]? pointerBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
+        byte[]? cursorBytes = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
+        return (pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong(),
+            cursorBytes is null ? null : new RlpReader(cursorBytes).DecodeULong());
+    }
+
     private bool TryLoadDeletePointers()
     {
         if (_hasLoadedDeletePointers)
@@ -881,8 +1012,8 @@ public class HistoryPruner : IHistoryPruner
             return true;
         }
 
-        byte[]? blocksVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
-        if (blocksVal is null)
+        (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
+        if (persistedPointer is null)
         {
             if (!SetDeletePointerToOldestBlock())
             {
@@ -891,16 +1022,15 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateBlocksDeletePointer(ulong.Max(new RlpReader(blocksVal).DecodeULong(), _minDeletableBlockNumber));
+            UpdateBlocksDeletePointer(ulong.Max(persistedPointer.Value, _minDeletableBlockNumber));
             _lastSavedBlocksDeletePointer = _blocksDeletePointer;
         }
 
-        byte[]? reclaimVal = _metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
         // Absent on a database pruned by the per-block code, where everything below the boundary is already gone.
-        _blocksReclaimCursor = reclaimVal is null
+        _blocksReclaimCursor = persistedCursor is null
             ? _blocksDeletePointer
-            : ulong.Max(new RlpReader(reclaimVal).DecodeULong(), _minDeletableBlockNumber);
-        _lastSavedBlocksReclaimCursor = reclaimVal is null ? ulong.MaxValue : _blocksReclaimCursor;
+            : ulong.Max(persistedCursor.Value, _minDeletableBlockNumber);
+        _lastSavedBlocksReclaimCursor = persistedCursor is null ? ulong.MaxValue : _blocksReclaimCursor;
 
         byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         // Until BAL pruning runs once, the BAL pointer trails the blocks pointer because BALs are
@@ -917,6 +1047,14 @@ public class HistoryPruner : IHistoryPruner
             ? _minDeletableBlockNumber
             : ulong.Max(new RlpReader(cleanupVal).DecodeULong(), _minDeletableBlockNumber);
         _lastSavedSliceCleanupCursor = cleanupVal is null ? ulong.MaxValue : _sliceCleanupCursor;
+
+        // A frozen frontier must not leak to disk through the first-save sentinels either.
+        if (_frontierFrozen)
+        {
+            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+            _lastSavedBalsDeletePointer = _balsDeletePointer;
+            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
+        }
 
         // Loaded here rather than lazily in the sweep, because ShouldPruneHistory has to see it: a sweep left
         // half-finished is work owed, and if nothing else were owed the pass would never run to notice.
@@ -941,33 +1079,37 @@ public class HistoryPruner : IHistoryPruner
         // both directions, only a shared batch could.
         _receiptRetention.OnPruningProgress(_blocksReclaimCursor, _sliceCleanupCursor);
 
-        // Cursor first, and load-bearing: these are independent writes, and a restart that finds a boundary with no
-        // cursor reads it as "already level" and treats an unreclaimed backlog as finished, forever.
-        if (_blocksReclaimCursor != _lastSavedBlocksReclaimCursor)
+        // One batch, and a boundary write carries the cursors with it: a boundary that lands without its
+        // cursor reads an unreclaimed backlog as "already level" on the next load, forever.
+        bool boundaryDirty = _blocksDeletePointer != _lastSavedBlocksDeletePointer;
+        bool cursorDirty = boundaryDirty || _blocksReclaimCursor != _lastSavedBlocksReclaimCursor;
+        bool cleanupDirty = _sliceCleanupCursor != _lastSavedSliceCleanupCursor;
+        bool balsDirty = boundaryDirty || _balsDeletePointer != _lastSavedBalsDeletePointer;
+        if (!cursorDirty && !cleanupDirty && !balsDirty)
         {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(_blocksReclaimCursor).Bytes);
-            _lastSavedBlocksReclaimCursor = _blocksReclaimCursor;
+            return;
         }
 
-        if (_blocksDeletePointer != _lastSavedBlocksDeletePointer)
+        ulong cursorToSave = _blocksReclaimCursor;
+        ulong boundaryToSave = _blocksDeletePointer;
+        ulong cleanupToSave = _sliceCleanupCursor;
+        ulong balsToSave = _balsDeletePointer;
+        using (IWriteBatch batch = _metadataDb.StartWriteBatch())
         {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_blocksDeletePointer).Bytes);
-            _lastSavedBlocksDeletePointer = _blocksDeletePointer;
-            if (_logger.IsDebug) _logger.Debug($"Persisting oldest block stored = #{_blocksDeletePointer} to disk.");
+            if (cursorDirty) batch.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(cursorToSave).Bytes);
+            if (boundaryDirty) batch.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundaryToSave).Bytes);
+            if (cleanupDirty) batch.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(cleanupToSave).Bytes);
+            if (balsDirty) batch.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(balsToSave).Bytes);
         }
 
-        if (_sliceCleanupCursor != _lastSavedSliceCleanupCursor)
-        {
-            _metadataDb.Set(MetadataDbKeys.HistoryPruningSliceCleanupCursor, Rlp.Encode(_sliceCleanupCursor).Bytes);
-            _lastSavedSliceCleanupCursor = _sliceCleanupCursor;
-        }
+        // Only after the batch committed: a throwing commit must leave these claiming unsaved.
+        if (cursorDirty) _lastSavedBlocksReclaimCursor = cursorToSave;
+        if (boundaryDirty) _lastSavedBlocksDeletePointer = boundaryToSave;
+        if (cleanupDirty) _lastSavedSliceCleanupCursor = cleanupToSave;
+        if (balsDirty) _lastSavedBalsDeletePointer = balsToSave;
 
-        if (_balsDeletePointer != _lastSavedBalsDeletePointer)
-        {
-            _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
-            _lastSavedBalsDeletePointer = _balsDeletePointer;
-            if (_logger.IsDebug) _logger.Debug($"Persisting oldest BAL stored = #{_balsDeletePointer} to disk.");
-        }
+        if (_logger.IsDebug && boundaryDirty) _logger.Debug($"Persisting oldest block stored = #{boundaryToSave} to disk.");
+        if (_logger.IsDebug && balsDirty) _logger.Debug($"Persisting oldest BAL stored = #{balsToSave} to disk.");
     }
 
     private void UpdateBlocksDeletePointer(ulong newDeletePointer)

@@ -36,6 +36,12 @@ namespace Nethermind.TxPool
         /// A process-independent fingerprint that changes whenever the validator's behavior or configuration changes.
         /// </summary>
         string PersistenceFingerprint { get; }
+
+        /// <summary>
+        /// Validates rules not already covered by a successful full transaction-validation pass.
+        /// </summary>
+        ValidationResult IsWellFormedAfterFullValidation(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec);
     }
 
     /// <summary>

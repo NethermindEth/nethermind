@@ -101,7 +101,7 @@ namespace Nethermind.Core.Caching
 
             [DoesNotReturn]
             static void ThrowInvalidOperation() => throw new InvalidOperationException(
-                                    $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
+                                    $"{nameof(LruKeyCache<>)} called {nameof(Replace)} when empty.");
         }
     }
 }

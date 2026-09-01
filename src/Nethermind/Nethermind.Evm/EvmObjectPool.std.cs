@@ -56,7 +56,7 @@ internal static class EvmPoolTiers
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyPools() =>
         throw new InvalidOperationException(
-            $"More than {MaxPools} {nameof(EvmObjectPool<object>)} instances were constructed; raise the slot count.");
+            $"More than {MaxPools} {nameof(EvmObjectPool<>)} instances were constructed; raise the slot count.");
 }
 
 /// <summary>
@@ -219,6 +219,6 @@ internal sealed class EvmObjectPool<T>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDuplicatePool() =>
         throw new InvalidOperationException(
-            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; each would keep its own " +
+            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<>)}; each would keep its own " +
             "per-thread free list, halving reuse and doubling retention. Hoist the pool to a single instance.");
 }
