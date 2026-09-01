@@ -103,8 +103,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             // for easier debugging
             _controller.Report(Flooding);
+            for (int i = 0; i < 100; i++)
+            {
+                _controller.Report(Flooding);
+            }
 
-            _session.Received()
+            _session.Received(1)
                 .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
         }
 

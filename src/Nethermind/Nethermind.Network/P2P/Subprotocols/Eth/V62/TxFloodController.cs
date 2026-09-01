@@ -38,6 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private long _notAcceptedSinceLastCheck;
         private int _unproductivePooledTransactionWindows;
         private bool _isLegacyDowngraded;
+        private bool _isLegacyDisconnectRequested;
         private bool _isPooledTransactionDowngraded;
 
         public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger, Random? random = null)
@@ -102,8 +103,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
                             _isLegacyDowngraded = true;
                         }
-                        else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
+                        else if (!_isLegacyDisconnectRequested
+                            && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
                         {
+                            _isLegacyDisconnectRequested = true;
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,
                                 $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds}",
@@ -207,6 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _checkpoint = now;
                 _notAcceptedSinceLastCheck = 0;
                 _isLegacyDowngraded = false;
+                _isLegacyDisconnectRequested = false;
                 _previousPooledTransactionSample.Clear();
                 (_currentPooledTransactionSample, _previousPooledTransactionSample) =
                     (_previousPooledTransactionSample, _currentPooledTransactionSample);
