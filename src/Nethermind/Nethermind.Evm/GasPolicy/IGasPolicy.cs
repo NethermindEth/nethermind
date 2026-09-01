@@ -30,7 +30,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract ulong GetRemainingGas(in TSelf gas);
 
     /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
-    static abstract ulong GetColdAccountAccessCost(IReleaseSpec spec);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) =>
+        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) => Math.Max(blockExecutionGas, blockStateGas);
