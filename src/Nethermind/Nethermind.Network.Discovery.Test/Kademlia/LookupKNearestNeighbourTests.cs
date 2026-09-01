@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -21,7 +25,7 @@ public class LookupKNearestNeighbourTests
     private const int N1 = 4;
     private const int N2 = 5;
 
-    private static (LookupKNearestNeighbour<int, int, int> Lookup, IRoutingTable<int, int> Routing, INodeHealthTracker<int> Health) CreateLookup(int alpha, TimeSpan hardTimeout, int[] seeds)
+    private static (LookupKNearestNeighbour<int, int, int> Lookup, IRoutingTable<int, int> Routing, INodeHealthTracker<int> Health) CreateLookup(int alpha, TimeSpan hardTimeout, int[] seeds, ILoggerFactory? loggerFactory = null)
     {
         IRoutingTable<int, int> routing = Substitute.For<IRoutingTable<int, int>>();
         routing.GetKNearestNeighbour(Arg.Any<int>(), Arg.Any<bool>()).Returns(seeds);
@@ -39,7 +43,8 @@ public class LookupKNearestNeighbourTests
                 Alpha = alpha,
                 KSize = 8,
                 LookupFindNeighbourHardTimeout = hardTimeout,
-            });
+            },
+            loggerFactory ?? NullLoggerFactory.Instance);
 
         return (lookup, routing, health);
     }
@@ -234,5 +239,126 @@ public class LookupKNearestNeighbourTests
             token);
 
         Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_transport_failure_is_not_logged_as_warning(CancellationToken token)
+    {
+        // A torn-down channel raises DotNetty's ClosedChannelException (: IOException); like a
+        // SocketException it is expected transport churn — logged at Trace, never at Warning.
+        CapturingLogger logger = new(LogLevel.Trace);
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
+
+        _ = await lookup.Lookup(Self, 8, (_, _) => throw new IOException("channel closed"), token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_unexpected_failure_is_logged_as_warning(CancellationToken token)
+    {
+        // A non-transport failure is unexpected and should still be reported.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
+
+        _ = await lookup.Lookup(Self, 8, (_, _) => throw new InvalidOperationException("boom"), token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.True);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_failure_after_cancellation_is_not_logged_as_warning(CancellationToken token)
+    {
+        // After the lookup token is cancelled, a non-transport teardown failure (e.g. DotNetty's
+        // RejectedExecutionException from the disposed event loop) is expected and must stay quiet —
+        // otherwise a graceful restart floods WARN and trips the very detector this fix targets.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+        _ = await lookup.Lookup(Self, 8, (_, _) =>
+        {
+            cts.Cancel();
+            throw new InvalidOperationException("torn down");
+        }, cts.Token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Find_neighbour_unexpected_failure_during_drain_is_logged_as_warning(CancellationToken token)
+    {
+        // The other seeds return nothing, so the lookup finishes and drains — cancelling its internal
+        // token while the caller's token stays live. Seed1 is still in flight and then fails with a
+        // non-transport exception: a real fault that must warn, not be silenced as shutdown teardown.
+        CapturingLogger logger = new();
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1], new CapturingLoggerFactory(logger));
+
+        // Gate the empty-returning ops on Seed1's op having started, so Seed1's worker has taken its round
+        // before the other worker consumes the Alpha*2 rounds that trip the no-better-result break —
+        // otherwise Seed1's worker could break without ever calling the op and the drain never happens.
+        TaskCompletionSource seed1Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _ = await lookup.Lookup(Self, 1, async (node, findToken) =>
+        {
+            if (node != Seed1)
+            {
+                await seed1Started.Task;
+                return [];
+            }
+
+            seed1Started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, findToken);
+                return [];
+            }
+            catch (OperationCanceledException)
+            {
+                // The drain cancelled the internal token; the caller's token is still live.
+                throw new InvalidOperationException("failed during drain");
+            }
+        }, token);
+
+        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning && e.Message.Contains("Find neighbour op failed")), Is.True);
+    }
+
+    private readonly record struct LogEntry(LogLevel Level, string Message);
+
+    private sealed class CapturingLoggerFactory(ILogger logger) : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
+    }
+
+    private sealed class CapturingLogger(LogLevel minLevel = LogLevel.Information) : ILogger
+    {
+        private readonly ConcurrentQueue<LogEntry> _entries = new();
+        public IEnumerable<LogEntry> Entries => _entries;
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        // Default to a production node's Info floor (Trace/Debug disabled) so the warning-gate is
+        // actually exercised; a test that needs the Trace branch opts in with a lower minLevel.
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= minLevel;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => _entries.Enqueue(new LogEntry(logLevel, formatter(state, exception)));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose() { }
+        }
     }
 }
