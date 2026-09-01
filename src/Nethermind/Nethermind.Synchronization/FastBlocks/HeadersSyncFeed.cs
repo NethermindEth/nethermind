@@ -579,7 +579,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         /// <summary>
         /// Queues <paramref name="batch"/>'s range for download again, after inserting it failed.
-        /// A new batch is used because callers dispose the original, which may already be queued.
+        /// A new batch is used because <c>InsertHeaders</c> may already have queued this one.
         /// </summary>
         /// <remarks>
         /// <see cref="ProcessPersistedPortion"/> is skipped: it inserts headers too, so it can fail
