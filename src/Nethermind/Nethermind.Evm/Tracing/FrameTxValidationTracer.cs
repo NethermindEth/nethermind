@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -12,12 +13,15 @@ namespace Nethermind.Evm.Tracing;
 /// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
 /// and captures the resolved payer.</summary>
 /// <remarks>EIP8141-GAP: deploy-frame carve-outs unhandled, so the processor declines any prefix containing one.</remarks>
-public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
+public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec, CancellationToken token = default)
     : TxTracer, IFrameTxReceiptTracer
 {
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
     // SetOperationStack, as the operands aren't available any earlier.
     private int _targetStackIndex = -1;
+
+    public bool IsCancelable => token.CanBeCanceled;
+    public bool IsCancelled => token.IsCancellationRequested;
 
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;

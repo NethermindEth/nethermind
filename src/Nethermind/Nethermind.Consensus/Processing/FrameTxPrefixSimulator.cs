@@ -26,11 +26,22 @@ public sealed class FrameTxPrefixSimulator(
     ISpecProvider specProvider,
     ILogManager logManager) : IFrameTxPrefixSimulator, IDisposable
 {
+    private static readonly TimeSpan DefaultWallClockBudget = TimeSpan.FromMilliseconds(500);
+
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
     private readonly object _lock = new();
+    private readonly TimeSpan _wallClockBudget = DefaultWallClockBudget;
     private IReadOnlyTxProcessorSource? _source;
     private bool _disposed;
     private bool _nodeFaultReported;
+
+    internal FrameTxPrefixSimulator(
+        IReadOnlyTxProcessingEnvFactory envFactory,
+        IBlockFinder blockFinder,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        TimeSpan wallClockBudget) : this(envFactory, blockFinder, specProvider, logManager) =>
+        _wallClockBudget = wallClockBudget;
 
     public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default)
     {
@@ -55,6 +66,8 @@ public sealed class FrameTxPrefixSimulator(
             }
 
             IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
+            using CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+            budget.CancelAfter(_wallClockBudget);
             try
             {
                 using IReadOnlyTxProcessingScope scope = source.Build(head);
@@ -62,7 +75,7 @@ public sealed class FrameTxPrefixSimulator(
                 processor.SetBlockExecutionContext(head);
 
                 IReleaseSpec spec = specProvider.GetSpec(head);
-                FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec);
+                FrameTxValidationTracer tracer = new(tx.SenderAddress, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, budget.Token);
                 ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
                 if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
                 TransactionResult result = processor.Process(tx, tracer, opts);
@@ -81,6 +94,11 @@ public sealed class FrameTxPrefixSimulator(
                 }
 
                 return FrameTxSimulationResult.Accept(tracer.Payer);
+            }
+            catch (OperationCanceledException) when (budget.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation exceeded its {_wallClockBudget.TotalMilliseconds}ms budget; rejecting.");
+                return FrameTxSimulationResult.Reject("validation-prefix simulation exceeded its time budget");
             }
             catch (OperationCanceledException)
             {

@@ -159,11 +159,33 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
 
+    [Test]
+    public void Simulate_ExceedsWallClockBudget_RejectsInsteadOfBlocking()
+    {
+        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, wallClockBudget: TimeSpan.FromMilliseconds(20));
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns(callInfo =>
+            {
+                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
+                SpinWait.SpinUntil(() => tracer.IsCancelled, TimeSpan.FromSeconds(5));
+                throw new OperationCanceledException();
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(Tx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Reason, Does.Contain("budget"));
+        }
+    }
+
     private static FrameTxPrefixSimulator CreateSimulator(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
         bool hasHead = true,
-        InterfaceLogger? logSink = null)
+        InterfaceLogger? logSink = null,
+        TimeSpan? wallClockBudget = null)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -180,7 +202,10 @@ public class FrameTxPrefixSimulatorTests
         blockFinder.Head.Returns(hasHead ? Build.A.Block.WithNumber(1).TestObject : null);
 
         ILogManager logManager = logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink));
-        return new FrameTxPrefixSimulator(envFactory, blockFinder, new TestSpecProvider(Eip8141Prototype.Instance), logManager);
+        TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
+        return wallClockBudget is null
+            ? new FrameTxPrefixSimulator(envFactory, blockFinder, specProvider, logManager)
+            : new FrameTxPrefixSimulator(envFactory, blockFinder, specProvider, logManager, wallClockBudget.Value);
     }
 
     private static Transaction Tx() => Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;

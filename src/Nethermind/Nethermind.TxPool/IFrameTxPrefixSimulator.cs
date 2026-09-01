@@ -13,7 +13,8 @@ public interface IFrameTxPrefixSimulator
     /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
     /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
     /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
-    /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
+    /// <param name="token">Checked at entry and, once cancelled, aborts a running simulation. Independently,
+    /// the implementation bounds each simulation by a wall-clock budget and rejects one that exceeds it.</param>
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default);
 }
 
