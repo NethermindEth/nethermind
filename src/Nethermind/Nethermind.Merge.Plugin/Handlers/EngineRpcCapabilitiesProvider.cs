@@ -30,7 +30,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         return Volatile.Read(ref _jsonRpc)!;
     }
 
-    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v2/payloads"</c>).</summary>
+    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
     public FrozenDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
     {
         EnsureBuilt();
@@ -120,7 +120,6 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostBlobsV2, Gate(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostBlobsV3, Gate(spec.IsEip7594Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7594Enabled));
 
         // Amsterdam
         Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7928Enabled));
@@ -129,6 +128,13 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7843Enabled));
+
+        // Bogota
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV6), SszRestPaths.PostPayloads, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getInclusionListV1), SszRestPaths.GetInclusionList, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
 
         json = jsonLocal;
         ssz = sszLocal;

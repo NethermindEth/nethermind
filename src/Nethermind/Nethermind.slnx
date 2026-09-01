@@ -7,6 +7,10 @@
     <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
   </Folder>
   <Folder Name="/Plugins/" />
+  <Folder Name="/Plugins/PortfolioViewer/">
+    <Project Path="Nethermind.PortfolioViewer.Plugin.Test/Nethermind.PortfolioViewer.Plugin.Test.csproj" />
+    <Project Path="Nethermind.PortfolioViewer.Plugin/Nethermind.PortfolioViewer.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Flashbots/">
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
@@ -16,6 +20,7 @@
     <Project Path="Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/OpcodeTracing/">
+    <Project Path="Nethermind.OpcodeTracing.Plugin.Test/Nethermind.OpcodeTracing.Plugin.Test.csproj" />
     <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/Hive/">
@@ -71,6 +76,7 @@
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
+    <Project Path="Nethermind.Init.Snapshot.Test/Nethermind.Init.Snapshot.Test.csproj" />
     <Project Path="Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
     <Project Path="Nethermind.KeyStore.Test/Nethermind.KeyStore.Test.csproj" />
@@ -88,6 +94,7 @@
     <Project Path="Nethermind.Shutter.Test/Nethermind.Shutter.Test.csproj" />
     <Project Path="Nethermind.Sockets.Test/Nethermind.Sockets.Test.csproj" />
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
+    <Project Path="Nethermind.State.Flat.History.Test/Nethermind.State.Flat.History.Test.csproj" />
     <Project Path="Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj" />
     <Project Path="Nethermind.State.Pbt.Test/Nethermind.State.Pbt.Test.csproj" />
     <Project Path="Nethermind.State.Test/Nethermind.State.Test.csproj" />
@@ -151,6 +158,7 @@
   <Project Path="Nethermind.Sockets/Nethermind.Sockets.csproj" />
   <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
   <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
+  <Project Path="Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
   <Project Path="Nethermind.State.Pbt/Nethermind.State.Pbt.csproj" />
   <Project Path="Nethermind.State/Nethermind.State.csproj" />
   <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />

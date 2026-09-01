@@ -6,6 +6,7 @@ namespace Nethermind.Blockchain.Receipts;
 public class ReceiptConfig : IReceiptConfig
 {
     public bool StoreReceipts { get; set; } = true;
+    public bool DeriveFromState { get; set; } = false;
     public bool ReceiptsMigration { get; set; } = false;
     public int ReceiptsMigrationDegreeOfParallelism { get; set; } = 0;
     public bool ForceReceiptsMigration { get; set; } = false;

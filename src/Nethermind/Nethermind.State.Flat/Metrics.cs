@@ -300,4 +300,30 @@ public static class Metrics
     [Description("Persisted-snapshot compaction wall-clock time, by compact size")]
     [ExponentialPowerHistogramMetric(LabelNames = ["size"], Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PersistedSnapshotCompactTime { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Highest block whose state history is captured (the contiguous-from-genesis watermark); 0 when history is disabled or empty")]
+    public static long FlatHistoryWatermark { get; set; }
+
+    [GaugeMetric]
+    [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
+    public static long FlatHistoryCaptureDisabled { get; set; }
+
+    [GaugeMetric]
+    [Description("Lowest block still answerable from flat history (the retention floor); 0 when no window is configured or none has been pruned yet")]
+    public static long FlatHistoryFloor { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of rows deleted by the history window pruner")]
+    public static long FlatHistoryPrunedRows { get; set; }
+
+    [CounterMetric]
+    [Description("Number of accounts whose storage history was poisoned because a self-destruct exceeded the per-slot enumeration cap; storage reads below those blocks fail closed for that account")]
+    public static long FlatHistoryPoisonedDestructs { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of history window pruner passes that left work for the next pass - the wall-clock budget expired mid-sweep, a floor drain did not finish inside it, or a completed cycle found the floor had advanced under it and queued the next cycle")]
+    public static long FlatHistoryPrunePassesYielded { get; set; }
 }

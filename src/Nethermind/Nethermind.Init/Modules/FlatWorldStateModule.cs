@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -139,6 +140,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             builder
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
+        }
+
+        if (flatDbConfig.HistoryEnabled)
+        {
+            builder.AddModule(new FlatHistoryModule());
+        }
+        else if (flatDbConfig.HistoryRetentionBlocks != 0
+            || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
+            || flatDbConfig.HistoryVerifyEveryBlock)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetentionBlocks, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
+                "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
+                "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
 

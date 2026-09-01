@@ -180,6 +180,19 @@ namespace Nethermind.Blockchain
         /// </remarks>
         void ReportBadBlock(Block badBlock);
 
+        /// <summary>Deletes every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever
+        /// their hashes and whether or not a chain level lists them.</summary>
+        void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive);
+
+        /// <summary>Drops many ranges in one call, so the block store can invalidate its hash-keyed cache once
+        /// instead of once per range. The default loops <see cref="DeleteOldBlockRange"/>.</summary>
+        void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges) DeleteOldBlockRange(fromInclusive, toExclusive);
+        }
+
+        /// <summary>Drops one old block's body, for a caller keeping some of the heights in a range it is reclaiming.
+        /// </summary>
         void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
@@ -231,6 +244,10 @@ namespace Nethermind.Blockchain
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
         (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+
+        /// <summary>Publishes the served-history floor surfaced by <see cref="IBlockFinder.LowestServedBlock"/>.
+        /// A no-op everywhere except the live tree - read-only and overlay trees never own the floor.</summary>
+        void UpdateLowestServedBlock(ulong lowestServed) { }
 
         public readonly struct ForkChoiceUpdateEventArgs(Block? head, ulong safe, ulong finalized)
         {

@@ -140,8 +140,52 @@ public class KademliaAdapterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, endpoint), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(endpoint.Address.MapToIPv6(), endpoint.Port)), Is.True);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.17.0.1:30304")), Is.False);
             Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("172.19.0.2:30305")), Is.False);
+        }
+    }
+
+    [Test]
+    public void HasDiscoveryEndpoint_ShouldRejectNonIpv4IpEntry()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new NonIpv4IpEntry(IPAddress.Parse("2001:db8::c000:201")));
+        record.SetEntry(new UdpEntry(30304));
+
+        Assert.That(
+            KademliaAdapter.HasDiscoveryEndpoint(record, IPEndPoint.Parse("192.0.2.1:30304")),
+            Is.False);
+    }
+
+    [Test]
+    public void HasDiscoveryEndpoint_ShouldMatchBothFamiliesInDualStackRecord()
+    {
+        IPAddress ip = IPAddress.Parse("172.19.0.2");
+        IPAddress ip6 = IPAddress.Parse("2001:db8::1");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            ip,
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(ip6));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+        NodeRecord fallbackRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            ip,
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(ip6)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip, 30304)), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip6, 30305)), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip6, 30304)), Is.False);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(fallbackRecord, new IPEndPoint(ip6, 30304)), Is.True);
         }
     }
 
@@ -154,8 +198,7 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 NodeRecord.FromEnrString(record.ToString()),
                 testCase.ExpectedNodeId,
-                testCase.AllowNonRoutable,
-                ExecutionLayerDiscv5RecordFilter.Instance),
+                testCase.AllowNonRoutable),
             Is.EqualTo(testCase.ExpectedResult));
     }
 
@@ -179,7 +222,6 @@ public class KademliaAdapterTests
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
-            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
     }
 
@@ -223,7 +265,7 @@ public class KademliaAdapterTests
             TestItem.PrivateKeyB.PublicKey.Hash,
             AllowNonRoutable: false,
             IncludeEth2: true,
-            ExpectedResult: false)).SetName("Rejects consensus-only record");
+            ExpectedResult: true)).SetName("Allows consensus-only routing record");
     }
 
     public readonly record struct AcceptableNodeRecordCase(
@@ -233,4 +275,9 @@ public class KademliaAdapterTests
         bool AllowNonRoutable,
         bool IncludeEth2,
         bool ExpectedResult);
+
+    private sealed class NonIpv4IpEntry(IPAddress ipAddress) : Ip6Entry(ipAddress)
+    {
+        public override string Key => EnrContentKey.Ip;
+    }
 }

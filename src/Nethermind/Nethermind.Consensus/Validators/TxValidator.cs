@@ -101,8 +101,15 @@ public sealed class TxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
@@ -112,10 +119,17 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -136,10 +150,15 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
-        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
+        if (transaction is LightTransaction)
         {
-            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            return TxErrorMessages.InvalidTransactionForm;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
+        {
+            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
@@ -150,10 +169,23 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
-public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
+public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = null) : ITxValidator
 {
+    internal static readonly ReleaseSpecTxValidator Instance = new();
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !validate(releaseSpec) ? TxErrorMessages.InvalidTxType(releaseSpec.Name) : ValidationResult.Success;
+        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+            ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
+            : ValidationResult.Success;
+
+    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
+    {
+        TxType.AccessList => releaseSpec.IsEip2930Enabled,
+        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+        TxType.Blob => releaseSpec.IsEip4844Enabled,
+        TxType.SetCode => releaseSpec.IsEip7702Enabled,
+        _ => true,
+    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
@@ -296,20 +328,36 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     private MempoolBlobTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, options),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, TxValidationOptions options)
         {
-            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
+            {
+                return TxErrorMessages.InvalidProofVersion;
+            }
 
-            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
+            int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
+
+            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
+                !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }

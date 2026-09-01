@@ -591,6 +591,50 @@ public class EncodingTest
         }
     }
 
+    /// <summary>
+    /// A list of fixed-size byte vectors encodes identically whether each item is a wrapper
+    /// container holding a <c>byte[]</c> or a converter-backed value type, so replacing the
+    /// former with the latter to drop the per-item allocation is a wire-compatible refactor.
+    /// </summary>
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(3)]
+    public void Converter_item_list_encodes_identically_to_wrapped_byte_vector_list(int itemCount)
+    {
+        const int itemLength = TestBytes48SszVectorTypeConverter.Length;
+
+        byte[][] items = new byte[itemCount][];
+        for (int i = 0; i < itemCount; i++)
+        {
+            items[i] = new byte[itemLength];
+            for (int j = 0; j < itemLength; j++) items[i][j] = (byte)((i * itemLength + j) & 0xFF);
+        }
+
+        WrappedByteVectorItem[] wrapped = new WrappedByteVectorItem[itemCount];
+        TestBytes48[] converted = new TestBytes48[itemCount];
+        for (int i = 0; i < itemCount; i++)
+        {
+            wrapped[i] = new WrappedByteVectorItem { Bytes = items[i] };
+            converted[i] = new TestBytes48(items[i]);
+        }
+
+        byte[] wrappedEncoded = Encode(new WrappedItemListContainer { Items = wrapped });
+        byte[] convertedEncoded = Encode(new ConverterItemListContainer { Items = converted });
+
+        Decode(convertedEncoded, out ConverterItemListContainer decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(convertedEncoded, Is.EqualTo(wrappedEncoded), "converter-backed items must be byte-identical to the wrapper-container encoding");
+            // Fixed-size items: after the container's 4-byte list offset the payload is the raw
+            // concatenation, with no per-item framing.
+            Assert.That(convertedEncoded, Has.Length.EqualTo(4 + itemCount * itemLength));
+            Assert.That(decoded.Items, Has.Length.EqualTo(itemCount));
+            for (int i = 0; i < itemCount; i++)
+                Assert.That(decoded.Items![i].Data.ToArray(), Is.EqualTo(items[i]), $"item {i} must round-trip exactly");
+        }
+    }
+
     [Test]
     public void Merkleize_nullable_converter_vector_uses_default_item_root()
     {
@@ -1000,16 +1044,17 @@ public class EncodingTest
             return;
         }
 
-        int rightCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        ReadOnlySpan<UInt256> leftChunks = chunks[rightCount..];
-        UInt256 left = UInt256.Zero;
-        if (!leftChunks.IsEmpty)
+        int subtreeCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        Merkle.Merkleize(out UInt256 subtree, chunks[..subtreeCount], numLeaves);
+
+        ReadOnlySpan<UInt256> remainingChunks = chunks[subtreeCount..];
+        UInt256 continuation = UInt256.Zero;
+        if (!remainingChunks.IsEmpty)
         {
-            MerkleizeProgressiveSpec(leftChunks, out left, checked(numLeaves * 4));
+            MerkleizeProgressiveSpec(remainingChunks, out continuation, checked(numLeaves * 4));
         }
 
-        Merkle.Merkleize(out UInt256 right, chunks[..rightCount], numLeaves);
-        root = HashConcat(left, right);
+        root = HashConcat(subtree, continuation);
     }
 
     private static UInt256 HashConcat(UInt256 left, UInt256 right)

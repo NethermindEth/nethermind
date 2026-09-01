@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -38,6 +39,65 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
+        }
+
+        [TestCase(0)]
+        [TestCase(-1)]
+        public async Task Start_rejects_non_positive_peer_update_interval(int interval)
+        {
+            await using Context ctx = new();
+            ctx.NetworkConfig.PeersUpdateInterval = interval;
+
+            InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(
+                () => ctx.PeerManager.Start())!;
+
+            Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
+        }
+
+        [Test]
+        public async Task Periodic_peer_update_continues_after_no_candidate_iterations()
+        {
+            const int expectedSelectionCount = 3;
+            int selectionCount = 0;
+            TaskCompletionSource thirdSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                if (Interlocked.Increment(ref selectionCount) == expectedSelectionCount)
+                {
+                    thirdSelection.TrySetResult();
+                }
+
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(Array.Empty<Peer>());
+
+            INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
+            networkConfig.MaxActivePeers.Returns(1);
+            networkConfig.NumConcurrentOutgoingConnects.Returns(1);
+            networkConfig.MaxOutgoingConnectPerSec.Returns(20);
+            networkConfig.PeersUpdateInterval.Returns(10);
+
+            PeerManager peerManager = new(
+                Substitute.For<IRlpxHost>(),
+                peerPool,
+                Substitute.For<INodeStatsManager>(),
+                networkConfig,
+                Substitute.For<IEnode>(),
+                LimboLogs.Instance);
+
+            peerManager.Start();
+            try
+            {
+                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(Volatile.Read(ref selectionCount), Is.GreaterThanOrEqualTo(expectedSelectionCount));
+            }
+            finally
+            {
+                await peerManager.StopAsync();
+            }
         }
 
         [Test]
@@ -353,8 +413,8 @@ namespace Nethermind.Network.Test
             session1.RemotePort = 12345;
             session1.RemoteNodeId =
                 (firstDirection == ConnectionDirection.In)
-                    ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
-                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
+                    ? (shouldLose ? TestItem.PublicKeyB : TestItem.PublicKeyC)
+                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyB);
 
             void EnsureSession(ISession? session)
             {
@@ -403,6 +463,37 @@ namespace Nethermind.Network.Test
         }
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
+
+        [Test]
+        public async Task Will_not_dial_a_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(0).After(_delay),
+                "a discovered node carrying the local identity is a hairpinned self-dial and must never be attempted");
+        }
+
+        [Test]
+        public async Task Will_not_select_a_static_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.RlpxPeer.MakeItFail();
+            const long neverRanked = -424242;
+            Node self = new(TestItem.PublicKeyA, "1.2.3.4", 30303) { IsStatic = true, CurrentReputation = neverRanked };
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "5.6.7.8", 30303));
+            ctx.TestNodeSource.AddNode(self);
+            await Task.Delay(_delayLonger);
+
+            Assert.That(self.CurrentReputation, Is.EqualTo(neverRanked),
+                "a static peer bypasses the pre-candidate filters, so the local identity has to be dropped from the static projection too - otherwise it is selected every round, discarded again at dial time without taking a slot, and the update loop never reaches its idle delay");
+        }
 
         [Test]
         public async Task Will_fill_up_on_disconnects()

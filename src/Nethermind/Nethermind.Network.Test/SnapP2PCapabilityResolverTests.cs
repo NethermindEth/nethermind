@@ -3,8 +3,11 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -15,38 +18,92 @@ namespace Nethermind.Network.Test;
 [Parallelizable(ParallelScope.All)]
 public class SnapP2PCapabilityResolverTests
 {
-    [TestCase(true, false, SyncMode.StateNodes, true, TestName = "Serving advertises snap regardless of sync")]
-    [TestCase(false, true, SyncMode.StateNodes, true, TestName = "Snap-syncing state advertises snap")]
-    [TestCase(false, true, SyncMode.Full, false, TestName = "Snap sync finished drops snap")]
-    [TestCase(false, false, SyncMode.StateNodes, false, TestName = "Neither serving nor snap-syncing")]
-    public void Resolve_advertises_snap_when_serving_or_syncing_state(bool snapServing, bool snapSync, SyncMode currentMode, bool expected)
+    private const ulong Pivot = 1000;
+
+    private static readonly Capability Snap1 = new(Protocol.Snap, SnapVersions.Snap1);
+    private static readonly Capability Snap2 = new(Protocol.Snap, SnapVersions.Snap2);
+
+    private static SnapP2PCapabilityResolver CreateResolver(
+        out ISyncModeSelector syncModeSelector,
+        bool snapServing = false, bool snapSync = false, bool balEnabled = true, params ulong[] bestFullStates)
     {
         ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
-        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        syncModeSelector.Current.Returns(currentMode);
-        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
+        syncModeSelector = Substitute.For<ISyncModeSelector>();
+        ISyncProgressResolver progressResolver = Substitute.For<ISyncProgressResolver>();
+        progressResolver.SyncPivot.Returns((Pivot, Keccak.Zero));
+        if (bestFullStates.Length > 0)
+        {
+            progressResolver.FindBestFullState().Returns(bestFullStates[0], bestFullStates[1..]);
+        }
 
-        HashSet<Capability> capabilities = [];
-        resolver.Resolve(capabilities);
-
-        Assert.That(capabilities.Contains(new Capability(Protocol.Snap, 1)), Is.EqualTo(expected));
+        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = balEnabled });
+        return new SnapP2PCapabilityResolver(syncConfig, syncModeSelector, progressResolver, specProvider, LimboLogs.Instance);
     }
 
-    [TestCase(false, true, SyncMode.StateNodes, SyncMode.Full, true, TestName = "Snap sync finishing flips snap and fires Changed")]
-    [TestCase(false, true, SyncMode.StateNodes, SyncMode.FastBlocks, false, TestName = "Non-Full to non-Full leaves snap unchanged")]
-    [TestCase(true, true, SyncMode.StateNodes, SyncMode.Full, false, TestName = "Snap serving keeps snap constant across sync modes")]
-    [TestCase(false, false, SyncMode.StateNodes, SyncMode.Full, false, TestName = "No snap sync means no snap to toggle")]
-    public void Raises_Changed_only_when_snap_contribution_flips(bool snapServing, bool snapSync, SyncMode previous, SyncMode current, bool expectedFired)
+    private static void PublishSyncProgress(ISyncModeSelector syncModeSelector) =>
+        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.None, SyncMode.None));
+
+    private static HashSet<Capability> Resolve(SnapP2PCapabilityResolver resolver)
     {
-        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
-        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+        return capabilities;
+    }
 
-        bool changed = false;
-        resolver.Changed += () => changed = true;
+    [TestCase(true, false, true, TestName = "Serving advertises snap regardless of sync")]
+    [TestCase(false, true, true, TestName = "Snap-syncing advertises snap")]
+    [TestCase(false, false, false, TestName = "Neither serving nor snap-syncing")]
+    public void Resolve_advertises_snap1(bool snapServing, bool snapSync, bool expected)
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(out ISyncModeSelector syncModeSelector, snapServing, snapSync);
+        PublishSyncProgress(syncModeSelector);
 
-        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(previous, current));
+        Assert.That(Resolve(resolver).Contains(Snap1), Is.EqualTo(expected));
+    }
 
-        Assert.That(changed, Is.EqualTo(expectedFired));
+    [TestCase(Pivot, true, true, TestName = "State downloaded and BALs enabled")]
+    [TestCase(Pivot, false, false, TestName = "BALs not enabled")]
+    [TestCase(Pivot - 1, true, false, TestName = "Own state sync unfinished")]
+    public void Resolve_serving_advertises_snap2_only_once_it_no_longer_needs_trie_nodes(ulong bestFullState, bool balEnabled, bool expected)
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out ISyncModeSelector syncModeSelector, snapServing: true, balEnabled: balEnabled, bestFullStates: bestFullState);
+        PublishSyncProgress(syncModeSelector);
+
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Resolve_syncing_withholds_snap2_without_bal_heal_substitute()
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(out ISyncModeSelector syncModeSelector, snapSync: true);
+        PublishSyncProgress(syncModeSelector);
+
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+    }
+
+    [Test]
+    public void Advertises_snap2_and_raises_Changed_once_state_download_completes()
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out ISyncModeSelector syncModeSelector, snapServing: true, bestFullStates: [Pivot - 1, Pivot, Pivot]);
+
+        int fired = 0;
+        resolver.Changed += () => fired++;
+
+        PublishSyncProgress(syncModeSelector);
+        Assert.Multiple(() =>
+        {
+            Assert.That(fired, Is.Zero);
+            Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+        });
+
+        PublishSyncProgress(syncModeSelector);
+        PublishSyncProgress(syncModeSelector);
+        Assert.Multiple(() =>
+        {
+            Assert.That(fired, Is.EqualTo(1));
+            Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
+        });
     }
 }

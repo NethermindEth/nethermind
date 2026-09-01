@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
@@ -11,17 +12,21 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find
 {
     public class LogFinder(
         IBlockFinder? blockFinder,
-        IReceiptFinder? receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery)
+        IReceiptsRecovery? receiptsRecovery,
+        IReceiptConfig? receiptConfig = null,
+        IPrunedLogsRetention? prunedLogsRetention = null)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -32,6 +37,9 @@ namespace Nethermind.Facade.Find
         private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        // With receipts derived from state, a body absent from disk is not absent from the node, so it cannot gate
+        // availability.
+        private readonly bool _bodiesOnDisk = receiptConfig?.DeriveFromState != true;
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -61,20 +69,28 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            if (_bodiesOnDisk)
             {
-                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
-            }
-            cancellationToken.ThrowIfCancellationRequested();
+                bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
+                cancellationToken.ThrowIfCancellationRequested();
+                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
-            {
-                throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
+                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                {
+                    throw new ResourceNotFoundException(fromMissing
+                        ? $"Receipt not available for From block {fromBlock.Number}."
+                        : $"Receipt not available for To block {toBlock.Number}.");
+                }
             }
             cancellationToken.ThrowIfCancellationRequested();
 
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
+
+        protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
+            prunedLogsRetention is not null
+            && filter.AddressFilter.Addresses.Count != 0
+            && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);
 
         protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
             RunParallel(blockNumbers,
@@ -109,9 +125,22 @@ namespace Nethermind.Facade.Find
                     ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
                     : source;
 
-                foreach (FilterLog log in wrapped.SelectMany(worker))
+                using IEnumerator<FilterLog> enumerator = wrapped.SelectMany(worker).GetEnumerator();
+                while (true)
                 {
-                    yield return log;
+                    try
+                    {
+                        if (!enumerator.MoveNext()) break;
+                    }
+                    catch (AggregateException e) when (FirstMappable(e) is { } mappable)
+                    {
+                        // PLINQ wraps worker exceptions, but the RPC layer maps bare types onto error codes — a
+                        // multi-block range must answer the same way a single-block range does.
+                        ExceptionDispatchInfo.Capture(mappable).Throw();
+                        throw; // unreachable; tells the compiler the catch does not complete
+                    }
+
+                    yield return enumerator.Current;
                     cancellationToken.ThrowIfCancellationRequested();
                 }
             }
@@ -123,6 +152,29 @@ namespace Nethermind.Facade.Find
                 }
                 Interlocked.Decrement(ref ParallelExecutions);
             }
+        }
+
+        private static Exception? FirstMappable(AggregateException e)
+        {
+            // Unavailability wins over transient shapes (it stays true after a retry); an unexpected fault wins
+            // over both, so the aggregate falls through to the generic handler — the only site that logs it.
+            Exception? notFound = null;
+            Exception? transient = null;
+            foreach (Exception inner in e.Flatten().InnerExceptions)
+            {
+                switch (inner)
+                {
+                    case ResourceNotFoundException:
+                        notFound ??= inner;
+                        break;
+                    case ConcurrencyLimitReachedException or OperationCanceledException:
+                        transient ??= inner;
+                        break;
+                    default:
+                        return null;
+                }
+            }
+            return notFound ?? transient;
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

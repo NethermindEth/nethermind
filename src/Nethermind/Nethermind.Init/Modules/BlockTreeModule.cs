@@ -39,15 +39,29 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
+            .AddSingleton<IBlobCustodyTracker, BlobCustodyTracker>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
             )
-            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddSingleton<FullInfoReceiptFinder>()
+            .Bind<IReceiptFinder, FullInfoReceiptFinder>()
+            // Defaults to whatever the unkeyed finder is (not FullInfoReceiptFinder directly), so an override of
+            // IReceiptFinder — a plugin's or a test's — propagates here. With derivation on,
+            // ReceiptRegenerationModule replaces this registration with a wrapper around the same unkeyed finder.
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
+
+        // Registered to LOSE: this module loads after FlatWorldStateModule, and Autofac's default is
+        // last-registration-wins, so a plain registration here would silently beat the flat-history module's
+        // SlicedReceiptRetention and turn the whole retention half of that feature into a no-op.
+        builder.RegisterInstance(NullPrunedReceiptRetention.Instance)
+            .As<IPrunedReceiptRetention>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
             .AddDecorator<ILogIndexConfig>((ctx, config) =>
