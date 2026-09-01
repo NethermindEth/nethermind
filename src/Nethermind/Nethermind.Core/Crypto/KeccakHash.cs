@@ -396,6 +396,33 @@ public sealed partial class KeccakHash
     private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
     {
         ref byte stateRef = ref MemoryMarshal.GetReference(state);
+
+        // A full rate block is the overwhelmingly common absorb and is exactly seventeen lanes.
+        // Spelling them out drops the loop bound and residue handling entirely and lets every offset
+        // fold into a load/store displacement. Only reachable with no vector width, i.e. the guest.
+        if (!Vector128.IsHardwareAccelerated && input.Length == HASH_DATA_AREA)
+        {
+            ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
+            ref byte inRef = ref MemoryMarshal.GetReference(input);
+            Unsafe.Add(ref st, 0) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            return;
+        }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
         {
             // Convert to uint for the mod else the Jit does a more complicated signed mod
