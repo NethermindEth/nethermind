@@ -995,7 +995,7 @@ namespace Nethermind.Trie
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
-                    if (!node.TryResolveNode(TrieStore, ref path)) return;
+                    if (!node.TryResolveNode(TrieStore, ref path, ReadFlags.HintCacheMiss)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {

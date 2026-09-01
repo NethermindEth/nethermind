@@ -1320,6 +1320,38 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void WarmUpPath_UsesHintCacheMissForPersistedNodeReads()
+        {
+            ReadFlagRecordingDb memDb = new();
+            Hash256 rootHash;
+            using (IPruningTrieStore trieStore = CreateTrieStore(memDb))
+            {
+                PatriciaTree patriciaTree = new(trieStore, _logManager);
+                patriciaTree.Set(_keyA, _longLeaf1);
+                patriciaTree.Set(_keyB, _longLeaf2);
+                patriciaTree.Set(_keyC, _longLeaf1);
+                patriciaTree.Set(_keyD, _longLeaf2);
+                trieStore.CommitPatriciaTrie(0, patriciaTree);
+                rootHash = patriciaTree.RootHash;
+                trieStore.PersistCache(CancellationToken.None);
+            }
+
+            memDb.ObservedFlags.Clear();
+            using (IPruningTrieStore trieStore = CreateTrieStore(memDb))
+            {
+                PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager)
+                {
+                    RootHash = rootHash,
+                };
+
+                patriciaTree.WarmUpPath(_keyA);
+            }
+
+            Assert.That(memDb.ObservedFlags, Has.Count.GreaterThan(1));
+            Assert.That(memDb.ObservedFlags, Is.All.EqualTo(ReadFlags.HintCacheMiss));
+        }
+
+        [Test]
         public void WarmUpPath_DoesNotThrow_WhenPersistenceServesAnotherVersionOfTheNode()
         {
             StaleWarmerTrieStore trieStore = new();
@@ -1393,6 +1425,17 @@ namespace Nethermind.Trie.Test
 
             public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
                 throw new NotSupportedException();
+        }
+
+        private sealed class ReadFlagRecordingDb : MemDb
+        {
+            public List<ReadFlags> ObservedFlags { get; } = [];
+
+            public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                ObservedFlags.Add(flags);
+                return base.Get(key, flags);
+            }
         }
     }
 }
