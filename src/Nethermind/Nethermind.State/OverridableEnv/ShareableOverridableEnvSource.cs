@@ -60,7 +60,7 @@ public sealed class ShareableOverridableEnvSource<T>(
 
     private IOverridableEnv<T> Rent()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(ShareableOverridableEnvSource<T>));
+        if (_disposed) throw new ObjectDisposedException(nameof(ShareableOverridableEnvSource<>));
 
         int active = Interlocked.Increment(ref _activeCount);
         if (active > maxConcurrent)
