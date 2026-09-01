@@ -47,7 +47,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
-        => await LookupCore(targetHash, k, findNeighbourOp, null, token, token);
+        => await LookupCore(targetHash, k, findNeighbourOp, null, token, callerToken: token);
 
     public async IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
@@ -97,7 +97,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             Exception? error = null;
             try
             {
-                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token, token);
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token, callerToken: token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
@@ -282,9 +282,9 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 nodeHealthTracker.OnRequestFailed(node);
                 // Expected-and-quiet: a failure after the caller's token is cancelled (teardown, in whatever
                 // shape DotNetty raises), or a transport failure (unreachable host, torn-down channel —
-                // ClosedChannelException derives from IOException). Only a failure while the caller still
-                // wants results is unexpected and warrants a warning. Use the caller's token, not the
-                // internal one, which is also cancelled on the normal drain after the first worker returns.
+                // ClosedChannelException derives from IOException). Anything else is a genuine fault and
+                // warrants a warning. Use the caller's token, not the internal one, which is also cancelled
+                // on the normal drain after the first worker returns and on reaching maxResults.
                 bool isExpectedFailure = callerToken.IsCancellationRequested
                     || e is SocketException or IOException
                     || e.InnerException is SocketException or IOException;

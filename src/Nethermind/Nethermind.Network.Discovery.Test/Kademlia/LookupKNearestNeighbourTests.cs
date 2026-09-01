@@ -302,12 +302,22 @@ public class LookupKNearestNeighbourTests
         // non-transport exception: a real fault that must warn, not be silenced as shutdown teardown.
         CapturingLogger logger = new();
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
-            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1, N2], new CapturingLoggerFactory(logger));
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1], new CapturingLoggerFactory(logger));
+
+        // Gate the empty-returning ops on Seed1's op having started, so Seed1's worker has taken its round
+        // before the other worker consumes the Alpha*2 rounds that trip the no-better-result break —
+        // otherwise Seed1's worker could break without ever calling the op and the drain never happens.
+        TaskCompletionSource seed1Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _ = await lookup.Lookup(Self, 1, async (node, findToken) =>
         {
-            if (node != Seed1) return [];
+            if (node != Seed1)
+            {
+                await seed1Started.Task;
+                return [];
+            }
 
+            seed1Started.SetResult();
             try
             {
                 await Task.Delay(Timeout.Infinite, findToken);
