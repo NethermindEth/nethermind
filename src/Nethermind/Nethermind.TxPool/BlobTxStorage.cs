@@ -18,10 +18,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IBatchDeleteTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
-    private const int ObsoleteSweepBatchSize = 16;
     private const int TransactionLockCount = 64;
 
     // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
@@ -116,6 +115,12 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
     }
 
     public void Add(Transaction transaction)
+        => Replace(transaction, []);
+
+    void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+        => Replace(transaction, obsoleteTimestamps);
+
+    private void Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
     {
         if (transaction?.Hash is null)
         {
@@ -125,12 +130,23 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         ValueHash256 hash = transaction.Hash.ValueHash256;
         lock (GetTransactionLock(hash))
         {
-            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
-            GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
+            using ArrayPoolSpan<byte> fullRlp = _txDecoder.EncodeToArrayPoolSpan(
+                transaction,
+                RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            byte[] lightRlp = LightTxDecoder.Encode(transaction);
 
-            EncodeAndSaveTx(transaction, _fullBlobTxsDb, txHashPrefixed);
-            SaveWithoutBlobsIfMissing(transaction);
-            _lightBlobTxsDb.Set(transaction.Hash, LightTxDecoder.Encode(transaction));
+            Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+            if (ShouldWriteElided(transaction, elidedKey))
+            {
+                using ArrayPoolSpan<byte> elidedRlp = _txDecoder.EncodeToArrayPoolSpan(
+                    BlobTransactionPayload.Elide(transaction),
+                    RlpBehaviors.InMempoolForm);
+                WriteTransaction(transaction, obsoleteTimestamps, fullRlp, lightRlp, elidedKey, elidedRlp);
+            }
+            else
+            {
+                WriteTransaction(transaction, obsoleteTimestamps, fullRlp, lightRlp, elidedKey, []);
+            }
         }
     }
 
@@ -158,14 +174,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
 
     private void SaveWithoutBlobsIfMissing(Transaction transaction)
     {
-        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
-        {
-            return;
-        }
-
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-        GetElidedTxKey(transaction.Hash, elidedKey);
-        if (_fullBlobTxsDb.KeyExists(elidedKey))
+        if (!ShouldWriteElided(transaction, elidedKey))
         {
             return;
         }
@@ -185,59 +195,62 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
             GetElidedTxKey(hash, elidedKey);
 
             using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-            fullBlobTxsBatch.Remove(txHashPrefixed);
-            fullBlobTxsBatch.Remove(elidedKey);
-            batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+            try
+            {
+                IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
+                fullBlobTxsBatch.Remove(elidedKey);
+                batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Remove(hash.BytesAsSpan);
+            }
+            catch
+            {
+                batch.Clear();
+                throw;
+            }
         }
     }
 
-    void IBatchDeleteTxStorage.DeleteMany(scoped ReadOnlySpan<TxLookupKey> keys) =>
-        DeleteMany(keys, deleteSharedEntries: true);
+    void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys) =>
+        DeleteMany(keys);
 
-    void IBatchDeleteTxStorage.DeleteFullBlobTransactions(scoped ReadOnlySpan<TxLookupKey> keys) =>
-        DeleteMany(keys, deleteSharedEntries: false);
-
-    void IBatchDeleteTxStorage.DeleteObsoleteFullBlobTransactions(CancellationToken cancellationToken)
+    private void WriteTransaction(
+        Transaction transaction,
+        scoped ReadOnlySpan<UInt256> obsoleteTimestamps,
+        scoped ReadOnlySpan<byte> fullRlp,
+        byte[] lightRlp,
+        scoped ReadOnlySpan<byte> elidedKey,
+        scoped ReadOnlySpan<byte> elidedRlp)
     {
-        using ArrayPoolList<TxLookupKey> candidates = new(ObsoleteSweepBatchSize);
-        foreach (byte[] key in _fullBlobTxsDb.GetAllKeys())
+        ValueHash256 hash = transaction.Hash!.ValueHash256;
+        using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Elided and marker keys share this column; only timestamp-prefixed full bodies are 64 bytes.
-            if (key.Length != FullTxKeyLength)
+            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+            // Obsolete timestamps can include the current one; remove first so the ordered batch's final put preserves it.
+            for (int i = 0; i < obsoleteTimestamps.Length; i++)
             {
-                continue;
+                GetHashPrefixedByTimestamp(obsoleteTimestamps[i], hash, txHashPrefixed);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
             }
 
-            TxLookupKey candidate = new(
-                new ValueHash256(key.AsSpan(32)),
-                Address.Zero,
-                new UInt256(key.AsSpan(0, 32), isBigEndian: true));
-            if (IsCurrentFullBlobTransaction(candidate))
+            GetHashPrefixedByTimestamp(transaction.Timestamp, hash, txHashPrefixed);
+            fullBlobTxsBatch.PutSpan(txHashPrefixed, fullRlp);
+            if (!elidedRlp.IsEmpty)
             {
-                continue;
+                fullBlobTxsBatch.PutSpan(elidedKey, elidedRlp);
             }
 
-            candidates.Add(candidate);
-
-            if (candidates.Count == ObsoleteSweepBatchSize)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
-                candidates.Clear();
-            }
+            batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs).Set(hash.BytesAsSpan, lightRlp);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        DeleteMany(candidates.AsSpan(), deleteSharedEntries: false, deleteOnlyIfObsolete: true);
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
     }
 
-    private void DeleteMany(
-        scoped ReadOnlySpan<TxLookupKey> keys,
-        bool deleteSharedEntries,
-        bool deleteOnlyIfObsolete = false)
+    private void DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -263,24 +276,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
                 }
             }
 
-            if (deleteOnlyIfObsolete)
-            {
-                using ArrayPoolList<TxLookupKey> obsoleteKeys = new(keys.Length);
-                for (int i = 0; i < keys.Length; i++)
-                {
-                    ref readonly TxLookupKey key = ref keys[i];
-                    if (!IsCurrentFullBlobTransaction(key))
-                    {
-                        obsoleteKeys.Add(key);
-                    }
-                }
-
-                DeleteManyFromStorage(obsoleteKeys.AsSpan(), deleteSharedEntries);
-            }
-            else
-            {
-                DeleteManyFromStorage(keys, deleteSharedEntries);
-            }
+            DeleteManyFromStorage(keys);
         }
         finally
         {
@@ -291,7 +287,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
     }
 
-    private void DeleteManyFromStorage(scoped ReadOnlySpan<TxLookupKey> keys, bool deleteSharedEntries)
+    private void DeleteManyFromStorage(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
     {
         if (keys.IsEmpty)
         {
@@ -299,30 +295,28 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
 
         using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
-        IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
-        IWriteBatch? lightBlobTxsBatch = deleteSharedEntries
-            ? batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs)
-            : null;
-        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
-        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
-        for (int i = 0; i < keys.Length; i++)
+        try
         {
-            ref readonly TxLookupKey key = ref keys[i];
-            GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
-            fullBlobTxsBatch.Remove(txHashPrefixed);
-            if (deleteSharedEntries)
+            IWriteBatch fullBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.FullBlobTxs);
+            IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
+            Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+            Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+            for (int i = 0; i < keys.Length; i++)
             {
+                ref readonly BlobTxDeleteKey key = ref keys[i];
+                GetHashPrefixedByTimestamp(key.Timestamp, key.Hash, txHashPrefixed);
+                fullBlobTxsBatch.Remove(txHashPrefixed);
                 GetElidedTxKey(key.Hash, elidedKey);
                 fullBlobTxsBatch.Remove(elidedKey);
-                lightBlobTxsBatch!.Remove(key.Hash.BytesAsSpan);
+                lightBlobTxsBatch.Remove(key.Hash.BytesAsSpan);
             }
         }
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
     }
-
-    private bool IsCurrentFullBlobTransaction(in TxLookupKey key) =>
-        TryDecodeLightTx(_lightBlobTxsDb.Get(key.Hash.BytesAsSpan), out LightTransaction? currentTransaction)
-        && currentTransaction is not null
-        && currentTransaction.Timestamp == key.Timestamp;
 
     string? ISpecChangeValidationStorage.GetSpecChangeValidationMarker()
     {
@@ -429,6 +423,17 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         hash.Bytes.CopyTo(elidedKey[1..]);
     }
 
+    private bool ShouldWriteElided(Transaction transaction, scoped Span<byte> elidedKey)
+    {
+        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
+        {
+            return false;
+        }
+
+        GetElidedTxKey(transaction.Hash, elidedKey);
+        return !_fullBlobTxsDb.KeyExists(elidedKey);
+    }
+
     private static void GetHashPrefixedByTimestamp(in UInt256 timestamp, in ValueHash256 hash, scoped Span<byte> txHashPrefixed)
     {
         timestamp.WriteBigEndian(txHashPrefixed);
@@ -449,12 +454,6 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : IBlobTxStorage
         }
 
         return locks;
-    }
-
-    private void EncodeAndSaveTx(Transaction transaction, IDb db, scoped Span<byte> txHashPrefixed)
-    {
-        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
-        db.PutSpan(txHashPrefixed, rlp);
     }
 
     private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, ulong blockNumber)
