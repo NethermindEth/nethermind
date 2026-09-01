@@ -47,7 +47,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
-        => await LookupCore(targetHash, k, findNeighbourOp, null, token);
+        => await LookupCore(targetHash, k, findNeighbourOp, null, token, token);
 
     public async IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
@@ -97,7 +97,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             Exception? error = null;
             try
             {
-                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token);
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token, token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
@@ -135,14 +135,16 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         Func<TNode, bool>? publishNode,
-        CancellationToken token
+        CancellationToken token,
+        CancellationToken callerToken
     )
     {
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initiate lookup for hash {targetHash}");
 
-        // The linked token below is cancelled on normal lookup completion (the drain after the first
-        // worker returns), so it does not signal shutdown. Keep the caller's token to tell the two apart.
-        CancellationToken callerToken = token;
+        // `token` drives this lookup and is shadowed below by a linked source cancelled on normal
+        // completion — the drain after a worker finishes, and (via LookupNodes) on reaching maxResults.
+        // `callerToken` is the real caller/shutdown token, used to tell an expected teardown failure from
+        // a genuine one; it is never cancelled by normal completion.
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 

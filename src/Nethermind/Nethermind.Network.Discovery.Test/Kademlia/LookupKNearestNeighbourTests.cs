@@ -302,7 +302,7 @@ public class LookupKNearestNeighbourTests
         // non-transport exception: a real fault that must warn, not be silenced as shutdown teardown.
         CapturingLogger logger = new();
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
-            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1], new CapturingLoggerFactory(logger));
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1, N2], new CapturingLoggerFactory(logger));
 
         _ = await lookup.Lookup(Self, 1, async (node, findToken) =>
         {
