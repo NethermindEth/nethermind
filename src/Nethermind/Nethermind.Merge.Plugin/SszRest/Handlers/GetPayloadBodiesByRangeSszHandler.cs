@@ -14,7 +14,7 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v2/bodies?from=N&amp;count=M</c>, the SSZ-REST equivalent
+/// Handles <c>GET /engine/v1/bodies?from=N&amp;count=M</c>, the SSZ-REST equivalent
 /// of <c>engine_getPayloadBodiesByRangeV{N}</c> (the version is selected by the
 /// <c>Eth-Execution-Version</c> header). Generic over a per-version descriptor
 /// so adding a Vn+1 endpoint is one new descriptor + one DI line.
