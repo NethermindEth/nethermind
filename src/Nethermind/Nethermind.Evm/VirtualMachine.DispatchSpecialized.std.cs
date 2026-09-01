@@ -36,10 +36,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             int opCodeCount = 0;
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
-            uint codeLength = (uint)stack.CodeLength;
+            nuint codeLength = (nuint)stack.CodeLength;
             // Hoisted: a no-op OnBeforeInstructionTrace would otherwise chase VmState.Env per instruction.
             int callDepth = VmState.Env.CallDepth;
-            while ((uint)pc < codeLength)
+            while ((nuint)pc < codeLength)
             {
 #if DEBUG
                 debugger?.TryWait(ref _currentState, ref pc, ref gas, ref stack.Head);

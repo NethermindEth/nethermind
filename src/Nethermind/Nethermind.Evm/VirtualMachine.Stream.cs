@@ -68,7 +68,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
         int entryIndex = programCounter == 0
             ? 0
-            : (uint)programCounter < (uint)pcToEntry.Length ? pcToEntry[programCounter] : ops.Length;
+            : (nuint)programCounter < (nuint)pcToEntry.Length ? pcToEntry[(int)programCounter] : ops.Length;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             while ((uint)entryIndex < (uint)ops.Length)
@@ -369,7 +369,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     break;
 
                 // Table handlers may consume more than one instruction; recompute the entry from the landing pc.
-                if ((uint)programCounter >= (uint)pcToEntry.Length)
+                if ((nuint)programCounter >= (nuint)pcToEntry.Length)
                 {
                     entryIndex = ops.Length;
                     continue;
@@ -473,12 +473,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         StreamOp[] ops = stream.Ops;
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
-        uint codeLength = (uint)stack.CodeLength;
+        nuint codeLength = (nuint)stack.CodeLength;
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref nint, EvmExceptionType>[] opcodeMethods = _opcodeMethods;
 
         while (true)
         {
-            if ((uint)programCounter >= codeLength)
+            if ((nuint)programCounter >= codeLength)
             {
                 return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
@@ -505,7 +505,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (ReturnData is not null)
                 return new MeteredResult(MeteredOutcome.BreakLoop, (int)programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
-            if ((uint)programCounter >= (uint)pcToEntry.Length)
+            if ((nuint)programCounter >= (nuint)pcToEntry.Length)
             {
                 return new MeteredResult(MeteredOutcome.Continue, (int)programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
