@@ -218,7 +218,9 @@ jobs:
 
           # What this run is configured to produce, so a self-ignored case fails the run instead of
           # quietly shrinking the sweep. Groth16 rows are always required because the path is checked above.
-          mempool_markers=('shape=groth16-')
+          # The signature shape is the worst case measured so far and needs neither artifacts nor a raised
+          # constant, so a run that produced no signature rows is a broken run rather than a narrower one.
+          mempool_markers=('shape=groth16-' 'case=signature_reject')
           flood_markers=()
           if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
