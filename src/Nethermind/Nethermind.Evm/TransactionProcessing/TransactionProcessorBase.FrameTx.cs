@@ -286,18 +286,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
             {
-                long remainingStateGas = (frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit) - frameStateGas;
-                if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
+                if (!TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas))
                 {
                     frameSucceeded = false;
-                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-                    frameGasUsed = frame.ExecutionGasLimit;
-                    frameStateGas = 0;
-                }
-                else
-                {
-                    frameGasUsed += (ulong)approvalStateGas;
-                    frameStateGas += approvalStateGas;
                 }
             }
             else if (!frameSucceeded)
@@ -617,18 +608,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
                 {
-                    long remainingStateGas = (boundedFrame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)boundedFrame.StateGasLimit) - frameStateGas;
-                    if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
-                    {
-                        substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-                        frameGasUsed = boundedFrame.ExecutionGasLimit;
-                        frameStateGas = 0;
-                    }
-                    else
-                    {
-                        frameGasUsed += (ulong)approvalStateGas;
-                        frameStateGas += approvalStateGas;
-                    }
+                    TryApplyPostFrameApproval(frameContext, boundedFrame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas);
                 }
 
                 verifyGasUsed += frameGasUsed - (ulong)frameStateGas;
@@ -748,6 +728,28 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         && i + 1 < frames.Length
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == TxFrame.ModeVerify;
+
+    /// <summary>Applies a succeeded frame's pending approval scope, charging its state gas or, on failure,
+    /// replacing the substate with an out-of-gas halt.</summary>
+    private bool TryApplyPostFrameApproval(FrameTxContext frameContext, TxFrame frame, Address resolvedTarget, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ref TransactionSubstate substate, ref ulong frameGasUsed, ref long frameStateGas)
+    {
+        long stateLimit = frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit;
+        long remainingStateGas = stateLimit - frameStateGas;
+        if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
+        {
+            substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
+            {
+                ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+            };
+            frameGasUsed = frame.ExecutionGasLimit;
+            frameStateGas = 0;
+            return false;
+        }
+
+        frameGasUsed += (ulong)approvalStateGas;
+        frameStateGas += approvalStateGas;
+        return true;
+    }
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
@@ -891,23 +893,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
         {
-            long remainingStateGas = stateReservoirSeed - stateGasUsed;
-            if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
-            {
-                // The replacement is the substate the caller sees, so it has to carry the RIPEMD touch
-                // the frame recorded; the rollback below and the transaction accumulator both read it.
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
-                {
-                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
-                };
-                gasUsed = frame.ExecutionGasLimit;
-                stateGasUsed = 0;
-            }
-            else
-            {
-                gasUsed += (ulong)approvalStateGas;
-                stateGasUsed += approvalStateGas;
-            }
+            TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref gasUsed, ref stateGasUsed);
         }
 
         if (substate.ShouldRevert || substate.IsError)
