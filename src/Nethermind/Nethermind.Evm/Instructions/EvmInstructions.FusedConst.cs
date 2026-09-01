@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -75,5 +76,14 @@ public static partial class EvmInstructions
         EvmWord b = ReadUnaligned<EvmWord>(ref topRef);
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static EvmExceptionType FusedPush1DupCore(ref EvmStack stack, ulong packed)
+    {
+        EvmExceptionType exceptionType = stack.PushUInt64<OffFlag>(packed & byte.MaxValue);
+        return exceptionType == EvmExceptionType.None
+            ? stack.Dup<OffFlag>((int)((packed >> 8) & byte.MaxValue))
+            : exceptionType;
     }
 }

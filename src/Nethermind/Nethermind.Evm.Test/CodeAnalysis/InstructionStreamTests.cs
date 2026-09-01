@@ -50,6 +50,30 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_Push1Dup_PacksImmediateAndDepth()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 0xAB,
+            (byte)Instruction.DUP8,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst));
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.Push1Dup));
+            Assert.That(stream.Ops[0].Advance, Is.EqualTo(3));
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(0x08ABUL));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(2 * GasCostOf.VeryLow));
+            Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
+            Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
+        }
+    }
+
+    [Test]
     public void TryBuild_MaxSizeTypicalContract_StaysWithinRetainedCap()
     {
         // A max EIP-170 (24 KiB) contract of typical output must stay within the retained-size cap.
@@ -238,6 +262,65 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .Op(Instruction.ADD)
         .Done;
 
+    private static readonly byte[] Push1Dup1 = Prepare.EvmCode
+        .PushData(0x2A)
+        .Op(Instruction.DUP1)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] Push1Dup8 = BuildPush1Dup8();
+
+    private static byte[] BuildPush1Dup8()
+    {
+        List<byte> code = [];
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x2A);
+        for (int i = 0; i < 6; i++) code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(0x99);
+        code.Add((byte)Instruction.DUP8);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.MSTORE);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(32);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.RETURN);
+        return code.ToArray();
+    }
+
+    private static readonly byte[] Push1DupUnderflow = Prepare.EvmCode
+        .PushData(0x2A)
+        .Op(Instruction.DUP8)
+        .Op(Instruction.STOP)
+        .Done;
+
+    private static readonly byte[] Push1DupPushOverflow = BuildPush1DupOverflow(1024);
+    private static readonly byte[] Push1DupDupOverflow = BuildPush1DupOverflow(1023);
+
+    private static byte[] BuildPush1DupOverflow(int initialPushes)
+    {
+        byte[] code = new byte[initialPushes + 4];
+        code.AsSpan(0, initialPushes).Fill((byte)Instruction.PUSH0);
+        code[initialPushes] = (byte)Instruction.PUSH1;
+        code[initialPushes + 1] = 1;
+        code[initialPushes + 2] = (byte)Instruction.DUP1;
+        code[initialPushes + 3] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private static readonly byte[] JumpdestPush1Dup =
+    [
+        (byte)Instruction.JUMPDEST,
+        (byte)Instruction.PUSH1, 0x2A,
+        (byte)Instruction.DUP1,
+        (byte)Instruction.PUSH0,
+        (byte)Instruction.MSTORE,
+        (byte)Instruction.PUSH1, 32,
+        (byte)Instruction.PUSH0,
+        (byte)Instruction.RETURN,
+    ];
+
     private static readonly byte[] NestedCallWithResume = Prepare.EvmCode
         .Call(CalleeAddress, 50000)
         .PushData(3).Op(Instruction.MUL)
@@ -349,6 +432,12 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public static IEnumerable<TestCaseData> DifferentialCases()
     {
         yield return new TestCaseData(ArithmeticChain) { TestName = "ArithmeticChain" };
+        yield return new TestCaseData(Push1Dup1) { TestName = "Push1Dup1" };
+        yield return new TestCaseData(Push1Dup8) { TestName = "Push1Dup8" };
+        yield return new TestCaseData(Push1DupUnderflow) { TestName = "Push1DupUnderflow" };
+        yield return new TestCaseData(Push1DupPushOverflow) { TestName = "Push1DupPushOverflow" };
+        yield return new TestCaseData(Push1DupDupOverflow) { TestName = "Push1DupDupOverflow" };
+        yield return new TestCaseData(JumpdestPush1Dup) { TestName = "JumpdestPush1Dup" };
         yield return new TestCaseData(JumpLoop) { TestName = "JumpLoopWithFusedPush" };
         yield return new TestCaseData(StoreAndReturn) { TestName = "MemoryBoundaryOpsAndReturn" };
         yield return new TestCaseData(StackUnderflow) { TestName = "StackUnderflowFailure" };
@@ -402,7 +491,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public void StreamExecutor_DispatchesEveryInBlockOpcode_IdenticallyToBytecodeLoop(Instruction op)
     {
         List<byte> code = [];
-        for (int i = 0; i < 9; i++) { code.Add((byte)Instruction.PUSH1); code.Add(0x01); }
+        for (int i = 0; i < 9; i++) code.Add((byte)Instruction.PUSH0);
         code.Add((byte)op);
         if (op is >= Instruction.PUSH1 and <= Instruction.PUSH32)
             for (int i = 0; i <= op - Instruction.PUSH1; i++) code.Add(0x01);
@@ -443,6 +532,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         for (int i = 0; i < 500; i++) meteredBlock[i] = (byte)Instruction.PUSH0;
         meteredBlock[500] = (byte)Instruction.STOP;
         yield return new TestCaseData(meteredBlock, 21_500UL) { TestName = "OutOfGasInMeteredFallback" };
+
+        List<byte> pushDupMeteredBlock = [
+            (byte)Instruction.PUSH1, 0x2A,
+            (byte)Instruction.DUP1,
+        ];
+        for (int i = 0; i < 500; i++) pushDupMeteredBlock.Add((byte)Instruction.PUSH0);
+        pushDupMeteredBlock.Add((byte)Instruction.STOP);
+        yield return new TestCaseData(pushDupMeteredBlock.ToArray(), 21_500UL) { TestName = "Push1DupInMeteredFallback" };
     }
 
     [TestCaseSource(nameof(OutOfGasCases))]
