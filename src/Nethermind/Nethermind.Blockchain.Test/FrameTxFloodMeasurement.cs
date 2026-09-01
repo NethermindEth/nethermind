@@ -525,6 +525,7 @@ public class FrameTxFloodMeasurement
     [TestCase(300_000ul, 50)]
     [TestCase(300_000ul, 200)]
     [TestCase(500_000ul, 50)]
+    [TestCase(500_000ul, 200)]
     public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
