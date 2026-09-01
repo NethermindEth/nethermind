@@ -108,6 +108,75 @@ public class StatelessSchemaTests
     }
 
     /// <summary>
+    /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The write-side assertion is the guard that matters: a round-trip alone passes when
+    /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
+    /// It is expressed against the region under test rather than a hash of the whole input, so
+    /// unrelated schema churn cannot send a reader off to re-derive a baseline.
+    /// </remarks>
+    [Test]
+    public void Public_key_vector_encoding_is_pinned()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(5);
+
+        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
+        ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
+
+        // PublicKeys is the container's last variable-size field and a list of fixed-size items is a
+        // bare concatenation, so the keys occupy exactly the trailing count * 65 bytes.
+        byte[] expectedTail = new byte[publicKeys.Length * SszPublicKey.PublicKeyLength];
+        for (int i = 0; i < publicKeys.Length; i++)
+            publicKeys[i].AsSpan().CopyTo(expectedTail.AsSpan(i * SszPublicKey.PublicKeyLength));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[^expectedTail.Length..], Is.EqualTo(expectedTail));
+            Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
+        }
+
+        for (int i = 0; i < publicKeys.Length; i++)
+            Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
+    }
+
+    /// <remarks>
+    /// The inherited <see cref="ValueType"/> members throw on <c>[InlineArray]</c>-backed structs,
+    /// so equality has to be declared for <see cref="SszPublicKey"/> to be usable as a value.
+    /// </remarks>
+    [Test]
+    public void Public_keys_compare_by_value()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(2);
+        SszPublicKey copy = SszPublicKey.FromSpan(publicKeys[0].AsSpan());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.EqualTo(publicKeys[0]));
+            Assert.That(copy.GetHashCode(), Is.EqualTo(publicKeys[0].GetHashCode()));
+            Assert.That(publicKeys[1], Is.Not.EqualTo(publicKeys[0]));
+        }
+    }
+
+    private static SszPublicKey[] DeterministicPublicKeys(int count)
+    {
+        SszPublicKey[] publicKeys = new SszPublicKey[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[SszPublicKey.PublicKeyLength];
+            bytes[0] = 0x04;
+
+            for (int j = 1; j < bytes.Length; j++)
+                bytes[j] = (byte)(i * 31 + j);
+
+            publicKeys[i] = SszPublicKey.FromSpan(bytes);
+        }
+
+        return publicKeys;
+    }
+
+    /// <summary>
     /// Block reconstruction must stay out of <see cref="InputDecoder.Decode"/>: a throw before
     /// <see cref="StatelessExecutor.FailureOutput"/> is published reports the zero sentinel.
     /// </summary>
@@ -300,7 +369,8 @@ public class StatelessSchemaTests
     private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
 
     private static byte[] EncodeInput<TExecutionPayload>(
-        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null,
+        SszPublicKey[] publicKeys = null)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         executionPayload.BlockNumber = BlockNumber;
@@ -332,7 +402,7 @@ public class StatelessSchemaTests
                 Headers = []
             },
             ChainId = ChainId,
-            PublicKeys = []
+            PublicKeys = publicKeys ?? []
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];

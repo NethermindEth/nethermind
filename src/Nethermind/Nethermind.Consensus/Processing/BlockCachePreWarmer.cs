@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -747,12 +748,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 continue;
             }
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
-            {
-                list = new(4);
-                groups[sender] = list;
-            }
-            list.Add((i, tx));
+            ref ArrayPoolList<(int, Transaction)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out _);
+            (list ??= new(4)).Add((i, tx));
         }
 
         ArrayPoolList<WarmupJob> result = new(groups.Count);

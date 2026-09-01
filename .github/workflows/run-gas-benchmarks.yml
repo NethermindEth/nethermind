@@ -171,24 +171,25 @@ jobs:
             });
 
   setup:
-    needs: [resolve-inputs]
+    # Also waits on the image so the VM is not created until there is work for it:
+    # max_run_duration runs from boot, so idling through the build eats the benchmark's budget.
+    needs: [resolve-inputs, publish-docker]
     if: needs.resolve-inputs.outputs.should-run == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default
+    timeout-minutes: 15
     outputs:
-      runner-name: ${{ steps.setup-runner.outputs.runner-name }}
-      machine-ip: ${{ steps.setup-runner.outputs.machine-ip }}
-      run-id: ${{ steps.setup-runner.outputs.run-id }}
+      runner-label: ${{ steps.label.outputs.value }}
     steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=gas-benchmark-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Authenticate Admin App
         id: gh-admin-app
@@ -198,18 +199,21 @@ jobs:
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           repositories: "nethermind"
 
-      - name: Setup self-hosted runner
-        id: setup-runner
-        uses: ./.github/actions/setup-runner
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
         with:
-          gh-token: ${{ steps.gh-app.outputs.token }}
-          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
-          gh-username: ${{ github.actor }}
-          runner-name: "gas-benchmark"
-          runner-type: g6-standard-2
-          timeout: "5"
-          setup-wait-time: "120"
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: c2-standard-8
+          local_ssd_count: 1
+          provisioning_model: SPOT
+          max_run_duration: 7h
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
 
   gas-benchmark:
     needs:
@@ -217,10 +221,9 @@ jobs:
       - setup
       - publish-docker
     if: needs.resolve-inputs.outputs.should-run == 'true'
-    runs-on: ${{ needs.setup.outputs.runner-name }}
+    runs-on: ${{ needs.setup.outputs.runner-label }}
     timeout-minutes: 360
     env:
-      HOME: /root
       GAS_BENCHMARK_RUNS: "${{ needs.resolve-inputs.outputs.runs }}"
       GAS_BENCHMARK_TEST_PATH: "${{ needs.resolve-inputs.outputs.testPath }}"
       GAS_BENCHMARK_GENESIS_FILE: "${{ needs.resolve-inputs.outputs.genesisFile }}"
@@ -260,7 +263,7 @@ jobs:
           postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
 
   post-results-comment:
-    needs: [resolve-inputs, gas-benchmark]
+    needs: [resolve-inputs, gas-benchmark, cleanup]
     if: always() && needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-slim
     permissions:
@@ -273,9 +276,11 @@ jobs:
         env:
           FILTER: ${{ needs.resolve-inputs.outputs.filter }}
           BENCHMARK_STATUS: ${{ needs.gas-benchmark.result }}
+          PREEMPTED: ${{ needs.cleanup.outputs.preempted }}
         with:
           script: |
             const benchmarkStatus = process.env.BENCHMARK_STATUS || '';
+            const preempted = process.env.PREEMPTED === 'true';
             const filter = process.env.FILTER || '';
             const filterText = filter ? ` with filter: \`${filter}\`` : '';
             const workflowUrl = `${context.payload.repository.html_url}/actions/runs/${context.runId}`;
@@ -286,6 +291,10 @@ jobs:
               emoji = '✅';
               title = 'Gas Benchmark Complete';
               message = `Gas benchmarks have completed successfully${filterText}!`;
+            } else if (preempted) {
+              emoji = '♻️';
+              title = 'Gas Benchmark Interrupted';
+              message = `The spot machine running the benchmarks${filterText} was reclaimed by the provider, so the run did not finish. This is not a benchmark failure — re-run the workflow.`;
             } else if (benchmarkStatus === 'failure') {
               emoji = '❌';
               title = 'Gas Benchmark Failed';
@@ -309,20 +318,21 @@ jobs:
 
   cleanup:
     needs: [resolve-inputs, setup, gas-benchmark]
-    if: always() && needs.resolve-inputs.outputs.should-run == 'true'
-    runs-on: ubuntu-slim
+    # A skipped setup means no VM was ever requested, so there is nothing to reap. A failed
+    # setup still needs teardown: creation may have got part way before giving up.
+    if: always() && needs.resolve-inputs.outputs.should-run == 'true' && needs.setup.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    outputs:
+      terminated-by: ${{ steps.destroy.outputs.terminated_by }}
+      preempted: ${{ steps.destroy.outputs.preempted }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
 
       - name: Authenticate Admin App
         id: gh-admin-app
@@ -332,10 +342,23 @@ jobs:
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           repositories: "nethermind"
 
-      - name: Remove self-hosted runner
-        uses: ./.github/actions/remove-runner
+      - name: Destroy runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
         with:
-          gh-token: ${{ steps.gh-app.outputs.token }}
-          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
-          runner-name: ${{ needs.setup.outputs.runner-name }}
-          workflow-run-id: ${{ needs.setup.outputs.run-id }}
+          action: destroy
+          runner_label: ${{ needs.setup.outputs.runner-label }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.setup.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"

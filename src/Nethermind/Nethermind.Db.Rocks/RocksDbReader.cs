@@ -110,9 +110,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = _readOptionsFactory();
+        if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
+        if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_mainDb.ReadAheadSize);
+        if (_mainDb.CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);

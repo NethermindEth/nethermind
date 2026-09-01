@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -21,7 +20,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -29,7 +27,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
-using Nethermind.RocksDbBindings.Native;
 using Testably.Abstractions;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -81,9 +78,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly IRocksDbConfig _perTableDbConfig;
     internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
+    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
+    // Accumulated across the table config and every column config, all of which are built during open, before this
+    // instance is handed out - so the reads from GetViewBetween on other threads never race a write.
+    private int _prefixExtractorLength;
 
     private readonly IFileSystem _fileSystem;
 
@@ -319,7 +320,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void HandleFatalDbError(RocksDbException rocksDbException)
+    internal void HandleFatalDbError(RocksDbException rocksDbException)
     {
         bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
         bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
@@ -371,6 +372,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     protected virtual void RepairDb(DbOptions dbOptions, string path) => RocksDb.Repair(dbOptions, path);
 
     protected internal void UpdateReadMetrics() => _totalReads.Increment();
+
+    protected internal void UpdateReadMetrics(int count) => _totalReads.Add(count);
 
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
@@ -554,6 +557,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
+        _prefixExtractorLength = Math.Max(_prefixExtractorLength, ParsePrefixExtractorLength(optionsAsDict));
 
         ulong blockCacheSize = 0;
         if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
@@ -634,6 +638,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         options.SetMaxSubcompactions((uint)Environment.ProcessorCount);
+
+        if (dbConfig.CompactOnDeletions)
+        {
+            options.AddCompactOnDeletionCollectorFactory(
+                (nuint)CompactOnDeletionSlidingWindowKeys,
+                (nuint)CompactOnDeletionTriggerKeys,
+                CompactOnDeletionFileRatio);
+        }
 
         #endregion
 
@@ -1116,7 +1128,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// files, and one written immediately before is still in the memtable. Failure is swallowed - the keys are
     /// already gone durably, so only the timing of the space returning is lost.
     /// </remarks>
-    internal unsafe void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, IColumnFamilyHandle? cf)
+    internal void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, IColumnFamilyHandle? cf)
     {
         if (firstKeyInclusive.IsEmpty || lastKeyExclusive.IsEmpty) return;
 
@@ -1127,53 +1139,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (!TryLargestBoundBelow(lastKeyExclusive, inclusiveBound, out int boundLength)) return;
         inclusiveBound = inclusiveBound[..boundLength];
 
-        nuint fromLength = (nuint)firstKeyInclusive.Length;
-        nuint toLength = (nuint)boundLength;
-
         try
         {
             // Inside the try, unlike every other method here: a pass racing shutdown must not turn a best-effort
             // reclaim into an error, and the disposal check is one of the ways this can fail.
             ObjectDisposedException.ThrowIf(_isDisposing, this);
-            rocksdb_t* db = (rocksdb_t*)_db.Handle;
-            ObjectDisposedException.ThrowIf(db is null, this);
-            rocksdb_column_family_handle_t* cfHandle = (rocksdb_column_family_handle_t*)(cf?.Handle ?? 0);
-
-            // Dereferenced only by the native calls inside the fixed scope, lengths from the spans that pin them.
-            fixed (byte* from = firstKeyInclusive)
-            fixed (byte* to = inclusiveBound)
-            {
-                sbyte* errPtr = null;
-                if (cfHandle is null)
-                {
-                    RocksDbNative.rocksdb_delete_file_in_range(db, (sbyte*)from, fromLength, (sbyte*)to, toLength, &errPtr);
-                }
-                else
-                {
-                    RocksDbNative.rocksdb_delete_file_in_range_cf(db, cfHandle, (sbyte*)from, fromLength, (sbyte*)to, toLength, &errPtr);
-                }
-
-                if (errPtr is not null) ThrowRocksDbException(errPtr);
-
-                if (cfHandle is null)
-                {
-                    RocksDbNative.rocksdb_suggest_compact_range(db, (sbyte*)from, fromLength, (sbyte*)to, toLength, &errPtr);
-                }
-                else
-                {
-                    RocksDbNative.rocksdb_suggest_compact_range_cf(db, cfHandle, (sbyte*)from, fromLength, (sbyte*)to, toLength, &errPtr);
-                }
-
-                if (errPtr is not null) ThrowRocksDbException(errPtr);
-            }
+            _db.DeleteFilesInRange(firstKeyInclusive, inclusiveBound, cf);
+            _db.SuggestCompactRange(firstKeyInclusive, inclusiveBound, cf);
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not reclaim storage for a removed key range in {Name}: {e.Message}. The keys stay removed; the space returns at the next compaction.");
         }
-
-        [DoesNotReturn]
-        static void ThrowRocksDbException(sbyte* errPtr) => throw new RocksDbNativeException((nint)errPtr);
     }
 
     internal const int FullEnumerationBatchSize = 10_000;
@@ -1536,7 +1513,69 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         InnerFlush(familyHandle);
     }
 
-    public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
+    private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;
+    private const ulong CompactOnDeletionTriggerKeys = 50_000;
+    private const double CompactOnDeletionFileRatio = 0.3;
+
+    /// <summary>The whole store, as true open bounds at the native layer - a managed null can marshal as an empty
+    /// key, and an [empty, empty) range compacts nothing at all.</summary>
+    public virtual void Compact() => CompactOpenRange(cf: null, forceBottommost: false);
+
+    /// <summary>Forcing the bottommost level is what makes a dead-weight compaction return space - the default
+    /// moves tombstones down and leaves them there - and is exactly wrong for routine compactions, which would
+    /// rewrite every already-settled file on every call.</summary>
+    internal void CompactOpenRange(IColumnFamilyHandle? cf, bool forceBottommost) =>
+        _db.CompactRange(null, null, forceBottommost, cf);
+
+    /// <inheritdoc/>
+    public virtual bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!ExceedsDeadWeight(_db.GetProperty("rocksdb.aggregated-table-properties"), _db.GetProperty("rocksdb.total-sst-files-size"), deadRatio)) return false;
+
+        if (_logger.IsInfo) _logger.Info($"Compacting {Name}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
+        CompactOpenRange(cf: null, forceBottommost: true);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public virtual void InterruptCompactions() => _db.DisableManualCompaction();
+
+    internal string? GatherProperty(string name) => _db.GetProperty(name);
+
+    internal void LogColumnDeadWeightCompaction(string columnName)
+    {
+        if (_logger.IsInfo) _logger.Info($"Compacting the {columnName} column of {Name}: its files are mostly tombstones. This runs until done and aborts cleanly on shutdown.");
+    }
+
+    /// <summary>Decided from the tombstone counts the SST files themselves aggregate, never from a live-size
+    /// estimate: that estimate reads file key ranges and cannot see puts shadowed by higher-level tombstones,
+    /// which is exactly the shape mass deletion leaves. Small stores never qualify: their debt is not worth a
+    /// rewrite.</summary>
+    internal static bool ExceedsDeadWeight(string? aggregatedTableProperties, string? totalFilesSize, double deadRatio)
+    {
+        if (!long.TryParse(totalFilesSize, out long totalBytes) || totalBytes <= MinDeadWeightCompactionBytes) return false;
+        if (!TryParseTableProperty(aggregatedTableProperties, "# entries=", out long entries)
+            || !TryParseTableProperty(aggregatedTableProperties, "# deletions=", out long deletions)) return false;
+
+        long puts = entries - deletions;
+        return deletions > 0 && (puts <= 0 || deletions >= puts * deadRatio);
+    }
+
+    private static bool TryParseTableProperty(string? aggregated, string key, out long value)
+    {
+        value = 0;
+        if (aggregated is null) return false;
+
+        int start = aggregated.IndexOf(key, StringComparison.Ordinal);
+        if (start < 0) return false;
+        start += key.Length;
+
+        int end = start;
+        while (end < aggregated.Length && char.IsAsciiDigit(aggregated[end])) end++;
+        return end > start && long.TryParse(aggregated.AsSpan(start, end - start), out value);
+    }
+
+    private const long MinDeadWeightCompactionBytes = 1L << 30;
 
     public virtual void SyncWal()
     {
@@ -2063,11 +2102,49 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) => GetViewBetween(firstKey, lastKey, null);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);
 
-    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, IColumnFamilyHandle? cf)
+    /// <summary>Whether a range view over these bounds can leave the prefix bucket its seek lands in. The length
+    /// is the widest extractor configured across this database and its columns, which errs toward totality: a
+    /// column with a shorter extractor, or none at all, is never told to trust a bucket it does not have.</summary>
+    internal bool CrossesPrefixBucket(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        int length = _prefixExtractorLength;
+        if (length == 0) return false;
+        if (firstKey.Length < length || lastKey.Length < length) return true;
+        return !firstKey[..length].SequenceEqual(lastKey[..length]);
+    }
+
+    private static int ParsePrefixExtractorLength(IDictionary<string, string> options)
+    {
+        // "nullptr" is RocksDB's own spelling for "no extractor", so it means no bucket exists rather than the
+        // widest possible one.
+        if (!options.TryGetValue("prefix_extractor", out string? extractor)
+            || string.IsNullOrWhiteSpace(extractor)
+            || extractor.Trim().Equals("nullptr", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        int separator = extractor.LastIndexOfAny([':', '.']);
+        // An extractor whose width cannot be read is treated as unbounded, so every range asks for total order.
+        return separator >= 0 && int.TryParse(extractor.AsSpan(separator + 1), out int length) && length > 0
+            ? length
+            : int.MaxValue;
+    }
+
+    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, IColumnFamilyHandle? cf, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = CreateReadOptions();
+        if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
+        if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(ReadAheadSize);
+
+        // A view promises every key between its bounds. Where a prefix extractor is configured - the code
+        // database has one, along with a hash index and a prefix-hash memtable - an iterator is only required to
+        // stay correct within the seek key's prefix bucket, so a range crossing buckets can come back short or
+        // empty. Total order fixes that at the cost of the prefix index and bloom, so it is asked for only when
+        // the range can actually leave the bucket; a range that stays inside one keeps the optimisation.
+        if (CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = CreateIterator(readOptions, cf);

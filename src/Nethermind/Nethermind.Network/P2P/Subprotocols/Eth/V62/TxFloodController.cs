@@ -89,6 +89,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             "invalid tx",
                             $"Disconnecting {_protocolHandler} due to invalid tx received");
                     }
+                    else if (accepted == AcceptTxResult.InvalidBlobProofs)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to invalid blob proofs");
+                        _isLegacyDowngraded = true;
+                    }
                     else
                     {
                         _notAcceptedSinceLastCheck++;
@@ -456,8 +461,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     if (_returned[i])
                     {
                         ulong fingerprint = _fingerprints[i];
-                        creditedFingerprints.TryGetValue(fingerprint, out int count);
-                        creditedFingerprints[fingerprint] = count + 1;
+                        creditedFingerprints.Increment(fingerprint);
                     }
                 }
             }

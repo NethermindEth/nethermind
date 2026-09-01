@@ -12,7 +12,9 @@ using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -109,6 +111,69 @@ namespace Nethermind.Network.Discovery.Test
             finally
             {
                 forwardedPacket.Dispose();
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task UpdatesDiscoveryBytesSentMetric()
+        {
+            byte[] sentData = [1, 2, 3, 4];
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesSentBefore = Interlocked.Read(ref Metrics.DiscoveryBytesSent);
+
+            await _handler.SendAsync(sentData, to, CancellationToken.None);
+            DatagramPacket outboundPacket = _channel.ReadOutbound<DatagramPacket>();
+            try
+            {
+                Assert.That(outboundPacket, Is.Not.Null);
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(outboundPacket);
+            }
+
+            Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task CompositeProtocolPipelineCountsInboundPacketOnce()
+        {
+            byte[] data = new byte[100];
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
+            EmbeddedChannel channel = new();
+            NettyDiscoveryV5Handler discv5Handler = new(new TestLogManager());
+            discv5Handler.InitializeChannel(channel);
+            channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
+            channel.Pipeline.AddLast(new NettyDiscoveryHandler(
+                Substitute.For<IDiscoveryMsgListener>(),
+                channel,
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<ITimestamper>(),
+                new TestLogManager()));
+            channel.Pipeline.AddLast(discv5Handler);
+
+            try
+            {
+                using CancellationTokenSource cancellationSource = new(10_000);
+                await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = discv5Handler
+                    .ReadMessagesAsync(cancellationSource.Token)
+                    .GetAsyncEnumerator(cancellationSource.Token);
+                ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+                channel.WriteInbound(new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+                Assert.That(await readTask, Is.True);
+                enumerator.Current.Dispose();
+
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
+            }
+            finally
+            {
+                channel.FinishAndReleaseAll();
             }
         }
 
