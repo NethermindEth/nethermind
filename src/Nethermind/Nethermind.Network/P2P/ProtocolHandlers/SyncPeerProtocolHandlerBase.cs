@@ -322,7 +322,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = FixHeadersForGeth(headers);
+            headers = TruncateHeadersAtFirstMissing(headers);
 
             return Task.FromResult(new BlockHeadersMessage(headers));
         }
@@ -427,7 +427,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
+        private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
             int toTake = headersSpan.Length;

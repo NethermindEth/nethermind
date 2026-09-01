@@ -53,14 +53,14 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
-            if (receipts is null || receipts.Length == 0) return false;
+            if (receipts is null || receipts.Length == 0 || (recoverSenderOnly && !forceRecoverSender)) return false;
 
             for (int i = 0; i < receipts.Length; i++)
             {
                 TxReceipt receipt = receipts[i];
                 if (recoverSenderOnly)
                 {
-                    if (forceRecoverSender && receipt.Sender is null) return true;
+                    if (receipt.Sender is null) return true;
                 }
                 else if (receipt.BlockHash is null ||
                          receipt.TxHash is null ||

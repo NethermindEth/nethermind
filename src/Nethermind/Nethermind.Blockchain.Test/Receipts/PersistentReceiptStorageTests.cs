@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -42,6 +43,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
     private IStateHistoryCaptureStatus _captureStatus = null!;
+    private ILogManager _logManager = null!;
+    private InterfaceLogger _logger = null!;
 
     [SetUp]
     public void SetUp()
@@ -53,6 +56,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
+        _logger = Substitute.For<InterfaceLogger>();
+        _logger.IsWarn.Returns(true);
+        ILogger logger = new(_logger);
+        _logManager = Substitute.For<ILogManager>();
+        _logManager.GetClassLogger<PersistentReceiptStorage>().Returns(logger);
         CreateStorage();
     }
 
@@ -333,6 +341,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockStore,
             _receiptConfig,
             _decoder,
+            logManager: _logManager,
             historyCaptureStatus: captureStatus
         )
         { MigratedBlockNumber = 0 };
@@ -387,6 +396,40 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(migrationReceipts, Has.Length.EqualTo(2));
             Assert.That(migrationReceipts[0], Is.Not.Null);
             Assert.That(migrationReceipts[1], Is.Null);
+        }
+    }
+
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Get_logs_legacy_receipt_count_mismatch_only_on_recovering_reads(bool recover, int expectedWarnings)
+    {
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(
+                Build.A.Transaction.SignedAndResolved().TestObject,
+                Build.A.Transaction.SignedAndResolved().TestObject,
+                Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject;
+        PrepareBlock(block);
+        TxReceipt[] legacyReceipts =
+        [
+            Build.A.Receipt.WithCalculatedBloom().TestObject,
+            null!,
+            Build.A.Receipt.WithCalculatedBloom().TestObject
+        ];
+        byte[] encoded = _decoder.EncodeAsBytes(legacyReceipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = encoded;
+
+        TxReceipt[] receipts = _storage.Get(block, recover);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts, Has.Length.EqualTo(1));
+            _logger.Received(expectedWarnings).Warn(Arg.Is<string>(message =>
+                message.Contains(block.ToString(Block.Format.FullHashAndNumber)) &&
+                message.Contains("decoded 1 for 3 transactions")));
         }
     }
 

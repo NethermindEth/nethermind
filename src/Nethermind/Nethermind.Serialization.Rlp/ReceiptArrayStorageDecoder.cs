@@ -204,7 +204,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
-            decoderContext.Check(includeTrailingItems ? decoderContext.Length : declaredEnd);
+            decoderContext.Check(declaredEnd);
         }
 
         return result;
@@ -215,6 +215,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         int missingIndex = Array.IndexOf(receipts, null);
         if (missingIndex < 0)
         {
+            // Nullable annotations do not change the runtime array type; this path proved every element is present.
             return (TxReceipt[])(object)receipts;
         }
 
