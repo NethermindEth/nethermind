@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -37,7 +38,8 @@ namespace Nethermind.Network.Test.P2P
             _serializer = new MessageSerializationService(
                 SerializerInfo.Create(new HelloMessageSerializer()),
                 SerializerInfo.Create(new PingMessageSerializer()),
-                SerializerInfo.Create(new AddCapabilityMessageSerializer())
+                SerializerInfo.Create(new AddCapabilityMessageSerializer()),
+                SerializerInfo.Create(new DisconnectMessageSerializer())
             );
         }
 
@@ -57,7 +59,7 @@ namespace Nethermind.Network.Test.P2P
 
         private const int ListenPort = 8003;
 
-        private P2PProtocolHandler CreateSession()
+        private P2PProtocolHandler CreateSession(ILogManager? logManager = null)
         {
             _session.LocalPort.Returns(ListenPort);
             _session.Node.Returns(node);
@@ -70,7 +72,7 @@ namespace Nethermind.Network.Test.P2P
                 _nodeStatsManager,
                 _serializer,
                 Substitute.For<IBackgroundTaskScheduler>(),
-                LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance);
         }
 
         [Test]
@@ -134,6 +136,18 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
             _session.Received(1).DeliverMessage(Arg.Any<PongMessage>());
+        }
+
+        [Test]
+        public void Received_disconnect_is_logged_at_trace()
+        {
+            TestLogger logger = new() { IsDebug = false };
+            P2PProtocolHandler p2PProtocolHandler = CreateSession(new OneLoggerLogManager(new(logger)));
+            using DisconnectMessage message = new(EthDisconnectReason.BreachOfProtocol);
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            Assert.That(logger.LogList, Has.Some.Contains("received disconnect [BreachOfProtocol]"));
         }
 
         [Test]

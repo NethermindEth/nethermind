@@ -10,6 +10,7 @@ using Nethermind.TxPool;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Threading;
 
@@ -94,7 +95,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     }
                     else if (accepted == AcceptTxResult.InvalidBlobProofs)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to invalid blob proofs");
+                        if (_logger.IsTrace) TraceDowngrading("invalid blob proofs");
                         _isLegacyDowngraded = true;
                     }
                     else
@@ -102,7 +103,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         _notAcceptedSinceLastCheck++;
                         if (!_isLegacyDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
+                            if (_logger.IsTrace) TraceDowngrading("tx flooding");
                             _isLegacyDowngraded = true;
                         }
                         else if (!_isLegacyDisconnectRequested
@@ -119,6 +120,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             DisconnectIfRequested(disconnectRequest);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceDowngrading(string reason) =>
+                _logger.Trace($"Downgrading {_protocolHandler} due to {reason}");
         }
 
         public void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes)

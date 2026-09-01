@@ -635,7 +635,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             if (cancellationToken.IsCancellationRequested) return;
 
-            if (_logger.IsDebug) DebugPreWarming("Started", suggestedBlock.Number, isPreparation, transactionCount);
+            if (_logger.IsTrace) TracePreWarming("Started", suggestedBlock.Number, isPreparation, transactionCount);
 
             if (!addressWarmer.HasBal)
             {
@@ -643,7 +643,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
-            if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
+            if (_logger.IsTrace) TracePreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
         }
         catch (Exception ex)
         {
@@ -657,8 +657,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DebugPreWarming(string state, ulong blockNumber, bool isPreparation, int transactionCount) =>
-            _logger.Debug(
+        void TracePreWarming(string state, ulong blockNumber, bool isPreparation, int transactionCount) =>
+            _logger.Trace(
                 $"{state} pre-warming caches for {(isPreparation ? "preparation" : "validation")} of block {blockNumber} with {transactionCount} transactions.");
     }
 

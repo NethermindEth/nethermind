@@ -24,6 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private TxFloodController _controller;
         private Eth62ProtocolHandler _handler;
         private ISession _session;
+        private TestLogger _testLogger;
         private ITimestamper _timestamper;
         private DateTime _now;
 
@@ -46,7 +47,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _timestamper = Substitute.For<ITimestamper>();
             _now = DateTime.UtcNow;
             _timestamper.UtcNow.Returns(_ => _now);
-            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance, new Random(0));
+            _testLogger = new TestLogger { IsDebug = false };
+            _controller = new TxFloodController(_handler, _timestamper, new ILogger(_testLogger), new Random(0));
         }
 
         [TearDown]
@@ -120,7 +122,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.Report(Flooding);
             }
 
-            Assert.That(_controller.IsDowngraded, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                Assert.That(_testLogger.LogList, Has.Some.EndsWith("due to tx flooding"));
+            }
         }
 
         [Test]
@@ -398,7 +404,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _controller.Report(AcceptTxResult.InvalidBlobProofs);
             }
 
-            Assert.That(_controller.IsDowngraded, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                Assert.That(_testLogger.LogList, Has.Some.EndsWith("due to invalid blob proofs"));
+            }
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 

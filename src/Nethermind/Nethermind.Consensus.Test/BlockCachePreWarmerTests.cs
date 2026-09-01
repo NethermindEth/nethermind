@@ -166,9 +166,9 @@ public class BlockCachePreWarmerTests
 
     [TestCase(false, "validation")]
     [TestCase(true, "preparation")]
-    public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose)
+    public async Task PreWarmCaches_TraceLogsPurposeAndTransactionCount(bool speculative, string purpose)
     {
-        TestLogger logger = new();
+        TestLogger logger = new() { IsDebug = false };
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(
             parallelExecution: false,
             parallelExecutionBatchRead: false,
@@ -184,10 +184,13 @@ public class BlockCachePreWarmerTests
             await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
         }
 
-        Assert.That(logger.LogList, Has.Some.EqualTo(
-            $"Started pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
-        Assert.That(logger.LogList, Has.Some.EqualTo(
-            $"Finished pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Has.Some.EqualTo(
+                $"Started pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+            Assert.That(logger.LogList, Has.Some.EqualTo(
+                $"Finished pre-warming caches for {purpose} of block {block.Number} with {block.Transactions.Length} transactions."));
+        }
     }
 
     /// <summary>
