@@ -76,7 +76,7 @@ public class BaseFlatPersistenceReaderTests
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => value;
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
             throw new NotSupportedException();
     }
 }

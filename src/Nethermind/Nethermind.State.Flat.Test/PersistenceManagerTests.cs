@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -936,7 +937,7 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
-        StateId flushed = manager.FlushToPersistence();
+        StateId flushed = manager.FlushToPersistence(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -968,7 +969,7 @@ public class PersistenceManagerTests
         CreateSnapshot(Block0, to, compacted: true);
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
-        Assert.Throws<System.InvalidOperationException>(() => manager.FlushToPersistence());
+        Assert.Throws<System.InvalidOperationException>(() => manager.FlushToPersistence(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
@@ -1061,7 +1062,7 @@ public class PersistenceManagerTests
         StateId persisted = Block0;
 
         // Act
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         // Assert
         Assert.That(result, Is.EqualTo(persisted));
@@ -1084,11 +1085,56 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(state32));
         _persistence.Received().CreateWriteBatch(Block0, state16);
         _persistence.Received().CreateWriteBatch(state16, state32);
+    }
+
+    [Test]
+    public void FlushToPersistence_CapturesHistoryWithTheCallersToken_NotTheProcessExitOne()
+    {
+        using CancellationTokenSource exiting = new();
+        exiting.Cancel();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(exiting.Token);
+
+        CancellationToken captured = new CancellationTokenSource().Token;
+        bool wasCalled = false;
+        IFlatPersistenceCaptureHook captureHook = Substitute.For<IFlatPersistenceCaptureHook>();
+        captureHook
+            .When(h => h.CaptureUpTo(Arg.Any<StateId>(), Arg.Any<ISnapshotRepository>(), Arg.Any<CancellationToken>()))
+            .Do(call => { wasCalled = true; captured = call.ArgAt<CancellationToken>(2); });
+
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            processExitSource,
+            captureHook);
+
+        StateId state16 = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(0);
+        CreateSnapshot(Block0, state16, compacted: true);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        manager.FlushToPersistence(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wasCalled, Is.True, "the flush has to reach the capture, otherwise the assertion below proves nothing");
+            Assert.That(captured.IsCancellationRequested, Is.False,
+                "the final flush exists to finish the work, so it must not be cancelled by the process exit its own manager links to");
+        }
     }
 
     [Test]
@@ -1103,7 +1149,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(state16));
         _persistence.Received().CreateWriteBatch(Block0, state16);
@@ -1129,7 +1175,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(head));
         _persistence.Received().CreateWriteBatch(Block0, target2);
@@ -1159,7 +1205,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(committedHead));
         _persistence.Received().CreateWriteBatch(Block0, target2);
@@ -1184,7 +1230,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
     }
@@ -1206,7 +1252,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(state3));
         Received.InOrder(() =>
@@ -1233,7 +1279,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        StateId result = _persistenceManager.FlushToPersistence();
+        StateId result = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(target));
         _persistence.Received().CreateWriteBatch(Block0, target);

@@ -247,7 +247,7 @@ public class PersistenceManager(
                 {
                     using Snapshot _ = toPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
-                    CaptureHistory(toPersist.To);
+                    CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
                     CurrentPersistedStateId = toPersist.To;
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
@@ -256,7 +256,7 @@ public class PersistenceManager(
                 {
                     using PersistedSnapshot _ = persistedToPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
-                    CaptureHistory(persistedToPersist.To);
+                    CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
                     CurrentPersistedStateId = persistedToPersist.To;
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
@@ -283,11 +283,13 @@ public class PersistenceManager(
 
     // Runs before the persist and the prune: the flat head must never advance past durable history, or a crash in
     // between leaves a permanently uncapturable range. Failures propagate and abort this iteration (retried next).
-    private void CaptureHistory(in StateId persistedHead)
+    // Takes the caller's token rather than _cts: that one is linked to process exit, so the final flush would
+    // cancel itself on the way out and abort the persist it exists to complete.
+    private void CaptureHistory(in StateId persistedHead, CancellationToken cancellationToken)
     {
         if (captureHook is null || persistedHead == StateId.PreGenesis) return;
 
-        captureHook.CaptureUpTo(persistedHead, snapshotRepository, _cts.Token);
+        captureHook.CaptureUpTo(persistedHead, snapshotRepository, cancellationToken);
     }
 
     /// <summary>
@@ -384,13 +386,13 @@ public class PersistenceManager(
     /// <see cref="AddToPersistence"/> it has no per-call drain bound and seeds the walk from the
     /// finalized state when available, falling back to the in-memory then tier-aware latest tip.
     /// </remarks>
-    public StateId FlushToPersistence()
+    public StateId FlushToPersistence(CancellationToken cancellationToken)
     {
         using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
-        return FlushToPersistenceLocked();
+        return FlushToPersistenceLocked(cancellationToken);
     }
 
-    private StateId FlushToPersistenceLocked()
+    private StateId FlushToPersistenceLocked(CancellationToken cancellationToken)
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
         // Follow the committed head; fall back to the longest chain when nothing was committed this session.
@@ -429,7 +431,7 @@ public class PersistenceManager(
             {
                 using PersistedSnapshot persistedScope = persisted;
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
-                CaptureHistory(persisted.To);
+                CaptureHistory(persisted.To, cancellationToken);
                 PersistPersistedSnapshot(persisted);
                 CurrentPersistedStateId = persisted.To;
                 currentPersistedState = CurrentPersistedStateId;
@@ -442,7 +444,7 @@ public class PersistenceManager(
             using Snapshot inMemScope = snapshotToPersist;
 
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
-            CaptureHistory(snapshotToPersist.To);
+            CaptureHistory(snapshotToPersist.To, cancellationToken);
             PersistSnapshot(snapshotToPersist);
             CurrentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = CurrentPersistedStateId;

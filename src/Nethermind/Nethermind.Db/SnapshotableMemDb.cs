@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Db
     /// In-memory database with MVCC-based snapshot support.
     /// Uses Multi-Version Concurrency Control to enable O(1) snapshot creation.
     /// </summary>
-    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot
+    public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
         private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
         private readonly EntryComparer _entryComparer = new();
@@ -83,6 +84,22 @@ namespace Nethermind.Db
         }
 
         public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+
+        /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests. Goes through
+        /// <see cref="Set"/> so the versioning that snapshots rely on sees each removal.</summary>
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            foreach (byte[] key in Keys)
+            {
+                if (Bytes.BytesComparer.Compare(key, firstKeyInclusive) >= 0 && Bytes.BytesComparer.Compare(key, lastKeyExclusive) < 0)
+                {
+                    Set(key, null);
+                }
+            }
+        }
+
+        // Removing already returned the memory; there is no deferred storage to give back.
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) { }
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
@@ -230,7 +247,7 @@ namespace Nethermind.Db
             }
         }
 
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
         {
             int version;
             lock (_versionLock)
@@ -511,7 +528,7 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
 
             public void Dispose() => _db.OnSnapshotDisposed(_snapshotVersion);
         }

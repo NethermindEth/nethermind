@@ -135,7 +135,7 @@ public static partial class EvmInstructions
         }
 
         // Load the initialization code from memory based on the specified position and length.
-        if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
+        if (!vm.VmState.Memory.TryLoadOwned(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -194,7 +194,7 @@ public static partial class EvmInstructions
         // Analyze and compile the initialization code.
         CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
-        // EIP-7610: If the account already exists and is non-zero, then the creation fails.
+        // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_execution.
         if (isNonZeroAccount)
         {
@@ -207,12 +207,7 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst>();
         }
 
-        // If the contract address refers to a dead account, clear its storage before creation.
-        if (state.IsDeadAccount(contractAddress))
-        {
-            // Note: Seems to be needed on block 21827914 for some reason
-            state.ClearStorage(contractAddress);
-        }
+        state.ClearStorage(contractAddress);
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);

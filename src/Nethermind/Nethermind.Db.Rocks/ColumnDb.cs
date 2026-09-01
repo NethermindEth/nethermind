@@ -6,14 +6,13 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -75,9 +74,20 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
+            _mainDb.ThrowIfDisposing();
+            _mainDb.UpdateReadMetrics(keys.Length);
+
             ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);
-            return _rocksDb.MultiGet(keys, columnFamilies);
+            try
+            {
+                return _rocksDb.MultiGet(keys, columnFamilies);
+            }
+            catch (RocksDbSharpException e)
+            {
+                _mainDb.HandleFatalDbError(e);
+                throw;
+            }
         }
     }
 
@@ -129,18 +139,41 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
+    public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.RemoveRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
+    public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        _mainDb.ReclaimRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
+
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() =>
-        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: false);
+
+    /// <inheritdoc/>
+    public bool CompactIfDeadWeightExceeds(double deadRatio)
+    {
+        if (!DbOnTheRocks.ExceedsDeadWeight(
+                _rocksDb.GetProperty("rocksdb.aggregated-table-properties", _columnFamily),
+                _rocksDb.GetProperty("rocksdb.total-sst-files-size", _columnFamily),
+                deadRatio))
+        {
+            return false;
+        }
+
+        _mainDb.LogColumnDeadWeightCompaction(Name);
+        _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: true);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public void InterruptCompactions() => _mainDb.InterruptCompactions();
 
     /// <summary>
-    /// Not sure how to handle delete of the columns DB
+    /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
     /// </summary>
-    /// <exception cref="NotSupportedException"></exception>
+    /// <exception cref="NotSupportedException">Always thrown; clearing a single column family is not supported.</exception>
     public void Clear() => throw new NotSupportedException();
 
-    // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public void SetWriteBuffer(long sizeBytes)
@@ -171,8 +204,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
-        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
+        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,

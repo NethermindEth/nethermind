@@ -420,7 +420,7 @@ public class WireTests
     {
         foreach (NSubstitute.Core.ICall call in kademlia.ReceivedCalls())
         {
-            if (call.GetMethodInfo().Name == nameof(IKademlia<PublicKey, Node>.AddOrRefresh) &&
+            if (call.GetMethodInfo().Name == nameof(IKademlia<,>.AddOrRefresh) &&
                 call.GetArguments()[0] is Node node &&
                 node.Id.Equals(publicKey) &&
                 HasEnrSequence(node, sequence))
