@@ -291,6 +291,40 @@ public class FrameTxBlockGasTests
         }
     }
 
+    [Test]
+    public void Execute_WritingFrameTxAcrossTheFrameLimitsBoundary_MetersStateOnlyAfterActivation()
+    {
+        Address laterWriter = TestItem.AddressF;
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        Deploy(laterWriter, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        TestSpecProvider provider = (TestSpecProvider)_specProvider;
+        OverridableReleaseSpec specBeforeFork = new(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8037Enabled = false };
+
+        Transaction afterFork = FrameTx(nonce: 0, laterWriter);
+        TestAllTracerWithOutput after = new();
+        Assert.That(Process(afterFork, after).TransactionExecuted, Is.True);
+
+        provider.GenesisSpec = specBeforeFork;
+        Transaction beforeFork = FrameTx(nonce: 1, Writer);
+        TestAllTracerWithOutput before = new();
+        Assert.That(Process(beforeFork, before).TransactionExecuted, Is.True);
+
+        const ulong stateCharge = (ulong)GasCostOf.SSetState;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the fresh slot is written before the fork");
+            Assert.That(_state.Get(new StorageCell(laterWriter, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the fresh slot is written after the fork");
+            Assert.That(before.GasConsumedResult.BlockStateGas, Is.Zero,
+                "before frameLimitsTime the state dimension is inert, so a fresh slot owes no state gas");
+            Assert.That(after.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
+                "after frameLimitsTime the same fresh-slot write is billed in the state dimension");
+        }
+    }
+
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 

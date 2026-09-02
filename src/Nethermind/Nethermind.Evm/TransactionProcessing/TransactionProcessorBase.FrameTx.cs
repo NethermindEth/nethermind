@@ -140,7 +140,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.RecentRootReferencesNotEnabled);
         }
 
         if (tx.NonceKeys is not null)
