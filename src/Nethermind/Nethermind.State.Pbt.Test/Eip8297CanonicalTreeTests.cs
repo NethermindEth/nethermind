@@ -205,6 +205,196 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [TestCase("insert-only")]
+    [TestCase("delete-only")]
+    [TestCase("replacements")]
+    [TestCase("absent-deletes")]
+    [TestCase("duplicate-last-write-wins")]
+    [TestCase("mixed-delete-set")]
+    public void Bulk_mutation_kinds_match_oracle_serial_outcome_and_reopen(string scenarioName)
+    {
+        (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) = Scenario(scenarioName);
+        PbtTreeHarness tree = new();
+        PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(tree, serial, oracle, Initial);
+
+        tree.ApplyBatch(Changes);
+        foreach ((byte[] key, byte[]? value) in Changes)
+            serial.ApplyBatch([(key, value)]);
+        ApplyOracle(oracle, Changes);
+        string[] records = tree.CanonicalRecords();
+        string[] physical = PhysicalRecords(tree);
+        tree.Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), scenarioName);
+            Assert.That(tree.RootHash, Is.EqualTo(serial.RootHash), "bulk and serial roots");
+            Assert.That(tree.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()), "bulk and serial records");
+            Assert.That(tree.CanonicalRecords(), Is.EqualTo(records), "canonical records survive reopen");
+            Assert.That(PhysicalRecords(tree), Is.EqualTo(physical), "physical groups survive reopen");
+        }
+    }
+
+    [Test]
+    public void Bulk_updates_sharing_a_long_persisted_prefix_load_each_branch_once()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = default;
+        PbtWriteBatch initial = Batch(
+            ([0x12, 0x34, 0x50], Value(1)),
+            ([0x12, 0x34, 0x60], Value(2)),
+            ([0x12, 0x34, 0x70], Value(3)));
+        root = TrieUpdater.UpdateRoot(store, root, initial);
+        store.ResetReads();
+
+        PbtWriteBatch changes = Batch(
+            ([0x12, 0x34, 0x50], Value(4)),
+            ([0x12, 0x34, 0x60], Value(5)),
+            ([0x12, 0x34, 0x70], Value(6)));
+        root = TrieUpdater.UpdateRoot(store, root, changes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.Not.EqualTo(default(ValueHash256)));
+            Assert.That(store.Reads, Is.LessThanOrEqualTo(5), "the root and shared persisted branches are traversed once");
+            Assert.That(store.Applies, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Non_byte_aligned_prefix_split_and_sibling_promotion_round_trip()
+    {
+        PbtTreeHarness tree = new();
+        EipReferenceTree oracle = new();
+        byte[] first = [0xAA, 0x00];
+        byte[] second = [0xAB, 0x00];
+        byte[] split = [0xA8, 0x00];
+        tree.ApplyBatch([(first, Value(1)), (second, Value(2))]);
+        oracle.Insert(first, Value(1));
+        oracle.Insert(second, Value(2));
+        tree.ApplyBatch([(split, Value(3)), (second, Value(4))]);
+        oracle.Insert(split, Value(3));
+        oracle.Insert(second, Value(4));
+        tree.ApplyBatch([(first, null)]);
+        oracle.Delete(first);
+        string[] records = tree.CanonicalRecords();
+        tree.Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(tree.CanonicalRecords(), Is.EqualTo(records));
+            Assert.That(tree.PhysicalPayloads, Is.Not.Empty);
+        }
+    }
+
+    [Test]
+    public void Failed_batches_never_apply_or_change_state_for_prefix_missing_or_mismatched_nodes()
+    {
+        foreach (bool hashMismatch in new[] { false, true })
+        {
+            CountingPbtStore store = new();
+            ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
+            PbtPhysicalPayload[] before = [.. store.Inner.ExportPhysicalPayloads()];
+            int appliesBeforeFailure = store.Applies;
+            store.OverrideNode = hashMismatch
+                ? static _ => PbtNodeCodec.Encode(new PbtLeafNode(new PbtFullKey([0xEE]), Value(9)))
+                : static _ => null;
+
+            PbtWriteBatch changes = hashMismatch
+                ? Batch(([0x12], Value(2)))
+                : Batch(([0x12], null), ([0x34], Value(2)), ([0x34, 0x56], Value(3)));
+            if (hashMismatch)
+                Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, changes));
+            else
+                Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, changes));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure), hashMismatch ? "hash mismatch" : "missing node");
+                Assert.That(store.Inner.RootHash, Is.EqualTo(root));
+                Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
+            }
+        }
+    }
+
+    private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
+    {
+        "insert-only" => ([], [([0x10], Value(1)), ([0x20], Value(2))]),
+        "delete-only" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], null), ([0xFF], null)]),
+        "replacements" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], Value(3)), ([0x20], Value(4))]),
+        "absent-deletes" => ([([0x10], Value(1))], [([0xFF], null), ([0xEE], null)]),
+        "duplicate-last-write-wins" => ([], [([0x10], Value(1)), ([0x10], Value(2)), ([0x10], null), ([0x10], Value(3))]),
+        "mixed-delete-set" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], null), ([0x30], Value(3)), ([0x20], Value(4))]),
+        _ => throw new ArgumentOutOfRangeException(nameof(name)),
+    };
+
+    private static void ApplyAll(PbtTreeHarness tree, PbtTreeHarness serial, EipReferenceTree oracle, List<(byte[] Key, byte[]? Value)> changes)
+    {
+        tree.ApplyBatch(changes);
+        foreach ((byte[] key, byte[]? value) in changes)
+            serial.ApplyBatch([(key, value)]);
+        ApplyOracle(oracle, changes);
+    }
+
+    private static void ApplyOracle(EipReferenceTree oracle, IEnumerable<(byte[] Key, byte[]? Value)> changes)
+    {
+        foreach ((byte[] key, byte[]? value) in changes)
+        {
+            if (value is null) oracle.Delete(key);
+            else oracle.Insert(key, value);
+        }
+    }
+
+    private static PbtWriteBatch Batch(params (byte[] Key, byte[]? Value)[] changes)
+    {
+        PbtWriteBatch batch = new();
+        foreach ((byte[] key, byte[]? value) in changes)
+        {
+            PbtFullKey fullKey = new(key);
+            if (value is null) batch.Delete(fullKey);
+            else batch.Set(fullKey, new ValueHash256(value));
+        }
+        return batch;
+    }
+
+    private static string[] PhysicalRecords(PbtTreeHarness tree) => PhysicalRecords(tree.PhysicalPayloads);
+
+    private static string[] PhysicalRecords(IEnumerable<PbtPhysicalPayload> payloads)
+    {
+        List<string> records = [];
+        foreach (PbtPhysicalPayload payload in payloads)
+            records.Add(Convert.ToHexString(payload.Key.Span) + Convert.ToHexString(payload.Payload.Span));
+        records.Sort(StringComparer.Ordinal);
+        return [.. records];
+    }
+
+    private static string[] PhysicalRecords(PbtPhysicalPayload[] payloads) => PhysicalRecords((IEnumerable<PbtPhysicalPayload>)payloads);
+
+    private sealed class CountingPbtStore : IPbtStore
+    {
+        internal PbtNodeGroupStore Inner { get; } = new();
+        internal int Reads { get; private set; }
+        internal int Applies { get; private set; }
+        internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
+
+        public byte[]? GetNode(PbtNodePath path)
+        {
+            Reads++;
+            return OverrideNode is { } overrideNode ? overrideNode(path) : Inner.GetNode(path);
+        }
+
+        public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes)
+        {
+            Applies++;
+            Inner.Apply(newRoot, leaves, nodes);
+        }
+
+        internal void ResetReads() => Reads = 0;
+    }
+
     private static byte[] Hash(byte[] preimage)
     {
         byte[] result = new byte[32];
