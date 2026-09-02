@@ -105,15 +105,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
                             _isLegacyDowngraded = true;
                         }
-                        // Load this node shed itself is still throttled by the downgrade above, but must never
-                        // disconnect, nor count towards a later rejection's total: the peer does not choose
-                        // when this node starts shedding.
+                        // Load this node shed itself is throttled by the downgrade above but never disconnects:
+                        // the subtraction is what keeps it out of the count, and the clause additionally keeps
+                        // a deferral from being the report a disconnect is attributed to.
                         else if (accepted != AcceptTxResult.FrameSimulationDeferred
                             && (_notAcceptedSinceLastCheck - _deferredSinceLastCheck) / _checkInterval.TotalSeconds > 100)
                         {
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,
-                                $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds}",
+                                $"tx flooding {_notAcceptedSinceLastCheck - _deferredSinceLastCheck}/{_checkInterval.TotalSeconds}",
                                 $"Disconnecting {_protocolHandler} due to tx flooding");
                         }
                     }

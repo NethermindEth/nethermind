@@ -43,7 +43,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for the transaction to be accepted into the public mempool. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
 
-    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. Also bounds how long an admission thread waits for the simulator, so the two are additive. `0` to lift the limit.")]
+    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A gossiped transaction never waits for a busy simulator; a locally submitted one waits up to this long as well, so for it the two are additive. `0` to lift the limit.")]
     int FrameTxSimulationTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]

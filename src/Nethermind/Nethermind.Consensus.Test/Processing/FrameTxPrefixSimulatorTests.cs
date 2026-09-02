@@ -274,6 +274,38 @@ public class FrameTxPrefixSimulatorTests
         }
     }
 
+    // Shedding protects the background pool that gossip admission runs on; a local submission is on the RPC
+    // thread, so shedding it would just hand a peer the exemption from the budget that local calls are given.
+    [Test]
+    public void Simulate_LocalSubmission_WaitsForABusySimulatorRatherThanShedding()
+    {
+        using ManualResetEventSlim inside = new(false);
+        using ManualResetEventSlim release = new(false);
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        envFactory.Create().Returns(_ =>
+        {
+            inside.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+            throw new TestEnvUnavailableException();
+        });
+        using FrameTxPrefixSimulator simulator = CreateSimulator(
+            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 0, timeoutMs: 30_000);
+
+        Task<FrameTxSimulationResult> holder = Task.Run(() => simulator.Simulate(FrameTx()));
+        Assert.That(inside.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first simulation never took the env");
+
+        Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
+        // Long enough that a zero wait would already have shed it, so what follows measures the wait.
+        Thread.Sleep(200);
+        Assert.That(local.IsCompleted, Is.False, "a local submission must not be shed while the simulator is busy");
+
+        release.Set();
+        Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        holder.Wait(TimeSpan.FromSeconds(10));
+
+        Assert.That(local.Result.Reason, Does.Not.Contain("busy"));
+    }
+
     // The budget rejects nearly everything under spam, so it is read before the lock; reading it after would
     // make every arrival pay a contended acquisition to learn it had none.
     [Test]
