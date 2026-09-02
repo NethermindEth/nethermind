@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
