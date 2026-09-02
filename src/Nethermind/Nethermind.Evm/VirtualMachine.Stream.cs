@@ -14,12 +14,11 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
-    // Off by default: the bytecode loop measured faster on every benchmarked call shape, on both ARM64
-    // (-17..-18%) and x64 (-4..-10%, widening under load), and on captured eth_call traffic (-2..-3%).
-    // JsonRpc.StreamInterpreterEnabled turns it back on at startup (RegisterRpcModules).
+    // Disabled: the plain bytecode loop measured faster on every benchmarked call shape, on both ARM64
+    // and x64, and on captured eth_call traffic. JsonRpc.StreamInterpreterEnabled re-enables it.
     internal const bool EnabledByDefault = false;
 
-    // Volatile so tests can flip it in-process.
+    // Volatile so a test flipping it in-process is visible to frame-executing threads.
     public static volatile bool Enabled = EnabledByDefault;
 
     // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
