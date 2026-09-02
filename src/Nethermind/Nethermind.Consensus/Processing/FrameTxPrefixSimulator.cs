@@ -182,7 +182,8 @@ public sealed class FrameTxPrefixSimulator(
         catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
         {
             // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
-            // enumerable. Failing before the tracer exists is this node's env, so it decides nothing.
+            // enumerable. Once the tracer exists the prefix is the expected source, so the rejection is
+            // definite: one that throws every head cannot pin a slot.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
             return tracer is null
                 ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")

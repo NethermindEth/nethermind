@@ -53,8 +53,8 @@ public readonly struct FrameTxSimulationResult(
     /// True when the outcome reflects an admission bound or a node fault rather than the prefix, so it
     /// says nothing about validity.
     /// </summary>
-    /// <remarks>Retention is meant to consult this; today only <see cref="NodeBound"/> and
-    /// <see cref="Outcome"/> drive admission.</remarks>
+    /// <remarks>Admission still declines, but revalidation must leave such a transaction pending: evicting
+    /// on an exhausted budget would turn a bound into a mass eviction.</remarks>
     public bool Indeterminate { get; } = indeterminate;
 
     /// <summary>
