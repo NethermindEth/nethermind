@@ -453,8 +453,8 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
-        // A payer or paymaster the pool never resolved — a record restored from storage — prices null here and
-        // at release alike, so it is out of this check's reach rather than verified by it.
+        // A restored record's payer is persisted, so it is inside this check's reach. Its paymaster is not:
+        // LightTxDecoder drops it, so GetPaymaster prices null here and at release alike.
         private static void AccumulateFrameTxBookkeeping(
             Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
         {

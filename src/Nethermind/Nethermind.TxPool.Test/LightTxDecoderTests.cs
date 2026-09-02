@@ -327,6 +327,25 @@ public class LightTxDecoderTests
         }
     }
 
+    // The group is written only for a payer, so a keys-only record keeps the flat list every earlier build
+    // writes — and stays readable by one, which a nested form would not be.
+    [Test]
+    public void A_keys_only_record_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The flat list alone: 0xc2 over two single-byte keys, with no outer group header.
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(LightTxDecoder.Decode(encoded).NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
     // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
     // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
     [Test]

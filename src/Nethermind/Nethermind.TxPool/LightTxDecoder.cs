@@ -44,22 +44,21 @@ public class LightTxDecoder : TxDecoder<Transaction>
     private static int TrailingLength(Transaction tx)
     {
         int content = TrailingContentLength(tx);
-        return content == 0 ? 0 : Rlp.LengthOfSequence(content);
+        return content == 0
+            ? tx.NonceKeys is { } keysOnly ? FrameTxNonceCalldata.KeysLength(keysOnly) : 0
+            : Rlp.LengthOfSequence(content);
     }
 
+    /// <summary>Content length of the grouped form, or zero for a record that needs no payer.</summary>
     private static int TrailingContentLength(Transaction tx)
     {
-        if (tx.NonceKeys is null && tx.PayerAddress is null) return 0;
+        if (tx.PayerAddress is null) return 0;
 
-        // Slot 0 is always the keys list, so its sequence header is what tells the new form from a legacy
-        // flat nonce_keys list, whose first element is a scalar.
-        int content = tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0);
-        if (tx.PayerAddress is not null)
-        {
-            content += Rlp.LengthOf(tx.PayerAddress) + Rlp.LengthOf(tx.PayerExposure ?? default);
-        }
-
-        return content;
+        // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
+        // nonce_keys list a payerless record still writes, whose first element is a scalar.
+        return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
+               + Rlp.LengthOf(tx.PayerAddress)
+               + Rlp.LengthOf(tx.PayerExposure ?? default);
     }
 
     public static byte[] Encode(Transaction tx)
@@ -90,19 +89,21 @@ public class LightTxDecoder : TxDecoder<Transaction>
         // One optional trailing group, a sequence so the decoder tells it from the expiry deadline that only
         // sometimes precedes it. Written whole, so the keys list is present even when empty.
         int trailingContent = TrailingContentLength(tx);
-        if (trailingContent > 0)
+        if (trailingContent == 0)
+        {
+            // No payer, so no group: a keys-only record keeps the exact bytes every earlier build writes.
+            if (tx.NonceKeys is { } keysOnly) FrameTxNonceCalldata.EncodeKeys(keysOnly, ref writer);
+        }
+        else
         {
             writer.StartSequence(trailingContent);
             if (tx.NonceKeys is { } nonceKeys) FrameTxNonceCalldata.EncodeKeys(nonceKeys, ref writer);
             else writer.StartSequence(0);
 
-            if (tx.PayerAddress is not null)
-            {
-                writer.Encode(tx.PayerAddress);
-                // A payer that never reached the exposure gate holds no reservation, which this record does
-                // not distinguish from a zero one: reserving, releasing and restoring zero are all no-ops.
-                writer.Encode(tx.PayerExposure ?? default);
-            }
+            writer.Encode(tx.PayerAddress);
+            // A payer that never reached the exposure gate holds no reservation, which this record does not
+            // distinguish from a zero one: reserving, releasing and restoring zero are all no-ops.
+            writer.Encode(tx.PayerExposure ?? default);
         }
 
         return bytes;
