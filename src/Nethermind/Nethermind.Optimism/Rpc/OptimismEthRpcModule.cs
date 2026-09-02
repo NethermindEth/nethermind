@@ -54,7 +54,6 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
-    IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,

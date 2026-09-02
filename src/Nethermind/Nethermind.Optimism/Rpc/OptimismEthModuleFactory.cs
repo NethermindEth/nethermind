@@ -142,7 +142,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _sequencerRpcClient,
             _ecdsa,
             _sealer,
-            _receiptConfig,
             _opSpecHelper,
             _headBlockSignal,
             _capabilitiesProvider,

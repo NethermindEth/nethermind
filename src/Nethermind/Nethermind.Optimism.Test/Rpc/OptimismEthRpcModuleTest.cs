@@ -700,7 +700,7 @@ internal static class TestRpcBlockchainExt
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
-            sequencerRpcClient, ecdsa, sealer, new ReceiptConfig(), opSpecHelper,
+            sequencerRpcClient, ecdsa, sealer, opSpecHelper,
             new HeadBlockSignal(blockchain.BlockTree),
             new EthCapabilitiesProvider(
                 blockchain.BlockTree.AsReadOnly(),
