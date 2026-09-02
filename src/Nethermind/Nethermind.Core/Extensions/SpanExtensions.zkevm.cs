@@ -23,10 +23,9 @@ namespace Nethermind.Core.Extensions
 
         // Distinct odd multipliers so a lane's contribution depends on its position: a plain XOR fold
         // would collide for inputs that differ only by swapping two lanes.
-        private const ulong Lane0 = 0x9E3779B97F4A7C15UL;
-        private const ulong Lane1 = 0xC2B2AE3D27D4EB4FUL;
-        private const ulong Lane2 = 0x165667B19E3779F9UL;
-        private const ulong Lane3 = 0x85EBCA77C2B2AE63UL;
+        // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
+        // constant with a five-instruction sequence at every use.
+        private static readonly ulong[] Lanes = [0x9E3779B97F4A7C15UL, 0xC2B2AE3D27D4EB4FUL, 0x165667B19E3779F9UL, 0x85EBCA77C2B2AE63UL];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
@@ -53,13 +52,15 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b)
         {
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(Lanes);
+            ulong lane0 = lanes;
             ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Lane2;
+                Unsafe.ReadUnaligned<ulong>(ref b) * lane0 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2);
 
             mixed ^= InstanceRandom;
-            mixed *= Lane0;
+            mixed *= lane0;
             return mixed ^ (mixed >> 29);
         }
 
@@ -71,14 +72,16 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b)
         {
+            ref ulong lanes = ref MemoryMarshal.GetArrayDataReference(Lanes);
+            ulong lane0 = lanes;
             ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Lane2 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Lane3;
+                Unsafe.ReadUnaligned<ulong>(ref b) * lane0 ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Unsafe.Add(ref lanes, 1) ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Unsafe.Add(ref lanes, 2) ^
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Unsafe.Add(ref lanes, 3);
 
             mixed ^= InstanceRandom;
-            mixed *= Lane0;
+            mixed *= lane0;
             return mixed ^ (mixed >> 29);
         }
 

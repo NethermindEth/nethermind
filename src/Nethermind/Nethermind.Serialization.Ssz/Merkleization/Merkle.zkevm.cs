@@ -133,11 +133,18 @@ public static partial class Merkle
         return result;
     }
 
+    // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit constant
+    // with a five-instruction sequence at every inlined use.
+    private static readonly ulong[] SwapMasks = [0x00FF00FF00FF00FFUL, 0x0000FFFF0000FFFFUL];
+
     /// <summary>Byte-swaps each 32-bit half of <paramref name="x"/> without crossing the halves.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Bswap32Pairs(ulong x)
     {
-        x = ((x & 0x00FF00FF00FF00FFUL) << 8) | ((x >> 8) & 0x00FF00FF00FF00FFUL);
-        return ((x & 0x0000FFFF0000FFFFUL) << 16) | ((x >> 16) & 0x0000FFFF0000FFFFUL);
+        ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
+        ulong m8 = masks;
+        ulong m16 = Unsafe.Add(ref masks, 1);
+        x = ((x & m8) << 8) | ((x >> 8) & m8);
+        return ((x & m16) << 16) | ((x >> 16) & m16);
     }
 }

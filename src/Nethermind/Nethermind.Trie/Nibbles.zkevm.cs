@@ -10,6 +10,8 @@ namespace Nethermind.Trie
 {
     public static partial class Nibbles
     {
+        private static readonly ulong[] ExpandMasks = [0x0000FFFF0000FFFFUL, 0x00FF00FF00FF00FFUL, 0x000F000F000F000FUL];
+
         /// <summary>Expands <paramref name="count"/> bytes into high/low nibble pairs.</summary>
         /// <remarks>
         /// SWAR: four source bytes spread into 16-bit lanes of one word, then split into the two
@@ -20,9 +22,12 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
         {
-            ulong m16 = 0x0000FFFF0000FFFFUL;
-            ulong m8 = 0x00FF00FF00FF00FFUL;
-            ulong mNibble = 0x000F000F000F000FUL;
+            // Frozen-array loads rather than literals: the riscv64 backend materializes each 64-bit
+            // constant with a five-instruction sequence.
+            ref ulong masks = ref MemoryMarshal.GetArrayDataReference(ExpandMasks);
+            ulong m16 = masks;
+            ulong m8 = Unsafe.Add(ref masks, 1);
+            ulong mNibble = Unsafe.Add(ref masks, 2);
             int i = 0;
             for (; i + sizeof(uint) <= count; i += sizeof(uint))
             {
