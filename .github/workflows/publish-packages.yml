@@ -36,10 +36,9 @@ jobs:
         run: |
           version="$TAG_NAME"
           json=$(curl -sL "$ASSETS_URL")
-          asset_prefix="nethermind-$TAG_NAME-"
-          arm64_url=$(echo "$json" | jq -r --arg prefix "$asset_prefix" '.[] | select((.name | startswith($prefix)) and (.name | endswith("linux-arm64.zip"))) | .browser_download_url')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | sha256sum | awk '{print $1}')
-          x64_url=$(echo "$json" | jq -r --arg prefix "$asset_prefix" '.[] | select((.name | startswith($prefix)) and (.name | endswith("linux-x64.zip"))) | .browser_download_url')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("linux-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | sha256sum | awk '{print $1}')
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url='$arm64_url'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/url/ { if (++count == n) sub(/url.*/, "url='$x64_url'"); } 1' debian/postinst
@@ -129,10 +128,9 @@ jobs:
           ASSETS_URL: ${{ github.event.release.assets_url }}
         run: |
           json=$(curl -sL "$ASSETS_URL")
-          asset_prefix="nethermind-$TAG_NAME-"
-          arm64_url=$(echo "$json" | jq -r --arg prefix "$asset_prefix" '.[] | select((.name | startswith($prefix)) and (.name | endswith("macos-arm64.zip"))) | .browser_download_url')
+          arm64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-arm64.zip"))')
           arm64_hash=$(curl -sL $arm64_url | shasum -a 256 | awk '{print $1}')
-          x64_url=$(echo "$json" | jq -r --arg prefix "$asset_prefix" '.[] | select((.name | startswith($prefix)) and (.name | endswith("macos-x64.zip"))) | .browser_download_url')
+          x64_url=$(echo "$json" | jq -r '.[].browser_download_url | select(endswith("macos-x64.zip"))')
           x64_hash=$(curl -sL $x64_url | shasum -a 256 | awk '{print $1}')
           sed -i "s/version .*/version \"$TAG_NAME\"/" $FORMULA
           awk -i inplace -v n=1 '/url/ { if (++count == n) sub(/url.*/, "url \"'$x64_url'\""); } 1' $FORMULA
