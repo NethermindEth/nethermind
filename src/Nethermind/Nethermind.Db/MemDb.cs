@@ -7,30 +7,25 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-#if ZK_EVM
-using Nethermind.Core.Collections;
-#endif
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb, IRangeRemovableKeyValueStore
+    public partial class MemDb : IFullDb, IRangeRemovableKeyValueStore
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-#if ZK_EVM
-        private readonly Dictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
-        private readonly Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
-#else
-        private readonly ConcurrentDictionary<byte[], byte[]?> _db = new(Bytes.EqualityComparer);
-        private readonly ConcurrentDictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>> _spanDb;
-#endif
-
         public MemDb(string name)
             : this(0, 0) => Name = name;
+
+        /// <param name="capacity">The expected number of entries; presizing avoids rehashing during bulk loads.</param>
+        public MemDb(int capacity)
+            : this(0, 0, capacity)
+        {
+        }
 
         public static MemDb CopyFrom(IDb anotherDb)
         {
@@ -48,10 +43,8 @@ namespace Nethermind.Db
         }
 
         public MemDb(int writeDelay, int readDelay)
+            : this(writeDelay, readDelay, capacity: 0)
         {
-            _writeDelay = writeDelay;
-            _readDelay = readDelay;
-            _spanDb = _db.GetAlternateLookup<ReadOnlySpan<byte>>();
         }
 
         public string Name { get; } = nameof(MemDb);
@@ -75,8 +68,6 @@ namespace Nethermind.Db
                 return keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _db.GetValueOrDefault(k))).ToArray();
             }
         }
-
-        public virtual void Remove(ReadOnlySpan<byte> key) => _spanDb.TryRemove(key, out _);
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _spanDb.ContainsKey(key);
 
