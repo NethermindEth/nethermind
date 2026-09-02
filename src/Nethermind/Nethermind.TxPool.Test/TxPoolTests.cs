@@ -2903,6 +2903,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_timed_out_by_the_prefix_is_not_requeued()
+        {
+            // A timeout is the prefix's own wall clock, not a bound this node spent, so re-queueing it would
+            // have it reclaim the per-head budget on every head with nothing to break the loop.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "a timeout must not evict");
+
+            // A head touching nothing it depends on, so only a carried deferral could bring it back.
+            simulator.ClearReceivedCalls();
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+        }
+
+        [Test]
         public async Task Revalidation_deferred_by_an_admission_bound_is_retried_on_a_later_head()
         {
             // A bound this node spent judges nothing, so the transaction has to stay queued: a one-off

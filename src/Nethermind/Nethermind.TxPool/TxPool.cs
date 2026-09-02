@@ -878,7 +878,7 @@ namespace Nethermind.TxPool
             // pressure reverses within a block, so the hash must stay resubmittable.
             _hashCache.DeleteFromLongTerm(candidate.Hash!);
             Metrics.PendingTransactionsEvicted++;
-            Metrics.FrameTxExpiryShedEvictions++;
+            Interlocked.Increment(ref Metrics.FrameTxExpiryShedEvictions);
             if (_logger.IsTrace) _logger.Trace($"Shed nearly-expired frame transaction {candidate.Hash} to relieve pool pressure.");
         }
 
@@ -936,7 +936,7 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                Metrics.FrameTxRevalidations++;
+                Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
@@ -946,7 +946,7 @@ namespace Nethermind.TxPool
                         // Unlike expiry, invalidity here is relative to this head and reverses (the payer
                         // refunds, a reorg restores the state), so the hash must stay resubmittable.
                         _hashCache.DeleteFromLongTerm(tx.Hash!);
-                        Metrics.FrameTxRevalidationEvictions++;
+                        Interlocked.Increment(ref Metrics.FrameTxRevalidationEvictions);
                         Metrics.PendingTransactionsEvicted++;
                         if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {tx.Hash}, invalid against the new head.");
                     }
@@ -999,12 +999,14 @@ namespace Nethermind.TxPool
                     {
                         // A node fault or an admission bound decides nothing, so the transaction stays
                         // pending — and stays queued, or a one-off change is never rechecked against a
-                        // later head whose change list does not mention its dependencies.
-                        if (simulated.Indeterminate)
+                        // later head whose change list does not mention its dependencies. Only a bound this
+                        // node spent: a prefix that trips its own wall clock would re-queue forever.
+                        if (simulated.NodeBound)
                         {
                             _frameTxsDeferredToNextHead.Add(tx.Hash!.ValueHash256);
-                            Metrics.FrameTxRevalidationsDeferred++;
+                            Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
                         }
+
                         return simulated.Indeterminate;
                     }
                     payer = simulated.Payer;

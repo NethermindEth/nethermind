@@ -101,7 +101,9 @@ public sealed class FrameTxPrefixSimulator(
             }
             finally
             {
-                Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + Stopwatch.GetTimestamp() - startedAt);
+                // Charged only to the share it drew on. Narrow, since only HasHeadBudget claims a head and
+                // local skips it, so an unclaimed head resets on the next gossip call and wipes the charge.
+                if (!local) Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + Stopwatch.GetTimestamp() - startedAt);
             }
         }
         finally
@@ -197,8 +199,8 @@ public sealed class FrameTxPrefixSimulator(
         e is IInternalNethermindException or ObjectDisposedException or IOException;
 
     /// <summary>Lock-free read of the per-head budget, used only to shed before contending for the lock.</summary>
-    /// <remarks>Advisory: a stale read costs at most one extra simulation, and the in-lock check stays
-    /// authoritative. A head it has not seen yet reads as having room, since entering resets the budget.</remarks>
+    /// <remarks>Advisory, and not one-sided: a stale read can cost an extra simulation or shed one the
+    /// authoritative check would have admitted, both within one head transition. That check stays final.</remarks>
     private bool HasHeadBudgetHint(BlockHeader head) =>
         _headBudgetTicks <= 0
         || Volatile.Read(ref _budgetHead) != head.Hash
@@ -206,8 +208,10 @@ public sealed class FrameTxPrefixSimulator(
 
     /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
     /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
-    /// a stalled head keeps its exhausted budget. A reorg re-admits its transactions as gossip, so they are
-    /// the first claim on the new head's budget, spent on the head-change thread.</remarks>
+    /// a stalled head keeps its exhausted budget. The head-change revalidation sweep draws on this same
+    /// budget and runs before admission sees the new head, so it is the first claim on every head, not only
+    /// a reorg's. <paramref name="head"/> comes from the block tree rather than the pool, so two threads
+    /// spanning a transition can each reset it, and the lock-free hint can shed one the reset would admit.</remarks>
     private bool HasHeadBudget(BlockHeader head)
     {
         if (_headBudgetTicks <= 0) return true;

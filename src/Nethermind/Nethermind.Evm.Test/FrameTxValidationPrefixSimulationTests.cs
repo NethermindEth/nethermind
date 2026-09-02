@@ -493,6 +493,10 @@ public class FrameTxValidationPrefixSimulationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Violated, Is.EqualTo(violates), "the case must reject for the reason it claims");
+            // Where it rejects is the property the shape exists for: after the create, not before it.
+            Assert.That(tracer.ViolationReason, violates
+                ? Does.Contain("banned opcode SELFBALANCE")
+                : Is.Null);
             // Contained rather than suppressed: the prefix keeps its read memoization, and the deposit is
             // confined to the env's own instance — which is what wiring the simulator away from the
             // process-wide one buys, since nothing journals either.
