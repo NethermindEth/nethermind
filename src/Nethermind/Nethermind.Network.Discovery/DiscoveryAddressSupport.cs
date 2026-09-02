@@ -53,6 +53,21 @@ public static class DiscoveryAddressSupport
         };
 
     /// <summary>
+    /// Selects the external addresses supported by the local discovery listener.
+    /// </summary>
+    /// <param name="localIp">The address used to bind the local socket.</param>
+    /// <param name="externalIpV4">The resolved external IPv4 address.</param>
+    /// <param name="externalIpV6">The resolved external IPv6 address.</param>
+    /// <returns>The supported IPv4 and IPv6 addresses; an unsupported address is returned as <see langword="null"/>.</returns>
+    public static (IPAddress? IPv4, IPAddress? IPv6) SelectAdvertised(
+        IPAddress localIp,
+        IPAddress? externalIpV4,
+        IPAddress? externalIpV6)
+        => (
+            SupportsFamily(localIp, AddressFamily.InterNetwork) ? externalIpV4 : null,
+            SupportsFamily(localIp, AddressFamily.InterNetworkV6) ? externalIpV6 : null);
+
+    /// <summary>
     /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
     /// </summary>
     /// <param name="localIp">The address used to bind the local socket.</param>

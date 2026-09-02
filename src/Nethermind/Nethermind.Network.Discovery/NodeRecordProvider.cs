@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using System.Net;
-using System.Net.Sockets;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -106,16 +105,10 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        // RLPx and discovery each bind a single socket to LocalIp, so advertise an address family only
-        // when that socket can receive it; otherwise peers would dial an endpoint nothing is listening on.
-        IPAddress? resolvedExternalIpV4 = ip.ExternalIpV4;
-        IPAddress? externalIpV4 = DiscoveryAddressSupport.SupportsFamily(ip.LocalIp, AddressFamily.InterNetwork)
-            ? resolvedExternalIpV4
-            : null;
-        IPAddress? resolvedExternalIpV6 = ip.ExternalIpV6;
-        IPAddress? externalIpV6 = DiscoveryAddressSupport.SupportsFamily(ip.LocalIp, AddressFamily.InterNetworkV6)
-            ? resolvedExternalIpV6
-            : null;
+        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
+            ip.LocalIp,
+            ip.ExternalIpV4,
+            ip.ExternalIpV6);
 
         return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
