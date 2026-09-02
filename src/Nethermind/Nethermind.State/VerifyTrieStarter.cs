@@ -41,7 +41,9 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
                     if (_logger.IsError) _logger!.Error($"Verify trie failed");
                 }
             }
-            catch (OperationCanceledException)
+            // Only a shutdown-driven cancellation is expected here; an OCE from any other token means the
+            // sweep never completed, so it is treated as a fault rather than a benign cancellation.
+            catch (Exception e) when (exitSource.Token.IsCancellationRequested && IsCancellation(e))
             {
                 if (_logger.IsInfo) _logger.Info($"Verify trie cancelled");
             }
@@ -53,6 +55,36 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
         }, TaskCreationOptions.LongRunning);
 
         return true;
+    }
+
+    /// <summary>Whether an exception thrown by the verify-trie run represents cancellation rather than a fault.</summary>
+    /// <remarks>
+    /// The stats walk runs in parallel (<c>BatchedTrieVisitor</c> / <c>FlatTrieVerifier</c> do
+    /// <c>Task.WaitAll</c>), so shutdown cancellation surfaces as an <see cref="AggregateException"/> of
+    /// <see cref="OperationCanceledException"/>s, not a single one. Only an aggregate whose leaves are
+    /// <em>all</em> cancellations counts as cancelled: a real fault raised alongside the cancellation
+    /// leaves a non-cancellation leaf and is still surfaced as an error.
+    /// </remarks>
+    private static bool IsCancellation(Exception exception) => exception switch
+    {
+        OperationCanceledException => true,
+        AggregateException aggregate => IsAllCancellation(aggregate),
+        _ => false,
+    };
+
+    private static bool IsAllCancellation(AggregateException exception)
+    {
+        bool any = false;
+        foreach (Exception leaf in exception.Flatten().InnerExceptions)
+        {
+            any = true;
+            if (leaf is not OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
+        return any;
     }
 }
 

@@ -31,7 +31,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
     public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = [];
 
@@ -44,7 +43,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address XDCXLendingAddressBinary { get; set; }
     public Address XDCXAddressBinary { get; set; }
     public Address TradingStateAddressBinary { get; set; }
-    public ulong TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
     public bool IsTipUpgradeRewardEnabled { get; set; }
@@ -128,7 +126,6 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
-    public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
     public ulong RangeReturnSigner { get; set; }
     public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
@@ -151,6 +148,5 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsTIPXDCXReceiver { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
-    public ulong TIP2019Block { get; set; }
     public void ApplyV2Config(ulong round);
 }
