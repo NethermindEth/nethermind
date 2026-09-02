@@ -40,6 +40,8 @@ namespace Nethermind.TxPool.Test
     [TestFixture]
     public partial class TxPoolTests
     {
+        private static readonly TimeSpan BlockedStorageReleaseTimeout = TimeSpan.FromMilliseconds(Timeout * 3);
+
         [Test]
         public void should_reject_blob_tx_if_blobs_not_supported([Values(true, false)] bool isBlobSupportEnabled)
         {
@@ -4473,11 +4475,6 @@ namespace Nethermind.TxPool.Test
             ISpecChangeValidationStorage,
             IDisposable
         {
-            // Breaks a deadlock when a test never releases the blocked update. It has to outlast the
-            // polling assertions tests make while holding one, or the update resumes mid-test and the
-            // pool stops seeing an in-flight write.
-            private static readonly TimeSpan BlockedUpdateReleaseTimeout = TimeSpan.FromMilliseconds(Timeout * 3);
-
             private readonly BlobTxStorage _inner = new();
             private readonly ManualResetEventSlim _firstUpdateEntered = new();
             private readonly ManualResetEventSlim _releaseFirstUpdate = new();
@@ -4545,7 +4542,7 @@ namespace Nethermind.TxPool.Test
                 if (addCount == 2)
                 {
                     _firstUpdateEntered.Set();
-                    if (!_releaseFirstUpdate.Wait(BlockedUpdateReleaseTimeout))
+                    if (!_releaseFirstUpdate.Wait(BlockedStorageReleaseTimeout))
                     {
                         Volatile.Write(ref _releaseTimedOut, 1);
                         throw new TimeoutException("Timed out waiting to release the first sparse blob update.");
@@ -4613,7 +4610,6 @@ namespace Nethermind.TxPool.Test
 
             public void Dispose()
             {
-                // Unpark a writer left blocked by a test that failed before releasing it.
                 _releaseFirstUpdate.Set();
                 _firstUpdateEntered.Dispose();
                 _releaseFirstUpdate.Dispose();
@@ -4662,7 +4658,7 @@ namespace Nethermind.TxPool.Test
 
                 bool found = _inner.TryGet(hash, sender, timestamp, out Transaction snapshot);
                 _readEntered.Set();
-                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                 {
                     throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
                 }
@@ -4682,7 +4678,7 @@ namespace Nethermind.TxPool.Test
                 if (Interlocked.Exchange(ref _blockNextElidedRead, 0) != 0)
                 {
                     _readEntered.Set();
-                    if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                    if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                     {
                         throw new TimeoutException("Timed out waiting to release the sidecar-free transaction read.");
                     }
@@ -4703,7 +4699,7 @@ namespace Nethermind.TxPool.Test
 
                 int found = _inner.TryGetMany(keys, count, results);
                 _readEntered.Set();
-                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                 {
                     throw new TimeoutException("Timed out waiting to release the stale blob transaction batch read.");
                 }
