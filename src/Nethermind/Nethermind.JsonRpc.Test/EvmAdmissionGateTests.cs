@@ -179,24 +179,50 @@ public class EvmAdmissionGateTests
         Assert.That(gate.Queued, Is.EqualTo(0));
     }
 
-    [TestCase(0, TestName = "Before its deadline")]
-    [TestCase(MaxQueueWaitMs, TestName = "At its deadline: a cancellation, not a rejection")]
+    [TestCase(MinWeight, TestName = "Live waiter in the same bucket")]
+    [TestCase(MaxWeight, TestName = "Live waiter in a heavier bucket")]
+    public async Task Grant_skips_a_cancelled_head_and_passes_the_permit_to_the_next_live_waiter(int liveWeight)
+    {
+        EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        Lease held = await Admit(gate);
+        Task<Lease> cancelled = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        Task<Lease> live = Admit(gate, liveWeight).AsTask();
+        cancellation.Cancel();
+
+        held.Dispose();
+
+        using Lease granted = await live.WaitAsync(WaitBudget);
+        Assert.CatchAsync<OperationCanceledException>(() => cancelled.WaitAsync(WaitBudget));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1), "the permit passed straight on; returning it as well would leave the live lease uncounted");
+        }
+    }
+
+    [TestCase(false, TestName = "Before its deadline")]
+    [TestCase(true, TestName = "At its deadline: a cancellation, not a rejection")]
     [NonParallelizable]
-    public async Task Cancelled_waiter_is_settled_by_the_sweep(int elapsedMs)
+    public async Task Cancelled_waiter_is_settled_by_the_sweep(bool atDeadline)
     {
         long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
         EvmAdmissionGate gate = CreateGate(SinglePermit());
         using CancellationTokenSource cancellation = new();
         using Lease held = await Admit(gate);
         Task<Lease> waiting = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        // Behind the cancelled head in the same bucket, with half its budget left when the head is popped.
+        _timeProvider.Advance(Budget / 2);
+        Task<Lease> live = Admit(gate).AsTask();
 
         cancellation.Cancel();
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(elapsedMs));
+        _timeProvider.AdvanceAndFireTimer(atDeadline ? Budget / 2 : TimeSpan.Zero);
 
         Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(WaitBudget));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(live.IsCompleted, Is.False, "the live waiter behind the cancelled head keeps waiting");
+            Assert.That(gate.Queued, Is.EqualTo(1));
             Assert.That(gate.InFlight, Is.EqualTo(1));
             Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
         }
@@ -398,6 +424,30 @@ public class EvmAdmissionGateTests
         }
 
         held.Dispose();
+    }
+
+    // System.Threading.Timer truncates a due time to whole milliseconds; a fractional remainder would fire early and re-fire
+    // at zero until the clock passes the deadline.
+    [Test]
+    public async Task Sweep_rearms_for_a_whole_number_of_milliseconds()
+    {
+        TimeSpan fraction = TimeSpan.FromMicroseconds(300);
+        RecordingTimeProvider timeProvider = new();
+        EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+        using Lease held = await Admit(gate);
+        Task<Lease> first = Admit(gate).AsTask();
+        timeProvider.Advance(Budget / 2 + fraction);
+        Task<Lease> second = Admit(gate).AsTask();
+
+        timeProvider.Advance(Budget / 2 - fraction);
+        timeProvider.FireTimer();
+
+        Assert.ThrowsAsync<LimitExceededException>(() => first);
+        Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2 + TimeSpan.FromMilliseconds(1)), "the second waiter's remaining budget must be rounded up to the timer's resolution, not truncated by it");
+
+        timeProvider.Advance(timeProvider.DueTimes[^1]);
+        timeProvider.FireTimer();
+        Assert.ThrowsAsync<LimitExceededException>(() => second);
     }
 
     [Test]

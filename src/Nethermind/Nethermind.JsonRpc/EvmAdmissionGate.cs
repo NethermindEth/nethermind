@@ -137,7 +137,7 @@ internal sealed class EvmAdmissionGate
             {
                 // Stamped under the lock: with one constant budget every new deadline is then no earlier than any queued one,
                 // so expired waiters are always bucket heads and a timer armed only when the queue was empty is never due
-                // later than the earliest deadline.
+                // later than the earliest deadline rounded up to a whole millisecond.
                 long now = _timeProvider.GetTimestamp();
                 Waiter waiter = new(weight, now, cancellationToken);
                 bool wasEmpty = _queued == 0;
@@ -265,7 +265,7 @@ internal sealed class EvmAdmissionGate
                 while (queue.TryPeek(out Waiter? head))
                 {
                     bool isCancelled = head.CancellationToken.IsCancellationRequested;
-                    // Expires at exactly the budget: the timer is armed for that very instant.
+                    // Expires at exactly the budget: the timer is armed for that instant, rounded up to a whole millisecond.
                     if (!isCancelled && _timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) < _budget)
                     {
                         break;
@@ -321,13 +321,12 @@ internal sealed class EvmAdmissionGate
             return;
         }
 
-        // A negative due time throws inside the timer callback, and between -2 ms and -1 ms it truncates to Infinite and
-        // silently disarms.
+        // Change truncates to whole milliseconds: a fractional remainder would fire early, find the head unexpired and
+        // re-fire at once until the clock passes the deadline, so it is rounded up (a waiter is shed at most a millisecond
+        // late). A negative due time throws inside the timer callback, and between -2 ms and -1 ms it truncates to
+        // Infinite and silently disarms.
         TimeSpan due = _budget - _timeProvider.GetElapsedTime(earliest, now);
-        if (due < TimeSpan.Zero)
-        {
-            due = TimeSpan.Zero;
-        }
+        due = due <= TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Math.Ceiling(due.TotalMilliseconds));
 
         _sweepTimer ??= _timeProvider.CreateTimer(static state => ((EvmAdmissionGate)state!).Sweep(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _sweepTimer.Change(due, Timeout.InfiniteTimeSpan);
