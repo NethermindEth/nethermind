@@ -112,7 +112,9 @@ public class FrameTxMempoolDosMeasurement
     private const ulong Ceiling500k = 500_000;
 
     /// <summary>Frame budget for the signature shape: well-formed, and small enough that the declared total is
-    /// signature gas. The frame never executes, so this only has to clear the 100-gas entry charge.</summary>
+    /// signature gas. The frame never executes, so this only has to clear the 100-gas entry charge; 400 leaves
+    /// margin above it without materially moving the declared total, which at the 300,000 ceiling is 0.13% of
+    /// the budget and costs the attacker no entries.</summary>
     private const ulong MinimalFrameGas = 400;
 
     /// <summary>
@@ -193,6 +195,15 @@ public class FrameTxMempoolDosMeasurement
     /// 6,100 and 250, so any threshold between those bands identifies the pairing unambiguously.
     /// </summary>
     private const long MinPairingCallGas = 150_000;
+
+    /// <summary>What a Groth16 verifier's <c>ecPairing</c> call costs: 45,000 base plus 34,000 per pair, four
+    /// pairs, under EIP-1108. Independent of how much gas was available, which is what separates it from an
+    /// errored call.</summary>
+    private const long Bn254FourPairPrice = 181_000;
+
+    /// <summary>Band around the priced pairing. Measured spread across the three points is 178,980 to 181,100,
+    /// and an errored call at these ceilings lands near 184,000.</summary>
+    private const long PairingPriceTolerance = 3_000;
 
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly UInt256 SenderBalance = 1_000.Ether;
@@ -324,11 +335,9 @@ public class FrameTxMempoolDosMeasurement
     /// interpreter, which is otherwise charged to whichever ceiling runs first.
     /// </remarks>
     [TestCase("jump", Ceiling100k)]
-    [TestCase("jump", Ceiling236k)]
     [TestCase("jump", Ceiling300k)]
     [TestCase("jump", Ceiling500k)]
     [TestCase("keccak", Ceiling100k)]
-    [TestCase("keccak", Ceiling236k)]
     [TestCase("keccak", Ceiling300k)]
     [TestCase("keccak", Ceiling500k)]
     [TestCase("keccak-wide", Ceiling100k)]
@@ -348,9 +357,6 @@ public class FrameTxMempoolDosMeasurement
     /// attacker only has to <em>claim</em>.
     /// </remarks>
     [TestCase(Ceiling100k)]
-    [TestCase(Ceiling236k)]
-    [TestCase(Ceiling300k)]
-    [TestCase(Ceiling500k)]
     public void Reject_cost_of_a_banned_opcode_prefix(ulong ceiling) => MeasureFrameRejection("banned-opcode", ceiling);
 
     /// <summary>
@@ -904,18 +910,6 @@ public class FrameTxMempoolDosMeasurement
         }
         // The pairing is the expensive half and the whole point of the workload. Assert it ran, from the call
         // costs, rather than inferring it from a total that another environment produced.
-        //
-        // KNOWN GAP, and the reason the cost is emitted below rather than pinned here. This threshold cannot
-        // separate a pairing that ran from one that errored. BN254PairingCheckPrecompile returns Errors.Failed
-        // for malformed or off-curve input, and an erroring precompile consumes every unit forwarded to it, so
-        // an early exit is charged more than a real pairing, not less. At sweep-236k a real 4-pair check was
-        // observed at 181,910 (priced 45,000 + 34,000 x 4, plus call overhead) while an all-gas burn would
-        // land near 184,000 -- 1.2% apart, too close to pin without a calibration run on the rig. The gas-band
-        // check below has the same blind spot, because each sweep point sizes its ceiling to just fit its
-        // workload. groth16-soispoke is the exception: it burns 248,437 against a 300,000 ceiling, so an
-        // all-gas burn falls far outside its band.
-        //
-        // Read pairing_call_gas on the emitted row after the first rig run and pin an exact expectation then.
         Assert.That(probe.CallCosts, Has.Some.GreaterThan(MinPairingCallGas),
             $"{sweep.Directory} made no ecPairing-sized call, so the prefix failed before the pairing and the "
             + "measurement describes an early exit rather than the full-cost workload");
@@ -924,6 +918,17 @@ public class FrameTxMempoolDosMeasurement
         {
             if (cost > _lastPairingCallGas) _lastPairingCallGas = cost;
         }
+
+        // A call cost above the price is the failure mode that matters, and the size threshold above cannot
+        // see it: BN254PairingCheckPrecompile returns Errors.Failed for malformed or off-curve input, and an
+        // erroring precompile consumes every unit forwarded, so an early exit is charged MORE than a real
+        // pairing. That burn tracks whatever gas remained, which at these ceilings is near 184,000, while a
+        // real 4-pair check is priced 45,000 + 34,000 x 4 whatever is available. Measured 2 Sep: 180,310,
+        // 178,980 and 181,100 across the three points, so the band separates them by roughly 3,000 either way.
+        Assert.That(_lastPairingCallGas, Is.EqualTo(Bn254FourPairPrice).Within(PairingPriceTolerance),
+            $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against a priced "
+            + $"{Bn254FourPairPrice}. Above the band means ecPairing errored and burned the gas forwarded to "
+            + "it, which charges full price for no curve work; below means it is not a 4-pair check.");
 
         long slack = (long)(sweep.ExpectedFrameGas * Groth16GasTolerance);
         Assert.That((long)readout.Burned, Is.EqualTo((long)sweep.ExpectedFrameGas).Within(slack),

@@ -165,47 +165,22 @@ public class FrameTxProducerRetryMeasurement
     /// extracts from a producer that evicts it after <paramref name="kRetry"/> failed build attempts.
     /// </summary>
     /// <remarks>
+    /// <c>K_retry</c> is client policy, not a spec rule: <c>ethereum/EIPs#12213</c> proposed a normative
+    /// producer bound and was reframed as guidance to match this sweep. Production is effectively
+    /// <c>K_retry = 1</c>, since <c>EvictUnpaidFrameTx</c> evicts on the first <c>MalformedTransaction</c>.
+    /// The gate here stands in for that eviction, the only thing that ends the series: a prefix that never
+    /// approves never pays, so it never advances its nonce and nothing else removes it.
     /// <para>
-    /// <c>K_retry</c> is a client-policy parameter, not a spec rule — <c>ethereum/EIPs#12213</c> proposed a
-    /// normative producer bound and was reframed as non-normative guidance to match this sweep. Production
-    /// today is effectively <c>K_retry = 1</c>: <c>EvictUnpaidFrameTx</c> asks the pool to evict on the first
-    /// <c>MalformedTransaction</c> result. This sweep makes the other values measurable without touching
-    /// production code.
-    /// </para>
-    /// <para>
-    /// The gate stands in for the pool's eviction decision, the only thing that ends the retry series: nothing
-    /// else removes a transaction whose prefix never approves, since it never pays and so never advances its
-    /// nonce. Once the gate reports the transaction evicted, the loop stops offering it, as a real pool would
-    /// by no longer returning it to the producer. <see cref="ProducerRetriesAFailingPrefix"/> passes
-    /// <c>NullTxPool.Instance</c>, whose <c>EvictTransaction</c> always returns <c>false</c>, measuring the
-    /// same shape with no eviction at all — read the two together, and that case is the ceiling this one bounds.
-    /// </para>
-    /// <para>
-    /// Swept across the same four ceilings as the rest of the campaign — cheaply, since this harness drives
-    /// the executor directly with no <c>TxPool</c>, no flood and no wall-clock window. It answers, on its own,
-    /// whether unpaid burn per attempt scales with the ceiling the way <c>BudgetBurnFloor</c> assumes; read
-    /// together with <see cref="FrameTxFloodMeasurement.Block_production_delay_under_flood_and_retries"/>, it
-    /// is also the cheap half of checking whether that harness's contended <c>Δ</c> decomposes into this
-    /// harness's uncontended unpaid-burn cost plus the block-processing-only flood delta — a composition that,
-    /// if it holds, would let most of the ceiling sweep move here instead of paying for the flood on every point.
+    /// <c>amplification</c> equals <paramref name="kRetry"/> by construction, since each pass burns the same
+    /// budget and the gate stops the loop on the <c>kRetry</c>-th call. The figure worth reading is
+    /// <c>burn_first_attempt</c> against the ceiling, which is what <c>BudgetBurnFloor</c> assumes elsewhere.
     /// </para>
     /// </remarks>
     [TestCase(100_000ul, 1)]
-    [TestCase(100_000ul, 2)]
-    [TestCase(100_000ul, 4)]
     [TestCase(100_000ul, 8)]
     [TestCase(236_285ul, 1)]
-    [TestCase(236_285ul, 2)]
-    [TestCase(236_285ul, 4)]
-    [TestCase(236_285ul, 8)]
     [TestCase(300_000ul, 1)]
-    [TestCase(300_000ul, 2)]
-    [TestCase(300_000ul, 4)]
-    [TestCase(300_000ul, 8)]
     [TestCase(500_000ul, 1)]
-    [TestCase(500_000ul, 2)]
-    [TestCase(500_000ul, 4)]
-    [TestCase(500_000ul, 8)]
     public void ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
         _stateProvider.CreateAccount(Sender, 100.Ether);

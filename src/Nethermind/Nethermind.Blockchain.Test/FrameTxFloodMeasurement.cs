@@ -76,6 +76,15 @@ public class FrameTxFloodMeasurement
     private const long BlockGasLimit = 30_000_000;
 
     /// <summary>Ordinary transfers in the block whose processing time is measured.</summary>
+    /// <summary>Ordinary transfers in the measured block. Sets <c>W_0</c>, and therefore every <c>Δ</c> and
+    /// every <c>delta_p50_pct</c> the campaign reports, so it is the most load-bearing constant here.</summary>
+    /// <remarks>
+    /// 200 transfers is about 4.2M gas against a 30M limit, so <c>W_0</c> is well below a full block's and
+    /// <c>delta_p50_pct</c> is correspondingly larger than it would be against one. That is deliberate: this
+    /// is a CPU-contention experiment on one core, so the baseline wants to be CPU work rather than state
+    /// growth, and the fraction is the quantity that transfers across machines. Read <c>delta_p50_us</c> for
+    /// the absolute cost and treat the percentage as relative to this baseline, not to a mainnet block.
+    /// </remarks>
     private const int TransfersPerBlock = 200;
 
     /// <summary>
@@ -100,6 +109,9 @@ public class FrameTxFloodMeasurement
     private static readonly TimeSpan WarmupWindow = TimeSpan.FromSeconds(4);
 
     /// <summary>Time the flood runs before sampling starts, so the window measures steady state.</summary>
+    /// <summary>Time the generator runs before warmup, so its thread is scheduled and its first-submission
+    /// costs are paid outside any measured span. Not derived from a measurement; long enough that the
+    /// generator's own startup is not attributed to the node, short enough not to dominate the case.</summary>
     private static readonly TimeSpan FloodSettle = TimeSpan.FromMilliseconds(750);
 
     /// <summary>
@@ -435,26 +447,19 @@ public class FrameTxFloodMeasurement
     /// describing a sustained attack rather than a decaying one.
     /// </para>
     /// <para>
-    /// <b>The prediction under test.</b> Writing <c>W</c> as a function of <c>K_retry</c> suggests the retry
-    /// bound moves block-building time on its own, but it should not — per-pass cost is set by how many
-    /// never-approving transactions are <em>resident</em>, while <c>K_retry</c> only sets how long each stays
-    /// resident. Residency is pinned at one by construction, so <c>W</c> should come out flat in
-    /// <c>K_retry</c> while the attacker's cost per unit of node work falls by exactly the factor
-    /// <see cref="FrameTxProducerRetryMeasurement"/> measures. If that holds, <c>K_retry</c> is an
-    /// attacker-economics lever, not a node-latency one, and belongs in the recommendation as such.
+    /// <b>This case cannot answer what it looks like it answers.</b> Per-pass cost is set by how many
+    /// never-approving transactions are <em>resident</em>, and the rig pins residency at one whatever
+    /// <c>K_retry</c> is: eviction only resets a counter. So a flat result here is a property of the rig, not
+    /// of the retry policy. In a real pool a larger <c>K_retry</c> keeps proportionally more of them resident
+    /// at once, which is the effect this axis exists to measure and the rig removes. Read the rows as per-pass
+    /// latency at fixed occupancy, and do not conclude anything about retry policy from their flatness.
     /// </para>
     /// <para>
-    /// The offered flood rate sits below what the block-processing cases use, because it must here: a
-    /// production pass costs about what a rejection does, so the producer alone nearly saturates the core and
-    /// the generator gets roughly the other half — a ceiling near <c>1 / (2 * t_reject(C))</c>. At 236,285 that
-    /// measured about 135 tx/s: offering 200 produced 78 and 102 tx/s in the two arms on one run, comparing two
-    /// different loads rather than two retry policies. Staying under the ceiling leaves <c>K_retry</c> as the
-    /// only variable, and <c>flood_achieved_rate</c> on each row is what lets a reader confirm it. Swept across
-    /// ceilings, <c>1 / (2 * t_reject(C))</c> is not recalibrated per ceiling — <c>t_reject</c> rises with the
-    /// ceiling, so 100 tx/s may itself begin to saturate the core at 300k and above, where the assertion below
-    /// fails loudly instead of publishing a starved row. That is itself a finding: it means retry contention
-    /// leaves less flood headroom as the ceiling rises, and a lower rate point belongs in a follow-up rather
-    /// than being invented here without a measurement to size it from.
+    /// The offered rate stays at 100 because the producer alone takes about half the core, leaving a ceiling
+    /// near <c>1 / (2 * t_reject(C))</c>: about 135 tx/s at 236,285, where offering 200 delivered 78 and 102
+    /// in the two arms and compared loads rather than policies. <c>t_reject</c> rises with the ceiling, so 100
+    /// may saturate at 300k and above; <c>flood_achieved_rate</c> and <c>delivered</c> on each row say whether
+    /// it did.
     /// </para>
     /// </remarks>
     [TestCase(100_000ul, 1, 0)]
@@ -494,17 +499,20 @@ public class FrameTxFloodMeasurement
 
         double p50 = Percentile(outcome.ProcessMicros, 0.50);
         double p95 = Percentile(outcome.ProcessMicros, 0.95);
+        // p95 alone trims the tail where a missed slot deadline would show. Sample counts here are in the
+        // hundreds, so p99 is still an observed value rather than an extrapolation.
+        double p99 = Percentile(outcome.ProcessMicros, 0.99);
         bool floodStarved = offeredRate > 0 && outcome.AchievedRate < offeredRate * RateHeldFloor;
         // Emit runs before the assertions, so without this a row the harness then refuses to stand behind is
         // indistinguishable from one that passed. Same predicate as the gate below, so the two cannot drift.
         bool delivered = offeredRate == 0 || outcome.AchievedRate > offeredRate * MinDeliveredRateFloor;
 
-        Emit($"case=production_under_flood ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
+        Emit($"case=production_pass_at_fixed_occupancy ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
              + $"evictions={rig.EvictionsInWindow} failing_executions={rig.ExecutionsInWindow} "
              + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} "
              + $"flood_achieved_rate={outcome.AchievedRate:F1} flood_starved={(floodStarved ? "yes" : "no")} delivered={(delivered ? "yes" : "no")} "
-             + $"production_p50_us={p50:F1} production_p95_us={p95:F1}");
+             + $"production_p50_us={p50:F1} production_p95_us={p95:F1} production_p99_us={p99:F1}");
 
         using (Assert.EnterMultipleScope())
         {
@@ -727,6 +735,8 @@ public class FrameTxFloodMeasurement
         double w = Percentile(flooded.ProcessMicros, 0.50);
         double w0p95 = Percentile(baseline, 0.95);
         double wp95 = Percentile(flooded.ProcessMicros, 0.95);
+        double w0p99 = Percentile(baseline, 0.99);
+        double wp99 = Percentile(flooded.ProcessMicros, 0.99);
         double w0After = Percentile(baselineAfter, 0.50);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
 
@@ -741,7 +751,8 @@ public class FrameTxFloodMeasurement
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
              + $"W_p50_us={w:F1} W_p95_us={wp95:F1} "
-             + $"delta_p50_us={w - w0:F1} delta_p95_us={wp95 - w0p95:F1} "
+             + $"W0_p99_us={w0p99:F1} W_p99_us={wp99:F1} "
+             + $"delta_p50_us={w - w0:F1} delta_p95_us={wp95 - w0p95:F1} delta_p99_us={wp99 - w0p99:F1} "
              + $"delta_p50_pct={(w0 <= 0 ? 0 : (w - w0) / w0 * 100):F1}");
 
         using (Assert.EnterMultipleScope())
@@ -888,6 +899,11 @@ public class FrameTxFloodMeasurement
         ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
         Func<int, FloodOutcome> measureAtRate)
     {
+        // The plan leaves the rate grid open. 50 tx/s steps to 400 brackets saturation at 236,285 and above,
+        // where 1/t_reject is roughly 130 to 230 tx/s. It does NOT reach it at 100,000, where 1/t_reject is
+        // near 700, so that point reports censored=yes and r_max_upper=unbounded rather than a located value.
+        // Raising the top costs a rate point per ceiling; do it if the control point's R_max has to be a
+        // number rather than a bound.
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
         double lastSustained = 0;
         bool sustainedEveryRate = true;
@@ -1088,6 +1104,11 @@ public class FrameTxFloodMeasurement
     /// </remarks>
     private static void WaitUntil(long dueTimestamp, CancellationToken token)
     {
+        // Below this the generator yield-spins instead of sleeping, because Thread.Sleep(1) has roughly 1 ms
+        // granularity on Linux and the schedule is 2.5 ms apart at the grid's top rate. The spin runs on the
+        // same pinned core as the thing being measured, so it is charged to Δ: at 200 tx/s that is up to 4% of
+        // the core, largest at the low rates where Δ is smallest. Lowering it trades schedule accuracy, and so
+        // max_lag_us and R_max, against that contamination.
         const double SpinThresholdUs = 200;
         while (!token.IsCancellationRequested)
         {
