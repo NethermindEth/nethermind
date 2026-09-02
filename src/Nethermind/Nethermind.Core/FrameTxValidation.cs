@@ -43,6 +43,7 @@ public static class FrameTxValidation
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
+    public const string RecentRootReferencesNotEnabled = "recent root references are not enabled";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
@@ -247,6 +248,22 @@ public static class FrameTxValidation
         TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
         _ => 0,
     };
+
+    /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// What <see cref="Transaction.GasLimit"/> carries for a frame transaction, which has no <c>gas_limit</c>
+    /// field. Saturates per frame as well as across them, so every construction path agrees on the value.
+    /// </remarks>
+    public static ulong TotalGasLimit(TxFrame[]? frames)
+    {
+        ulong total = 0;
+        foreach (TxFrame frame in frames ?? [])
+        {
+            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+        }
+
+        return total;
+    }
 
     /// <summary>
     /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's

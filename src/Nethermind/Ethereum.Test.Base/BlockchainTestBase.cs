@@ -631,10 +631,6 @@ public abstract class BlockchainTestBase
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
         // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
         ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
-        // The decoder names neither the field nor the type, so these widen both labels suite-wide to any
-        // untyped collection-limit rejection, not merely to the other fee field. No narrowing available.
-        ("TransactionException.GASPRICE_OVERFLOW", "Collection count of"),
-        ("TransactionException.PRIORITY_OVERFLOW", "Collection count of"),
         .. Eip8141Mappings(),
     ];
 
@@ -649,6 +645,11 @@ public abstract class BlockchainTestBase
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
         foreach (string fragment in FrameExceptionFragments.Decode)
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
+            yield return ("TransactionException.PRIORITY_OVERFLOW", fragment);
+        }
     }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
@@ -660,7 +661,6 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
-        ("TransactionException.INTRINSIC_GAS_TOO_LOW", ValidationErrorRegex(@"TxGasLimitCapExceeded: Intrinsic gas")),
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),

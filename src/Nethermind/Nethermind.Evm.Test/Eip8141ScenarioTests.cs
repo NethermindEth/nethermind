@@ -675,6 +675,46 @@ public class Eip8141ScenarioTests
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
+    // A DELEGATECALL preserves ADDRESS, so the approving code still has a live caller — which must
+    // see the approval region exactly as it would see a RETURN.
+    [Test]
+    public void Approve_ExposesItsMemoryRegionAsReturnData()
+    {
+        const long marker = 0xDEADBEEF;
+        const int approvalLength = 32;
+        DeployContract(Sponsor, ApproveReturningCode(TxFrame.ApproveExecutionAndPayment, marker, approvalLength));
+        DeployContract(Sender, Prepare.EvmCode
+            .DelegateCall(Sponsor, 100_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.RETURNDATASIZE)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(approvalLength).PushData(0).PushData(64)
+            .Op(Instruction.RETURNDATACOPY)
+            .PushData(64)
+            .Op(Instruction.MLOAD)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done, 1.Ether);
+
+        // A DEFAULT frame rather than VERIFY: only a non-static frame can record what it observed.
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, Sender, executionGasLimit: 300_000,
+                stateGasLimit: (ulong)(2 * GasCostOf.SSetState),
+                UInt256.Zero, default),
+            SenderFrame(Recipient));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            AssertStorage(Sender, 0, approvalLength, "the approval region must become the frame's return data");
+            AssertStorage(Sender, 1, (UInt256)marker, "the return data must be the memory the region names");
+        }
+    }
+
     private TxReceipt[] ProcessBlock(params Transaction[] transactions)
     {
         Block block = BuildBlock(transactions);
@@ -822,6 +862,10 @@ public class Eip8141ScenarioTests
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private static byte[] ApproveReturningCode(byte scope, long marker, int length) =>
+        Prepare.EvmCode.PushData(marker).PushData(0).Op(Instruction.MSTORE)
+            .PushData(scope).PushData(length).PushData(0).Op(Instruction.APPROVE).Done;
 
     // Reference EXPIRY_VERIFIER behaviour: revert when block.timestamp exceeds the 8-byte calldata expiry.
     private static byte[] ExpiryVerifierCode() =>
