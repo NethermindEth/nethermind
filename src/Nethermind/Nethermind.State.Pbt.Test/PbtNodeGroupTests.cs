@@ -58,7 +58,7 @@ public class PbtNodeGroupTests
         List<(byte[] Key, byte[]? Value)> initial = [];
         for (int index = 0; index < 64; index++)
         {
-            byte[] key = [ (byte)(index * 4), (byte)index ];
+            byte[] key = [(byte)(index * 4), (byte)index];
             initial.Add((key, Value((byte)(index + 1))));
         }
 
@@ -142,6 +142,48 @@ public class PbtNodeGroupTests
         }
 
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "disposal");
+    }
+
+    [Test]
+    public void Retained_group_leases_survive_replacement_deletion_and_store_disposal()
+    {
+        TrackingMemoryProvider provider = new();
+        PbtNodePath rootPath = new([], 0);
+        byte[] firstEncoding = LeafEncoding(0x00, 1);
+        byte[] secondEncoding = LeafEncoding(0x80, 2);
+        byte[] thirdEncoding = LeafEncoding(0x40, 3);
+
+        using PbtNodeGroupStore store = new(provider);
+        store.Apply(new ValueHash256(Value(1)), [], [new PbtNodeMutation(rootPath, firstEncoding)]);
+        using PbtNodeGroupPayload firstLease = store.GetNodeGroup(rootPath)!;
+
+        store.Apply(new ValueHash256(Value(2)), [], [new PbtNodeMutation(rootPath, secondEncoding)]);
+        using PbtNodeGroupPayload secondLease = store.GetNodeGroup(rootPath)!;
+        Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+
+        store.Apply(new ValueHash256(Value(3)), [], [new PbtNodeMutation(rootPath, null)]);
+        Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+        Assert.That(secondLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
+
+        store.Apply(new ValueHash256(Value(4)), [], [new PbtNodeMutation(rootPath, thirdEncoding)]);
+        using PbtNodeGroupPayload thirdLease = store.GetNodeGroup(rootPath)!;
+        store.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, firstEncoding)])));
+            Assert.That(secondLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, secondEncoding)])));
+            Assert.That(thirdLease.Span.ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath, thirdEncoding)])));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(3));
+        }
+
+        thirdLease.Dispose();
+        thirdLease.Dispose();
+        Assert.That(() => thirdLease.Span.ToArray(), Throws.TypeOf<ObjectDisposedException>());
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(2));
+        firstLease.Dispose();
+        secondLease.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
 
     [Test]

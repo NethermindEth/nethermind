@@ -6,12 +6,18 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -145,6 +151,56 @@ public class PbtRocksDbPersistenceTests
         {
             Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed()
+    {
+        using TempPath dbPath = TempPath.GetTempDirectory();
+        DbConfig dbConfig = new();
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
+        ColumnsDb<PbtColumns> db = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
+            adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        PbtNodePath path = new([0], 1);
+        PbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
+        byte[] originalNode = BranchNode(1);
+        byte[] replacementNode = BranchNode(2);
+        PbtNodeGroupPayload payload;
+
+        try
+        {
+            using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+                StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None))
+            {
+                batch.SetNode(path, originalNode);
+                batch.Commit();
+            }
+
+            using (IPbtPersistence.IReader reader = persistence.CreateReader())
+            {
+                payload = reader.GetNodeGroup(groupKey)!;
+                Assert.That(new PbtNodeGroupReader(groupKey, payload.Span).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+                    Is.EqualTo(originalNode));
+            }
+
+            using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+                new StateId(1, default), new StateId(2, default), default, WriteFlags.None))
+            {
+                batch.SetNode(path, replacementNode);
+                batch.Commit();
+            }
+
+            Assert.That(new PbtNodeGroupReader(groupKey, payload.Span).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+                Is.EqualTo(originalNode));
+            payload.Dispose();
+            payload.Dispose();
+            Assert.That(() => payload.Span.ToArray(), Throws.TypeOf<ObjectDisposedException>());
+        }
+        finally
+        {
+            db.Dispose();
         }
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -46,6 +47,72 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
 
         return reader.GetNode(path);
+    }
+
+    internal PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => GetNodeGroup(groupKey, []);
+
+    internal PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtSnapshotContent> additionalLayers)
+    {
+        GuardDispose();
+        ArgumentNullException.ThrowIfNull(groupKey);
+        ArgumentNullException.ThrowIfNull(additionalLayers);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+
+        PbtNodeGroupPayload? basePayload = reader.GetNodeGroup(groupKey);
+        ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
+        bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
+        bool changed = false;
+        try
+        {
+            if (basePayload is not null)
+            {
+                PbtNodeGroupReader baseReader = new(groupKey, basePayload.Span);
+                for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+                {
+                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                    if (baseReader.TryGetNodeRange(position, out int offset, out int length))
+                    {
+                        encodings[position] = basePayload.Memory.Slice(offset, length);
+                        present[position] = true;
+                    }
+                }
+            }
+
+            for (int index = 0; index < snapshots.Count; index++)
+                changed |= snapshots[index].Content.ApplyNodeGroupDeltas(groupKey, encodings, present);
+            for (int index = 0; index < additionalLayers.Count; index++)
+                changed |= additionalLayers[index].ApplyNodeGroupDeltas(groupKey, encodings, present);
+
+            if (!changed) return basePayload;
+            bool anyPresent = false;
+            for (int position = 0; position < present.Length; position++) anyPresent |= present[position];
+            if (!anyPresent)
+            {
+                basePayload?.Dispose();
+                basePayload = null;
+                return null;
+            }
+
+            BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
+            try
+            {
+                PbtNodeGroupCodec.Encode(ref writer, groupKey, encodings, present);
+                PbtNodeGroupPayload result = PbtNodeGroupPayload.FromLease(writer.Detach()!);
+                basePayload?.Dispose();
+                return result;
+            }
+            catch
+            {
+                writer.Dispose();
+                throw;
+            }
+        }
+        catch
+        {
+            basePayload?.Dispose();
+            throw;
+        }
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)

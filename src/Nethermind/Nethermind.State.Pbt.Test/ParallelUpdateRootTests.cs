@@ -43,6 +43,32 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
+    public async Task Concurrent_group_overlays_keep_fetch_parse_and_write_counters_local()
+    {
+        (byte[] Key, byte[]? Value)[] initial = Entries(seed: 73, count: 256);
+        Task<(ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes)>[] tasks =
+        [
+            Task.Run(() => ApplyWithMetrics(initial)),
+            Task.Run(() => ApplyWithMetrics(initial)),
+            Task.Run(() => ApplyWithMetrics(initial)),
+            Task.Run(() => ApplyWithMetrics(initial)),
+        ];
+
+        (ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes)[] results = await Task.WhenAll(tasks);
+        foreach ((ValueHash256 root, TrieUpdaterMetrics metrics, int writes) in results)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root, Is.EqualTo(results[0].Root));
+                Assert.That(metrics.PhysicalGroupFetches, Is.LessThanOrEqualTo(metrics.GroupCacheProbes));
+                Assert.That(metrics.GroupCacheProbes, Is.LessThan(256), "probes follow group crossings, not logical nodes");
+                Assert.That(metrics.GroupParses, Is.Zero, "a new tree visits absent groups without parsing payloads");
+                Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(writes));
+            }
+        }
+    }
+
+    [Test]
     public async Task Concurrent_serial_folds_match_across_mutation_sequences()
     {
         (byte[] Key, byte[]? Value)[] initial = Entries(seed: 17, count: 1000);
@@ -68,6 +94,18 @@ public class ParallelUpdateRootTests
         PbtTreeHarness tree = new();
         foreach ((byte[] Key, byte[]? Value)[] batch in batches) tree.ApplyBatch(batch);
         return tree;
+    }
+
+    private static (ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes) ApplyWithMetrics(
+        (byte[] Key, byte[]? Value)[] entries)
+    {
+        using CountingStore store = new();
+        PbtWriteBatch batch = new();
+        foreach ((byte[] key, byte[]? value) in entries)
+            batch.Set(new PbtFullKey(key), new ValueHash256(value!));
+        TrieUpdaterMetrics metrics = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch, metrics);
+        return (root, metrics, store.Writes);
     }
 
     private static (byte[] Key, byte[]? Value)[] Entries(int seed, int count)
@@ -101,5 +139,27 @@ public class ParallelUpdateRootTests
         byte[] value = new byte[32];
         value[^1] = marker;
         return value;
+    }
+
+    private sealed class CountingStore : IPbtStore, IDisposable
+    {
+        private readonly PbtNodeGroupStore _inner = new();
+
+        internal int Writes { get; private set; }
+
+        public byte[]? GetNode(PbtNodePath path) => throw new AssertionException("TrieUpdater must use grouped reads.");
+
+        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
+
+        public void Apply(
+            in ValueHash256 newRoot,
+            IReadOnlyList<PbtLeafMutation> leaves,
+            IReadOnlyList<PbtNodeMutation> nodes)
+        {
+            Writes = nodes.Count;
+            _inner.Apply(newRoot, leaves, nodes);
+        }
+
+        public void Dispose() => _inner.Dispose();
     }
 }

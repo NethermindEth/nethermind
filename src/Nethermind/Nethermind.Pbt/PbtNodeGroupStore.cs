@@ -100,6 +100,19 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
+    public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(groupKey);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        if (!_groups.TryGetValue(groupKey, out RefCountingMemory? payload)) return null;
+
+        payload.AcquireLease();
+        return PbtNodeGroupPayload.FromLease(payload);
+    }
+
+    /// <inheritdoc/>
     public void Apply(
         in ValueHash256 newRoot,
         IReadOnlyList<PbtLeafMutation> leafMutations,

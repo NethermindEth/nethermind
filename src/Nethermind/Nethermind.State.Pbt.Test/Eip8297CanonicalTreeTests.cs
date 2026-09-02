@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using NUnit.Framework;
@@ -258,8 +259,96 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.Not.EqualTo(default(ValueHash256)));
-            Assert.That(store.Reads, Is.LessThanOrEqualTo(5), "the root and shared persisted branches are traversed once");
+            Assert.That(store.Reads, Is.EqualTo(store.GroupReads.Count), "each owning group is fetched once");
+            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1), "multiple nodes in one group share its cached lease");
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
             Assert.That(store.Applies, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Same_group_recursion_uses_one_frame_and_suppresses_noop_node_writes()
+    {
+        CountingPbtStore store = new();
+        PbtWriteBatch initial = Batch(([0x00], Value(1)), ([0x40], Value(2)));
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial);
+        store.ResetReads();
+        TrieUpdaterMetrics metrics = new();
+
+        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, initial, metrics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unchangedRoot, Is.EqualTo(root));
+            Assert.That(store.NodeReads, Is.Zero, "the updater never falls back to per-node reads");
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1));
+            Assert.That(metrics.GroupParses, Is.EqualTo(1));
+            Assert.That(metrics.GroupCacheProbes, Is.EqualTo(1), "same-group logical nodes use the active frame");
+            Assert.That(metrics.EmittedNodeWrites, Is.Zero);
+            Assert.That(store.LastNodeWrites, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Boundary_crossing_fetches_only_visited_groups_once()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(
+            ([0x00], Value(1)), ([0x08], Value(2)), ([0x80], Value(3)), ([0x88], Value(4))));
+        store.ResetReads();
+        TrieUpdaterMetrics metrics = new();
+
+        TrieUpdater.UpdateRoot(store, root, Batch(([0x00], Value(5))), metrics);
+
+        PbtNodePath untouchedGroup = new([0x80], 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NodeReads, Is.Zero);
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(2), "root group and changed left boundary group");
+            Assert.That(metrics.GroupParses, Is.EqualTo(2));
+            Assert.That(metrics.GroupCacheProbes, Is.EqualTo(2), "one probe per entered physical group");
+            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
+            Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Cached_group_leases_are_released_when_decode_or_apply_fails(bool applyFailure)
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
+        int appliesBeforeFailure = store.Applies;
+        if (applyFailure) store.ThrowOnApply = true;
+        else store.OverrideGroup = static _ => PbtNodeGroupPayload.FromLease(RefCountingMemory.Wrapping([0x01]));
+
+        Action update = () => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(2))));
+        if (applyFailure) Assert.Throws<InvalidOperationException>(update);
+        else Assert.Throws<InvalidDataException>(update);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + (applyFailure ? 1 : 0)));
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
+        }
+    }
+
+    [Test]
+    public void Cached_group_lease_is_released_when_traversal_finds_a_missing_node()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1)), ([0x92], Value(2))));
+        int appliesBeforeFailure = store.Applies;
+        store.IssuedGroupPayloads.Clear();
+        store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
+
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(3)))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
         }
     }
 
@@ -316,6 +405,7 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure), hashMismatch ? "hash mismatch" : "missing node");
                 Assert.That(store.Inner.RootHash, Is.EqualTo(root));
                 Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
+                Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
             }
         }
     }
@@ -377,22 +467,91 @@ public class Eip8297CanonicalTreeTests
     {
         internal PbtNodeGroupStore Inner { get; } = new();
         internal int Reads { get; private set; }
+        internal int NodeReads { get; private set; }
         internal int Applies { get; private set; }
+        internal int LastNodeWrites { get; private set; }
+        internal Dictionary<PbtNodePath, int> GroupReads { get; } = [];
+        internal List<PbtNodeGroupPayload> IssuedGroupPayloads { get; } = [];
         internal Func<PbtNodePath, byte[]?>? OverrideNode { get; set; }
+        internal Func<PbtNodePath, PbtNodeGroupPayload?>? OverrideGroup { get; set; }
+        internal bool ThrowOnApply { get; set; }
 
         public byte[]? GetNode(PbtNodePath path)
         {
             Reads++;
+            NodeReads++;
             return OverrideNode is { } overrideNode ? overrideNode(path) : Inner.GetNode(path);
+        }
+
+        public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+        {
+            Reads++;
+            GroupReads[groupKey] = GroupReads.GetValueOrDefault(groupKey) + 1;
+            if (OverrideGroup is { } overrideGroup)
+            {
+                PbtNodeGroupPayload? overriddenPayload = overrideGroup(groupKey);
+                if (overriddenPayload is not null) IssuedGroupPayloads.Add(overriddenPayload);
+                return overriddenPayload;
+            }
+            if (OverrideNode is { } overrideNode)
+            {
+                List<PbtNodeRecord> records = [];
+                for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+                {
+                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                    PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+                    byte[]? encoding = overrideNode(path);
+                    if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
+                }
+
+                if (records.Count == 0) return null;
+                BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
+                try
+                {
+                    PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+                    PbtNodeGroupPayload payload = PbtNodeGroupPayload.FromLease(writer.Detach()!);
+                    IssuedGroupPayloads.Add(payload);
+                    return payload;
+                }
+                catch
+                {
+                    writer.Dispose();
+                    throw;
+                }
+            }
+            PbtNodeGroupPayload? innerPayload = Inner.GetNodeGroup(groupKey);
+            if (innerPayload is not null) IssuedGroupPayloads.Add(innerPayload);
+            return innerPayload;
         }
 
         public void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes)
         {
             Applies++;
+            LastNodeWrites = nodes.Count;
+            if (ThrowOnApply) throw new InvalidOperationException("Configured apply failure.");
             Inner.Apply(newRoot, leaves, nodes);
         }
 
-        internal void ResetReads() => Reads = 0;
+        internal void ResetReads()
+        {
+            Reads = 0;
+            NodeReads = 0;
+            LastNodeWrites = 0;
+            GroupReads.Clear();
+        }
+    }
+
+    private static bool IsDisposed(PbtNodeGroupPayload payload)
+    {
+        try
+        {
+            _ = payload.Memory;
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
     }
 
     private static byte[] Hash(byte[] preimage)

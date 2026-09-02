@@ -8,6 +8,35 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Pbt;
 
+/// <summary>Owns read-only access to a complete canonical node-group payload.</summary>
+/// <remarks>
+/// The lease keeps the source payload alive until disposed. <see cref="Memory"/> and <see cref="Span"/>
+/// are invalid after disposal and never expose writable backing storage through this type.
+/// </remarks>
+public sealed class PbtNodeGroupPayload : IDisposable
+{
+    private RefCountingMemory? _lease;
+
+    private PbtNodeGroupPayload(RefCountingMemory lease) => _lease = lease;
+
+    /// <summary>Gets the leased payload as read-only memory.</summary>
+    public ReadOnlyMemory<byte> Memory => GetLease().Memory;
+
+    /// <summary>Gets the leased payload as a read-only span.</summary>
+    public ReadOnlySpan<byte> Span => GetLease().GetSpan();
+
+    /// <summary>Releases this payload lease.</summary>
+    public void Dispose() => ((IDisposable?)Interlocked.Exchange(ref _lease, null))?.Dispose();
+
+    internal static PbtNodeGroupPayload FromLease(RefCountingMemory lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        return new(lease);
+    }
+
+    private RefCountingMemory GetLease() => _lease ?? throw new ObjectDisposedException(nameof(PbtNodeGroupPayload));
+}
+
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
 /// The physical payload consists of an entries section followed by a fixed-size footer. Entries are
@@ -104,6 +133,67 @@ public static class PbtNodeGroupCodec
             writer.Reset(initialWrittenCount);
             throw;
         }
+    }
+
+    internal static void Encode(ref BufferWriter writer, PbtNodePath groupKey, ReadOnlyMemory<byte>[] encodings, bool[] present)
+    {
+        ArgumentNullException.ThrowIfNull(groupKey);
+        ArgumentNullException.ThrowIfNull(encodings);
+        ArgumentNullException.ThrowIfNull(present);
+        ValidateGroupKey(groupKey);
+        if (encodings.Length != PositionCount || present.Length != PositionCount)
+            throw new ArgumentException("A PBT node group must have one slot per position.");
+
+        uint availability = 0;
+        int entriesLength = 0;
+        for (int position = 0; position < PositionCount; position++)
+        {
+            if (!present[position]) continue;
+            ReadOnlySpan<byte> encoding = encodings[position].Span;
+            if (encoding.IsEmpty) continue;
+            if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0)
+                throw new InvalidDataException("The group contains a reserved node position.");
+            PbtNode node = PbtNodeCodec.Decode(encoding);
+            ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
+            entriesLength = checked(entriesLength + encoding.Length);
+            if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
+            availability |= 1u << position;
+        }
+
+        if (availability == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
+        int initialWrittenCount = writer.WrittenCount;
+        try
+        {
+            Span<ushort> offsets = stackalloc ushort[PositionCount];
+            int offset = 0;
+            for (int position = 0; position < PositionCount; position++)
+            {
+                if ((availability & (1u << position)) == 0) continue;
+                offsets[position] = (ushort)offset;
+                ReadOnlySpan<byte> encoding = encodings[position].Span;
+                writer.Write(encoding);
+                offset = checked(offset + encoding.Length);
+            }
+
+            Span<byte> footer = stackalloc byte[TrailerLength];
+            for (int position = 0; position < PositionCount; position++)
+                BinaryPrimitives.WriteUInt16LittleEndian(footer[(position * sizeof(ushort))..], offsets[position]);
+            BinaryPrimitives.WriteUInt32LittleEndian(footer[(PositionCount * sizeof(ushort))..], availability);
+            footer.CopyTo(writer.GetSpan(TrailerLength));
+            writer.Advance(TrailerLength);
+        }
+        catch
+        {
+            writer.Reset(initialWrittenCount);
+            throw;
+        }
+    }
+
+    internal static void ValidateNodeEncoding(PbtNodePath path, ReadOnlySpan<byte> encoding)
+    {
+        if (encoding.IsEmpty) throw new InvalidDataException("A PBT snapshot node encoding cannot be empty.");
+        PbtNodeCodec.ValidateExact(encoding);
+        ValidateNodePath(PbtNodeCodec.Decode(encoding), path);
     }
 
     private static void ValidateNodePath(PbtNode node, PbtNodePath path)
@@ -212,6 +302,16 @@ public readonly ref struct PbtNodeGroupReader
         encoding = _payload.Slice(_offsets[position], _lengths[position]);
         return true;
     }
+
+    internal bool TryGetNodeRange(int position, out int offset, out int length)
+    {
+        ValidatePosition(position);
+        if ((_availability & (1u << position)) == 0) { offset = 0; length = 0; return false; }
+        offset = _offsets[position];
+        length = _lengths[position];
+        return true;
+    }
+
     /// <summary>Gets an allocation-free positional enumerator.</summary>
     public Enumerator GetEnumerator()
     {

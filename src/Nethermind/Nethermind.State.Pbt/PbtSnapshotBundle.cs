@@ -68,6 +68,14 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetNode(path);
     }
 
+    internal PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey)
+    {
+        List<PbtSnapshotContent> layers = new(snapshots.Count + 1);
+        for (int index = 0; index < snapshots.Count; index++) layers.Add(snapshots[index].Content);
+        layers.Add(WriteBuffer);
+        return readOnlyBundle.GetNodeGroup(groupKey, layers);
+    }
+
     internal ulong GetCodeReference(in ValueHash256 codeHash)
     {
         if (WriteBuffer.TryGetCodeReference(codeHash, out ulong? count)) return count ?? 0;

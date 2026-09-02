@@ -40,6 +40,33 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock) return Nodes.TryGetValue(path, out encoding);
     }
 
+    internal bool ApplyNodeGroupDeltas(PbtNodePath groupKey, ReadOnlyMemory<byte>[] encodings, bool[] present)
+    {
+        bool changed = false;
+        lock (_treeLock)
+        {
+            for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+            {
+                if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+                if (!Nodes.TryGetValue(path, out byte[]? encoding)) continue;
+
+                changed = true;
+                if (encoding is null)
+                {
+                    present[position] = false;
+                    encodings[position] = default;
+                    continue;
+                }
+
+                PbtNodeGroupCodec.ValidateNodeEncoding(path, encoding);
+                encodings[position] = encoding;
+                present[position] = true;
+            }
+        }
+        return changed;
+    }
+
     internal void ApplyTreeMutations(
         IReadOnlyList<PbtLeafMutation> leafMutations,
         IReadOnlyList<PbtNodeMutation> nodeMutations)

@@ -11,6 +11,8 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 {
     public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
 
+    public PbtNodeGroupPayload? GetNodeGroup(PbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
+
     public void Apply(
         in ValueHash256 newRoot,
         IReadOnlyList<PbtLeafMutation> leafMutations,

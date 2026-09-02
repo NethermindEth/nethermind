@@ -17,7 +17,14 @@ public static class TrieUpdater
     /// traversal. All leaf and node writes are staged and handed to <see cref="IPbtStore.Apply"/> only
     /// after the complete mutation succeeds.
     /// </remarks>
-    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes)
+    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
+        UpdateRoot(store, currentRoot, changes, null);
+
+    internal static ValueHash256 UpdateRoot(
+        IPbtStore store,
+        in ValueHash256 currentRoot,
+        PbtWriteBatch changes,
+        TrieUpdaterMetrics? metrics)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
@@ -43,22 +50,32 @@ public static class TrieUpdater
         }
 
         ValidateBatchKeys(sets);
-        Overlay overlay = new(store);
-        ValueHash256 root = currentRoot;
-        if (root != default && deletes.Length != 0)
-            root = FoldDeletes(overlay, RootPath, root, deletes, 0, deletes.Length, out _);
-        if (sets.Length != 0)
+        GroupOverlay overlay = new(store, metrics);
+        try
         {
-            root = FoldSets(overlay, RootPath, root, sets, 0, sets.Length);
-            foreach (PbtWriteOperation operation in sets) overlay.SetLeaf(operation.Key, operation.Value);
-        }
+            ValueHash256 root = currentRoot;
+            if (root != default && deletes.Length != 0)
+                root = FoldDeletes(overlay, null, RootPath, root, deletes, 0, deletes.Length, out _);
+            if (sets.Length != 0)
+            {
+                root = FoldSets(overlay, null, RootPath, root, sets, 0, sets.Length);
+                foreach (PbtWriteOperation operation in sets) overlay.SetLeaf(operation.Key, operation.Value);
+            }
 
-        store.Apply(root, overlay.LeafMutations, overlay.NodeMutations);
-        return root;
+            IReadOnlyList<PbtLeafMutation> leafMutations = overlay.LeafMutations;
+            IReadOnlyList<PbtNodeMutation> nodeMutations = overlay.NodeMutations;
+            store.Apply(root, leafMutations, nodeMutations);
+            return root;
+        }
+        finally
+        {
+            overlay.Dispose();
+        }
     }
 
     private static ValueHash256 FoldDeletes(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
         PbtWriteOperation[] deletes,
@@ -66,7 +83,7 @@ public static class TrieUpdater
         int end,
         out bool changed)
     {
-        PbtNode current = overlay.Load(path, expectedHash);
+        PbtNode current = overlay.Load(activeGroup, path, expectedHash, out GroupFrame group);
         if (current is PbtLeafNode leaf)
         {
             for (int index = start; index < end; index++)
@@ -75,7 +92,7 @@ public static class TrieUpdater
                 if (comparison < 0) continue;
                 if (comparison > 0) break;
 
-                overlay.Remove(path);
+                overlay.Remove(group, path);
                 overlay.SetLeaf(leaf.Key, null);
                 changed = true;
                 return default;
@@ -102,74 +119,78 @@ public static class TrieUpdater
         bool leftChanged = false;
         bool rightChanged = false;
         if (matchingStart < partition)
-            leftHash = FoldDeletes(overlay, leftPath, leftHash, deletes, matchingStart, partition, out leftChanged);
+            leftHash = FoldDeletes(overlay, group, leftPath, leftHash, deletes, matchingStart, partition, out leftChanged);
         if (partition < matchingEnd)
-            rightHash = FoldDeletes(overlay, rightPath, rightHash, deletes, partition, matchingEnd, out rightChanged);
+            rightHash = FoldDeletes(overlay, group, rightPath, rightHash, deletes, partition, matchingEnd, out rightChanged);
 
         changed = leftChanged || rightChanged;
         if (!changed) return branch.Hash;
         if (leftHash != default && rightHash != default)
         {
             PbtBranchNode replacement = new(branch.Prefix, leftHash, rightHash);
-            overlay.Store(path, replacement);
+            overlay.Store(group, path, replacement);
             return replacement.Hash;
         }
 
         if (leftHash == default && rightHash == default)
         {
-            overlay.Remove(path);
+            overlay.Remove(group, path);
             return default;
         }
 
         int remainingDirection = leftHash != default ? 0 : 1;
         PbtNodePath remainingPath = remainingDirection == 0 ? leftPath : rightPath;
         ValueHash256 remainingHash = remainingDirection == 0 ? leftHash : rightHash;
-        PbtNode remaining = overlay.Load(remainingPath, remainingHash);
-        overlay.Remove(remainingPath);
+        PbtNode remaining = overlay.Load(group, remainingPath, remainingHash, out GroupFrame remainingGroup);
+        overlay.Remove(remainingGroup, remainingPath);
         PbtNode promoted = remaining is PbtBranchNode remainingBranch
             ? new PbtBranchNode(
                 PbtBitPrefix.Concat(branch.Prefix, remainingDirection, remainingBranch.Prefix),
                 remainingBranch.LeftHash,
                 remainingBranch.RightHash)
             : remaining;
-        overlay.Store(path, promoted);
+        overlay.Store(group, path, promoted);
         return promoted.Hash;
     }
 
     private static ValueHash256 FoldSets(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         in ValueHash256 expectedHash,
         PbtWriteOperation[] sets,
         int start,
         int end)
     {
-        if (expectedHash == default) return BuildSubtree(overlay, path, sets, start, end);
-        PbtNode current = overlay.Load(path, expectedHash);
-        return FoldSetsIntoNode(overlay, path, current, sets, start, end);
+        if (expectedHash == default) return BuildSubtree(overlay, activeGroup, path, sets, start, end);
+        PbtNode current = overlay.Load(activeGroup, path, expectedHash, out GroupFrame group);
+        return FoldSetsIntoNode(overlay, group, path, current, sets, start, end);
     }
 
     private static ValueHash256 FoldSetsIntoNode(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         PbtNode current,
         PbtWriteOperation[] sets,
         int start,
         int end) => current switch
         {
-            PbtLeafNode leaf => FoldSetsIntoLeaf(overlay, path, leaf, sets, start, end),
-            PbtBranchNode branch => FoldSetsIntoBranch(overlay, path, branch, sets, start, end),
+            PbtLeafNode leaf => FoldSetsIntoLeaf(overlay, activeGroup, path, leaf, sets, start, end),
+            PbtBranchNode branch => FoldSetsIntoBranch(overlay, activeGroup, path, branch, sets, start, end),
             _ => throw new ArgumentOutOfRangeException(nameof(current)),
         };
 
     private static ValueHash256 FoldSetsIntoLeaf(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         PbtLeafNode leaf,
         PbtWriteOperation[] sets,
         int start,
         int end)
     {
+        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         int differingBit = int.MaxValue;
         for (int index = start; index < end; index++)
         {
@@ -184,7 +205,7 @@ public static class TrieUpdater
         if (differingBit == int.MaxValue)
         {
             PbtLeafNode replacement = new(sets[start].Key, sets[start].Value.Bytes.ToArray());
-            overlay.Store(path, replacement);
+            overlay.Store(group, path, replacement);
             return replacement.Hash;
         }
 
@@ -194,38 +215,40 @@ public static class TrieUpdater
         PbtNodePath leftPath = path.Append(common, 0);
         PbtNodePath rightPath = path.Append(common, 1);
         PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
-        overlay.Store(existingPath, leaf);
+        GroupFrame existingGroup = overlay.Store(group, existingPath, leaf);
 
         ValueHash256 leftHash;
         ValueHash256 rightHash;
         if (existingDirection == 0)
         {
             leftHash = start < partition
-                ? FoldSetsIntoNode(overlay, leftPath, leaf, sets, start, partition)
+                ? FoldSetsIntoNode(overlay, existingGroup, leftPath, leaf, sets, start, partition)
                 : leaf.Hash;
-            rightHash = BuildSubtree(overlay, rightPath, sets, partition, end);
+            rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
         }
         else
         {
-            leftHash = BuildSubtree(overlay, leftPath, sets, start, partition);
+            leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
             rightHash = partition < end
-                ? FoldSetsIntoNode(overlay, rightPath, leaf, sets, partition, end)
+                ? FoldSetsIntoNode(overlay, existingGroup, rightPath, leaf, sets, partition, end)
                 : leaf.Hash;
         }
 
         PbtBranchNode split = new(common, leftHash, rightHash);
-        overlay.Store(path, split);
+        overlay.Store(group, path, split);
         return split.Hash;
     }
 
     private static ValueHash256 FoldSetsIntoBranch(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         PbtBranchNode branch,
         PbtWriteOperation[] sets,
         int start,
         int end)
     {
+        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         int firstMismatch = branch.Prefix.BitCount;
         for (int index = start; index < end; index++)
         {
@@ -250,27 +273,27 @@ public static class TrieUpdater
             PbtNodePath leftPath = path.Append(common, 0);
             PbtNodePath rightPath = path.Append(common, 1);
             PbtNodePath existingPath = existingDirection == 0 ? leftPath : rightPath;
-            overlay.Store(existingPath, relocated);
+            GroupFrame existingGroup = overlay.Store(group, existingPath, relocated);
 
             ValueHash256 leftHash;
             ValueHash256 rightHash;
             if (existingDirection == 0)
             {
                 leftHash = start < partition
-                    ? FoldSetsIntoNode(overlay, leftPath, relocated, sets, start, partition)
+                    ? FoldSetsIntoNode(overlay, existingGroup, leftPath, relocated, sets, start, partition)
                     : relocated.Hash;
-                rightHash = BuildSubtree(overlay, rightPath, sets, partition, end);
+                rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
             }
             else
             {
-                leftHash = BuildSubtree(overlay, leftPath, sets, start, partition);
+                leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
                 rightHash = partition < end
-                    ? FoldSetsIntoNode(overlay, rightPath, relocated, sets, partition, end)
+                    ? FoldSetsIntoNode(overlay, existingGroup, rightPath, relocated, sets, partition, end)
                     : relocated.Hash;
             }
 
             PbtBranchNode split = new(common, leftHash, rightHash);
-            overlay.Store(path, split);
+            overlay.Store(group, path, split);
             return split.Hash;
         }
 
@@ -281,31 +304,33 @@ public static class TrieUpdater
         if (start < childPartition)
         {
             PbtNodePath leftPath = path.Append(branch.Prefix, 0);
-            replacementLeft = FoldSets(overlay, leftPath, replacementLeft, sets, start, childPartition);
+            replacementLeft = FoldSets(overlay, group, leftPath, replacementLeft, sets, start, childPartition);
         }
         if (childPartition < end)
         {
             PbtNodePath rightPath = path.Append(branch.Prefix, 1);
-            replacementRight = FoldSets(overlay, rightPath, replacementRight, sets, childPartition, end);
+            replacementRight = FoldSets(overlay, group, rightPath, replacementRight, sets, childPartition, end);
         }
 
         PbtBranchNode replacement = new(branch.Prefix, replacementLeft, replacementRight);
-        overlay.Store(path, replacement);
+        overlay.Store(group, path, replacement);
         return replacement.Hash;
     }
 
     private static ValueHash256 BuildSubtree(
-        Overlay overlay,
+        GroupOverlay overlay,
+        GroupFrame? activeGroup,
         PbtNodePath path,
         PbtWriteOperation[] sets,
         int start,
         int end)
     {
+        GroupFrame group = overlay.Resolve(activeGroup, path, out _);
         if (end - start == 1)
         {
             PbtWriteOperation operation = sets[start];
             PbtLeafNode leaf = new(operation.Key, operation.Value.Bytes.ToArray());
-            overlay.Store(path, leaf);
+            overlay.Store(group, path, leaf);
             return leaf.Hash;
         }
 
@@ -318,10 +343,10 @@ public static class TrieUpdater
         int partition = PartitionByBit(sets, start, end, differingBit);
         PbtNodePath leftPath = path.Append(prefix, 0);
         PbtNodePath rightPath = path.Append(prefix, 1);
-        ValueHash256 leftHash = BuildSubtree(overlay, leftPath, sets, start, partition);
-        ValueHash256 rightHash = BuildSubtree(overlay, rightPath, sets, partition, end);
+        ValueHash256 leftHash = BuildSubtree(overlay, group, leftPath, sets, start, partition);
+        ValueHash256 rightHash = BuildSubtree(overlay, group, rightPath, sets, partition, end);
         PbtBranchNode branch = new(prefix, leftHash, rightHash);
-        overlay.Store(path, branch);
+        overlay.Store(group, path, branch);
         return branch.Hash;
     }
 
@@ -394,10 +419,10 @@ public static class TrieUpdater
         return new PbtBitPrefix(bytes, count);
     }
 
-    private sealed class Overlay(IPbtStore store)
+    private sealed class GroupOverlay(IPbtStore store, TrieUpdaterMetrics? metrics = null) : IDisposable
     {
         private readonly Dictionary<PbtFullKey, ValueHash256?> _leaves = [];
-        private readonly Dictionary<PbtNodePath, byte[]?> _nodes = [];
+        private readonly Dictionary<PbtNodePath, GroupFrame> _groups = [];
 
         internal IReadOnlyList<PbtLeafMutation> LeafMutations
         {
@@ -413,25 +438,230 @@ public static class TrieUpdater
         {
             get
             {
-                List<PbtNodeMutation> mutations = new(_nodes.Count);
-                foreach ((PbtNodePath path, byte[]? encoding) in _nodes) mutations.Add(new(path, encoding));
+                List<PbtNodeMutation> mutations = [];
+                foreach (GroupFrame group in _groups.Values) group.AddMutations(mutations);
+                metrics?.AddEmittedNodeWrites(mutations.Count);
                 return mutations;
             }
         }
 
         internal void SetLeaf(PbtFullKey key, ValueHash256? value) => _leaves[key] = value;
 
-        internal PbtNode Load(PbtNodePath path, in ValueHash256 expectedHash)
+        internal PbtNode Load(
+            GroupFrame? activeGroup,
+            PbtNodePath path,
+            in ValueHash256 expectedHash,
+            out GroupFrame group)
         {
-            byte[] encoding = (_nodes.TryGetValue(path, out byte[]? staged) ? staged : store.GetNode(path))
-                ?? throw new InvalidDataException("A referenced PBT node is missing.");
-            PbtNode node = PbtNodeCodec.Decode(encoding);
+            group = Resolve(activeGroup, path, out int position);
+            PbtNode node = group.Load(position);
             if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
             return node;
         }
 
-        internal void Store(PbtNodePath path, PbtNode node) => _nodes[path] = PbtNodeCodec.Encode(node);
+        internal GroupFrame Resolve(GroupFrame? activeGroup, PbtNodePath path, out int position)
+        {
+            if (activeGroup is not null && activeGroup.TryGetPosition(path, out position)) return activeGroup;
 
-        internal void Remove(PbtNodePath path) => _nodes[path] = null;
+            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+            position = location.Position;
+            metrics?.IncrementGroupCacheProbes();
+            if (_groups.TryGetValue(location.GroupKey, out GroupFrame? group)) return group;
+
+            group = new GroupFrame(store, location.GroupKey, metrics);
+            _groups.Add(location.GroupKey, group);
+            return group;
+        }
+
+        internal GroupFrame Store(GroupFrame? activeGroup, PbtNodePath path, PbtNode node)
+        {
+            GroupFrame group = Resolve(activeGroup, path, out int position);
+            group.Store(position, node);
+            return group;
+        }
+
+        internal void Remove(GroupFrame? activeGroup, PbtNodePath path)
+        {
+            GroupFrame group = Resolve(activeGroup, path, out int position);
+            group.Remove(position);
+        }
+
+        public void Dispose()
+        {
+            foreach (GroupFrame group in _groups.Values) group.Dispose();
+            _groups.Clear();
+        }
     }
+
+    private sealed class GroupFrame(IPbtStore store, PbtNodePath groupKey, TrieUpdaterMetrics? metrics) : IDisposable
+    {
+        private readonly int[] _offsets = new int[PbtNodeGroupCodec.PositionCount];
+        private readonly int[] _lengths = new int[PbtNodeGroupCodec.PositionCount];
+        private readonly PbtNode?[] _nodes = new PbtNode[PbtNodeGroupCodec.PositionCount];
+        private readonly byte[]?[] _stagedEncodings = new byte[PbtNodeGroupCodec.PositionCount][];
+        private readonly SlotState[] _states = new SlotState[PbtNodeGroupCodec.PositionCount];
+        private PbtNodeGroupPayload? _payload;
+        private uint _dirtyPositions;
+        private uint _knownPositions;
+        private bool _fetched;
+
+        internal bool TryGetPosition(PbtNodePath path, out int position)
+        {
+            if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != groupKey.BitDepth
+                || !StartsWith(path.Path, groupKey.Path, groupKey.BitDepth))
+            {
+                position = 0;
+                return false;
+            }
+
+            position = PbtFourLevelGroupGeometry.PositionOf(path);
+            return true;
+        }
+
+        internal PbtNode Load(int position)
+        {
+            EnsurePositionKnown(position);
+            switch (_states[position])
+            {
+                case SlotState.Persisted:
+                    return _nodes[position] ??= PbtNodeCodec.Decode(
+                        _payload!.Span.Slice(_offsets[position], _lengths[position]));
+                case SlotState.Staged:
+                    return _nodes[position]!;
+                default:
+                    throw new InvalidDataException("A referenced PBT node is missing.");
+            }
+        }
+
+        internal void Store(int position, PbtNode node)
+        {
+            byte[] encoding = PbtNodeCodec.Encode(node);
+            if (CanSuppressWrite(position, encoding))
+            {
+                _states[position] = SlotState.Persisted;
+                _stagedEncodings[position] = null;
+                _nodes[position] = node;
+                _dirtyPositions &= ~(1u << position);
+                return;
+            }
+
+            _states[position] = SlotState.Staged;
+            _stagedEncodings[position] = encoding;
+            _nodes[position] = node;
+            _dirtyPositions |= 1u << position;
+        }
+
+        internal void Remove(int position)
+        {
+            EnsurePositionKnown(position);
+            if (_lengths[position] != 0)
+            {
+                _states[position] = SlotState.Tombstone;
+                _dirtyPositions |= 1u << position;
+            }
+            else
+            {
+                _states[position] = SlotState.Absent;
+                _dirtyPositions &= ~(1u << position);
+            }
+            _stagedEncodings[position] = null;
+            _nodes[position] = null;
+        }
+
+        internal void AddMutations(List<PbtNodeMutation> mutations)
+        {
+            uint remaining = _dirtyPositions;
+            for (int position = 0; remaining != 0; position++, remaining >>= 1)
+            {
+                if ((remaining & 1) == 0) continue;
+                byte[]? encoding = _states[position] == SlotState.Staged ? _stagedEncodings[position] : null;
+                mutations.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
+            }
+        }
+
+        public void Dispose() => _payload?.Dispose();
+
+        private void EnsurePositionKnown(int position)
+        {
+            if ((_knownPositions & (1u << position)) != 0) return;
+            EnsureFetched();
+        }
+
+        private bool CanSuppressWrite(int position, ReadOnlySpan<byte> encoding)
+        {
+            if ((_knownPositions & (1u << position)) == 0) EnsureFetched();
+            return PersistedEncodingEquals(position, encoding);
+        }
+
+        private void EnsureFetched()
+        {
+            if (_fetched) return;
+
+            metrics?.IncrementPhysicalGroupFetches();
+            PbtNodeGroupPayload? payload = store.GetNodeGroup(groupKey);
+            if (payload is null)
+            {
+                _fetched = true;
+                _knownPositions = uint.MaxValue;
+                return;
+            }
+
+            try
+            {
+                metrics?.IncrementGroupParses();
+                PbtNodeGroupReader reader = new(groupKey, payload.Span);
+                for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+                {
+                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                    if (!reader.TryGetNodeRange(position, out int offset, out int length)) continue;
+
+                    _offsets[position] = offset;
+                    _lengths[position] = length;
+                    if (_states[position] == SlotState.Absent) _states[position] = SlotState.Persisted;
+                }
+                _payload = payload;
+                _fetched = true;
+                _knownPositions = uint.MaxValue;
+            }
+            catch
+            {
+                payload.Dispose();
+                throw;
+            }
+        }
+
+        private bool PersistedEncodingEquals(int position, ReadOnlySpan<byte> encoding) =>
+            _lengths[position] != 0
+            && _payload!.Span.Slice(_offsets[position], _lengths[position]).SequenceEqual(encoding);
+
+        private static bool StartsWith(ReadOnlySpan<byte> path, ReadOnlySpan<byte> prefix, int prefixBitCount)
+        {
+            int completeBytes = prefixBitCount >> 3;
+            if (!path[..completeBytes].SequenceEqual(prefix[..completeBytes])) return false;
+            int remainingBits = prefixBitCount & 7;
+            return remainingBits == 0
+                || ((path[completeBytes] ^ prefix[completeBytes]) & (0xFF << (8 - remainingBits))) == 0;
+        }
+
+        private enum SlotState : byte
+        {
+            Absent,
+            Persisted,
+            Staged,
+            Tombstone,
+        }
+    }
+}
+
+internal sealed class TrieUpdaterMetrics
+{
+    internal int PhysicalGroupFetches { get; private set; }
+    internal int GroupParses { get; private set; }
+    internal int GroupCacheProbes { get; private set; }
+    internal int EmittedNodeWrites { get; private set; }
+
+    internal void IncrementPhysicalGroupFetches() => PhysicalGroupFetches++;
+    internal void IncrementGroupParses() => GroupParses++;
+    internal void IncrementGroupCacheProbes() => GroupCacheProbes++;
+    internal void AddEmittedNodeWrites(int count) => EmittedNodeWrites += count;
 }
