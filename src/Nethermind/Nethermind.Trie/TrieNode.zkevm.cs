@@ -8,17 +8,33 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        // Single-threaded guest: no publication or compare-and-swap is needed, so both collapse to
-        // plain field access and inline into the flag properties, which are read per node touch.
+        /// <summary>Reads <c>_blockAndFlags</c> directly &mdash; see the std counterpart for the acquire read this replaces.</summary>
+        /// <remarks>
+        /// Single-threaded guest: nothing to publish, so this collapses to a plain field load and inlines
+        /// into the flag properties, which are read per node touch.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ReadBlockAndFlags() => _blockAndFlags;
 
+        /// <summary>Stores <c>_blockAndFlags</c> and reports the exchange as having succeeded.</summary>
+        /// <remarks>
+        /// Keeps the shape of the compare-and-exchange it replaces &mdash; returning
+        /// <paramref name="comparand"/> makes each caller's retry loop exit after one pass &mdash; but
+        /// ignores it, so the store is unconditional. Callers must therefore read the field immediately
+        /// before exchanging: no writer can race them in the guest, but a stale
+        /// <paramref name="comparand"/> would be overwritten here rather than retried.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
         {
             _blockAndFlags = newValue;
             return comparand;
         }
+
+        /// <summary>Reads <c>_rlpArray</c> for a presence check &mdash; see the std counterpart for the acquire read this replaces.</summary>
+        /// <remarks>Read per child while encoding a branch, so the fence it drops is paid sixteen times per node.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte[]? ReadRlpArray() => _rlpArray;
 
         /// <summary>
         /// Read _rlp directly &mdash; see the std counterpart for the seqlock this replaces.
