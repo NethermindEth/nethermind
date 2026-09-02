@@ -606,7 +606,7 @@ namespace Nethermind.Core.Extensions
         // factor's zeroing input off the common all-zero word; a factor still degenerates when a word
         // equals its constant, which seeded inputs hit with probability 2^-64.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static long MumFold(ulong a, ulong b)
+        public static long MumFold(ulong a, ulong b)
         {
             ulong low = Math.BigMul(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL, out ulong high);
             return (long)(low ^ high);
