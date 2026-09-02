@@ -55,7 +55,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch? StartCommittedStateWriteBack() => baseScope.StartCommittedStateWriteBack();
+        public void WriteBackCommittedState(Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges) => baseScope.WriteBackCommittedState(writeChanges);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);

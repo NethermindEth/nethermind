@@ -45,6 +45,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private readonly List<AddressAsKey> _removedWithStorage = [];
 
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -773,6 +774,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static void ThrowUnexpectedCommitPosition(int expected, int actual)
         => throw new InvalidOperationException($"Expected checked value {actual} to be equal to {expected}");
 
+    /// <summary>Accounts the block removed while they held storage, whether or not the block touched that storage.</summary>
+    internal ReadOnlySpan<AddressAsKey> RemovedAccountsWithStorage => CollectionsMarshal.AsSpan(_removedWithStorage);
+
+    /// <summary>Forgets the removals of the block just committed, so the next block in the scope reports only its own.</summary>
+    internal void ClearRemovedAccounts() => _removedWithStorage.Clear();
+
     /// <summary>
     /// Whether <paramref name="address"/> has an account at the end of the block, or <see langword="null"/> when the block
     /// never loaded the account through this provider.
@@ -849,6 +856,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
+        // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
+        if (account is null && accountChanges.After?.HasStorage == true) _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -954,6 +963,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
+            _removedWithStorage.Clear();
             _codeBatch?.Clear();
             _codeInsertJournal.Clear();
         }

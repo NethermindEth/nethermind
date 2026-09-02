@@ -200,45 +200,60 @@ public class PreBlockCaches
     }
 
     /// <summary>
-    /// Begins bringing the account and storage caches from the state at <paramref name="baseStateRoot"/> to the
-    /// committed state at <paramref name="stateRoot"/>. The caller writes the final value of every account and
-    /// storage slot the block touched into the returned batch and disposes it; only then do the caches count as
-    /// reflecting <paramref name="stateRoot"/>.
+    /// Brings the account and storage caches from the state at <paramref name="baseStateRoot"/> to the committed
+    /// state at <paramref name="stateRoot"/>: <paramref name="writeChanges"/> puts the final value of every account
+    /// and storage slot the block touched into the batch it is given, after which the caches count as reflecting
+    /// <paramref name="stateRoot"/>.
     /// </summary>
-    /// <returns>
-    /// <see langword="null"/> when the caches do not reflect <paramref name="baseStateRoot"/>: they then have nothing
-    /// to bring forward and stay as they are until the driver prepares them.
-    /// </returns>
     /// <remarks>
-    /// Single-writer upsert: it runs while a consumer scope is open, so no speculative session is active, and after
-    /// the block's own pre-warming has been joined. A concurrent writer is still detected, and turns the caches into
-    /// a clear on dispose rather than into stale entries. <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/>
-    /// drops the whole storage cache, because a contract's pre-block slots cannot be enumerated; issue it only for a
-    /// contract that held storage before the block.
+    /// Does nothing when the caches do not reflect <paramref name="baseStateRoot"/>: they then have nothing to bring
+    /// forward and stay as they are until the driver prepares them. The batch is a single-writer upsert, which its
+    /// callers guarantee: it runs on the block-processing thread inside CommitTree, after the block's pre-warming has
+    /// been joined, while the open consumer scope keeps any speculative session out, and after the commit's write batch
+    /// has drained the scope's background readers. A writer that overlaps an upsert regardless is detected by
+    /// <see cref="SeqlockCache{TKey,TValue}.TrySetExclusive"/> and, like an exception in the writer, leaves the caches
+    /// cleared rather than half-updated. <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the
+    /// whole storage cache, because a contract's pre-block slots cannot be enumerated, so the writer must issue every
+    /// clear before its first slot write.
     /// </remarks>
-    public IWorldStateScopeProvider.IWorldStateWriteBatch? BeginWriteBack(Hash256? baseStateRoot, Hash256 stateRoot)
+    public void WriteBack(Hash256? baseStateRoot, Hash256 stateRoot, Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
     {
-        _reconcileLock.Enter();
-        if (baseStateRoot is null || _validFor != baseStateRoot)
+        lock (_reconcileLock)
         {
-            _reconcileLock.Exit();
-            return null;
-        }
+            if (baseStateRoot is null || _validFor != baseStateRoot) return;
 
-        _writeBack.Begin(stateRoot);
-        return _writeBack;
+            _writeBack.Begin();
+            try
+            {
+                writeChanges(_writeBack);
+            }
+            catch
+            {
+                ClearStateCachesCore();
+                throw;
+            }
+
+            if (_writeBack.Contended)
+            {
+                // Another writer got in, so the caches describe neither the base nor the committed state.
+                ClearStateCachesCore();
+            }
+            else
+            {
+                _validFor = stateRoot;
+            }
+        }
     }
 
-    /// <summary>Applies a block's final values to the caches; holds <see cref="_reconcileLock"/> from <see cref="Begin"/> to <see cref="Dispose"/>.</summary>
     private sealed class WriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly StorageWriteBackBatch _storage = new(caches._storageCache);
-        private Hash256 _stateRoot = null!;
         private bool _contended;
 
-        public void Begin(Hash256 stateRoot)
+        public bool Contended => _contended || _storage.Contended;
+
+        public void Begin()
         {
-            _stateRoot = stateRoot;
             _contended = false;
             _storage.Contended = false;
         }
@@ -252,27 +267,14 @@ public class PreBlockCaches
             if (!caches._stateCache.TrySetExclusive(in addressAsKey, account)) _contended = true;
         }
 
-        // One contract at a time: the caller disposes each storage batch before creating the next.
+        // One contract at a time: the writer disposes each storage batch before creating the next.
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
             _storage.Address = key;
             return _storage;
         }
 
-        public void Dispose()
-        {
-            if (_contended || _storage.Contended)
-            {
-                // Another writer got in, so the caches now describe neither the base nor the committed state.
-                caches.ClearStateCachesCore();
-            }
-            else
-            {
-                caches._validFor = _stateRoot;
-            }
-
-            caches._reconcileLock.Exit();
-        }
+        public void Dispose() { }
     }
 
     private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch

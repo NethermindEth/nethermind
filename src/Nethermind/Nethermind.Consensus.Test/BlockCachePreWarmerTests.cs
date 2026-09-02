@@ -552,7 +552,7 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.True,
                 "entries describing the parent state carry into the block without a speculative pass");
-            Assert.That(nodeStorageCache.Enabled, Is.True);
+            Assert.That(nodeStorageCache.Enabled, Is.False, "without a handoff or a reactive pass, RLP caching stays off as before");
         }
     }
 

@@ -136,15 +136,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
             TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
-        if (carried)
+        if (speculativelyWarmed is not null)
         {
-            // The caches hold this parent's state, so keep RLP caching on for execution.
+            // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
             _nodeStorageCache.Enabled = true;
         }
         else
         {
             _nodeStorageCache.ClearCaches();
-            // Without retained caches or a reactive pass, leave RLP caching disabled for execution.
+            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
             if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
         }
@@ -602,8 +602,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
         ClearWarmMarker();
-        // The account and storage caches carry over: the block's commit wrote its final values into them, and PrepareFor
-        // keeps or clears them before the next use.
+        // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
+        // keeps or clears them before the next use. This continuation can overlap that write-back, so it must not touch them.
         _preBlockCaches?.ClearPrecompileCache();
         CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");

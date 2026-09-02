@@ -75,6 +75,12 @@ public class SeqlockCacheTests
         entries.SetValue(entry, index);
     }
 
+    private static long EntryHeader(Array entries, int index)
+    {
+        object entry = entries.GetValue(index)!;
+        return (long)entry.GetType().GetField("HashEpochSeqLock")!.GetValue(entry)!;
+    }
+
     [Test]
     public void New_cache_returns_miss()
     {
@@ -493,6 +499,26 @@ public class SeqlockCacheTests
             Assert.That(written, Is.True);
             Assert.That(EntryValue(entries, 0), Is.SameAs(value), "way 0");
             Assert.That(EntryValue(entries, way1), Is.SameAs(value), "way 1");
+        }
+    }
+
+    [Test]
+    public void TrySetExclusive_same_reference_leaves_the_entry_untouched()
+    {
+        SeqlockCache<ZeroHashKey, byte[]> cache = new(setsBits: 4);
+        ZeroHashKey key = new(1);
+        byte[] value = CreateValue(1);
+        cache.Set(in key, value);
+        Array entries = Entries(cache);
+        long headerBefore = EntryHeader(entries, 0);
+
+        bool written = cache.TrySetExclusive(in key, value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.True);
+            Assert.That(EntryHeader(entries, 0), Is.EqualTo(headerBefore), "re-offering the cached reference must not bump the sequence");
+            Assert.That(EntryValue(entries, 0), Is.SameAs(value));
         }
     }
 

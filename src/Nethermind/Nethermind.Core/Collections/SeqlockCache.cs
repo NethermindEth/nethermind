@@ -393,7 +393,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// <summary>
     /// Single-writer upsert that is never silently dropped: overwrites every live copy of <paramref name="key"/>
     /// (both ways are checked, since concurrent best-effort writers can leave the same key in both) or inserts
-    /// it when absent.
+    /// it when absent. Copies that already hold <paramref name="value"/> by reference are left untouched.
     /// </summary>
     /// <remarks>
     /// The caller must be the only writer. Any observed lock or lost CAS means another writer is live, and the
@@ -422,20 +422,15 @@ public sealed class SeqlockCache<TKey, TValue>
         long h1 = Volatile.Read(ref e1.HashEpochSeqLock);
         if (h0 < 0 || h1 < 0) return false; // locked: another writer is live
 
-        bool matched = false;
-        if ((h0 & TagMask) == tagToStore && e0.Key.Equals(in key))
+        bool inWay0 = (h0 & TagMask) == tagToStore && e0.Key.Equals(in key);
+        bool inWay1 = (h1 & TagMask) == tagToStore && e1.Key.Equals(in key);
+        if (inWay0 || inWay1)
         {
-            if (!WriteEntry(ref e0, h0, in key, value, tagToStore)) return false;
-            matched = true;
+            // Write-backs mostly re-offer the very reference the cache holds; those need no CAS.
+            if ((!inWay0 || ReferenceEquals(e0.Value, value)) && (!inWay1 || ReferenceEquals(e1.Value, value))) return true;
+            if (inWay0 && !WriteEntry(ref e0, h0, in key, value, tagToStore)) return false;
+            return !inWay1 || WriteEntry(ref e1, h1, in key, value, tagToStore);
         }
-
-        if ((h1 & TagMask) == tagToStore && e1.Key.Equals(in key))
-        {
-            if (!WriteEntry(ref e1, h1, in key, value, tagToStore)) return false;
-            matched = true;
-        }
-
-        if (matched) return true;
 
         // Absent: same victim preference as Set (stale/empty first, else alternate by hash bit).
         bool h0Live = (h0 & EpochOccMask) == epochOccTag;

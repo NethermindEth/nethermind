@@ -348,18 +348,56 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         InvalidateStorageMemo();
     }
 
-    /// <summary>Writes the block's final storage values of every contract touched into <paramref name="writeBatch"/>; see <see cref="PerContractState.WriteBlockChanges"/>.</summary>
+    /// <summary>
+    /// Writes the block's final storage values of every contract touched into <paramref name="writeBatch"/>, after a
+    /// clear for every contract whose pre-block storage the block wiped or whose account it removed.
+    /// </summary>
+    /// <remarks>
+    /// Clears come first: each drops every cached slot, so none may follow a slot write of the same write-back. An
+    /// account removed with storage the block never touched has no entry in <see cref="_storages"/>, so the removals
+    /// the state provider recorded are checked as well.
+    /// </remarks>
     internal void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
+        foreach (AddressAsKey removed in _stateProvider.RemovedAccountsWithStorage)
+        {
+            // Only a block that saw the storage empty before touching it can prove the cache holds none of its slots.
+            if (!_storages.TryGetValue(removed, out PerContractState? state) || state.HadStorageBeforeBlock != false)
+            {
+                ClearCachedStorage(writeBatch, removed.Value);
+            }
+        }
+
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
-            PerContractState state = storage.Value;
-            // Without an account record the address was either read directly, so it exists unchanged, or created and
-            // removed within the block, which leaves no record; only the latter can have written its storage.
-            bool accountExists = _stateProvider.HasAccountAtBlockEnd(storage.Key.Value) ?? !state.WasWritten;
-            state.WriteBlockChanges(writeBatch, accountExists);
+            AccountFate fate = FateOf(storage);
+            if (fate == AccountFate.Unknown || storage.Value.ClearsPreBlockStorage(fate == AccountFate.Present)) ClearCachedStorage(writeBatch, storage.Key.Value);
+        }
+
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        {
+            if (FateOf(storage) == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
         }
     }
+
+    private enum AccountFate { Present, Removed, Unknown }
+
+    private static void ClearCachedStorage(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, Address address)
+    {
+        using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(address, 0);
+        storageWriteBatch.Clear();
+    }
+
+    // An address with storage touched but no account record was read directly, so it exists unchanged, unless it was
+    // also written: execution always loads an account before writing its storage, so such a contract has no state the
+    // caches can vouch for, and its cached pre-block slots must go rather than be trusted.
+    private AccountFate FateOf(KeyValuePair<AddressAsKey, PerContractState> storage) =>
+        _stateProvider.HasAccountAtBlockEnd(storage.Key.Value) switch
+        {
+            true => AccountFate.Present,
+            false => AccountFate.Removed,
+            null => storage.Value.WasWritten ? AccountFate.Unknown : AccountFate.Present,
+        };
 
     private Address? _lastStorageAddress;
     private PerContractState? _lastStorage;
@@ -871,24 +909,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return (writes, skipped);
         }
 
+        /// <summary>Whether the contract held storage before the block, or <see langword="null"/> when the block never resolved its tree.</summary>
+        public bool? HadStorageBeforeBlock => _storageRootSeen ? _hadStorageBeforeBlock : null;
+
         /// <summary>
-        /// Writes the block's final value of every slot touched, reads included, into <paramref name="writeBatch"/>,
-        /// preceded by a clear when the block wiped storage the contract held before it.
+        /// Whether a cache of the contract's pre-block slots must drop them: the block cleared storage the contract held
+        /// before it, or removed the account. A contract without storage had no slots to cache.
         /// </summary>
-        /// <param name="accountExists">
-        /// Whether the account exists at the end of the block. Storage of an absent account went with it, so none of its
-        /// slots is state: only the clear of what it held before the block is written.
-        /// </param>
-        public void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, bool accountExists)
+        public bool ClearsPreBlockStorage(bool accountExists) => _hadStorageBeforeBlock && (_wasCleared || !accountExists);
+
+        /// <summary>Writes the block's final value of every slot touched, reads included, into <paramref name="writeBatch"/>.</summary>
+        public void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
-            // A clear matters only to cached pre-block slots, which a contract without storage never had.
-            bool clear = _hadStorageBeforeBlock && (_wasCleared || !accountExists);
-            if (!clear && (!accountExists || BlockChange.Count == 0)) return;
+            if (BlockChange.Count == 0) return;
 
-            using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(_address, accountExists ? BlockChange.Count : 0);
-            if (clear) storageWriteBatch.Clear();
-            if (!accountExists) return;
-
+            using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(_address, BlockChange.Count);
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 storageWriteBatch.Set(kvp.Key, kvp.Value.After);

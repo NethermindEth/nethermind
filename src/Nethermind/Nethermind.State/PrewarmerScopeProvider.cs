@@ -110,12 +110,9 @@ public class PrewarmerScopeProvider(
 
         public void Dispose()
         {
-            if (_measureMetric && _writeBatchTime != 0)
-            {
-                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
-            }
             if (isPrewarmer)
             {
+                ObserveWriteBatchToDispose();
                 baseScope.Dispose();
                 return;
             }
@@ -124,12 +121,22 @@ public class PrewarmerScopeProvider(
             preBlockCaches.MainScope = null;
             try
             {
+                ObserveWriteBatchToDispose();
                 baseScope.Dispose();
             }
             finally
             {
                 // Only now are the scope's background readers (HintBal) drained, so only now may a session take over the caches.
-                preBlockCaches.EndConsumerScope();
+                int stillOpen = preBlockCaches.EndConsumerScope();
+                Debug.Assert(stillOpen >= 0, "a consumer scope was closed more often than it was opened");
+            }
+        }
+
+        private void ObserveWriteBatchToDispose()
+        {
+            if (_measureMetric && _writeBatchTime != 0)
+            {
+                _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
         }
 
@@ -145,15 +152,18 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = baseScope.StartWriteBatch(estimatedAccountNum);
             if (!_measureMetric)
             {
-                return writeBatch;
+                return baseScope.StartWriteBatch(estimatedAccountNum);
             }
 
             _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
-            return new WriteBatchLifetimeMeasurer(writeBatch, _metricObserver, sw, isPrewarmer);
+            return new WriteBatchLifetimeMeasurer(
+                baseScope.StartWriteBatch(estimatedAccountNum),
+                _metricObserver,
+                sw,
+                isPrewarmer);
         }
 
         public void Commit(ulong blockNumber)
@@ -170,14 +180,17 @@ public class PrewarmerScopeProvider(
         }
 
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
-        public IWorldStateScopeProvider.IWorldStateWriteBatch? StartCommittedStateWriteBack()
+        public void WriteBackCommittedState(Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
         {
-            if (isPrewarmer) return null;
+            if (isPrewarmer) return;
 
             Hash256 stateRoot = baseScope.RootHash;
-            IWorldStateScopeProvider.IWorldStateWriteBatch? writeBack = preBlockCaches.BeginWriteBack(_committedStateRoot, stateRoot);
+            // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
+            // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
+            if (stateRoot == _committedStateRoot) return;
+
+            preBlockCaches.WriteBack(_committedStateRoot, stateRoot, writeChanges);
             _committedStateRoot = stateRoot;
-            return writeBack;
         }
 
         public Hash256 RootHash => baseScope.RootHash;

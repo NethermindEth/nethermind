@@ -40,6 +40,7 @@ namespace Nethermind.State
         private bool _isInScope;
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
+        private readonly Action<IWorldStateScopeProvider.IWorldStateWriteBatch> _writeBlockChanges;
 
         public Hash256 StateRoot
         {
@@ -60,6 +61,12 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
             _onAccountUpdated = (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+            // Accounts first: the storage pass clears storage caches before writing slots, and a clear must not follow a slot write.
+            _writeBlockChanges = writeBatch =>
+            {
+                _stateProvider.WriteBlockChanges(writeBatch);
+                _persistentStorageProvider.WriteBlockChanges(writeBatch);
+            };
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -224,18 +231,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
-            WriteBackCommittedState();
+            // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
+            _currentScope.WriteBackCommittedState(_writeBlockChanges);
+            _stateProvider.ClearRemovedAccounts();
             _persistentStorageProvider.ClearStorageMap();
-        }
-
-        // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
-        private void WriteBackCommittedState()
-        {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch? writeBack = _currentScope.StartCommittedStateWriteBack();
-            if (writeBack is null) return;
-
-            _stateProvider.WriteBlockChanges(writeBack);
-            _persistentStorageProvider.WriteBlockChanges(writeBack);
         }
 
         public ulong GetNonce(Address address)
