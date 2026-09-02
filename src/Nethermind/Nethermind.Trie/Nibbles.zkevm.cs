@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie
 {
@@ -36,6 +39,32 @@ namespace Nethermind.Trie
                 Unsafe.Add(ref nibbles, i * 2) = (byte)(value >> 4);
                 Unsafe.Add(ref nibbles, i * 2 + 1) = (byte)(value & 15);
             }
+        }
+
+        /// <summary>Length of the common prefix of two nibble keys.</summary>
+        /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
+        /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit.</remarks>
+        internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+        {
+            int length = Math.Min(left.Length, right.Length);
+            ref byte l = ref MemoryMarshal.GetReference(left);
+            ref byte r = ref MemoryMarshal.GetReference(right);
+            int i = 0;
+            for (; i + sizeof(ulong) <= length; i += sizeof(ulong))
+            {
+                ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, i)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, i));
+                if (diff != 0)
+                {
+                    return i + (BitOperations.TrailingZeroCount(diff) >> 3);
+                }
+            }
+
+            for (; i < length; i++)
+            {
+                if (Unsafe.Add(ref l, i) != Unsafe.Add(ref r, i)) break;
+            }
+
+            return i;
         }
     }
 }

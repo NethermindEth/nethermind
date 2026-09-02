@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Trie
@@ -23,5 +24,10 @@ namespace Nethermind.Trie
                 Unsafe.Add(ref nibbles, i * 2 + 1) = (byte)(value & 15);
             }
         }
+
+        /// <summary>Length of the common prefix of two nibble keys.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+            => left.CommonPrefixLength(right);
     }
 }
