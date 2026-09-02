@@ -85,7 +85,7 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for file_name in *.tar.gz *.zip "$PACKAGE_PREFIX-SHA256SUMS"; do
+          for file_name in *.tar.gz *.zip *SHA256SUMS; do
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
               -o "$file_name.asc" -ab "$file_name"
@@ -136,20 +136,18 @@ jobs:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
         run: |
-          if ! release=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish); then
-            echo "::error::The matching Nethermind release $RELEASE_TAG must be created as a draft before its Bootnode assets can be uploaded."
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::The matching Nethermind release $RELEASE_TAG must exist before its Bootnode assets can be uploaded."
             exit 1
           fi
 
-          release_draft=$(jq -r '.isDraft' <<< "$release")
-          release_target=$(jq -r '.targetCommitish' <<< "$release")
-          if [[ "$release_draft" != "true" ]]; then
-            echo "::error::The matching Nethermind release $RELEASE_TAG must remain a draft until its Bootnode assets are uploaded."
+          if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha); then
+            echo "::error::Could not resolve the commit for matching Nethermind release $RELEASE_TAG."
             exit 1
           fi
 
           if [[ "$release_target" != "$GITHUB_SHA" ]]; then
-            echo "::error::The matching Nethermind release $RELEASE_TAG targets $release_target, but this Bootnode build targets $GITHUB_SHA."
+            echo "::error::The matching Nethermind release $RELEASE_TAG resolves to $release_target, but this Bootnode build targets $GITHUB_SHA."
             exit 1
           fi
 

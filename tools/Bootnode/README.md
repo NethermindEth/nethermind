@@ -39,7 +39,7 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode releases use the matching Nethermind version tag, for example `1.39.1`. The `Release Bootnode` workflow reads the same version source as the main release workflow; run it after the matching GitHub release draft has been created and before it is published. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
+Bootnode releases use the matching Nethermind version tag, for example `1.39.1`. The `Release Bootnode` workflow reads the same version source as the main release workflow; run it after the matching GitHub release draft has been created and before it is published. It can also replace a matching published release's Bootnode assets when built from the release tag's commit. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. The Docker image becomes public when the workflow completes, so publish the matching GitHub release promptly afterwards. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
 
 ```powershell
 docker pull nethermind/nethermind-bootnode:latest
