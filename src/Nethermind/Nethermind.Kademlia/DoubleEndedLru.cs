@@ -1,5 +1,7 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Kademlia;
 
@@ -176,6 +178,21 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         lock (_lock)
         {
             return _index.ContainsKey(key);
+        }
+    }
+
+    internal bool TryGetValue(in TKey key, [MaybeNullWhen(false)] out TValue value)
+    {
+        lock (_lock)
+        {
+            if (_index.TryGetValue(key, out int i))
+            {
+                value = _entries[i].Value;
+                return true;
+            }
+
+            value = default;
+            return false;
         }
     }
 
