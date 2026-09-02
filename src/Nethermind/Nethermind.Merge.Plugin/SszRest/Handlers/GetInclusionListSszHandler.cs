@@ -46,7 +46,7 @@ public sealed class GetInclusionListSszHandler(IEngineRpcModule engineModule) : 
         if (hex.Length != HashHexLength) return false;
 
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        if (Convert.FromHexString(hex, bytes, out _, out int written) != OperationStatus.Done || written != Hash256.Size)
+        if (Convert.FromHexString(hex, bytes, out _, out _) != OperationStatus.Done)
             return false;
 
         parentBlockHash = new Hash256(bytes);

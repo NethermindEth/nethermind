@@ -556,30 +556,17 @@ public partial class EngineModuleTests
         }
     }
 
-    // The consensus layer names the block the list must be appendable to, so the parameter has to reach
-    // the handler: dispatching it as a no-argument method answers -32602 and no list is ever built.
-    [Test]
-    public async Task GetInclusionListV1_accepts_the_parent_block_hash()
+    // The consensus layer names the block the list is requested for, so the parameter has to reach the
+    // handler: dispatched as a no-argument method the call answers -32602 and no list is ever built.
+    [TestCase(false, TestName = "GetInclusionListV1_without_a_parent_block_hash_builds_on_the_head")]
+    [TestCase(true, TestName = "GetInclusionListV1_accepts_the_parent_block_hash")]
+    public async Task GetInclusionListV1_serves_both_request_shapes(bool withParentBlockHash)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+        object?[] parameters = withParentBlockHash ? [chain.BlockTree.HeadHash] : [];
 
         string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule,
-            nameof(IEngineRpcModule.engine_getInclusionListV1), chain.BlockTree.HeadHash);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response, Does.Contain("\"result\""));
-            Assert.That(response, Does.Not.Contain("\"error\""));
-        }
-    }
-
-    [Test]
-    public async Task GetInclusionListV1_without_a_parent_block_hash_builds_on_the_head()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
-
-        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule,
-            nameof(IEngineRpcModule.engine_getInclusionListV1));
+            nameof(IEngineRpcModule.engine_getInclusionListV1), parameters);
 
         using (Assert.EnterMultipleScope())
         {

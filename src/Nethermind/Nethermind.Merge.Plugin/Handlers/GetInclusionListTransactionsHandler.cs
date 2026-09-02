@@ -20,7 +20,8 @@ public class GetInclusionListTransactionsHandler(
 {
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
 
-    /// <param name="parentBlockHash">Block the list must be appendable to; the head when omitted.</param>
+    /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are
+    /// filtered against; the head when omitted. Nonce readiness stays head-relative.</param>
     public ResultWrapper<InclusionListBytes> Handle(Hash256? parentBlockHash)
     {
         if (!specProvider.GetFinalSpec().IsEip7805Enabled)
