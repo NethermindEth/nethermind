@@ -8,8 +8,33 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
+
+/// <summary>
+/// Skips a ceiling the running binary cannot grant, rather than reporting
+/// <see cref="Eip8141Constants.MaxVerifyGas"/>'s numbers under that ceiling's label.
+/// </summary>
+/// <remarks>
+/// <c>TransactionProcessorBase.CapFrameGas</c> bounds every prefix frame at the lesser of its declared limit
+/// and what remains of the constant, unconditionally on the frame-processing path — so this guard applies
+/// equally to a harness that submits through <c>TxPool</c> and one that drives
+/// <c>BlockProductionTransactionsExecutor</c> directly, which is why it is shared here rather than kept
+/// local to one harness.
+/// </remarks>
+internal static class Eip8141MeasurementGuards
+{
+    public static void SkipIfCeilingUnreachable(ulong ceiling)
+    {
+        if (ceiling > Eip8141Constants.MaxVerifyGas)
+        {
+            Assert.Ignore($"a {ceiling} ceiling is clamped to Eip8141Constants.MaxVerifyGas = "
+                          + $"{Eip8141Constants.MaxVerifyGas}; the constant is compile-time inlined, so this point "
+                          + "needs a source edit and a full rebuild.");
+        }
+    }
+}
 
 /// <summary>
 /// Counts the transactions a block-production executor actually hands to the processor, and the gas each

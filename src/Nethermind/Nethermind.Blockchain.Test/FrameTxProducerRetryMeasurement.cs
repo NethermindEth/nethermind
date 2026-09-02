@@ -180,14 +180,35 @@ public class FrameTxProducerRetryMeasurement
     /// <c>NullTxPool.Instance</c>, whose <c>EvictTransaction</c> always returns <c>false</c>, measuring the
     /// same shape with no eviction at all — read the two together, and that case is the ceiling this one bounds.
     /// </para>
+    /// <para>
+    /// Swept across the same four ceilings as the rest of the campaign — cheaply, since this harness drives
+    /// the executor directly with no <c>TxPool</c>, no flood and no wall-clock window. It answers, on its own,
+    /// whether unpaid burn per attempt scales with the ceiling the way <c>BudgetBurnFloor</c> assumes; read
+    /// together with <see cref="FrameTxFloodMeasurement.Block_production_delay_under_flood_and_retries"/>, it
+    /// is also the cheap half of checking whether that harness's contended <c>Δ</c> decomposes into this
+    /// harness's uncontended unpaid-burn cost plus the block-processing-only flood delta — a composition that,
+    /// if it holds, would let most of the ceiling sweep move here instead of paying for the flood on every point.
+    /// </para>
     /// </remarks>
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(4)]
-    [TestCase(8)]
-    public void ProducerRetriesAreBoundedByKRetry(int kRetry)
+    [TestCase(100_000ul, 1)]
+    [TestCase(100_000ul, 2)]
+    [TestCase(100_000ul, 4)]
+    [TestCase(100_000ul, 8)]
+    [TestCase(236_285ul, 1)]
+    [TestCase(236_285ul, 2)]
+    [TestCase(236_285ul, 4)]
+    [TestCase(236_285ul, 8)]
+    [TestCase(300_000ul, 1)]
+    [TestCase(300_000ul, 2)]
+    [TestCase(300_000ul, 4)]
+    [TestCase(300_000ul, 8)]
+    [TestCase(500_000ul, 1)]
+    [TestCase(500_000ul, 2)]
+    [TestCase(500_000ul, 4)]
+    [TestCase(500_000ul, 8)]
+    public void ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
-        const ulong VerifyGas = 236_285;
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(verifyGas);
 
         _stateProvider.CreateAccount(Sender, 100.Ether);
         _stateProvider.InsertCode(Sender, NeverApproves(), Spec);
@@ -208,7 +229,7 @@ public class FrameTxProducerRetryMeasurement
         BlockProcessor.BlockProductionTransactionsExecutor executor =
             new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, txPool);
 
-        Transaction tx = FrameTx(VerifyGas);
+        Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
 
         int blocksOffered = 0;
@@ -240,7 +261,7 @@ public class FrameTxProducerRetryMeasurement
         foreach (ulong b in adapter.BurnedPerAttempt) burned += b;
         ulong firstBurn = adapter.BurnedPerAttempt.Count > 0 ? adapter.BurnedPerAttempt[0] : 0;
 
-        Emit($"case=k_retry_sweep k_retry={kRetry} budget={VerifyGas} "
+        Emit($"case=k_retry_sweep k_retry={kRetry} budget={verifyGas} "
              + $"blocks_offered={blocksOffered} execution_attempts={adapter.Attempts} "
              + $"burn_first_attempt={firstBurn} burn_total={burned} "
              + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} "
@@ -250,7 +271,7 @@ public class FrameTxProducerRetryMeasurement
         {
             Assert.That(adapter.Attempts, Is.EqualTo(kRetry),
                 "the producer must re-execute the prefix exactly K_retry times before the pool evicts it");
-            Assert.That(firstBurn, Is.GreaterThan((ulong)(VerifyGas * BudgetBurnFloor)),
+            Assert.That(firstBurn, Is.GreaterThan((ulong)(verifyGas * BudgetBurnFloor)),
                 "each attempt must burn the whole verification budget, or the amplification is measured against the wrong unit");
             Assert.That(burned, Is.GreaterThan((ulong)(firstBurn * (ulong)kRetry * BudgetBurnFloor)),
                 "total unpaid burn must scale with K_retry, which is the quantity this sweep exists to report");

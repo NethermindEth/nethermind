@@ -353,27 +353,43 @@ public class FrameTxFloodMeasurement
     /// <para>
     /// The offered flood rate sits below what the block-processing cases use, because it must here: a
     /// production pass costs about what a rejection does, so the producer alone nearly saturates the core and
-    /// the generator gets roughly the other half — a ceiling near <c>1 / (2 * t_reject)</c>, measured at about
-    /// 135 tx/s. Offering 200 produced 78 and 102 tx/s in the two arms on one run, comparing two different
-    /// loads rather than two retry policies. Staying under the ceiling leaves <c>K_retry</c> as the only
-    /// variable, and <c>flood_achieved_rate</c> on each row is what lets a reader confirm it.
+    /// the generator gets roughly the other half — a ceiling near <c>1 / (2 * t_reject(C))</c>. At 236,285 that
+    /// measured about 135 tx/s: offering 200 produced 78 and 102 tx/s in the two arms on one run, comparing two
+    /// different loads rather than two retry policies. Staying under the ceiling leaves <c>K_retry</c> as the
+    /// only variable, and <c>flood_achieved_rate</c> on each row is what lets a reader confirm it. Swept across
+    /// ceilings, <c>1 / (2 * t_reject(C))</c> is not recalibrated per ceiling — <c>t_reject</c> rises with the
+    /// ceiling, so 100 tx/s may itself begin to saturate the core at 300k and above, where the assertion below
+    /// fails loudly instead of publishing a starved row. That is itself a finding: it means retry contention
+    /// leaves less flood headroom as the ceiling rises, and a lower rate point belongs in a follow-up rather
+    /// than being invented here without a measurement to size it from.
     /// </para>
     /// </remarks>
-    [TestCase(1, 0)]
-    [TestCase(8, 0)]
-    [TestCase(1, 100)]
-    [TestCase(8, 100)]
-    public async Task Block_production_delay_under_flood_and_retries(int kRetry, int offeredRate)
+    [TestCase(100_000ul, 1, 0)]
+    [TestCase(100_000ul, 8, 0)]
+    [TestCase(100_000ul, 1, 100)]
+    [TestCase(100_000ul, 8, 100)]
+    [TestCase(236_285ul, 1, 0)]
+    [TestCase(236_285ul, 8, 0)]
+    [TestCase(236_285ul, 1, 100)]
+    [TestCase(236_285ul, 8, 100)]
+    [TestCase(300_000ul, 1, 0)]
+    [TestCase(300_000ul, 8, 0)]
+    [TestCase(300_000ul, 1, 100)]
+    [TestCase(300_000ul, 8, 100)]
+    [TestCase(500_000ul, 1, 0)]
+    [TestCase(500_000ul, 8, 0)]
+    [TestCase(500_000ul, 1, 100)]
+    [TestCase(500_000ul, 8, 100)]
+    public async Task Block_production_delay_under_flood_and_retries(ulong ceiling, int kRetry, int offeredRate)
     {
-        const ulong Ceiling = 236_285;
-
         SkipUnlessSingleCore();
-        await BuildChain("keccak-wide", Ceiling);
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, Ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
 
         using CancellationTokenSource cts = new();
-        FloodGenerator? flood = offeredRate > 0 ? StartFlood(Ceiling, offeredRate, cts) : null;
+        FloodGenerator? flood = offeredRate > 0 ? StartFlood(ceiling, offeredRate, cts) : null;
         if (flood is not null) Thread.Sleep(FloodSettle);
 
         rig.RunFor(WarmupWindow);
@@ -405,7 +421,7 @@ public class FrameTxFloodMeasurement
         double p50 = Percentile(passMicros, 0.50);
         double p95 = Percentile(passMicros, 0.95);
 
-        Emit($"case=production_under_flood ceiling={Ceiling} k_retry={kRetry} offered_rate={offeredRate} "
+        Emit($"case=production_under_flood ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={passMicros.Count} "
              + $"evictions={rig.Evictions} failing_executions={rig.FailingExecutions} "
              + $"flood_submitted={floodSubmitted} flood_rejected={floodRejected} "
@@ -557,7 +573,7 @@ public class FrameTxFloodMeasurement
     public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
-        SkipIfCeilingUnreachable(ceiling);
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
@@ -625,7 +641,7 @@ public class FrameTxFloodMeasurement
     public async Task Sustainable_rejection_rate_by_ramp(ulong ceiling)
     {
         SkipUnlessSingleCore();
-        SkipIfCeilingUnreachable(ceiling);
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
         // The baseline is reused by every rate point, so one still descending the JIT tiers would surface as
@@ -903,20 +919,6 @@ public class FrameTxFloodMeasurement
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
     };
 
-    /// <summary>
-    /// Skips a ceiling the running binary cannot grant, rather than reporting the constant's numbers under
-    /// that ceiling's label.
-    /// </summary>
-    private static void SkipIfCeilingUnreachable(ulong ceiling)
-    {
-        if (ceiling > Eip8141Constants.MaxVerifyGas)
-        {
-            Assert.Ignore($"a {ceiling} ceiling is clamped to Eip8141Constants.MaxVerifyGas = "
-                          + $"{Eip8141Constants.MaxVerifyGas}; the constant is compile-time inlined, so this point "
-                          + "needs a source edit and a full rebuild.");
-        }
-    }
-
     /// <summary>Nearest-rank percentile, so a reported figure is an observation that actually occurred.</summary>
     private static double Percentile(List<double> values, double quantile)
     {
@@ -936,7 +938,7 @@ public class FrameTxFloodMeasurement
     /// the simulator, which is a different measurement wearing this ceiling's label. Setting it to <c>0</c>
     /// lifts that precheck only; the processor still caps each prefix frame at the
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c>, which is what
-    /// <see cref="SkipIfCeilingUnreachable"/> guards.
+    /// <see cref="Eip8141MeasurementGuards.SkipIfCeilingUnreachable"/> guards.
     /// </remarks>
     private sealed class FloodTestBlockchain : BasicTestBlockchain
     {
