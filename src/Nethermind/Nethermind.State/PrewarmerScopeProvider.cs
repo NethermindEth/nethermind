@@ -223,6 +223,12 @@ public class PrewarmerScopeProvider(
                     baseScope.HintGet(address, account);
                     _metrics.IncrementPreBlockAccountHits();
                 }
+                else if (storageReadCapture is null)
+                {
+                    // A carried entry spares the read, not the commit: the account's trie path still needs warming, which a
+                    // miss gets from the read itself.
+                    mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
+                }
 
                 _metrics.IncrementStateTreeCacheHits();
             }

@@ -1072,8 +1072,9 @@ public class ScopeProviderTests(bool useFlat)
         inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
-    [Test]
-    public void Test_PopulatorGetMiss_PushesAccountTrieWarmHint()
+    [TestCase(false, TestName = "Test_PopulatorGetMiss_PushesAccountTrieWarmHint")]
+    [TestCase(true, TestName = "Test_PopulatorGetHit_PushesAccountTrieWarmHint")]
+    public void Test_PopulatorGet_PushesAccountTrieWarmHint(bool cached)
     {
         using Context ctx = new(useFlat);
 
@@ -1090,6 +1091,12 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         PreBlockCaches caches = new();
+        if (cached)
+        {
+            // A carried entry spares the populator its read, but the commit still needs the account's trie path warmed.
+            AddressAsKey key = TestItem.AddressA;
+            caches.StateCache.Set(in key, new Account(100, 100));
+        }
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
@@ -1098,7 +1105,6 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
         {
             caches.MainScope = null;
-            scope.Get(TestItem.AddressA);
             scope.Get(TestItem.AddressA);
         }
 

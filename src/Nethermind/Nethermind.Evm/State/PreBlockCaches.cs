@@ -210,9 +210,10 @@ public class PreBlockCaches
     /// forward and stay as they are until the driver prepares them. The batch is a single-writer upsert, which its
     /// callers guarantee: it runs on the block-processing thread inside CommitTree, after the block's pre-warming has
     /// been joined, while the open consumer scope keeps any speculative session out, and after the commit's write batch
-    /// has drained the scope's background readers. A writer that overlaps an upsert regardless is detected by
-    /// <see cref="SeqlockCache{TKey,TValue}.TrySetExclusive"/> and, like an exception in the writer, leaves the caches
-    /// cleared rather than half-updated. <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the
+    /// has drained the scope's background readers. Detecting a writer that gets in regardless is best effort:
+    /// <see cref="SeqlockCache{TKey,TValue}.TrySetExclusive"/> reports one that overlaps a write, and that, like an
+    /// exception in the writer, leaves the caches cleared rather than half-updated.
+    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the
     /// whole storage cache, because a contract's pre-block slots cannot be enumerated, so the writer must issue every
     /// clear before its first slot write.
     /// </remarks>

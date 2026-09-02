@@ -370,13 +370,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
-            AccountFate fate = FateOf(storage);
-            if (fate == AccountFate.Unknown || storage.Value.ClearsPreBlockStorage(fate == AccountFate.Present)) ClearCachedStorage(writeBatch, storage.Key.Value);
+            PerContractState state = storage.Value;
+            state.BlockEndFate = FateOf(storage);
+            if (state.BlockEndFate == AccountFate.Unknown || state.ClearsPreBlockStorage(state.BlockEndFate == AccountFate.Present))
+            {
+                ClearCachedStorage(writeBatch, storage.Key.Value);
+            }
         }
 
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
-            if (FateOf(storage) == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
+            if (storage.Value.BlockEndFate == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
         }
     }
 
@@ -736,6 +740,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
         public bool WasWritten => _wasWritten;
+
+        /// <summary>The account's fate at block end, resolved by the write-back's clear pass and reused by its slot pass.</summary>
+        public AccountFate BlockEndFate { get; set; }
 
         public Hash256 StorageRoot
         {
