@@ -115,7 +115,7 @@ public sealed class NodeSource(
 
             if (channel.Writer.TryWrite(peerCandidate))
             {
-                if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {peerCandidate:s}.");
+                if (_logger.IsTrace) TraceQueuedDiscoveredNode(peerCandidate);
                 return;
             }
 
@@ -124,6 +124,10 @@ public sealed class NodeSource(
             {
                 _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceQueuedDiscoveredNode(Node candidate) =>
+                _logger.Trace($"Discv5 node source queued discovered node {candidate:s}.");
         }
 
         bool TryReservePeerCandidate(Node node, [NotNullWhen(true)] out Node? peerCandidate)

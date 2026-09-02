@@ -394,7 +394,7 @@ namespace Nethermind.Network.Test
 
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
-        // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
+        [TestCase(true, ConnectionDirection.Out)]
         [TestCase(false, ConnectionDirection.Out)]
         [NonParallelizable]
         public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
@@ -436,11 +436,13 @@ namespace Nethermind.Network.Test
             }
             else
             {
+                // Dialing rlpx directly would leave the session unowned: the peer manager only keeps an
+                // outgoing session for a peer it already made active. Adding the node to the pool makes it
+                // dial, which activates the peer and attaches the OUT session before the IN one arrives.
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
-                {
-                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
-                }
+                ctx.PeerPool.GetOrAdd(session1.Node);
+                Assert.That(() => ctx.PeerManager.ActivePeers.SingleOrDefault()?.OutSession,
+                    Is.Not.Null.After(_delayLonger, 20), "peer manager did not establish the OUT session");
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
             }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -308,13 +309,13 @@ public class KademliaAdapter(
 
         if (!session.HasEndpointBond(endpoint))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded endpoint {endpoint} for peer {node.Id}");
+            if (Logger.IsTrace) TraceUnbondedEnrRequest(endpoint, node);
             return false;
         }
 
         if (msg.Hash is not { } requestHash)
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting enr request without packet hash from {node}");
+            if (Logger.IsTrace) TraceEnrRequestWithoutHash(node);
             return false;
         }
 
@@ -329,7 +330,7 @@ public class KademliaAdapter(
 
         if (!session.HasEndpointBond(endpoint))
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded endpoint {endpoint} for peer {node.Id}");
+            if (Logger.IsTrace) TraceUnbondedFindNodeRequest(endpoint, node);
             return false;
         }
 
@@ -363,7 +364,7 @@ public class KademliaAdapter(
         if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
-            if (Logger.IsDebug) Logger.Debug($"Rejecting ping without packet hash from {node}");
+            if (Logger.IsTrace) TracePingWithoutHash(node);
             return;
         }
 
@@ -385,6 +386,22 @@ public class KademliaAdapter(
         await RefreshRemoteRecordIfNewer(node, advertisedSequence, token);
         PublishNode(node, session, ping, advertisedSequence);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUnbondedEnrRequest(IPEndPoint endpoint, Node node) =>
+        Logger.Trace($"Rejecting enr request from unbonded endpoint {endpoint} for peer {node.Id}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceEnrRequestWithoutHash(Node node) =>
+        Logger.Trace($"Rejecting enr request without packet hash from {node}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceUnbondedFindNodeRequest(IPEndPoint endpoint, Node node) =>
+        Logger.Trace($"Rejecting findNode request from unbonded endpoint {endpoint} for peer {node.Id}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TracePingWithoutHash(Node node) =>
+        Logger.Trace($"Rejecting ping without packet hash from {node}");
 
     private void PublishNode(Node node, NodeSession session, PingMsg? signedPing, ulong? advertisedEnrSequence)
     {
