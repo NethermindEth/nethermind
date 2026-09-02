@@ -23,6 +23,6 @@ tar -czf "$package_path/$PACKAGE_PREFIX-macos-x64.tar.gz" -C osx-x64 .
 cd win-x64 && zip -r "$package_path/$PACKAGE_PREFIX-windows-x64.zip" . && cd ..
 
 cd "$package_path"
-sha256sum *.tar.gz *.zip > SHA256SUMS
+sha256sum *.tar.gz *.zip > "$PACKAGE_PREFIX-SHA256SUMS"
 
 echo "Archiving completed"
