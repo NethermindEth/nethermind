@@ -8,7 +8,7 @@ using System.Net.Sockets;
 namespace Nethermind.Network.Discovery;
 
 /// <summary>
-/// Describes which remote address families a discovery socket can serve from its local bind address.
+/// Describes which remote address families the local RLPx and discovery sockets can serve from their shared bind address.
 /// </summary>
 public static class DiscoveryAddressSupport
 {
@@ -33,13 +33,7 @@ public static class DiscoveryAddressSupport
     public static AddressFamily GetFamily(IPAddress address)
         => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
 
-    /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
-    /// </summary>
-    /// <param name="localIp">The address used to bind the socket.</param>
-    /// <param name="addressFamily">The remote address family to test.</param>
-    /// <returns><see langword="true"/> when the bound socket can serve the address family.</returns>
-    public static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
+    private static bool SupportsFamily(IPAddress localIp, AddressFamily addressFamily)
         => addressFamily switch
         {
             AddressFamily.InterNetwork =>
@@ -53,9 +47,14 @@ public static class DiscoveryAddressSupport
         };
 
     /// <summary>
-    /// Selects the external addresses supported by the local discovery listener.
+    /// Selects the external addresses supported by the local RLPx and discovery listeners.
     /// </summary>
-    /// <param name="localIp">The address used to bind the local socket.</param>
+    /// <remarks>
+    /// RLPx and discovery each bind a single socket to <paramref name="localIp"/>, so an address family is
+    /// advertised only when that socket can receive it; otherwise peers would dial an endpoint nothing is
+    /// listening on.
+    /// </remarks>
+    /// <param name="localIp">The address used to bind the local RLPx and discovery sockets.</param>
     /// <param name="externalIpV4">The resolved external IPv4 address.</param>
     /// <param name="externalIpV6">The resolved external IPv6 address.</param>
     /// <returns>The supported IPv4 and IPv6 addresses; an unsupported address is returned as <see langword="null"/>.</returns>
