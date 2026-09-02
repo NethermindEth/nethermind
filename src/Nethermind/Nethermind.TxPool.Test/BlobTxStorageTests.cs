@@ -498,8 +498,9 @@ public class BlobTxStorageTests
             .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
         yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
-        // A record written by a newer version carrying a fifth optional field: every record fails after a downgrade.
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01]), typeof(RlpException))
+        // A record written by a newer version carrying one optional field beyond this build's set: every record
+        // fails after a downgrade. Two elements, since EIP-8141 records already read one more than a blob record.
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpException))
             .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 

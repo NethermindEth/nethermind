@@ -199,8 +199,7 @@ public class TxPoolSourceTests
 
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingTransactions().Returns([]);
-        txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { frameBlobTx.SenderAddress!, [frameBlobTx] } });
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]> { { frameBlobTx.SenderAddress!, [frameBlobTx] } });
         txPool.SupportsBlobs.Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
