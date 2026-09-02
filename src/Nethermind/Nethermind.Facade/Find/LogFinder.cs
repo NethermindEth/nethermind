@@ -222,7 +222,7 @@ namespace Nethermind.Facade.Find
                     cancellationToken.ThrowIfCancellationRequested();
 
                     LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
-                    if (!iterator.CanDecodeBloom || filter.Matches(ref receipt.Bloom))
+                    if (!iterator.CanDecodeBloom || receipt.Bloom.Bytes.IsEmpty || filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out LogEntryStructRef log))
                         {

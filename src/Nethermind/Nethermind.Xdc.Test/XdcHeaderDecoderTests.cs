@@ -164,5 +164,6 @@ namespace Nethermind.Xdc.Test
 
             Assert.That(encoded, Is.EqualTo(hexRlp));
         }
+
     }
 }

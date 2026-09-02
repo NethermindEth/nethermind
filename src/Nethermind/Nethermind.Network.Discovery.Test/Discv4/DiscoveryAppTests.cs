@@ -175,12 +175,13 @@ public class DiscoveryAppTests
             IPAddress.Parse("2001:db8::5"));
 
         Assert.That(restoredNode, Is.Not.Null);
+        NodeRecord restoredEnr = restoredNode!.Enr ?? throw new AssertionException("Expected the restored node to retain its ENR.");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(restoredNode!.Host, Is.EqualTo("2001:db8::1"));
+            Assert.That(restoredNode.Host, Is.EqualTo("2001:db8::1"));
             Assert.That(restoredNode.Port, Is.EqualTo(30303));
             Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30304));
-            Assert.That(restoredNode.Enr.GetHex(), Is.EqualTo(record.GetHex()));
+            Assert.That(restoredEnr.GetHex(), Is.EqualTo(record.GetHex()));
         }
     }
 

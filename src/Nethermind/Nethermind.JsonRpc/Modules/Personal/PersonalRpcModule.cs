@@ -9,12 +9,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.KeyStore;
+using Nethermind.Logging;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
-    public class PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore) : IPersonalRpcModule
+    public class PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore, ILogManager logManager) : IPersonalRpcModule
     {
+        private readonly ILogger _logger = logManager.GetClassLogger<PersonalRpcModule>();
+
+        public PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore)
+            : this(ecdsa, wallet, keyStore, NullLogManager.Instance)
+        {
+        }
+
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
         {
@@ -23,7 +31,19 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+        public ResultWrapper<Address[]> personal_listAccounts()
+        {
+            try
+            {
+                return ResultWrapper<Address[]>.Success(wallet.GetAccounts());
+            }
+            catch (Exception e)
+            {
+                const string message = "Error while getting key addresses from wallet.";
+                if (_logger.IsError) _logger.Error(message, e);
+                return ResultWrapper<Address[]>.Fail(message);
+            }
+        }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {

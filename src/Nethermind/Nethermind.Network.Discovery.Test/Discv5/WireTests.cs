@@ -221,10 +221,11 @@ public class WireTests
         await Task.WhenAll(runA, runB);
 
         Assert.That(nodes, Is.Not.Null);
+        NodeRecord knownEnr = knownNodeA.Enr ?? throw new AssertionException("Expected the known node to retain its ENR.");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(knownNodeA.Enr.EnrSequence, Is.EqualTo(expectRecordReplacement ? 2 : 1));
-            Assert.That(knownNodeA.IsVerifiedEnr(knownNodeA.Enr), Is.True);
+            Assert.That(knownEnr.EnrSequence, Is.EqualTo(expectRecordReplacement ? 2 : 1));
+            Assert.That(knownNodeA.IsVerifiedEnr(knownEnr), Is.True);
             Assert.That(knownNodeA.HighestObservedEnrSequence, Is.EqualTo(peerA.NodeRecordProvider.Current.EnrSequence));
         }
     }
