@@ -51,39 +51,44 @@ namespace Nethermind.Core.Extensions
 
         /// <summary>Mixes the twenty bytes of an address into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixAddress(ref byte b)
-        {
-            ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Lane2;
-
-            mixed ^= InstanceRandom;
-            mixed *= Lane0;
-            return mixed ^ (mixed >> 29);
-        }
+        private static ulong MixAddress(ref byte b) => Finish(
+            Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Lane2);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long FastHash64For32BytesFallback(ref byte start)
+        internal static long FastHash64For32BytesFallback(ref byte start)
             => (long)Mix32(ref start);
 
         /// <summary>Mixes thirty-two bytes into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Mix32(ref byte b)
-        {
-            ulong mixed =
-                Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Lane2 ^
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Lane3;
+        private static ulong Mix32(ref byte b) => Finish(
+            Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Lane2 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Lane3);
 
+        /// <summary>Finishes a lane combination into a well-distributed 64-bit value.</summary>
+        /// <remarks>
+        /// One multiply between two folds, both by 32, and both folds are load-bearing. The lane
+        /// multiplies carry upward only, so the pre-fold is what lets a key whose entropy sits in the
+        /// high half of a lane -- a zero-padded value at offset 4, 12, 20 or 28 -- reach the low output
+        /// bits at all; the post-fold brings the multiply's concentrated high half back down. Dropping
+        /// either collapses a 14-bit bucket window to 2048-2679 distinct values on 4096 samples, the
+        /// same failure the AES path documents at <see cref="FastHash64For20Bytes"/>. A second multiply
+        /// buys nothing further, and <c>GuestMixerTests</c> covers every aligned offset.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong Finish(ulong mixed)
+        {
+            mixed ^= mixed >> 32;
             mixed ^= InstanceRandom;
             mixed *= Lane0;
-            return mixed ^ (mixed >> 29);
+            return mixed ^ (mixed >> 32);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long FastHash64For20BytesFallback(ref byte start)
+        internal static long FastHash64For20BytesFallback(ref byte start)
             => (long)MixAddress(ref start);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
