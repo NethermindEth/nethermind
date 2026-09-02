@@ -107,6 +107,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.Fail($"Test did not finish within {timeout.TotalSeconds:N0}s.{Environment.NewLine}{e}");
         }
     }
+
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
