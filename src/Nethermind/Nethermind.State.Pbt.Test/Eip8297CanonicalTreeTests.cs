@@ -70,6 +70,47 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    public void Maximum_length_keys_sharing_all_but_the_final_bit_match_oracle()
+    {
+        byte[] leftKey = new byte[PbtFullKey.MaxLength];
+        byte[] rightKey = new byte[PbtFullKey.MaxLength];
+        rightKey[^1] = 1;
+        (byte[] Key, byte[]? Value)[] changes = [(leftKey, Value(1)), (rightKey, Value(2))];
+        using PbtTreeHarness tree = new();
+        EipReferenceTree oracle = new();
+
+        tree.ApplyBatch(changes);
+        ApplyOracle(oracle, changes);
+
+        Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+    }
+
+    [Test]
+    public void Deep_one_sided_divergence_ladder_rejects_buried_prefix_before_store_access()
+    {
+        const int divergenceCount = 512;
+        (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[divergenceCount + 2];
+        for (int bit = 0; bit < divergenceCount; bit++)
+        {
+            byte[] key = new byte[(divergenceCount / 8) + 1];
+            key[bit >> 3] = (byte)(1 << (7 - (bit & 7)));
+            changes[bit] = (key, Value((byte)bit));
+        }
+        changes[^2] = (new byte[divergenceCount / 8], Value(1));
+        changes[^1] = (new byte[(divergenceCount / 8) + 1], Value(2));
+        CountingPbtStore store = new();
+
+        Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, default, Batch(changes)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Reads, Is.Zero);
+            Assert.That(store.Applies, Is.Zero);
+            Assert.That(store.Inner.RootHash, Is.EqualTo(default(ValueHash256)));
+        }
+    }
+
+    [Test]
     public void Split_inside_compressed_prefix_and_delete_merge_stay_canonical()
     {
         using PbtTreeHarness tree = new();
@@ -96,20 +137,114 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Failed_prefix_batch_is_atomic()
     {
-        using PbtTreeHarness tree = new();
-        byte[] original = [0x12];
-        tree.ApplyBatch([(original, Value(1))]);
-        ValueHash256 root = tree.RootHash;
-        string[] records = tree.CanonicalRecords();
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x12], Value(1))));
+        PbtPhysicalPayload[] physical = [.. store.Inner.ExportPhysicalPayloads()];
+        int applies = store.Applies;
+        store.ResetReads();
 
-        Assert.Throws<ArgumentException>(() => tree.ApplyBatch(
-            [(original, null), ([0x34], Value(2)), ([0x34, 0x56], Value(3))]));
+        Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, Batch(
+            ([0x12], null), ([0x34, 0x56], Value(2)), ([0x80], Value(3)), ([0x34], Value(4)))));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree.RootHash, Is.EqualTo(root));
-            Assert.That(tree.CanonicalRecords(), Is.EqualTo(records));
+            Assert.That(store.Applies, Is.EqualTo(applies));
+            Assert.That(store.Inner.RootHash, Is.EqualTo(root));
+            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
+            Assert.That(store.Reads, Is.Zero, "prefix validation precedes overlay and store access");
+            Assert.That(store.IssuedGroupPayloads, Is.Empty);
         }
+    }
+
+    [Test]
+    public void Persisted_prefix_conflict_after_a_sibling_was_staged_is_atomic()
+    {
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(([0x10], Value(1)), ([0x80], Value(2))));
+        PbtPhysicalPayload[] physical = [.. store.Inner.ExportPhysicalPayloads()];
+        int applies = store.Applies;
+        store.ResetReads();
+
+        Assert.Throws<ArgumentException>(() => TrieUpdater.UpdateRoot(store, root, Batch(
+            ([0x20], Value(3)), ([0x80, 0x01], Value(4)))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Applies, Is.EqualTo(applies));
+            Assert.That(store.Inner.RootHash, Is.EqualTo(root));
+            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(physical)));
+            Assert.That(store.IssuedGroupPayloads, Has.All.Matches<PbtNodeGroupPayload>(IsDisposed));
+        }
+    }
+
+    [Test]
+    public void Unsorted_ranges_match_oracle_serial_application_and_reopened_records()
+    {
+        (byte[] Key, byte[]? Value)[] initial = [([0x10], Value(1)), ([0x20], Value(2))];
+        (byte[] Key, byte[]? Value)[] changes =
+        [
+            ([0x12], Value(3)), ([0x80], Value(4)), ([0x1F], Value(5)), ([0x21], Value(6)),
+            ([0x02], Value(7)), ([0x40], Value(8)),
+        ];
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, [.. initial]);
+        bulk.ApplyBatch(changes);
+        foreach ((byte[] key, byte[]? value) in changes) serial.ApplyBatch([(key, value)]);
+        ApplyOracle(oracle, changes);
+        string[] canonical = bulk.CanonicalRecords();
+        string[] physical = PhysicalRecords(bulk);
+        bulk.Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bulk.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(bulk.RootHash, Is.EqualTo(serial.RootHash));
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()));
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical));
+            Assert.That(PhysicalRecords(bulk), Is.EqualTo(physical));
+        }
+    }
+
+    [Test]
+    public void Earliest_divergence_is_found_inside_an_unsorted_active_range()
+    {
+        (byte[] Key, byte[]? Value)[] changes =
+        [([0x00], Value(1)), ([0x80], Value(2)), ([0x40], Value(3)), ([0x01], Value(4))];
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        bulk.ApplyBatch(changes);
+        foreach ((byte[] key, byte[]? value) in changes) serial.ApplyBatch([(key, value)]);
+        ApplyOracle(oracle, changes);
+        string[] canonical = bulk.CanonicalRecords();
+        string[] physical = PhysicalRecords(bulk);
+        bulk.Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bulk.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(bulk.RootHash, Is.EqualTo(serial.RootHash));
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()));
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical));
+            Assert.That(PhysicalRecords(bulk), Is.EqualTo(physical));
+        }
+    }
+
+    [Test]
+    public void Interleaved_directions_sharing_a_compressed_prefix_match_oracle()
+    {
+        (byte[] Key, byte[]? Value)[] changes =
+        [
+            ([0x12, 0x00], Value(1)), ([0x13, 0x80], Value(2)),
+            ([0x12, 0x80], Value(3)), ([0x13, 0x00], Value(4)),
+        ];
+        using PbtTreeHarness tree = new();
+        EipReferenceTree oracle = new();
+        tree.ApplyBatch(changes);
+        ApplyOracle(oracle, changes);
+        Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
 
     [Test]
@@ -211,7 +346,9 @@ public class Eip8297CanonicalTreeTests
     [TestCase("replacements")]
     [TestCase("absent-deletes")]
     [TestCase("duplicate-last-write-wins")]
+    [TestCase("duplicate-final-delete")]
     [TestCase("mixed-delete-set")]
+    [TestCase("shuffled-mixed-delete-set")]
     public void Bulk_mutation_kinds_match_oracle_serial_outcome_and_reopen(string scenarioName)
     {
         (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) = Scenario(scenarioName);
@@ -417,7 +554,10 @@ public class Eip8297CanonicalTreeTests
         "replacements" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], Value(3)), ([0x20], Value(4))]),
         "absent-deletes" => ([([0x10], Value(1))], [([0xFF], null), ([0xEE], null)]),
         "duplicate-last-write-wins" => ([], [([0x10], Value(1)), ([0x10], Value(2)), ([0x10], null), ([0x10], Value(3))]),
+        "duplicate-final-delete" => ([([0x10], Value(1))], [([0x10], Value(2)), ([0x10], null), ([0x10], Value(3)), ([0x10], null)]),
         "mixed-delete-set" => ([([0x10], Value(1)), ([0x20], Value(2))], [([0x10], null), ([0x30], Value(3)), ([0x20], Value(4))]),
+        "shuffled-mixed-delete-set" => ([([0x10], Value(1)), ([0x20], Value(2)), ([0x80], Value(3))],
+            [([0x80], null), ([0x21], Value(4)), ([0x10], null), ([0x20], Value(5)), ([0x11], Value(6))]),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 

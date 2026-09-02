@@ -24,7 +24,7 @@ public static class PbtFourLevelGroupGeometry
     public const int RootPosition = PositionCount - 1;
 
     /// <summary>The maximum path depth supported by the four-level group geometry.</summary>
-    public const int MaxPathDepth = 8192;
+    public const int MaxPathDepth = PbtFullKey.MaxLength * 8;
 
     /// <summary>The greatest depth at which a group key can occur.</summary>
     public const int MaxGroupDepth = MaxPathDepth - LevelsPerGroup;

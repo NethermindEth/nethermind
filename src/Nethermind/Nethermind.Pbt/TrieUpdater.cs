@@ -13,8 +13,8 @@ public static class TrieUpdater
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
     /// <remarks>
     /// The final complete-key set is validated before any node is changed. Deletes and sets are each
-    /// folded serially through the tree as a sorted bulk range, so mutations sharing a path share its
-    /// traversal. All leaf and node writes are staged and handed to <see cref="IPbtStore.Apply"/> only
+    /// folded through the tree as traversal-local partitioned ranges, so mutations sharing a path share
+    /// its traversal. All leaf and node writes are staged and handed to <see cref="IPbtStore.Apply"/> only
     /// after the complete mutation succeeds.
     /// </remarks>
     public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
@@ -30,7 +30,7 @@ public static class TrieUpdater
         ArgumentNullException.ThrowIfNull(changes);
         if (changes.Count == 0) return currentRoot;
 
-        SortedDictionary<PbtFullKey, PbtWriteOperation> operations = [];
+        Dictionary<PbtFullKey, PbtWriteOperation> operations = [];
         foreach (PbtWriteOperation operation in changes.Operations) operations[operation.Key] = operation;
 
         int deleteCount = 0;
@@ -88,9 +88,7 @@ public static class TrieUpdater
         {
             for (int index = start; index < end; index++)
             {
-                int comparison = deletes[index].Key.CompareTo(leaf.Key);
-                if (comparison < 0) continue;
-                if (comparison > 0) break;
+                if (!deletes[index].Key.Equals(leaf.Key)) continue;
 
                 overlay.Remove(group, path);
                 overlay.SetLeaf(leaf.Key, null);
@@ -335,10 +333,15 @@ public static class TrieUpdater
         }
 
         PbtFullKey firstKey = sets[start].Key;
-        PbtFullKey lastKey = sets[end - 1].Key;
-        int differingBit = firstKey.FirstDifferingBit(lastKey, path.BitDepth);
-        if (differingBit == Math.Min(firstKey.BitLength, lastKey.BitLength))
-            throw new ArgumentException("Tree keys must be prefix-free.", nameof(sets));
+        int differingBit = int.MaxValue;
+        for (int index = start + 1; index < end; index++)
+        {
+            PbtFullKey key = sets[index].Key;
+            int difference = firstKey.FirstDifferingBit(key, path.BitDepth);
+            if (difference == Math.Min(firstKey.BitLength, key.BitLength))
+                throw new ArgumentException("Tree keys must be prefix-free.", nameof(sets));
+            differingBit = Math.Min(differingBit, difference);
+        }
         PbtBitPrefix prefix = PbtBitPrefix.FromKey(firstKey, path.BitDepth, differingBit - path.BitDepth);
         int partition = PartitionByBit(sets, start, end, differingBit);
         PbtNodePath leftPath = path.Append(prefix, 0);
@@ -359,44 +362,64 @@ public static class TrieUpdater
         out int matchingStart,
         out int matchingEnd)
     {
-        matchingStart = end;
-        matchingEnd = end;
+        matchingStart = start;
+        matchingEnd = start;
         for (int index = start; index < end; index++)
         {
             PbtFullKey key = operations[index].Key;
             int available = key.BitLength - bitDepth;
-            bool matches = available > branch.Prefix.BitCount &&
-                MatchingPrefixBits(branch.Prefix, key, bitDepth) == branch.Prefix.BitCount;
-            if (!matches)
-            {
-                if (matchingStart != end) break;
+            if (available <= branch.Prefix.BitCount ||
+                MatchingPrefixBits(branch.Prefix, key, bitDepth) != branch.Prefix.BitCount)
                 continue;
-            }
 
-            if (matchingStart == end) matchingStart = index;
-            matchingEnd = index + 1;
+            (operations[matchingEnd], operations[index]) = (operations[index], operations[matchingEnd]);
+            matchingEnd++;
         }
     }
 
     private static int PartitionByBit(PbtWriteOperation[] operations, int start, int end, int bitIndex)
     {
-        int low = start;
-        int high = end;
-        while (low < high)
+        int partition = start;
+        for (int index = start; index < end; index++)
         {
-            int middle = low + ((high - low) >> 1);
-            if (operations[middle].Key.GetBit(bitIndex) == 0) low = middle + 1;
-            else high = middle;
+            if (operations[index].Key.GetBit(bitIndex) != 0) continue;
+            (operations[partition], operations[index]) = (operations[index], operations[partition]);
+            partition++;
         }
-        return low;
+        return partition;
     }
 
-    private static void ValidateBatchKeys(PbtWriteOperation[] sets)
+    private static void ValidateBatchKeys(PbtWriteOperation[] sets) => ValidateBatchKeys(sets, 0, sets.Length, 0);
+
+    private static void ValidateBatchKeys(PbtWriteOperation[] sets, int start, int end, int bitDepth)
     {
-        for (int index = 1; index < sets.Length; index++)
+        while (end - start >= 2)
         {
-            if (sets[index - 1].Key.IsPrefixOf(sets[index].Key))
-                throw new ArgumentException("Tree keys must be prefix-free.", nameof(sets));
+            PbtFullKey anchor = sets[start].Key;
+            int differingBit = int.MaxValue;
+            for (int index = start + 1; index < end; index++)
+            {
+                PbtFullKey key = sets[index].Key;
+                int difference = anchor.FirstDifferingBit(key, bitDepth);
+                if (difference == Math.Min(anchor.BitLength, key.BitLength))
+                    throw new ArgumentException("Tree keys must be prefix-free.", nameof(sets));
+                differingBit = Math.Min(differingBit, difference);
+            }
+
+            int partition = PartitionByBit(sets, start, end, differingBit);
+            int leftCount = partition - start;
+            int rightCount = end - partition;
+            if (leftCount < rightCount)
+            {
+                ValidateBatchKeys(sets, start, partition, differingBit + 1);
+                start = partition;
+            }
+            else
+            {
+                ValidateBatchKeys(sets, partition, end, differingBit + 1);
+                end = partition;
+            }
+            bitDepth = differingBit + 1;
         }
     }
 
