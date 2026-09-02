@@ -8,7 +8,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Core.Extensions;
 
-public static partial class EvmWordExtensions
+public static class EvmWordExtensions
 {
     extension(EvmWord word)
     {
@@ -40,10 +40,10 @@ public static partial class EvmWordExtensions
             }
 
             Vector256<ulong> u = word.AsUInt64();
-            ulong out0 = ReverseBytes(u.GetElement(3));
-            ulong out1 = ReverseBytes(u.GetElement(2));
-            ulong out2 = ReverseBytes(u.GetElement(1));
-            ulong out3 = ReverseBytes(u.GetElement(0));
+            ulong out0 = Bytes.ReverseEndianness(u.GetElement(3));
+            ulong out1 = Bytes.ReverseEndianness(u.GetElement(2));
+            ulong out2 = Bytes.ReverseEndianness(u.GetElement(1));
+            ulong out3 = Bytes.ReverseEndianness(u.GetElement(0));
             return Vector256.Create(out0, out1, out2, out3).AsByte();
         }
     }
