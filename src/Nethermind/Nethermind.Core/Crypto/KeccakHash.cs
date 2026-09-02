@@ -404,23 +404,23 @@ public sealed partial class KeccakHash
         {
             ref ulong st = ref Unsafe.As<byte, ulong>(ref stateRef);
             ref byte inRef = ref MemoryMarshal.GetReference(input);
-            Unsafe.Add(ref st, 0) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
-            Unsafe.Add(ref st, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
-            Unsafe.Add(ref st, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
-            Unsafe.Add(ref st, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
-            Unsafe.Add(ref st, 4) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
-            Unsafe.Add(ref st, 5) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
-            Unsafe.Add(ref st, 6) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
-            Unsafe.Add(ref st, 7) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
-            Unsafe.Add(ref st, 8) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
-            Unsafe.Add(ref st, 9) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
-            Unsafe.Add(ref st, 10) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
-            Unsafe.Add(ref st, 11) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
-            Unsafe.Add(ref st, 12) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
-            Unsafe.Add(ref st, 13) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
-            Unsafe.Add(ref st, 14) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
-            Unsafe.Add(ref st, 15) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
-            Unsafe.Add(ref st, 16) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+            Unsafe.Add(ref st, 0) = Unsafe.Add(ref st, 0) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 0 * sizeof(ulong)));
+            Unsafe.Add(ref st, 1) = Unsafe.Add(ref st, 1) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
+            Unsafe.Add(ref st, 2) = Unsafe.Add(ref st, 2) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
+            Unsafe.Add(ref st, 3) = Unsafe.Add(ref st, 3) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
+            Unsafe.Add(ref st, 4) = Unsafe.Add(ref st, 4) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
+            Unsafe.Add(ref st, 5) = Unsafe.Add(ref st, 5) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
+            Unsafe.Add(ref st, 6) = Unsafe.Add(ref st, 6) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
+            Unsafe.Add(ref st, 7) = Unsafe.Add(ref st, 7) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
+            Unsafe.Add(ref st, 8) = Unsafe.Add(ref st, 8) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
+            Unsafe.Add(ref st, 9) = Unsafe.Add(ref st, 9) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
+            Unsafe.Add(ref st, 10) = Unsafe.Add(ref st, 10) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
+            Unsafe.Add(ref st, 11) = Unsafe.Add(ref st, 11) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
+            Unsafe.Add(ref st, 12) = Unsafe.Add(ref st, 12) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
+            Unsafe.Add(ref st, 13) = Unsafe.Add(ref st, 13) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
+            Unsafe.Add(ref st, 14) = Unsafe.Add(ref st, 14) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
+            Unsafe.Add(ref st, 15) = Unsafe.Add(ref st, 15) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
+            Unsafe.Add(ref st, 16) = Unsafe.Add(ref st, 16) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
             return;
         }
         if (Vector512.IsHardwareAccelerated && input.Length >= Vector512<byte>.Count)
@@ -490,10 +490,12 @@ public sealed partial class KeccakHash
             {
                 ref ulong s0 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
                 ref byte in0 = ref Unsafe.Add(ref inputRef, i);
-                s0 ^= Unsafe.As<byte, ulong>(ref in0);
-                Unsafe.Add(ref s0, 1) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
-                Unsafe.Add(ref s0, 2) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
-                Unsafe.Add(ref s0, 3) ^= Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
+                // Explicit read-xor-write: a compound assignment captures the element address in a
+                // temp (lvalue-once), which blocks base+offset folding into the loads and stores.
+                s0 = s0 ^ Unsafe.As<byte, ulong>(ref in0);
+                Unsafe.Add(ref s0, 1) = Unsafe.Add(ref s0, 1) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, sizeof(ulong)));
+                Unsafe.Add(ref s0, 2) = Unsafe.Add(ref s0, 2) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 2 * sizeof(ulong)));
+                Unsafe.Add(ref s0, 3) = Unsafe.Add(ref s0, 3) ^ Unsafe.As<byte, ulong>(ref Unsafe.Add(ref in0, 3 * sizeof(ulong)));
             }
 
             for (; i < ulongLength; i += sizeof(ulong))

@@ -367,21 +367,24 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, int pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(Span<long> jumpDestinationBitmap, nuint pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, nuint pos, long flags)
     {
         nuint offset = pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     public void Execute()
