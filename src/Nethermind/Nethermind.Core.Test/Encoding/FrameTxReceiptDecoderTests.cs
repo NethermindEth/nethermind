@@ -68,6 +68,48 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
+    /// <summary>The object-path array decode over LegacyStorage receipts must both decode a frame-tx receipt's
+    /// [payer, per-frame receipts] extension and realign to its own end, mirroring the compact object path; otherwise
+    /// under AllowExtraBytes the extension is read as the next element and corrupts it. The frame receipt sits between
+    /// two distinct regulars so realigning onto the trailing one is provably not the leading one, and the asserted
+    /// Payer/FrameReceipts prove the extension is decoded rather than skipped.</summary>
+    [Test]
+    public void ArrayDecode_ObjectPath_FrameTxReceiptBetweenRegulars_DecodesExtensionAndStaysAligned(
+        [Values(RlpBehaviors.Storage, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes)] RlpBehaviors decodeBehaviors)
+    {
+        LogEntry frameLog = Log(0x01);
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [frameLog],
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [frameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [Log(0x02)]));
+
+        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressD).WithGasUsedTotal(1000).WithCalculatedBloom().TestObject;
+        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
+
+        ReceiptStorageDecoder decoder = new();
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+
+        RlpReader reader = new(encoded);
+        TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors);
+
+        Assert.That(decoded, Has.Length.EqualTo(3), "every receipt must decode, including the neighbour after the frame extension");
+
+        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender), "leading receipt sender");
+        Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+        Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
+
+        Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+        Assert.That(decoded[1].GasUsedTotal, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+        Assert.That(decoded[1].Payer, Is.EqualTo(frameReceipt.Payer), "the payer must be decoded, not skipped by realignment");
+        AssertFrameReceiptsEqual(decoded[1].FrameReceipts!, frameReceipt.FrameReceipts!);
+
+        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender), "trailing receipt sender proves realignment past the frame extension");
+        Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+        Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
+    }
+
     // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts, so a frame-tx receipt must leave
     // the reader at its own end or corrupt the next one; it sits between two regulars here.
     [Test]
