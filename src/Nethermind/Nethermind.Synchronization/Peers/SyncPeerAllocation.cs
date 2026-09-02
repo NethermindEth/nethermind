@@ -1,19 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null)
+    public class SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null) : IDisposable
     {
-        public static SyncPeerAllocation FailedAllocation = new(AllocationContexts.None, null);
+        public static readonly SyncPeerAllocation FailedAllocation = new(AllocationContexts.None, null);
 
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
         private readonly Lock? _allocationLock = allocationLock ?? new Lock();
+        private readonly Action? _onDisposed;
+        private bool _disposed;
+
+        internal SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock, Action onDisposed)
+            : this(contexts, allocationLock) => _onDisposed = onDisposed;
 
         private AllocationContexts Contexts { get; } = contexts;
 
@@ -28,34 +34,45 @@ namespace Nethermind.Synchronization.Peers
 
         public void AllocatePeer(PeerInfo? selected)
         {
-            PeerInfo? current = Current;
-            if (selected == current)
-            {
-                return;
-            }
-
             lock (_allocationLock)
             {
+                if (_disposed || selected == Current)
+                {
+                    return;
+                }
+
                 if (selected is not null && selected.TryAllocate(Contexts))
                 {
+                    PeerInfo? current = Current;
                     Current = selected;
                     current?.Free(Contexts);
                 }
             }
         }
 
-        public void Cancel()
+        public void Dispose()
         {
-            PeerInfo? current = Current;
-            if (current is null)
-            {
-                return;
-            }
-
+            bool released = false;
             lock (_allocationLock)
             {
-                current.Free(Contexts);
-                Current = null;
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                PeerInfo? current = Current;
+                if (current is not null)
+                {
+                    current.Free(Contexts);
+                    Current = null;
+                    released = true;
+                }
+            }
+
+            if (released)
+            {
+                _onDisposed?.Invoke();
             }
         }
 
