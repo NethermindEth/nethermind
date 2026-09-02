@@ -31,11 +31,23 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
             return AcceptTxResult.Accepted;
         }
 
-        FrameTxSimulationResult result = simulator.Simulate(tx, signaturesPreValidated: state.FrameSignaturesVerified);
+        FrameTxSimulationResult result = simulator.Simulate(
+            tx,
+            signaturesPreValidated: state.FrameSignaturesVerified,
+            local: (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
-                // Atomic: this filter runs under the pool's head read lock, so submissions land concurrently.
+                // Deferred only for a bound this node spent on itself: a timeout is chargeable here, because
+                // the prefix's own wall clock is what tripped it. The counter and the message follow the same
+                // split, so shedding never reads as a peer sending transactions this node rejects.
+                if (result.NodeBound)
+                {
+                    Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
+                    if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
+                    return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
+                }
+
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);

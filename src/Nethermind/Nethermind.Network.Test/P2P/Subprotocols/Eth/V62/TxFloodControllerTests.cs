@@ -133,6 +133,39 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Deferred_frame_simulation_throttles_but_never_disconnects()
+        {
+            // The peer does not choose when this node sheds simulation load, so a deferral must not
+            // escalate to a disconnect — but a flood through a shedding window is still throttled.
+            // One past the flood threshold, so the same volume disconnects for any other rejection.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameSimulationDeferred);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.True);
+                _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            }
+        }
+
+        [Test]
+        public void Deferred_frame_simulations_do_not_count_towards_a_later_rejection()
+        {
+            // The disconnect branch compares the not-accepted total, so a shedding window that inflated it
+            // would have the peer's next ordinary rejection disconnect it on volume this node generated.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameSimulationDeferred);
+            }
+
+            _controller.Report(AcceptTxResult.AlreadyKnown);
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+        }
+
+        [Test]
         public void Enabled_by_default() => Assert.That(_controller.IsEnabled, Is.True);
 
         [Test]

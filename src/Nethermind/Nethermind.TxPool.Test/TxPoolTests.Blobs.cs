@@ -3977,6 +3977,46 @@ namespace Nethermind.TxPool.Test
 
         // The persistent pool holds a light record, and it is that record's removal which releases the payer's
         // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
+        [TestCase(BlobsSupportMode.InMemory, TestName = "the in-memory pool keeps the frames, so the prefix is revalidated")]
+        [TestCase(BlobsSupportMode.StorageWithReorgs, TestName = "the persistent pool holds a frameless record, which revalidation must leave alone")]
+        public async Task Blob_carrying_frame_tx_is_only_revalidated_while_its_prefix_is_still_there(BlobsSupportMode blobsSupport)
+        {
+            // The persistent pool swaps the transaction for a frameless light record. Simulating a prefix that
+            // is no longer there can only reject, so revalidating one would evict every such transaction on the
+            // first head touching its sender; skipping it leaves the transaction pending instead.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            // A code-carrying pay target, so the payer only resolves through the simulator: resolved natively
+            // the stub would never be consulted and neither arm would exercise revalidation.
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF);
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)tx.GasLimit * tx.MaxFeePerGas
+                + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // The prefix stops validating; only the dependency index decides whether that is ever noticed.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            // A complete change list naming the sender, so only the dependency index decides whether the
+            // transaction is revalidated at all.
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            bool framesSurvivePooling = blobsSupport == BlobsSupportMode.InMemory;
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(framesSurvivePooling ? 0 : 1),
+                framesSurvivePooling
+                    ? "a pooled prefix that no longer validates must be evicted"
+                    : "a record with no prefix left to judge must be left pending");
+        }
+
         [Test]
         // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
         // transaction admitted alongside would move it.

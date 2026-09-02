@@ -91,10 +91,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Its own env with its own code cache: a deploy frame in a validation prefix deposits code, nothing
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.
-            .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ILogManager>(
-                (lifetime, worldStateManager, specProvider, blockFinder, logManager) => new FrameTxPrefixSimulator(
+            .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ITxPoolConfig, ILogManager>(
+                (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
                     new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
-                    blockFinder, specProvider, logManager))
+                    blockFinder, specProvider, txPoolConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()

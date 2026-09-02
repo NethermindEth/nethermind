@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -11,9 +13,21 @@ namespace Nethermind.Evm.Tracing;
 
 /// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
 /// and captures the resolved payer.</summary>
-public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
-    : TxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
+/// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
+/// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
+public sealed class FrameTxValidationTracer(
+    Address sender,
+    Address expiryVerifier,
+    IReadOnlyStateProvider state,
+    IReleaseSpec spec,
+    CancellationToken token = default,
+    TimeSpan timeout = default)
+    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
+    private readonly long _deadline = timeout > TimeSpan.Zero
+        ? Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency)
+        : 0;
+
     // Stack slots holding the current CALL*/EXTCODE* target and value operands, or -1. Set in StartOperation
     // and consumed in SetOperationStack, as the operands aren't available any earlier.
     private int _targetStackIndex = -1;
@@ -30,6 +44,18 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
     public override bool IsTracingReceipt => true;
+
+    // Explicit: ITxTracer declares these as default members, so the mapping must be made on this type
+    // for the interpreter (which polls through the interface) to see them.
+    bool ITxTracer.IsCancelable => true;
+
+    /// <inheritdoc/>
+    /// <remarks>Polled by the interpreter every 1024 opcodes; aborting at the first violation denies a
+    /// spammer the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction.</remarks>
+    bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
+
+    /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
+    public bool TimedOut => _deadline != 0 && Stopwatch.GetTimestamp() > _deadline;
 
     // The VM reports the address a creation frame is entered at; recomputing it here would duplicate
     // CREATE2's initcode hashing for no gain.
@@ -66,8 +92,8 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         switch (opcode)
         {
             case Instruction.GAS:
-                // Permitted only in the gas-forwarding idiom, immediately followed by a *CALL. GAS takes no
-                // immediate operand, so the next opcode is the byte at pc + 1.
+                // Permitted only immediately before a *CALL, the gas-forwarding idiom that adds no
+                // mempool dependency. GAS has no immediate, so the next opcode is the byte at pc + 1.
                 ReadOnlySpan<byte> code = env.CodeInfo.CodeSpan;
                 int next = pc + 1;
                 if (next >= code.Length || !IsCall((Instruction)code[next]))

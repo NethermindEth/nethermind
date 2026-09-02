@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -146,10 +147,61 @@ public class FrameTxSimulationFilterTests
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
+    [Test]
+    public void Accept_SimulationDeferredByAdmissionBound_IsDistinctFromRejection()
+    {
+        // Peer scoring must be able to tell this node's load shedding from a peer sending bad transactions.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+    }
+
+    [Test]
+    public void Accept_SimulationTimedOut_IsChargedToTheSender()
+    {
+        // The prefix's own wall clock trips the timeout, so the peer chose it: retained by revalidation,
+        // but it must still count against the sender rather than reading as this node shedding load.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
+    }
+
+    // The budget exemption is granted by this mapping alone, so it is pinned rather than left to the
+    // stubs, which match a bare `local: false` by value and so would pass either way.
+    [TestCase(TxHandlingOptions.PersistentBroadcast, true, TestName = "A locally submitted transaction is exempt from the per-head budget")]
+    [TestCase(TxHandlingOptions.None, false, TestName = "A gossiped transaction competes for the per-head budget")]
+    public void Accept_MapsPersistentBroadcastToALocalSimulation(TxHandlingOptions options, bool expected)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        Accept(state, simulator, tx, options: options);
+
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), local: expected);
+    }
+
+    private static AcceptTxResult Accept(
+        TestReadOnlyStateProvider state,
+        IFrameTxPrefixSimulator? simulator,
+        Transaction tx,
+        bool signaturesVerified = false,
+        TxHandlingOptions options = TxHandlingOptions.None)
     {
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
         TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
-        return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+        return filter.Accept(tx, ref filteringState, options);
     }
 }
