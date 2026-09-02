@@ -137,6 +137,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 default:
                     break;
             }
+
+            // A streamed result executes while the response is written, after this method has returned, on state the
+            // module owns (its overridable world state env). Returning the module now would let the next rental run on
+            // that same env concurrently, so the rental has to last until the response is disposed.
+            if (returnImmediately && resultWrapper is JsonRpcResponse streamed && streamed.TryGetStreamableResult(out _))
+            {
+                returnImmediately = false;
+                returnAction = () => _rpcModuleProvider.Return(method, rpcModule);
+            }
         }
         catch (Exception ex)
         {
