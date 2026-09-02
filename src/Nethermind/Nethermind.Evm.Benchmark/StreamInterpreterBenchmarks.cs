@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -185,7 +184,7 @@ namespace Nethermind.Evm.Benchmark
             _straightLineEnvironment.Dispose();
             _memoryHeavyEnvironment.Dispose();
             _stateScope.Dispose();
-            StreamInterpreter.Enabled = StreamInterpreter.IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+            StreamInterpreter.Enabled = StreamInterpreter.EnabledByDefault;
             StreamInterpreter.ForceAllContexts = false;
         }
 

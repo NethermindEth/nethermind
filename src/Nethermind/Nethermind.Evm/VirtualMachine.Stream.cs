@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
@@ -15,12 +14,13 @@ namespace Nethermind.Evm;
 /// <summary>Process-wide switches for the preprocessed-stream interpreter; non-generic so all instantiations share one flag.</summary>
 internal static class StreamInterpreter
 {
-    // Enabled by default except on ARM64, where the bytecode loop measured faster on the reference part.
-    // JsonRpc.StreamInterpreterEnabled overrides the default at startup (RegisterRpcModules).
-    // Volatile so tests can flip it in-process.
-    public static volatile bool Enabled = IsEnabledByDefault(RuntimeInformation.ProcessArchitecture);
+    // Off by default: the bytecode loop measured faster on every benchmarked call shape, on both ARM64
+    // (-17..-18%) and x64 (-4..-10%, widening under load), and on captured eth_call traffic (-2..-3%).
+    // JsonRpc.StreamInterpreterEnabled turns it back on at startup (RegisterRpcModules).
+    internal const bool EnabledByDefault = false;
 
-    internal static bool IsEnabledByDefault(Architecture architecture) => architecture != Architecture.Arm64;
+    // Volatile so tests can flip it in-process.
+    public static volatile bool Enabled = EnabledByDefault;
 
     // The stream is a compute optimization with no payoff on storage-bound block processing, where it is
     // pure overhead (build cost + retained StreamOp[]). Production engages it only in cancelable call

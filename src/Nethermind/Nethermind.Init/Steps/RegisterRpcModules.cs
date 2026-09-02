@@ -53,7 +53,7 @@ public class RegisterRpcModules(
 
         RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
 
-        // null keeps the architecture-specific default baked into StreamInterpreter.Enabled
+        // null keeps StreamInterpreter.EnabledByDefault
         if (jsonRpcConfig.StreamInterpreterEnabled is { } streamInterpreterEnabled)
         {
             StreamInterpreter.Enabled = streamInterpreterEnabled;

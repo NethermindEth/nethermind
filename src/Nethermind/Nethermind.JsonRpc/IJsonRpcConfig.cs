@@ -101,7 +101,7 @@ public interface IJsonRpcConfig : IConfig
     ulong? GasCap { get; set; }
 
     [ConfigItem(
-        Description = "Whether the preprocessed-stream EVM interpreter serves `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1`, and `trace_*` calls. Block processing is unaffected. Defaults to enabled except on ARM64, where the plain bytecode loop is faster.",
+        Description = "Whether the preprocessed-stream EVM interpreter serves `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1`, and `trace_*` calls. Block processing is unaffected. Disabled by default: the plain bytecode loop measured faster on every benchmarked call shape on both ARM64 and x64.",
         DefaultValue = "null")]
     bool? StreamInterpreterEnabled { get; set; }
 
