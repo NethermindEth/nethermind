@@ -575,6 +575,19 @@ public partial class EngineModuleTests
         }
     }
 
+    // The zero hash names no block, so it must fall back to the head rather than being looked up.
+    [Test]
+    public async Task GetInclusionListV1_treats_the_zero_parent_block_hash_as_unspecified()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        ResultWrapper<InclusionListBytes> result =
+            await chain.EngineRpcModule.engine_getInclusionListV1(Hash256.Zero);
+        result.Data?.Dispose();
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+    }
+
     // A list built on a block this node does not have could not be appended to it.
     [Test]
     public async Task GetInclusionListV1_rejects_an_unknown_parent_block_hash()

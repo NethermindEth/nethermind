@@ -28,7 +28,8 @@ public class GetInclusionListTransactionsHandler(
             return ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
         BlockHeader? parent = null;
-        if (parentBlockHash is not null)
+        // The zero hash is how the consensus layer spells "no particular parent", as in ForkchoiceStateV1.
+        if (parentBlockHash is not null && parentBlockHash != Hash256.Zero)
         {
             // Failing beats answering for the head: a list built on the wrong parent is silently unappendable.
             parent = blockTree.FindHeader(parentBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
