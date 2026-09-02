@@ -25,6 +25,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly IFlatDbConfig _config;
     private readonly HistoryWalkVerifier? _verifier;
     private readonly ArchiveProofRetrofit? _retrofit;
+    private readonly CommitmentMetadata _metadata;
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
@@ -40,8 +41,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,
         ArchiveProofRetrofit retrofit,
+        CommitmentMetadata metadata,
         ILogManager logManager)
-        : this(db, history, headers, availability, rowFormat, config, retrofit, logManager, pollDelay: null)
+        : this(db, history, headers, availability, rowFormat, config, retrofit, metadata, logManager, pollDelay: null)
     {
     }
 
@@ -53,11 +55,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,
         ArchiveProofRetrofit retrofit,
+        CommitmentMetadata metadata,
         ILogManager logManager,
         TimeSpan? pollDelay)
     {
         _availability = availability;
         _config = config;
+        _metadata = metadata;
         _logger = logManager.GetClassLogger<HistoryWalkVerificationCoordinator>();
         _pollDelay = pollDelay ?? DefaultPollDelay;
 
@@ -99,42 +103,49 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
             {
                 if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
                 {
-                    int segments = _config.HistoryVerifySegments > 0
+                    int workers = _config.HistoryVerifySegments > 0
                         ? _config.HistoryVerifySegments
                         : Math.Max(1, Environment.ProcessorCount / 2);
 
-                    if (_logger.IsInfo) _logger.Info(
-                        $"History walk verification starting: every block in [0, {watermark}] against this node's own headers, {segments} workers.");
+                    ulong from = 0;
+                    ulong to = watermark;
+                    if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
+                    {
+                        from = pendingFrom;
+                        to = pendingTo;
+                        if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                    }
 
                     _retrofit?.Prepare();
-
-                    long startedAt = Stopwatch.GetTimestamp();
-                    HistoryWalkVerdict verdict = await Task.Run(() => _verifier!.VerifyRangeParallel(0, watermark, segments, token), token);
-                    Volatile.Write(ref _verdict, verdict);
-                    TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
-
-                    if (verdict.Verified)
+                    while (true)
                     {
-                        _retrofit?.PublishCoverage(0, watermark);
                         if (_logger.IsInfo) _logger.Info(
-                            $"History walk verification PASSED: {verdict.BlocksCompared} blocks rebuilt from rows and matched against headers in {elapsed}.");
-                    }
-                    else if (_logger.IsError)
-                    {
-                        StringBuilder sample = new();
-                        for (int i = 0; i < verdict.Mismatches.Count && i < MismatchesLogged; i++)
+                            $"History walk verification starting: every block in [{from}, {to}] against this node's own headers, {workers} workers.");
+
+                        long startedAt = Stopwatch.GetTimestamp();
+                        ulong rangeFrom = from;
+                        ulong rangeTo = to;
+                        HistoryWalkVerdict verdict = await Task.Run(() => _verifier!.VerifyRangeParallel(rangeFrom, rangeTo, workers, token), token);
+                        Volatile.Write(ref _verdict, verdict);
+                        TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
+
+                        if (!verdict.Verified)
                         {
-                            if (i > 0) sample.Append(", ");
-                            sample.Append(verdict.Mismatches[i].Block).Append(':').Append(verdict.Mismatches[i].Kind);
+                            LogFailure(verdict, elapsed);
+                            return;
                         }
 
-                        _logger.Error(
-                            $"History walk verification FAILED after {elapsed}: {verdict.Mismatches.Count} mismatches over {verdict.BlocksCompared} compared blocks. " +
-                            $"First {Math.Min(verdict.Mismatches.Count, MismatchesLogged)}: {sample}. " +
-                            "The history rows on this node do not reproduce this node's own headers; do not treat its historical answers as canonical.");
-                    }
+                        _retrofit?.PublishCoverage(from, to);
+                        if (_logger.IsInfo) _logger.Info(
+                            $"History walk verification PASSED: {verdict.BlocksCompared} blocks rebuilt from rows and matched against headers in {elapsed}.");
 
-                    return;
+                        if (!_availability.TryGetWatermark(out ulong latest) || latest <= to) return;
+
+                        ulong granularity = _retrofit?.WindowGranularity ?? 1;
+                        from = to - to % granularity;
+                        to = latest;
+                        if (_logger.IsInfo) _logger.Info($"History walk verification continuing over the blocks captured meanwhile, [{from}, {to}].");
+                    }
                 }
 
                 await Task.Delay(_pollDelay, token);
@@ -151,6 +162,23 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             if (_logger.IsError) _logger.Error("History walk verification crashed; the archive's content is UNVERIFIED, not disproven.", e);
         }
+    }
+
+    private void LogFailure(HistoryWalkVerdict verdict, TimeSpan elapsed)
+    {
+        if (!_logger.IsError) return;
+
+        StringBuilder sample = new();
+        for (int i = 0; i < verdict.Mismatches.Count && i < MismatchesLogged; i++)
+        {
+            if (i > 0) sample.Append(", ");
+            sample.Append(verdict.Mismatches[i].Block).Append(':').Append(verdict.Mismatches[i].Kind);
+        }
+
+        _logger.Error(
+            $"History walk verification FAILED after {elapsed}: {verdict.Mismatches.Count} mismatches over {verdict.BlocksCompared} compared blocks. " +
+            $"First {Math.Min(verdict.Mismatches.Count, MismatchesLogged)}: {sample}. " +
+            "The history rows on this node do not reproduce this node's own headers; do not treat its historical answers as canonical.");
     }
 
     public void Dispose()

@@ -16,6 +16,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private static ReadOnlySpan<byte> StampKey => [Marker, 0x01];
     private static ReadOnlySpan<byte> CoverageKey => [Marker, 0x02];
     private static ReadOnlySpan<byte> TipSeriesKey => [Marker, 0x03];
+    private static ReadOnlySpan<byte> WalkRangeKey => [Marker, 0x04];
+    private const byte WalkItemMarker = 0x05;
+    public const int MaxWalkItems = 1 << 16;
 
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
     private readonly object _lock = new();
@@ -116,6 +119,64 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
                 WriteRange(CoverageKey, from, lastCaptured);
             }
         }
+    }
+
+    public bool TryGetWalkInProgress(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkRangeKey, out fromInclusive, out toInclusive);
+
+    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items)
+    {
+        lock (_lock)
+        {
+            if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive) return;
+
+            ClearWalkItems(items);
+            WriteRange(WalkRangeKey, fromInclusive, toInclusive);
+        }
+    }
+
+    public bool IsWalkItemDone(int item)
+    {
+        Span<byte> key = stackalloc byte[4];
+        WriteWalkItemKey(key, item);
+        return _column.KeyExists(key);
+    }
+
+    public void MarkWalkItemDone(int item)
+    {
+        Span<byte> key = stackalloc byte[4];
+        WriteWalkItemKey(key, item);
+        lock (_lock)
+        {
+            _column.PutSpan(key, [1]);
+        }
+    }
+
+    public void ClearWalk(int items)
+    {
+        lock (_lock)
+        {
+            ClearWalkItems(items);
+            _column.Remove(WalkRangeKey);
+        }
+    }
+
+    private void ClearWalkItems(int items)
+    {
+        Span<byte> key = stackalloc byte[4];
+        for (int item = 0; item < items; item++)
+        {
+            WriteWalkItemKey(key, item);
+            _column.Remove(key);
+        }
+    }
+
+    private static void WriteWalkItemKey(Span<byte> key, int item)
+    {
+        if (item < 0 || item >= MaxWalkItems) throw new ArgumentOutOfRangeException(nameof(item));
+
+        key[0] = Marker;
+        key[1] = WalkItemMarker;
+        BinaryPrimitives.WriteUInt16BigEndian(key[2..], (ushort)item);
     }
 
     private bool TryReadRange(ReadOnlySpan<byte> key, out ulong first, out ulong last)

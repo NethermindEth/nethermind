@@ -45,6 +45,25 @@ internal sealed class SeriesWriter(IColumnsDb<FlatHistoryColumns> history) : IDi
         RemoveRange([SeriesKey.ScratchMarker], [SeriesKey.ScratchMarker + 1]);
     }
 
+    public void DeleteAccountScratchUnder(byte firstPathByte)
+    {
+        Flush();
+        for (int depth = 2; depth <= CommitmentDepthPolicy.MaxTrieDepth; depth++)
+        {
+            byte[] lower = [SeriesKey.ScratchMarker, 0x00, (byte)depth, firstPathByte];
+            byte[] upper = firstPathByte == byte.MaxValue ? [SeriesKey.ScratchMarker, 0x00, (byte)(depth + 1)] : [SeriesKey.ScratchMarker, 0x00, (byte)depth, (byte)(firstPathByte + 1)];
+            RemoveRange(lower, upper);
+        }
+    }
+
+    public void DeleteStorageScratchUnder(byte firstIdentityByte)
+    {
+        Flush();
+        byte[] lower = [SeriesKey.ScratchMarker, 0x01, firstIdentityByte];
+        byte[] upper = firstIdentityByte == byte.MaxValue ? [SeriesKey.ScratchMarker, 0x02] : [SeriesKey.ScratchMarker, 0x01, (byte)(firstIdentityByte + 1)];
+        RemoveRange(lower, upper);
+    }
+
     public void Flush()
     {
         _batch?.Dispose();

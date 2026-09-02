@@ -12,6 +12,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -42,7 +44,15 @@ public class HistoryWalkVerifierTests
     {
         public Dictionary<ulong, ValueHash256> Roots { get; } = [];
 
-        public ValueHash256? TryGetStateRoot(ulong block) => Roots.TryGetValue(block, out ValueHash256 root) ? root : null;
+        public Action? OnFirstRead { get; set; }
+
+        public ValueHash256? TryGetStateRoot(ulong block)
+        {
+            Action? hook = OnFirstRead;
+            OnFirstRead = null;
+            hook?.Invoke();
+            return Roots.TryGetValue(block, out ValueHash256 root) ? root : null;
+        }
     }
 
     private static Hash256 StorageRootOf(params (UInt256 Slot, byte[] Value)[] slots)
@@ -419,6 +429,76 @@ public class HistoryWalkVerifierTests
 
             group.Add(address);
             if (group.Count == count) return [.. group];
+        }
+    }
+
+    [Test]
+    public void A_walk_interrupted_before_the_root_fold_resumes_without_starting_over()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        Account b0 = new(5, 500);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0), (AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrA, a1), (AddrB, b0));
+        MarkAll(headers);
+
+        using CancellationTokenSource interrupt = new();
+        headers.OnFirstRead = interrupt.Cancel;
+        CommitmentMetadata metadata = new(_historyColumns);
+
+        Assert.That(() => CreateVerifier(headers).VerifyRange(0, 1, interrupt.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "precondition: the run is cut at the root fold, after every subtree finished");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryGetWalkInProgress(out ulong from, out ulong to) && from == 0 && to == 1, Is.True,
+                "an interrupted run leaves its range behind so the next start knows what to resume");
+            Assert.That(metadata.IsWalkItemDone(0) && metadata.IsWalkItemDone(HistoryWalkRun.WorkItems - 1), Is.True,
+                "every subtree that finished is marked, so a restart does not replay it");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Any(static key => key[0] == SeriesKey.ScratchMarker), Is.True,
+                "the finished subtrees' series stay on disk for the fold that never ran");
+        }
+
+        HistoryWalkVerdict resumed = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.Verified, Is.True, "the resumed run folds the preserved series and matches every header");
+            Assert.That(resumed.BlocksCompared, Is.EqualTo(2UL));
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a finished run leaves no resume state");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Any(static key => key[0] == SeriesKey.ScratchMarker), Is.False);
+        }
+    }
+
+    [Test]
+    public void Resume_state_for_a_different_range_is_discarded_and_the_walk_starts_over()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0));
+        headers.Roots[1] = StateRootOf((AddrA, a1));
+        MarkAll(headers);
+
+        CommitmentMetadata metadata = new(_historyColumns);
+        metadata.BeginWalk(0, 7, HistoryWalkRun.WorkItems);
+        for (int item = 0; item < HistoryWalkRun.WorkItems; item++) metadata.MarkWalkItemDone(item);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.True,
+                "marks left by a run over another range describe series this run never wrote, so they must be thrown away rather than trusted");
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
         }
     }
 
