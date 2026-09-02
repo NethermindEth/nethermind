@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
@@ -568,6 +569,98 @@ public class TxValidatorTests
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
             NetworkWrapper = wrapper,
         };
+    }
+
+    private static IEnumerable<TestCaseData> SpecChangeValidationCases()
+    {
+        yield return new TestCaseData(
+                Berlin.Instance,
+                Build.A.Transaction
+                    .WithType(TxType.EIP1559)
+                    .WithAccessList(AccessList.Empty)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_release_activation_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Cancun.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields((int)Cancun.Instance.MaxBlobCount + 1, isMempoolTx: false)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_blob_count_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_gas_limit_cap_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Osaka.Instance,
+                Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+                    .WithMaxFeePerGas(1)
+                    .WithMaxPriorityFeePerGas(1)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_proof_version_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Shanghai.Instance,
+                Build.A.Transaction
+                    .WithCode(new byte[(int)Shanghai.Instance.MaxInitCodeSize + 1])
+                    .WithGasLimit(int.MaxValue)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_contract_size_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .TestObject)
+            .SetName("Spec_change_signature_is_covered_by_full_validation");
+
+        yield return new TestCaseData(
+                Prague.Instance,
+                Build.A.Transaction
+                    .WithData([1])
+                    .WithGasLimit(Transaction.BaseTxGasCost)
+                    .WithChainId(TestBlockchainIds.ChainId)
+                    .SignedAndResolved()
+                    .TestObject)
+            .SetName("Spec_change_intrinsic_gas_is_covered_by_full_validation");
+    }
+
+    [TestCaseSource(nameof(SpecChangeValidationCases))]
+    public void Full_validation_covers_spec_change_validation(IReleaseSpec spec, Transaction transaction)
+    {
+        TxValidator fullValidator = new(TestBlockchainIds.ChainId);
+        SpecChangeTxValidator specChangeValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult specChangeResult = specChangeValidator.IsWellFormed(transaction, spec);
+        ValidationResult fullValidationResult = fullValidator.IsWellFormed(
+            transaction,
+            spec,
+            blockGasLimit: 0,
+            TxValidationOptions.SkipBlobProofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specChangeResult.AsBool, Is.False, "test case must exercise a spec-change rejection");
+            Assert.That(fullValidationResult.AsBool, Is.False);
+        }
     }
 
     [Test]

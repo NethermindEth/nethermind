@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using Nethermind.Specs.Forks;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -143,7 +144,7 @@ public class FrameTxSimulationFilterTests
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
         FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
@@ -201,7 +202,7 @@ public class FrameTxSimulationFilterTests
         TxHandlingOptions options = TxHandlingOptions.None)
     {
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, options);
     }
 }

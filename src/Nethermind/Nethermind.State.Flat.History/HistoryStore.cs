@@ -98,6 +98,7 @@ internal sealed class HistoryStore
         return valueLength;
     }
 
+    // On-disk row-key layout: [flatKey | ~block BE].
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, ulong block)
     {

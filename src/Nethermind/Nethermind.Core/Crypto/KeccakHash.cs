@@ -90,13 +90,6 @@ public sealed partial class KeccakHash
         if ((uint)(output.Length - 1) >= STATE_SIZE)
             ThrowInvalidOutputSize(output.Length);
 
-#if ZK_EVM
-        if (output.Length == HASH_SIZE)
-        {
-            ComputeHash256(input, output);
-            return;
-        }
-#endif
         int inputLength = input.Length;
         // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
         if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
@@ -296,16 +289,6 @@ public sealed partial class KeccakHash
         if (_hash is not null)
             ThrowHashingComplete();
 
-#if ZK_EVM
-        if (_state.Length == 0 && _roundSize == HASH_DATA_AREA && output.Length == HASH_SIZE)
-        {
-            ComputeHash256(_remainderBuffer.AsSpan(0, _remainderLength), output);
-            Pool.ReturnRemainder(ref _remainderBuffer);
-
-            _remainderLength = 0;
-            return;
-        }
-#endif
         ulong[] state = _state;
 
         if (state.Length == 0)

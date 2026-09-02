@@ -323,8 +323,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 
@@ -335,8 +335,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 

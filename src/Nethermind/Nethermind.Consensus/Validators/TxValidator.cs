@@ -166,6 +166,11 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
+        if (transaction is LightTransaction)
+        {
+            return TxErrorMessages.InvalidTransactionForm;
+        }
+
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
@@ -180,10 +185,23 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
-public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
+public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = null) : ITxValidator
 {
+    internal static readonly ReleaseSpecTxValidator Instance = new();
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !validate(releaseSpec) ? TxErrorMessages.InvalidTxType(releaseSpec.Name) : ValidationResult.Success;
+        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+            ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
+            : ValidationResult.Success;
+
+    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
+    {
+        TxType.AccessList => releaseSpec.IsEip2930Enabled,
+        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+        TxType.Blob => releaseSpec.IsEip4844Enabled,
+        TxType.SetCode => releaseSpec.IsEip7702Enabled,
+        _ => true,
+    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator

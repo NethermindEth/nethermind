@@ -366,7 +366,7 @@ public class FrameTxPayerExposureFilterTests
             ? (Pool(blobs: false), pending ?? Pool(blobs: true))
             : (pending ?? Pool(blobs: false), Pool(blobs: true));
         FrameTxPayerExposureFilter filter = new(specProvider, state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
-        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), Spec);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 

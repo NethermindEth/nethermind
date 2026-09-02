@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Specs.Forks;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -33,7 +34,7 @@ internal class FrameTxVerifyGasFilterTest
     {
         Transaction tx = FrameTx(frames);
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
@@ -59,7 +60,7 @@ internal class FrameTxVerifyGasFilterTest
     {
         Transaction tx = FrameTx(frames);
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxVerifyStateGas = 500_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
@@ -103,7 +104,7 @@ internal class FrameTxVerifyGasFilterTest
     {
         Transaction tx = FrameTx(TestItem.AddressA, Signatures(signatureCount, scheme), Execution());
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxVerifyStateGas = 0 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
@@ -113,7 +114,7 @@ internal class FrameTxVerifyGasFilterTest
     [Test]
     public void SenderAccount_OfAMissingAccount_ReadsTheSameOnEveryProbe()
     {
-        TxFilteringState state = new(FrameTx(SelfVerify(1_000)), Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(FrameTx(SelfVerify(1_000)), Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         using (Assert.EnterMultipleScope())
         {

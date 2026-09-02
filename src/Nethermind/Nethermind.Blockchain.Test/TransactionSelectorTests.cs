@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -232,7 +233,7 @@ namespace Nethermind.Blockchain.Test
                 .WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee)
                 .WithMaxPriorityFeePerGas(priority)
-                .WithGasLimit(20)
+                .WithGasLimit(100_000)
                 .SignedAndResolved(key).TestObject;
 
         public static IEnumerable BlobTransactionOrderingTestCases
@@ -545,8 +546,8 @@ namespace Nethermind.Blockchain.Test
 
             Dictionary<AddressAsKey, Transaction[]> transactions = GroupTransactions(false);
             Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
-            transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
+            transactionPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+                .Returns(new PendingTransactionsView(transactions, blobTransactions, isRevalidated: true));
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
                 transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
@@ -566,7 +567,8 @@ namespace Nethermind.Blockchain.Test
             Hash256 stateRoot = SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig,
+                new SpecChangeTxValidator(specProvider.ChainId));
 
             BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)
@@ -574,7 +576,9 @@ namespace Nethermind.Blockchain.Test
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
 
-            return poolTxSource.GetTransactions(parentHeader.TestObject, testCase.GasLimit).ToArray();
+            BlockHeader parent = parentHeader.TestObject;
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+            return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).ToArray();
         }
 
         public class ProperTransactionsSelectedTestCase

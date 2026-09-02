@@ -451,6 +451,8 @@ FodyWeavers.xsd
 
 ## Nethermind
 keystore/
+/data/
+/bootnode-data/
 /.githooks
 
 # Worktrees

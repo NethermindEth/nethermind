@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.TxPool;
 
-public ref struct TxFilteringState(Transaction tx, IAccountStateProvider accounts)
+public ref struct TxFilteringState(Transaction tx, IAccountStateProvider accounts, IReleaseSpec headSpec)
 {
     private AccountStruct _senderAccount;
 
@@ -20,6 +21,15 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
+
+    /// <summary>
+    /// The chain head specification the whole submission is judged against.
+    /// </summary>
+    /// <remarks>
+    /// Captured once so that every filter, and the pool itself, agree on the rules a transaction was accepted
+    /// under even if the head moves while the transaction travels through the pipeline.
+    /// </remarks>
+    public IReleaseSpec HeadSpec { get; } = headSpec;
 
     /// <remarks>
     /// A failed lookup leaves the out-value undefined and the readers diverge on it, so a missing

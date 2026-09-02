@@ -51,7 +51,7 @@ public static class StatelessExecutor
         try
         {
             Block block = payload.GetBlock();
-            ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
+            ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
             Transaction[] transactions = block.Transactions;
 
             if (transactions.Length == publicKeys.Length &&
@@ -64,7 +64,7 @@ public static class StatelessExecutor
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
                 for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
 
                 using Witness witness = payload.Witness.ToWitness();
 
