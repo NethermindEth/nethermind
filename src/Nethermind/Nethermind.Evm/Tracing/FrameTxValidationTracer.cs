@@ -112,11 +112,21 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.CREATE:
+                // Its address is f(factory, factory.nonce), which any third party can move by making the
+                // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
             case Instruction.CREATE2:
-                // Allowed only in the deploy frame, and only to install code at tx.sender; the address
-                // is checked when the creation frame opens.
-                if (!_inDeployFrame) Violate($"banned opcode {opcode} in validation prefix");
-                else _createPending = true;
+                // Allowed only in the deploy frame, and only to install code at tx.sender; the address is
+                // checked when the creation frame opens. Slot 0 is the endowment, banned as a funded CALL is.
+                if (!_inDeployFrame)
+                {
+                    Violate($"banned opcode {opcode} in validation prefix");
+                    break;
+                }
+
+                _valueStackIndex = 0;
+                _createPending = true;
                 break;
             case Instruction.SSTORE:
                 // Allowed only in the deploy frame; SetOperationStorage confines it to tx.sender.
@@ -131,24 +141,29 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         int valueIndex = _valueStackIndex;
         _targetStackIndex = -1;
         _valueStackIndex = -1;
-        if (Violated || index < 0) return;
+        if (Violated) return;
 
-        // A malformed stack faults the frame and rejects the prefix anyway; skip classification.
-        if (stack.Count <= index) return;
-
-        Address target = stack.PeekAddress(index);
-        if (IsForbiddenCallTarget(target))
+        if (index >= 0)
         {
-            Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
-            return;
+            // A malformed stack faults the frame and rejects the prefix anyway; skip classification.
+            if (stack.Count <= index) return;
+
+            Address target = stack.PeekAddress(index);
+            if (IsForbiddenCallTarget(target))
+            {
+                Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
+                return;
+            }
         }
 
-        // A funded call executes or pushes zero on the caller's balance alone, which is the same one-bit
-        // dependency on unindexed state that the BALANCE ban closes; the transfer itself is also a write
-        // neither deploy-frame carve-out covers.
+        // A funded call or create executes or pushes zero on the caller's balance alone, which is the same
+        // one-bit dependency on unindexed state that the BALANCE ban closes; the transfer itself is also a
+        // write neither deploy-frame carve-out covers.
         if (valueIndex >= 0 && stack.Count > valueIndex && !stack.PeekUInt256(valueIndex).IsZero)
         {
-            Violate("value-carrying CALL in validation prefix");
+            Violate(index < 0
+                ? "endowed CREATE2 in validation prefix"
+                : "value-carrying CALL in validation prefix");
         }
     }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -353,6 +354,75 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.ViolationReason, delegated
             ? Does.Contain("is not an undelegated contract")
             : Is.Null);
+    }
+
+    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. Over the
+    // process-wide instance that lets a peer fill the cache block processing reads from, for code never deployed.
+    [TestCase(false, TestName = "an accepted prefix still deposits into the cache")]
+    [TestCase(true, TestName = "a rejected prefix deposits too, since a violation does not halt the deposit")]
+    public void Simulate_DeployFrameDeposit_EscapesTheRollbackIntoTheCodeCache(bool violates)
+    {
+        // The prologue's SSTORE is outside tx.sender storage, so the tracer records a violation and the
+        // simulation is rejected — after the create has already run.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] prologue = violates ? Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done : [];
+        Address deployed = InstallFactory(initCode, prologue);
+        FundAccount(deployed, 1.Ether);
+        ValueHash256 depositedHash = Keccak.Compute(ApproveCode(TxFrame.ApproveExecutionAndPayment)).ValueHash256;
+
+        StaticCodeCache shared = new(MemoryAllowance.CodeCacheSize);
+        NoopCodeCache isolated = NoopCodeCache.Instance;
+
+        RunUnder(shared, DeployTx(deployed));
+        Assert.That(shared.Get(in depositedHash), Is.Not.Null,
+            "the shared cache is what the simulator must not be given");
+
+        // What the simulator is wired with: the deposit has nowhere to outlive the rollback.
+        RunUnder(isolated, DeployTx(deployed));
+        Assert.That(isolated.Get(in depositedHash), Is.Null);
+    }
+
+    private void RunUnder(ICodeCache codeCache, Transaction tx)
+    {
+        CacheCodeInfoRepository repository = new(_stateProvider, new EthereumPrecompileProvider(), codeCache);
+        EthereumVirtualMachine machine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, machine, repository, LimboLogs.Instance);
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+    }
+
+    // CREATE2's address is f(factory, salt, initcode); plain CREATE's is f(factory, factory.nonce), which any
+    // third party can move by making the factory create again, leaving tx.sender codeless after admission.
+    [Test]
+    public void Simulate_DeployFrameUsingPlainCreate_RecordsViolation()
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        DeployContract(Factory, Prepare.EvmCode.Create(initCode, 0).Done);
+        Address deployed = ContractAddress.From(Factory, 0);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+    }
+
+    // The endowment is the same one-bit dependency on the factory's balance that the funded-CALL ban closes:
+    // underfunded, the create pushes zero and installs nothing, and anyone can drain the factory.
+    [TestCase(0, false, TestName = "an unendowed CREATE2 is allowed")]
+    [TestCase(1, true, TestName = "an endowed CREATE2 is refused")]
+    public void Simulate_DeployFrameCreateEndowment_IsRefused(int endowment, bool violates)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        DeployContract(Factory, Prepare.EvmCode.Create2(initCode, Salt, (UInt256)endowment).Done, 1.Ether);
+        Address deployed = ContractAddress.From(Factory, Salt, initCode);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("endowed CREATE2") : Is.Null);
     }
 
     [Test]

@@ -6,13 +6,16 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider) : IReadOnlyTxProcessingEnvFactory
+/// <param name="cacheCode">When false the env keeps deposited code out of the process-wide
+/// <see cref="ICodeCache"/>, which nothing journals, so a rolled-back deposit cannot outlive its scope.</param>
+public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider, bool cacheCode = true) : IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create()
     {
@@ -26,6 +29,11 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             builder
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
+            if (!cacheCode)
+            {
+                builder.AddSingleton<ICodeCache>(NoopCodeCache.Instance);
+            }
+
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.
