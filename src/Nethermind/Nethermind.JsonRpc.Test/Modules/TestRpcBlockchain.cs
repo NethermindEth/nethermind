@@ -32,7 +32,6 @@ using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Facade.Eth;
@@ -181,8 +180,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
                 if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
                 if (_receiptConfigOverride is not null) builder.AddSingleton(_receiptConfigOverride);
-
-                builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
             });
         }
 

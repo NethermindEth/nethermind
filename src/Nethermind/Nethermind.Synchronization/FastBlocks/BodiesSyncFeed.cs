@@ -108,6 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
+            PersistCompletionMarker();
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _barrier);
         }
 
@@ -188,6 +189,21 @@ namespace Nethermind.Synchronization.FastBlocks
             ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
+            PersistCompletionMarker();
+        }
+
+        // Consumers that must not act on a mid-descent frontier (history pruning discovery) key off this
+        // marker; it mirrors AllDownloaded both ways because a recomputed barrier can drop and reopen the descent.
+        private void PersistCompletionMarker()
+        {
+            if (AllDownloaded)
+            {
+                _metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
+            }
+            else
+            {
+                _metadataDb.Delete(MetadataDbKeys.AncientBodiesDownloadComplete);
+            }
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
