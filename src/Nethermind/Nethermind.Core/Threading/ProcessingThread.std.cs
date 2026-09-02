@@ -9,7 +9,7 @@ namespace Nethermind.Core.Threading;
 /// Identifies the current thread as the main block processing path.
 /// Set by BlockchainProcessor before processing blocks.
 /// </summary>
-public static class ProcessingThread
+public static partial class ProcessingThread
 {
     [ThreadStatic]
     private static bool _isBlockProcessingThread;

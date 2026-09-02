@@ -347,6 +347,7 @@ namespace Nethermind.TxPool.Test
             }
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
 
@@ -354,6 +355,33 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(head);
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public async Task should_revalidate_when_head_spec_changes_during_construction()
+        {
+            BlobTxStorage storage = new();
+            _txPool = CreatePool(specProvider: new TestSpecProvider(Prague.Instance), txStorage: storage);
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            await _txPool.DisposeAsync();
+
+            IChainHeadSpecProvider changingSpecProvider = Substitute.For<IChainHeadSpecProvider>();
+            // Both pools are empty, so UpdateBucketsWithoutRevalidation consumes no head-spec read:
+            // ObserveHeadSpec and InitializeValidatedSpec see Prague; the final startup check sees Osaka.
+            changingSpecProvider.GetCurrentHeadSpec().Returns(Prague.Instance, Prague.Instance, Osaka.Instance);
+            changingSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+            ChainHeadInfoProvider headInfo = new(changingSpecProvider, _blockTree, _stateProvider);
+
+            _txPool = CreatePool(
+                specProvider: new TestSpecProvider(Prague.Instance),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage);
+
+            Assert.That(
+                () => _txPool.IsRevalidatedFor(Build.A.BlockHeader.TestObject),
+                Is.True.After(Timeout, 10));
         }
 
         [Test]
@@ -378,6 +406,7 @@ namespace Nethermind.TxPool.Test
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             int pendingTransactionsCount = _txPool.GetPendingTransactionsCount();
             AcceptTxResult resubmissionResult = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -413,6 +442,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
         }
@@ -445,11 +475,11 @@ namespace Nethermind.TxPool.Test
 
             _blockTree.BestSuggestedHeader = preForkHead.Header;
             await RaiseBlockAddedToMainAndWaitForNewHead(preForkHead, forkHead);
+            Assert.That(() => _txPool.IsRevalidatedFor(preForkHead.Header), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
-                Assert.That(_txPool.IsRevalidatedFor(preForkHead.Header), Is.True);
             }
         }
 
@@ -478,6 +508,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
@@ -511,6 +542,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
@@ -552,6 +584,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
@@ -571,8 +604,12 @@ namespace Nethermind.TxPool.Test
                 NextForkSpec = Osaka.Instance,
                 ForkOnBlockNumber = head.Number + 2
             };
-            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            ISpecChangeTxValidator specChangeTxValidator = Substitute.For<ISpecChangeTxValidator>();
             specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+            specChangeTxValidator.IsWellFormedAfterFullValidation(
+                    Arg.Any<Transaction>(),
+                    Arg.Any<IReleaseSpec>())
+                .Returns(ValidationResult.Success);
 
             _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -582,7 +619,9 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            specChangeTxValidator.Received(1).IsWellFormed(transaction, Prague.Instance);
+            specChangeTxValidator.Received(1).IsWellFormedAfterFullValidation(
+                transaction,
+                Prague.Instance);
             specChangeTxValidator.ClearReceivedCalls();
             Assert.That(_txPool.IsRevalidatedFor(Build.A.BlockHeader.WithNumber(head.Number + 1).TestObject), Is.True);
 
@@ -594,6 +633,7 @@ namespace Nethermind.TxPool.Test
             _blockTree.BestSuggestedHeader = nextBlock.Header;
             Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.False);
             await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            Assert.That(() => _txPool.IsRevalidatedFor(nextBlock.Header), Is.True.After(Timeout, 10));
 
             specChangeTxValidator.Received(1).IsWellFormed(transaction, Osaka.Instance);
             Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
@@ -614,7 +654,7 @@ namespace Nethermind.TxPool.Test
 
             await AddEmptyBlock();
 
-            Assert.That(_txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True);
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
         }
 
         [Test]
@@ -637,7 +677,7 @@ namespace Nethermind.TxPool.Test
 
             await AddEmptyBlock();
             BlockHeader forkHeader = _blockTree.BestSuggestedHeader;
-            Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.True);
+            Assert.That(() => _txPool.IsRevalidatedFor(forkHeader), Is.True.After(Timeout, 10));
 
             // A reorg back below the fork makes the pool accept transactions under the previous rules again,
             // which stops the mark left by the walk for the fork spec from covering the pool.
@@ -647,6 +687,17 @@ namespace Nethermind.TxPool.Test
 
             _blockTree.BestSuggestedHeader = forkHeader;
             Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.False);
+        }
+
+        [Test]
+        public void should_keep_latest_revalidation_request_when_an_older_request_arrives_last()
+        {
+            LatestRevalidationRequest request = new();
+
+            request.Update(2);
+            request.Update(1);
+
+            Assert.That(request.Generation, Is.EqualTo(2));
         }
 
         [Test]
@@ -661,7 +712,7 @@ namespace Nethermind.TxPool.Test
                 ForkOnBlockNumber = head.Number + 1
             };
             ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
-            TaskCompletionSource revalidationFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource revalidationFailureTriggered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using ManualResetEventSlim allowRevalidation = new(false);
             int validationAttempts = 0;
             specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
@@ -674,7 +725,7 @@ namespace Nethermind.TxPool.Test
                 Interlocked.Increment(ref validationAttempts);
                 if (!allowRevalidation.IsSet)
                 {
-                    revalidationFailed.TrySetResult();
+                    revalidationFailureTriggered.TrySetResult();
                     throw new InvalidOperationException();
                 }
 
@@ -704,13 +755,13 @@ namespace Nethermind.TxPool.Test
                 handler => _txPool.TxPoolHeadChanged -= handler,
                 block => block.Hash == forkBlock.Hash);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
-            await revalidationFailed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await revalidationFailureTriggered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await forkHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.IsRevalidatedFor(forkBlock.Header), Is.False);
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(() => _txPool.GetPendingTransactionsCount(), Is.EqualTo(1).After(Timeout, 10));
                 Assert.That(_txPool.ContainsTx(transaction.Hash!, transaction.Type), Is.True);
             }
 
@@ -719,11 +770,248 @@ namespace Nethermind.TxPool.Test
             Block nextBlock = Build.A.Block.WithNumber(forkBlock.Number + 1).TestObject;
             _blockTree.BestSuggestedHeader = nextBlock.Header;
             await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            Assert.That(() => _txPool.IsRevalidatedFor(nextBlock.Header), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
                 Assert.That(validationAttempts, Is.GreaterThanOrEqualTo(2));
+            }
+        }
+
+        [Test]
+        public async Task should_reconcile_buckets_when_spec_change_revalidation_is_abandoned()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            Transaction retainedTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction unaffordableTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            TaskCompletionSource firstPassStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondPassStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> firstPassReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> secondPassReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseFirstPass = new(false);
+            using ManualResetEventSlim releaseSecondPass = new(false);
+            int retainedTransactionValidations = 0;
+            ISpecChangeTxValidator specChangeTxValidator = Substitute.For<ISpecChangeTxValidator>();
+            specChangeTxValidator.IsWellFormedAfterFullValidation(
+                    Arg.Any<Transaction>(),
+                    Arg.Any<IReleaseSpec>())
+                .Returns(ValidationResult.Success);
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
+            {
+                if (ReferenceEquals(callInfo.Arg<Transaction>(), retainedTransaction))
+                {
+                    int validation = Interlocked.Increment(ref retainedTransactionValidations);
+                    if (validation == 1)
+                    {
+                        firstPassStarted.TrySetResult();
+                        firstPassReleased.TrySetResult(releaseFirstPass.Wait(TimeSpan.FromSeconds(10)));
+                    }
+                    else if (validation == 2)
+                    {
+                        secondPassStarted.TrySetResult();
+                        secondPassReleased.TrySetResult(releaseSecondPass.Wait(TimeSpan.FromSeconds(10)));
+                    }
+                }
+
+                return ValidationResult.Success;
+            });
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(retainedTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(unaffordableTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            EnsureSenderBalance(TestItem.AddressB, UInt256.Zero);
+
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = forkBlock.Header;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+            await firstPassStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Block rollbackBlock = Build.A.Block.WithNumber(head.Number).TestObject;
+            _blockTree.BestSuggestedHeader = rollbackBlock.Header;
+            Task rollbackProcessed = Wait.ForEventCondition<Block>(
+                CancellationToken.None,
+                handler => _txPool.TxPoolHeadChanged += handler,
+                handler => _txPool.TxPoolHeadChanged -= handler,
+                block => block.Hash == rollbackBlock.Hash);
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(rollbackBlock));
+
+            try
+            {
+                await rollbackProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+                releaseFirstPass.Set();
+                await secondPassStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(await firstPassReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_txPool.ContainsTx(retainedTransaction.Hash!, retainedTransaction.Type), Is.True);
+                    Assert.That(_txPool.ContainsTx(unaffordableTransaction.Hash!, unaffordableTransaction.Type), Is.False);
+                    Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                }
+            }
+            finally
+            {
+                releaseFirstPass.Set();
+                releaseSecondPass.Set();
+            }
+
+            Assert.That(await secondPassReleased.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(() => _txPool.IsRevalidatedFor(rollbackBlock.Header), Is.True.After(Timeout, 10));
+        }
+
+        [Test]
+        public async Task should_apply_revalidation_evictions_when_head_advances_during_pass()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            TaskCompletionSource revalidationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRevalidation = new(false);
+            int validationAttempts = 0;
+            Transaction invalidTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction validTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
+            {
+                if (!ReferenceEquals(callInfo.Arg<IReleaseSpec>(), Osaka.Instance))
+                {
+                    return ValidationResult.Success;
+                }
+
+                Interlocked.Increment(ref validationAttempts);
+                revalidationStarted.TrySetResult();
+                Assert.That(
+                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    "Timed out waiting to release fork revalidation.");
+                return ReferenceEquals(callInfo.Arg<Transaction>(), invalidTransaction)
+                    ? new ValidationResult("fork rejection")
+                    : ValidationResult.Success;
+            });
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(invalidTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(validTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = forkBlock.Header;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Block nextBlock = Build.A.Block.WithNumber(forkBlock.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            Task nextHeadProcessed = Wait.ForEventCondition<Block>(
+                CancellationToken.None,
+                handler => _txPool.TxPoolHeadChanged += handler,
+                handler => _txPool.TxPoolHeadChanged -= handler,
+                block => block.Hash == nextBlock.Hash);
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(nextBlock));
+            releaseRevalidation.Set();
+
+            await nextHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(() => _txPool.IsRevalidatedFor(nextBlock.Header), Is.True.After(Timeout, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(validationAttempts, Is.EqualTo(2));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.ContainsTx(invalidTransaction.Hash!, invalidTransaction.Type), Is.False);
+                Assert.That(_txPool.ContainsTx(validTransaction.Hash!, validTransaction.Type), Is.True);
+                Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
+            }
+        }
+
+        [Test]
+        public async Task should_restart_revalidation_after_head_spec_changes_and_returns_during_pass()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            TaskCompletionSource revalidationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim releaseRevalidation = new(false);
+            Transaction existingTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction invalidUnderOsaka = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(callInfo =>
+            {
+                if (!ReferenceEquals(callInfo.Arg<IReleaseSpec>(), Osaka.Instance))
+                {
+                    return ValidationResult.Success;
+                }
+
+                revalidationStarted.TrySetResult();
+                Assert.That(
+                    releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    "Timed out waiting to release fork revalidation.");
+                return ReferenceEquals(callInfo.Arg<Transaction>(), invalidUnderOsaka)
+                    ? new ValidationResult("fork rejection")
+                    : ValidationResult.Success;
+            });
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(existingTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = forkBlock.Header;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Block rollbackBlock = Build.A.Block.WithNumber(head.Number).TestObject;
+            _blockTree.BestSuggestedHeader = rollbackBlock.Header;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(rollbackBlock));
+            Assert.That(_txPool.SubmitTx(invalidUnderOsaka, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block finalBlock = Build.A.Block.WithNumber(forkBlock.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = finalBlock.Header;
+            Task finalHeadProcessed = Wait.ForEventCondition<Block>(
+                CancellationToken.None,
+                handler => _txPool.TxPoolHeadChanged += handler,
+                handler => _txPool.TxPoolHeadChanged -= handler,
+                block => block.Hash == finalBlock.Hash);
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(finalBlock));
+            releaseRevalidation.Set();
+
+            await finalHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(() => _txPool.IsRevalidatedFor(finalBlock.Header), Is.True.After(Timeout, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.ContainsTx(invalidUnderOsaka.Hash!, invalidUnderOsaka.Type), Is.False);
+                Assert.That(_txPool.IsRevalidatedFor(finalBlock.Header), Is.True);
             }
         }
 
@@ -785,6 +1073,7 @@ namespace Nethermind.TxPool.Test
             }
 
             await finalHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(() => _txPool.IsRevalidatedFor(head.Header), Is.True.After(Timeout, 10));
 
             using (Assert.EnterMultipleScope())
             {
@@ -795,7 +1084,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_keep_submission_and_production_view_responsive_during_revalidation()
+        [NonParallelizable]
+        public async Task should_keep_submission_production_and_head_processing_responsive_during_revalidation()
         {
             Block head = _blockTree.Head;
             _blockTree.BestSuggestedHeader = head.Header;
@@ -819,7 +1109,10 @@ namespace Nethermind.TxPool.Test
                     && ReferenceEquals(callInfo.Arg<IReleaseSpec>(), Osaka.Instance))
                 {
                     revalidationStarted.TrySetResult();
-                    releaseRevalidation.Wait();
+                    Assert.That(
+                        releaseRevalidation.Wait(TimeSpan.FromSeconds(10)),
+                        Is.True,
+                        "Timed out waiting to release fork revalidation.");
                 }
 
                 return ValidationResult.Success;
@@ -838,30 +1131,49 @@ namespace Nethermind.TxPool.Test
                 handler => _txPool.TxPoolHeadChanged -= handler,
                 block => block.Hash == forkBlock.Hash);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
-            await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-
-            Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = RunOnDedicatedThread(() =>
-            {
-                PendingTransactionsView view = _txPool.GetPendingForProduction(forkBlock.Header, filterToReadyTx: false, UInt256.Zero);
-                AcceptTxResult result = _txPool.SubmitTx(concurrentTransaction, TxHandlingOptions.None);
-                return (view, result);
-            });
 
             try
             {
+                await headProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+                await revalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+                Task<(PendingTransactionsView View, AcceptTxResult Result)> concurrentAccess = RunOnDedicatedThread(() =>
+                {
+                    PendingTransactionsView view = _txPool.GetPendingForProduction(forkBlock.Header, filterToReadyTx: false, UInt256.Zero);
+                    AcceptTxResult result = _txPool.SubmitTx(concurrentTransaction, TxHandlingOptions.None);
+                    return (view, result);
+                });
+
                 (PendingTransactionsView view, AcceptTxResult result) = await concurrentAccess.WaitAsync(TimeSpan.FromSeconds(5));
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(view.IsRevalidated, Is.False);
                     Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 }
+
+                Block nextBlock = Build.A.Block
+                    .WithNumber(forkBlock.Number + 1)
+                    .WithTransactions(concurrentTransaction)
+                    .TestObject;
+                _blockTree.BestSuggestedHeader = nextBlock.Header;
+                Task nextHeadProcessed = Wait.ForEventCondition<Block>(
+                    CancellationToken.None,
+                    handler => _txPool.TxPoolHeadChanged += handler,
+                    handler => _txPool.TxPoolHeadChanged -= handler,
+                    block => block.Hash == nextBlock.Hash);
+                _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(nextBlock));
+
+                await nextHeadProcessed.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(_txPool.ContainsTx(concurrentTransaction.Hash!, concurrentTransaction.Type), Is.False);
             }
             finally
             {
                 releaseRevalidation.Set();
             }
 
-            await headProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(
+                () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
+                Is.True.After(Timeout, 10));
         }
 
         [Test]

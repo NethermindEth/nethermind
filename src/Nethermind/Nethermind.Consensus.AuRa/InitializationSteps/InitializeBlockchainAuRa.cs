@@ -12,7 +12,6 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -103,7 +102,7 @@ public class InitializeBlockchainAuRa(
             chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             api.TxValidator!,
-            new SpecChangeTxValidator(api.SpecProvider.ChainId),
+            _specChangeTxValidator,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _txGossipPolicy,

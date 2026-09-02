@@ -42,6 +42,24 @@ namespace Nethermind.Network.Test
             }
         }
 
+        [Test]
+        public void Can_read_unbracketed_ipv4_mapped_ipv6_enode_regression()
+        {
+            NetworkNodeDecoder networkNodeDecoder = new();
+            Rlp encoded = new(Bytes.FromHexString("f8b2b8af656e6f64653a2f2f3661353034306166366634643434383035643830373936623237383466656630393136366430623565643862396565643437376639373030346664313138636330623564303734643535613933393763396466653239373137653934356139336336376134623030336634353363306664313237326439663466326531376130403a3a666666663a3134342e37362e3134392e3131393a303f64697363706f72743d333033303380"));
+            RlpReader context = new(encoded.Bytes);
+
+            NetworkNode decoded = networkNodeDecoder.Decode(ref context);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Host, Is.EqualTo("144.76.149.119"));
+                Assert.That(decoded.Port, Is.Zero);
+                Assert.That(decoded.DiscoveryPort, Is.EqualTo(30303));
+                Assert.That(decoded.Reputation, Is.Zero);
+            }
+        }
+
         private static void AssertRoundtripPreservesFields(NetworkNode node)
         {
             NetworkNodeDecoder networkNodeDecoder = new();
