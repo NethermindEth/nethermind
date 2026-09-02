@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -32,6 +34,8 @@ public class FrameTxValidationPrefixSimulationTests
 
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressD;
+    private static readonly Address Factory = TestItem.AddressB;
+    private static readonly byte[] Salt = new byte[32];
 
     [SetUp]
     public void Setup()
@@ -229,22 +233,278 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixStartsWithDeployFrame_RejectedAsUnsimulated()
+    public void Simulate_DeployFrameInstallsCodeAtTheSender_ResolvesTheDeployedAccountAsPayer()
     {
-        // The deploy-frame carve-outs are unimplemented, so the prefix is declined before it is entered.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(deployed));
+            // The simulation must not leave the deployment behind.
+            Assert.That(_stateProvider.IsContract(deployed), Is.False);
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameInstallsCodeAwayFromTheSender_RecordsViolation()
+    {
+        // The carve-out covers code installed at tx.sender only; the sender already carrying code
+        // leaves the created address as the sole thing under test.
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
-            SelfVerifyFrame());
+        InstallFactory(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done);
+        Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, Does.Contain("CREATE outside tx.sender"));
+    }
+
+    [Test]
+    public void Simulate_DeployFrameStoresToTheSenderStorage_Allowed()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(deployed));
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameStoresToTheFactoryStorage_RecordsViolation()
+    {
+        // Per-deploy factory storage would make the deployment depend on chain state.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] prologue = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
+        Address deployed = InstallFactory(initCode, prologue);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, Does.Contain("SSTORE outside tx.sender storage"));
+    }
+
+    [Test]
+    public void Simulate_DeployFrameCreatesOverAnExistingAccount_RecordsViolation()
+    {
+        // A create that opens no frame returned zero on a collision the prefix must not turn on —
+        // here a front-run of the very deployment the frame intends.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        DeployContract(deployed, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, Does.Contain("CREATE opened no creation frame"));
+    }
+
+    [Test]
+    public void Simulate_VerifyFrameCreatesAContract_RecordsViolation()
+    {
+        // The carve-out belongs to the opening deploy frame alone.
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.Op(Instruction.STOP).Done, 0).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+    }
+
+    [TestCase(false, TestName = "an undelegated factory is allowed")]
+    [TestCase(true, TestName = "a delegated factory is refused")]
+    public void Simulate_DeployFrameTargetingADelegatedFactory_RecordsViolation(bool delegated)
+    {
+        // The processor dispatches the deploy frame's target, so it never meets the CALL* target rule; a
+        // delegated factory is mutable by its authority, which is what that rule exists to close.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        if (delegated)
+        {
+            DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
+            _stateProvider.InsertCode(Factory, delegation, Spec);
+            _stateProvider.Commit(Spec);
+            _stateProvider.CommitTree(0);
+        }
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, delegated
+            ? Does.Contain("is not an undelegated contract")
+            : Is.Null);
+    }
+
+    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. Over the
+    // process-wide instance that lets a peer fill the cache block processing reads from, for code never deployed.
+    [TestCase(false, TestName = "an accepted prefix still deposits into the cache")]
+    [TestCase(true, TestName = "a rejected prefix deposits too, since a violation does not halt the deposit")]
+    public void Simulate_DeployFrameDeposit_EscapesTheRollbackIntoTheCodeCache(bool violates)
+    {
+        // The prologue's SSTORE is outside tx.sender storage, so the tracer records a violation and the
+        // simulation is rejected — after the create has already run.
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] prologue = violates ? Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done : [];
+        Address deployed = InstallFactory(initCode, prologue);
+        FundAccount(deployed, 1.Ether);
+        ValueHash256 depositedHash = Keccak.Compute(ApproveCode(TxFrame.ApproveExecutionAndPayment)).ValueHash256;
+
+        StaticCodeCache given = new(MemoryAllowance.CodeCacheSize);
+        StaticCodeCache other = new(MemoryAllowance.CodeCacheSize);
+
+        RunUnder(given, DeployTx(deployed));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Contained rather than suppressed: the prefix keeps its read memoization, and the deposit is
+            // confined to the env's own instance — which is what wiring the simulator away from the
+            // process-wide one buys, since nothing journals either.
+            Assert.That(given.Get(in depositedHash), Is.Not.Null, "a deposit lands in the cache the env was given");
+            Assert.That(other.Get(in depositedHash), Is.Null, "and in no other, which is what the isolation rests on");
+        }
+    }
+
+    private void RunUnder(ICodeCache codeCache, Transaction tx)
+    {
+        CacheCodeInfoRepository repository = new(_stateProvider, new EthereumPrecompileProvider(), codeCache);
+        EthereumVirtualMachine machine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(
+            BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, machine, repository, LimboLogs.Instance);
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
+    }
+
+    // CREATE2's address is f(factory, salt, initcode); plain CREATE's is f(factory, factory.nonce), which any
+    // third party can move by making the factory create again, leaving tx.sender codeless after admission.
+    [Test]
+    public void Simulate_DeployFrameUsingPlainCreate_RecordsViolation()
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        DeployContract(Factory, Prepare.EvmCode.Create(initCode, 0).Done);
+        Address deployed = ContractAddress.From(Factory, 0);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+    }
+
+    // The endowment is the same one-bit dependency on the factory's balance that the funded-CALL ban closes:
+    // underfunded, the create pushes zero and installs nothing, and anyone can drain the factory.
+    [TestCase(0, false, TestName = "an unendowed CREATE2 is allowed")]
+    [TestCase(1, true, TestName = "an endowed CREATE2 is refused")]
+    public void Simulate_DeployFrameCreateEndowment_IsRefused(int endowment, bool violates)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        DeployContract(Factory, Prepare.EvmCode.Create2(initCode, Salt, (UInt256)endowment).Done, 1.Ether);
+        Address deployed = ContractAddress.From(Factory, Salt, initCode);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(DeployTx(deployed));
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("endowed CREATE2") : Is.Null);
+    }
+
+    [Test]
+    public void Simulate_DeployFrameLeavesTheSenderCodeless_Rejected()
+    {
+        // Without code at tx.sender the VERIFY frames behind the deploy frame would validate against
+        // default code instead of the account being deployed.
+        DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("deploy frame"));
-            Assert.That(tracer.Violated, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("installed no code at tx.sender"));
             Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    // The deploy frame is the one non-static prefix frame, so it is the only place a funded CALL is
+    // reachable at all: it executes or pushes zero on the caller's balance, which a third party can move.
+    [TestCase(0, false, TestName = "Simulate_DeployFrameMakesAZeroValueCall_Allowed")]
+    [TestCase(1, true, TestName = "Simulate_DeployFrameMakesAValueCarryingCall_RecordsViolation")]
+    public void Simulate_DeployFrameCallCarryingValue_IsRefused(int value, bool violates)
+    {
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] prologue = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, (UInt256)value).Op(Instruction.POP).Done;
+        Address deployed = InstallFactory(initCode, prologue);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("value-carrying CALL") : Is.Null);
+    }
+
+    [Test]
+    public void Simulate_DeployFrameBehindAnExpiryVerifyFrame_StillCarriesTheCarveOuts()
+    {
+        // OpensDeployPrefix accepts index 1 past an expiry-verify frame, and the SSTORE at tx.sender is
+        // what proves the carve-outs were announced for that frame rather than only for index 0.
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, ExpiryVerifyFrame(), DeployFrame(), SelfVerifyFrame());
+        tx.SenderAddress = deployed;
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(deployed));
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_ResolvesThePayer()
+    {
+        // The guard is that tx.sender carries code once the deploy frame is done, so a deploy frame that
+        // creates nothing passes it vacuously when the sender is already deployed. That is intended: the
+        // VERIFY frames behind it run the sender's real code either way.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
         }
     }
 
@@ -402,6 +662,40 @@ public class FrameTxValidationPrefixSimulationTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
     }
+
+    private void FundAccount(Address address, UInt256 balance)
+    {
+        _stateProvider.CreateAccount(address, balance);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+    }
+
+    /// <summary>Installs a CREATE2 factory for <paramref name="initCode"/> and returns the address it deploys to.</summary>
+    private Address InstallFactory(byte[] initCode, byte[]? prologue = null)
+    {
+        DeployContract(Factory, [.. prologue ?? [], .. Prepare.EvmCode.Create2(initCode, Salt, 0).Done]);
+        return ContractAddress.From(Factory, Salt, initCode);
+    }
+
+    /// <summary>A <c>deploy | self_verify</c> prefix whose sender is the account the factory deploys.</summary>
+    private static Transaction DeployTx(Address deployed)
+    {
+        Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
+        tx.SenderAddress = deployed;
+        return tx;
+    }
+
+    private static TxFrame ExpiryVerifyFrame()
+    {
+        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(data, ulong.MaxValue);
+        return new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress,
+            gasLimit: 50_000, UInt256.Zero, data);
+    }
+
+    // A deploy frame is the one prefix frame that writes state, so it needs a limits.state budget.
+    private static TxFrame DeployFrame() =>
+        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default);
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
