@@ -49,8 +49,11 @@ CORPUS_RPC_GAS_CAP="1000000000000"
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
-SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
-NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
+case "$STATE_LAYOUT" in
+  flat) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="--FlatDb.Enabled=true" ;;
+  halfpath) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="" ;;
+  *) echo "::error::sweep mode resolves a flat or halfpath Nethermind snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1 ;;
+esac
 PARITY_STATE="$SCRATCH_ROOT/parity"
 RPC="http://localhost:8545"
 
@@ -83,7 +86,6 @@ for entry in $CLIENTS; do
   entry="${entry%%#*}"
   [[ "${entry%%@*}" == "nethermind" ]] || { echo "::error::sweep mode resolves one Nethermind snapshot set; client '${entry%%@*}' cannot run here (use benchmark_tool=jsonbench with reference_client)"; exit 1; }
 done
-[[ "$STATE_LAYOUT" == "flat" ]] || { echo "::error::sweep mode resolves a flat snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1; }
 # direct bind-mounts the expb-shared snapshot read-write; one such run replaces the fixture every later benchmark uses.
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
   echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot; use 'copy', or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot"; exit 1
