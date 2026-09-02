@@ -71,6 +71,29 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             $"{storage.GetType().Name} inherits the throwing default, so a pruning node configured with it would fail every pass");
 
     [Test]
+    public void InMemoryReceiptStorage_RemoveReceiptsByHash_TakesOnlyThatBlock()
+    {
+        InMemoryReceiptStorage storage = new();
+        Dictionary<ulong, Block> blocks = [];
+
+        for (ulong number = 1; number <= 3; number++)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            storage.Insert(block, [Build.A.Receipt.WithBlockHash(block.Hash).TestObject]);
+            blocks[number] = block;
+        }
+
+        storage.RemoveReceipts(2, blocks[2].Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.HasBlock(1, blocks[1].Hash!), Is.True);
+            Assert.That(storage.HasBlock(2, blocks[2].Hash!), Is.False);
+            Assert.That(storage.HasBlock(3, blocks[3].Hash!), Is.True);
+        }
+    }
+
+    [Test]
     public void InMemoryReceiptStorage_RemoveReceiptsRange_HoldsTheBounds()
     {
         InMemoryReceiptStorage storage = new();
@@ -96,6 +119,39 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
+    public void RemoveReceiptsRanges_TakesEveryRangeAndKeepsTheHeightsBetween()
+    {
+        Dictionary<ulong, Block> blocks = [];
+        for (ulong number = 1; number <= 5; number++)
+        {
+            (Block block, _) = InsertBlock(Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject);
+            blocks[number] = block;
+        }
+
+        _storage.RemoveReceiptsRanges([(1, 3), (4, 5)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(1, blocks[1].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(2, blocks[2].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(3, blocks[3].Hash!), Is.True, "the height between the ranges survives");
+            Assert.That(_storage.HasBlock(4, blocks[4].Hash!), Is.False);
+            Assert.That(_storage.HasBlock(5, blocks[5].Hash!), Is.True, "the upper bound is exclusive");
+        }
+    }
+
+    [Test]
+    public void RemoveReceiptsRanges_StopsServingACachedBlockInsideARange()
+    {
+        (Block block, _) = InsertBlock();
+        Assert.That(_storage.Get(block), Is.Not.Empty, "priming the cache");
+
+        _storage.RemoveReceiptsRanges([((ulong)block.Number, (ulong)block.Number + 1)]);
+
+        Assert.That(_storage.Get(block), Is.Empty);
+    }
+
+    [Test]
     public void SweepTransactionIndex_DropsOnlyEntriesNamingReclaimedBlocks()
     {
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
@@ -107,7 +163,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         txIndex.Set(retained, Rlp.Encode(50UL).Bytes);
         txIndex.Set(legacy, TestItem.KeccakD.BytesToArray());
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: null, CancellationToken.None, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
@@ -116,6 +172,25 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(txIndex.Get(legacy), Is.Not.Null, "a hash whose header does not resolve is left alone rather than guessed at");
             Assert.That(removed, Is.EqualTo(1));
             Assert.That(cursor, Is.Null, "reaching the end reports no resume point");
+        }
+    }
+
+    [Test]
+    public void SweepTransactionIndex_KeepsAnEntryNamingARetainedHeightBelowTheBoundary()
+    {
+        IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        Hash256 sliced = TestItem.KeccakA;
+        Hash256 stale = TestItem.KeccakB;
+        txIndex.Set(sliced, Rlp.Encode(5UL).Bytes);
+        txIndex.Set(stale, Rlp.Encode(6UL).Bytes);
+
+        _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: static height => height == 5, CancellationToken.None, out int removed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txIndex.Get(sliced), Is.Not.Null, "a retained sliced height keeps its transactions findable by hash");
+            Assert.That(txIndex.Get(stale), Is.Null);
+            Assert.That(removed, Is.EqualTo(1));
         }
     }
 
@@ -131,7 +206,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         txIndex.Set(TestItem.KeccakA, stale.Hash!.BytesToArray());
         txIndex.Set(TestItem.KeccakB, retained.Hash!.BytesToArray());
 
-        _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+        _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: null, CancellationToken.None, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
@@ -157,7 +232,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
         txIndex.Set(TestItem.KeccakA, Rlp.Encode(100UL).Bytes);
 
-        _storage.SweepTransactionIndex(retainedFromBlock, resumeFrom: null, maxEntries: 100, CancellationToken.None, out int removed);
+        _storage.SweepTransactionIndex(retainedFromBlock, resumeFrom: null, maxEntries: 100, isHeightRetained: null, CancellationToken.None, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,7 +256,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, cts.Token, out int removed);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: null, cts.Token, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
@@ -204,7 +279,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: entries * 2, cts.Token, out int removed);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: entries * 2, isHeightRetained: null, cts.Token, out int removed);
 
         using (Assert.EnterMultipleScope())
         {
@@ -224,13 +299,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             txIndex.Set(key, Rlp.Encode(5UL).Bytes);
         }
 
-        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, CancellationToken.None, out int firstRemoved);
+        byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, isHeightRetained: null, CancellationToken.None, out int firstRemoved);
         Assert.That(cursor, Is.Not.Null, "stopping on budget has to report where to pick up, or the tail is never reached");
 
         int total = firstRemoved;
         while (cursor is not null)
         {
-            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, CancellationToken.None, out int removed);
+            cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: cursor, maxEntries: 2, isHeightRetained: null, CancellationToken.None, out int removed);
             total += removed;
         }
 

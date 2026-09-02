@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using System.Net;
-using System.Net.Sockets;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -104,7 +103,7 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        return new LocalNodeRecordState(ip.ExternalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        return new LocalNodeRecordState(ip.ExternalIpV4, ip.ExternalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
@@ -113,17 +112,18 @@ public sealed class NodeRecordProvider(
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(new EthEntry(state.ForkId.HashBytes, state.ForkId.Next));
-        if (state.ExternalIp.AddressFamily == AddressFamily.InterNetworkV6 && !state.ExternalIp.IsIPv4MappedToIPv6)
+        if (state.ExternalIpV4 is not null)
         {
-            selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIp));
-            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
-            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
-        }
-        else if (!Equals(state.ExternalIp, IPAddress.None))
-        {
-            selfNodeRecord.SetEntry(new IpEntry(state.ExternalIp));
+            selfNodeRecord.SetEntry(new IpEntry(state.ExternalIpV4));
             selfNodeRecord.SetEntry(new TcpEntry(state.TcpPort));
             selfNodeRecord.SetEntry(new UdpEntry(state.UdpPort));
+        }
+
+        if (state.ExternalIpV6 is not null)
+        {
+            selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
+            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
+            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = sequence;
@@ -144,5 +144,5 @@ public sealed class NodeRecordProvider(
 
     private sealed record LocalNodeRecord(NodeRecord Record, LocalNodeRecordState State);
 
-    private readonly record struct LocalNodeRecordState(IPAddress ExternalIp, int TcpPort, int UdpPort, NetworkForkId ForkId);
+    private readonly record struct LocalNodeRecordState(IPAddress? ExternalIpV4, IPAddress? ExternalIpV6, int TcpPort, int UdpPort, NetworkForkId ForkId);
 }

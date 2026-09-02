@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
@@ -213,7 +214,7 @@ namespace Nethermind.Network.Rlpx
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+                if (_logger.IsTrace) TraceConnectionTimedOut(node);
 
                 _ = connectTask.ContinueWith(
                     _disconnectConnectedChannel,
@@ -222,25 +223,27 @@ namespace Nethermind.Network.Rlpx
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
 
-                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s} (timeout)");
                 return false;
             }
 
             delayCancellation.Cancel();
             if (connectTask.IsFaulted)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {connectTask.Exception}");
-                }
-
-                if (_logger.IsDebug) _logger.Debug($"Failed to connect to {node:s}: {connectTask.Exception.Message}");
+                if (_logger.IsTrace) TraceConnectionFailure(node, connectTask.Exception!);
                 return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
             return true;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceConnectionTimedOut(Node node) =>
+            _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceConnectionFailure(Node node, Exception exception) =>
+            _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {exception}");
 
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;

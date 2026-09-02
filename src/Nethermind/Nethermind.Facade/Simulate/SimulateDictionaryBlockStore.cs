@@ -9,7 +9,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
+/// <remarks>
+/// The base store is the node's live writable one, so every mutator must stay overridden here.
+/// </remarks>
+public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockStore
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
     private readonly Dictionary<ulong, Block> _blockNumDict = [];
@@ -53,7 +56,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
             return block;
         }
 
-        block = readonlyBaseBlockStore.Get(blockNumber, blockHash, rlpBehaviors, false);
+        block = baseBlockStore.Get(blockNumber, blockHash, rlpBehaviors, false);
         if (block is not null && shouldCache)
         {
             Cache(block);
@@ -67,17 +70,17 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         {
             return _blockDecoder.EncodeAsBytes(block);
         }
-        return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
+        return baseBlockStore.GetRlp(blockNumber, blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
         _blockNumDict.TryGetValue(blockNumber, out Block block)
             ? new ReceiptRecoveryBlock(block)
-            : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
+            : baseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 
     public void Cache(Block block)
         => Insert(block);
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
-        => _blockNumDict.ContainsKey(blockNumber) || readonlyBaseBlockStore.HasBlock(blockNumber, blockHash);
+        => _blockNumDict.ContainsKey(blockNumber) || baseBlockStore.HasBlock(blockNumber, blockHash);
 }

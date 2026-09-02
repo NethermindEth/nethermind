@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
@@ -13,8 +14,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
-internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
-    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+internal class InitializeBlockchainXdc(
+    INethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     private readonly INethermindApi _api = api;
 
@@ -37,6 +42,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
@@ -44,7 +50,6 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                     new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
                     new BlackListedAddressFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
                 ],
-                _api.HeadTxValidator,
                 true
             );
 

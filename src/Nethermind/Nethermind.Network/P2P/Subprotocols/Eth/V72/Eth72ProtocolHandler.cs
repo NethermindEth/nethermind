@@ -107,6 +107,8 @@ public class Eth72ProtocolHandler(
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = EnsureNotNull(sparseBlobPoolPeerRegistry, nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
     private Func<ClaimedCellsResponse, CancellationToken, ValueTask>? _handleCells;
+    /// <summary>Sentinel <c>RestoreEpoch</c> for a pending entry that owes no announcement restore.</summary>
+    private const long NoRestoreEpoch = 0;
     private long _cellStateRevision;
     private long _blobAnnouncementsReceived;
     private long _cellRequestsReceived;
@@ -226,7 +228,7 @@ public class Eth72ProtocolHandler(
                     {
                         if (claimResult == CellRequestClaimResult.Expired)
                         {
-                            RequeueClaimedCellRequest(sentRequest, removePeer: false);
+                            RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerUnanswered);
                         }
 
                         ReportIn($"Stale {nameof(CellsMessage72)} response ID {requestId} ignored", size);
@@ -235,7 +237,7 @@ public class Eth72ProtocolHandler(
 
                     if (size > sentRequest.MaxResponseBytes)
                     {
-                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
+                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw new SubprotocolException(
                             $"{nameof(CellsMessage72)} response ID {requestId} exceeds its {sentRequest.MaxResponseBytes}-byte request bound: {size} bytes.");
                     }
@@ -247,12 +249,12 @@ public class Eth72ProtocolHandler(
                     }
                     catch (RlpException)
                     {
-                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
+                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
                     }
                     catch (IncompleteDeserializationException)
                     {
-                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
+                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
                         throw;
                     }
 
@@ -263,9 +265,9 @@ public class Eth72ProtocolHandler(
                     if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!, nameof(CellsMessage72)))
                     {
                         // Scheduler saturated or shutting down: release the in-flight reservation and
-                        // park the request so a later announcement can retry it.
+                        // park the request for a later retry.
                         response.Dispose();
-                        RequeueClaimedCellRequest(sentRequest, removePeer: false);
+                        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.LocalBackpressure);
                     }
                 }
                 else
@@ -668,7 +670,7 @@ public class Eth72ProtocolHandler(
         }
         else
         {
-            RequeueClaimedCellRequest(claimedResponse.Request, removePeer: false);
+            RequeueClaimedCellRequest(claimedResponse.Request, CellRequeueReason.LocalBackpressure);
         }
 
         return ValueTask.CompletedTask;
@@ -747,19 +749,16 @@ public class Eth72ProtocolHandler(
         BlobCellMask missingMask = requestedMask.Except(availableMask);
         if (!missingMask.IsEmpty)
         {
-            DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
-            _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
-            _partialCellResponseBackoff.Set(key, retryAt);
-            AddPendingCellRequest(key, missingMask, retryAt, restoreAnnouncement: true);
+            BackOffAndParkCellRequest(hash, missingMask);
         }
 
         _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, requestedMask, this);
         if (!_sparseBlobPoolPeerRegistry.RecordCells(this, hash, availableMask, pending.Cells))
         {
-            DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
-            _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
-            _partialCellResponseBackoff.Set(key, retryAt);
-            AddPendingCellRequest(key, availableMask, retryAt, restoreAnnouncement: true);
+            // The cells were already validated above, so a refusal here is almost always ours: the
+            // early-cell byte budget, the accounting replace, or a transient submit. Throttle the
+            // retry without taking away what marks the peer as a provider.
+            ParkCellRequest(key, availableMask, restoreMask: BlobCellMask.Empty);
             return;
         }
 
@@ -779,7 +778,7 @@ public class Eth72ProtocolHandler(
 
     /// <summary>
     /// Handles a response that carries none of the requested cells by backing off the peer before
-    /// restoring its announcement, allowing another provider to answer without losing the sole source.
+    /// restoring the cells it may still hold, letting another provider answer without losing the sole source.
     /// </summary>
     private void RetryUnansweredCellRequest(SentCellRequest sentRequest, BlobCellMask responseMask)
     {
@@ -788,7 +787,7 @@ public class Eth72ProtocolHandler(
             ThrowMalformedCellsResponse(sentRequest, $"Unexpected cell mask in empty {nameof(CellsMessage72)} response.");
         }
 
-        RequeueClaimedCellRequest(sentRequest, removePeer: false);
+        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerUnanswered);
     }
 
     private void OnPendingCellsApplied(Hash256 hash, ValueHash256 key, BlobCellMask availableMask, BlobCellMask missingMask)
@@ -1056,16 +1055,17 @@ public class Eth72ProtocolHandler(
 
     private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
     {
-        if (Logger.IsDebug)
-        {
-            Logger.Debug($"{Node:c} requesting blob cells for {hash} with mask {requestMask}.");
-        }
+        if (Logger.IsTrace) TraceRequestingBlobCells(hash, requestMask);
 
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
         GetCellsMessage72 message = new([hash], sentMask.ToBytes());
         AddSentCellRequest(key, sentMask, message.RequestId);
         Send(message);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceRequestingBlobCells(Hash256 transactionHash, BlobCellMask cellMask) =>
+            Logger.Trace($"{Node:c} requesting blob cells for {transactionHash} with mask {cellMask}.");
     }
 
     bool ISparseBlobPoolPeer.IsClosing => Session.IsClosing;
@@ -1097,13 +1097,21 @@ public class Eth72ProtocolHandler(
 
     void ISparseBlobPoolPeer.DisconnectSparseBlobPeer(DisconnectReason reason, string details) => Disconnect(reason, details);
 
+    /// <summary>Queues cells to request once a provider and, when delayed, the retry time are available.</summary>
+    /// <param name="hash">The transaction whose cells are needed.</param>
+    /// <param name="requestMask">The cells to request.</param>
+    /// <param name="retryAt">When the request may be re-attempted, or <see langword="null"/> to retry as soon as a provider appears.</param>
+    /// <param name="restoreMask">
+    /// The announcement to put back once <paramref name="retryAt"/> elapses, or
+    /// <see cref="BlobCellMask.Empty"/> when the peer's announcement was left in place.
+    /// </param>
     private void AddPendingCellRequest(
         ValueHash256 hash,
         BlobCellMask requestMask,
         DateTimeOffset? retryAt = null,
-        bool restoreAnnouncement = false)
+        BlobCellMask restoreMask = default)
     {
-        if (requestMask.IsEmpty)
+        if (requestMask.IsEmpty && restoreMask.IsEmpty)
         {
             return;
         }
@@ -1117,10 +1125,10 @@ public class Eth72ProtocolHandler(
                 BlobCellMask combinedMask = existing.Mask | requestMask;
                 _pendingCellRequestWork += combinedMask.Count - existing.Mask.Count;
                 DateTimeOffset? combinedRetryAt = existing.RetryAt;
-                if (restoreAnnouncement
-                    && (combinedRetryAt is null || retryAt > combinedRetryAt))
+                if (retryAt is { } requestedRetryAt
+                    && (combinedRetryAt is null || requestedRetryAt > combinedRetryAt))
                 {
-                    combinedRetryAt = retryAt;
+                    combinedRetryAt = requestedRetryAt;
                 }
 
                 state = existing with
@@ -1128,7 +1136,8 @@ public class Eth72ProtocolHandler(
                     Mask = combinedMask,
                     ExpiresAt = _timestamper.UtcNowOffset + PendingCellStateTtl,
                     RetryAt = combinedRetryAt,
-                    RestoreAnnouncement = existing.RestoreAnnouncement || restoreAnnouncement
+                    RestoreMask = existing.RestoreMask | restoreMask,
+                    RestoreEpoch = restoreMask.IsEmpty ? existing.RestoreEpoch : NextCellStateRevision()
                 };
                 TrimPendingCellRequests();
                 return;
@@ -1141,7 +1150,8 @@ public class Eth72ProtocolHandler(
                 RequestId: 0,
                 ExpiresAt: _timestamper.UtcNowOffset + PendingCellStateTtl,
                 RetryAt: retryAt,
-                RestoreAnnouncement: restoreAnnouncement);
+                RestoreMask: restoreMask,
+                RestoreEpoch: restoreMask.IsEmpty ? NoRestoreEpoch : NextCellStateRevision());
             _pendingCellRequestCount++;
             _pendingCellRequestWork += requestMask.Count;
             _pendingCellRequestOrder.Enqueue(new CellStateKey(hash, revision));
@@ -1209,25 +1219,57 @@ public class Eth72ProtocolHandler(
 
     private void ThrowMalformedCellsResponse(SentCellRequest sentRequest, string message)
     {
-        RequeueClaimedCellRequest(sentRequest, removePeer: true);
+        RequeueClaimedCellRequest(sentRequest, CellRequeueReason.PeerFault);
         throw new SubprotocolException(message);
     }
 
-    private void RequeueClaimedCellRequest(SentCellRequest sentRequest, bool removePeer)
+    private void RequeueClaimedCellRequest(SentCellRequest sentRequest, CellRequeueReason reason)
     {
         Hash256 requestedHash = sentRequest.Hash.ToHash256();
         _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(requestedHash, sentRequest.Mask, this);
-        if (removePeer)
+        switch (reason)
         {
-            _sparseBlobPoolPeerRegistry.RemovePeer(this);
-            RequestCellsWhenReady(requestedHash, sentRequest.Mask);
-            return;
+            case CellRequeueReason.PeerFault:
+                _sparseBlobPoolPeerRegistry.RemovePeer(this);
+                RequestCellsWhenReady(requestedHash, sentRequest.Mask);
+                break;
+            case CellRequeueReason.LocalBackpressure:
+                // Throttling the retry is still right, but the announcement stays: it is what marks
+                // the peer as a provider node-wide, and we, not the peer, dropped the response.
+                ParkCellRequest(sentRequest.Hash, sentRequest.Mask, restoreMask: BlobCellMask.Empty);
+                break;
+            case CellRequeueReason.PeerUnanswered:
+                BackOffAndParkCellRequest(requestedHash, sentRequest.Mask);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(reason), reason, null);
         }
+    }
 
+    /// <summary>
+    /// Backs the peer off for a transaction and parks the cells for a later retry, scheduling the
+    /// announcement to be restored so a temporary miss does not permanently lose the provider.
+    /// </summary>
+    /// <param name="hash">The transaction whose cells are parked.</param>
+    /// <param name="parkMask">The cells to request again once the backoff elapses.</param>
+    /// <remarks>
+    /// The mask restored is the one the peer announced, not the one we requested:
+    /// <see cref="ISparseBlobPoolPeerRegistry.RecordAnnouncement"/> overwrites a peer's mask, so
+    /// restoring the narrower request mask would downgrade a full provider to a partial one and can
+    /// starve samplers gated on <see cref="MinSamplerFullProviderAnnouncements"/>.
+    /// </remarks>
+    private void BackOffAndParkCellRequest(Hash256 hash, BlobCellMask parkMask) =>
+        ParkCellRequest(hash.ValueHash256, parkMask, _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash));
+
+    /// <summary>Holds cells back from the announcement re-request path until the retry falls due.</summary>
+    /// <param name="key">The transaction whose cells are parked.</param>
+    /// <param name="parkMask">The cells to request again once the backoff elapses.</param>
+    /// <param name="restoreMask">The announcement to put back, or empty when none was removed.</param>
+    private void ParkCellRequest(ValueHash256 key, BlobCellMask parkMask, BlobCellMask restoreMask)
+    {
         DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
-        _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, requestedHash);
-        _partialCellResponseBackoff.Set(sentRequest.Hash, retryAt);
-        AddPendingCellRequest(sentRequest.Hash, sentRequest.Mask, retryAt, restoreAnnouncement: true);
+        _partialCellResponseBackoff.Set(key, retryAt);
+        AddPendingCellRequest(key, parkMask, retryAt, restoreMask);
     }
 
     private void AddSentCellRequest(ValueHash256 hash, BlobCellMask requestMask, long requestId)
@@ -1257,7 +1299,14 @@ public class Eth72ProtocolHandler(
             long revision = NextCellStateRevision();
             DateTimeOffset expiresAt = now + CellRequestTtl;
             int maxResponseBytes = GetExpectedCellsResponseBound(requestId, requestMask);
-            state = new CellRequestState(requestMask, revision, requestId, expiresAt, RetryAt: null, RestoreAnnouncement: false);
+            state = new CellRequestState(
+                requestMask,
+                revision,
+                requestId,
+                expiresAt,
+                RetryAt: null,
+                RestoreMask: BlobCellMask.Empty,
+                RestoreEpoch: NoRestoreEpoch);
             _sentCellRequestIds[requestId] = new SentCellRequest(
                 hash,
                 requestMask,
@@ -1338,7 +1387,9 @@ public class Eth72ProtocolHandler(
                 return;
             }
 
-            if (remainingMask.IsEmpty)
+            // An entry that still owes an announcement restore outlives the cells it was parked for,
+            // otherwise placing the request elsewhere would drop the provider permanently.
+            if (remainingMask.IsEmpty && state.RestoreMask.IsEmpty)
             {
                 RemovePendingCellRequestLocked(hash);
                 return;
@@ -1379,6 +1430,30 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
+    /// <summary>Retires a pending entry's announcement restore once it has been recorded.</summary>
+    /// <remarks>
+    /// The restore is recorded outside <c>_cellStateLock</c>, so a concurrent response can strip the
+    /// announcement again and re-park the very same mask meanwhile. Differencing the masks would not
+    /// see that, so the epoch captured before the restore is what decides: a mismatch means a newer
+    /// restore is owed and this one must not clear it.
+    /// </remarks>
+    private void ClearPendingCellRestoreLocked(ValueHash256 hash, long expectedRestoreEpoch)
+    {
+        ref CellRequestState state = ref CollectionsMarshal.GetValueRefOrNullRef(_pendingCellRequests, hash);
+        if (Unsafe.IsNullRef(ref state) || state.RestoreEpoch != expectedRestoreEpoch)
+        {
+            return;
+        }
+
+        if (state.Mask.IsEmpty)
+        {
+            RemovePendingCellRequestLocked(hash);
+            return;
+        }
+
+        state = state with { RestoreMask = BlobCellMask.Empty, RestoreEpoch = NoRestoreEpoch };
+    }
+
     private void RemovePendingCellRequestLocked(ValueHash256 hash)
     {
         if (_pendingCellRequests.Remove(hash, out CellRequestState state))
@@ -1391,7 +1466,7 @@ public class Eth72ProtocolHandler(
     private void MaintainSparseBlobState(DateTimeOffset now)
     {
         List<SentCellRequest>? expiredSentRequests = null;
-        List<(ValueHash256 Hash, BlobCellMask Mask)>? dueAnnouncementRestores = null;
+        List<(ValueHash256 Hash, BlobCellMask RestoreMask, long RestoreEpoch)>? dueRetries = null;
         List<ValueHash256>? expiredPendingKeys = null;
         List<ValueHash256>? expiredSentKeys = null;
         List<long>? expiredCorrelationKeys = null;
@@ -1402,12 +1477,16 @@ public class Eth72ProtocolHandler(
                 if (entry.Value.ExpiresAt <= now)
                 {
                     (expiredPendingKeys ??= []).Add(entry.Key);
+                    // Expiry must not swallow an announcement we took away: a restore the registry
+                    // kept refusing gets one final attempt on the way out.
+                    if (!entry.Value.RestoreMask.IsEmpty)
+                    {
+                        (dueRetries ??= []).Add((entry.Key, entry.Value.RestoreMask, entry.Value.RestoreEpoch));
+                    }
                 }
-                else if (entry.Value.RestoreAnnouncement
-                    && entry.Value.RetryAt is { } retryAt
-                    && retryAt <= now)
+                else if (entry.Value.RetryAt is { } retryAt && retryAt <= now)
                 {
-                    (dueAnnouncementRestores ??= []).Add((entry.Key, entry.Value.Mask));
+                    (dueRetries ??= []).Add((entry.Key, entry.Value.RestoreMask, entry.Value.RestoreEpoch));
                 }
             }
 
@@ -1461,13 +1540,23 @@ public class Eth72ProtocolHandler(
             TrimSentCellRequests();
         }
 
-        if (dueAnnouncementRestores is not null)
+        if (dueRetries is not null)
         {
-            for (int i = 0; i < dueAnnouncementRestores.Count; i++)
+            for (int i = 0; i < dueRetries.Count; i++)
             {
-                (ValueHash256 key, BlobCellMask mask) = dueAnnouncementRestores[i];
+                (ValueHash256 key, BlobCellMask restoreMask, long restoreEpoch) = dueRetries[i];
                 Hash256 hash = key.ToHash256();
-                _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, mask);
+                // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
+                // peer is at its announcement cap or the transaction is quarantined, and dropping the
+                // mask there would lose the provider for good.
+                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
+                {
+                    lock (_cellStateLock)
+                    {
+                        ClearPendingCellRestoreLocked(key, restoreEpoch);
+                    }
+                }
+
                 TryRequestPendingCells(hash);
             }
         }
@@ -1476,7 +1565,7 @@ public class Eth72ProtocolHandler(
         {
             for (int i = 0; i < expiredSentRequests.Count; i++)
             {
-                RequeueClaimedCellRequest(expiredSentRequests[i], removePeer: false);
+                RequeueClaimedCellRequest(expiredSentRequests[i], CellRequeueReason.PeerUnanswered);
             }
         }
     }
@@ -1793,7 +1882,21 @@ public class Eth72ProtocolHandler(
         long RequestId,
         DateTimeOffset ExpiresAt,
         DateTimeOffset? RetryAt,
-        bool RestoreAnnouncement);
+        BlobCellMask RestoreMask,
+        long RestoreEpoch);
+
+    /// <summary>Why an in-flight cell request is being returned to the pending queue.</summary>
+    private enum CellRequeueReason
+    {
+        /// <summary>The peer answered with none of the requested cells, or missed its deadline.</summary>
+        PeerUnanswered,
+
+        /// <summary>The response was dropped locally, e.g. the background scheduler was saturated.</summary>
+        LocalBackpressure,
+
+        /// <summary>The peer broke the protocol and is being disconnected.</summary>
+        PeerFault,
+    }
 
     private readonly record struct CellStateKey(ValueHash256 Hash, long Revision);
 
