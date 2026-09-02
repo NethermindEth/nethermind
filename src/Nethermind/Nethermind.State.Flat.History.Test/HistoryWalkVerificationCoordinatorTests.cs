@@ -9,6 +9,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -94,6 +95,23 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(verdict!.Verified, Is.True);
             Assert.That(verdict!.Mismatches, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void WalkResources_UseTheCoresLeftAfterTheNodeAndTheMemoryTheBudgetLeaves()
+    {
+        FlatDbConfig auto = new() { HistoryEnabled = true };
+        WalkResources roomy = WalkResources.Resolve(auto, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 4L << 30);
+        WalkResources tight = WalkResources.Resolve(auto, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 26L << 30);
+        WalkResources pinned = WalkResources.Resolve(new FlatDbConfig { HistoryEnabled = true, HistoryVerifySegments = 3, HistoryVerifyMaxRows = 100 }, processorCount: 8, totalMemoryBytes: 32L << 30, workingSetBytes: 4L << 30);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roomy.Workers, Is.EqualTo(6), "two cores stay with block processing; memory allows the rest");
+            Assert.That(roomy.RowsPerPartition, Is.EqualTo(WalkResources.DefaultRowsPerPartition));
+            Assert.That(tight.Workers, Is.EqualTo(1), "with two gigabytes of headroom only one worker fits its budget, never zero");
+            Assert.That((pinned.Workers, pinned.RowsPerPartition), Is.EqualTo((3, 100L)), "explicit settings are honoured as given");
         }
     }
 

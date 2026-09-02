@@ -40,10 +40,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only. Memory is bounded by FlatDb.HistoryVerifyMaxRows per worker, not by state size.", DefaultValue = "false")]
     bool HistoryVerifyEveryBlock { get; set; }
 
-    [ConfigItem(Description = "Concurrent workers of the every-block history verification. Each worker replays one trie subtree at a time from its own contiguous rows, so workers share nothing but the read-only columns; the count changes memory and wall clock, never the result. 0 means half the processor count.", DefaultValue = "0")]
+    [ConfigItem(Description = "Concurrent workers of the every-block history verification. Each worker replays one trie subtree at a time from its own contiguous rows, so workers share nothing but the read-only columns; the count changes memory and wall clock, never the result. 0 sizes it from the machine: the processor count minus two cores kept for block processing, capped by the memory headroom the row budget leaves.", DefaultValue = "0")]
     int HistoryVerifySegments { get; set; }
 
-    [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Budget about one kilobyte of memory per row, replayed trie included, times FlatDb.HistoryVerifySegments. 0 uses the built-in default of 2 million.", DefaultValue = "0")]
+    [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]

@@ -124,7 +124,8 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         long now = Stopwatch.GetTimestamp();
         double seconds = Stopwatch.GetElapsedTime(_lastReportAt, now).TotalSeconds;
         long replayed = Volatile.Read(ref _blocksReplayed);
-        double blocksPerSecond = seconds > 0 ? (replayed - _lastBlocksReplayed) / seconds : 0;
+        double stepsPerSecond = seconds > 0 ? (replayed - _lastBlocksReplayed) / seconds : 0;
+        double blocksPerSecond = stepsPerSecond / items;
         _lastBlocksReplayed = replayed;
         _lastReportAt = now;
 
@@ -132,7 +133,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         long doneThisRun = done - _startingUnits;
         string eta = doneThisRun <= 0 ? "n/a" : Format(elapsed * (total - done) / doneThisRun);
 
-        return $"{"History walk",ProgressLogger.PrefixAlignment}{Volatile.Read(ref _completed),ProgressLogger.BlockPaddingLength:N0} / {items,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {blocksPerSecond,ProgressLogger.SpeedPaddingLength:N0} blk/s | ETA {eta} | {GC.GetTotalMemory(false) >> 20:N0} MB managed{inFlight}";
+        return $"{"History walk",ProgressLogger.PrefixAlignment}{Volatile.Read(ref _completed),ProgressLogger.BlockPaddingLength:N0} / {items,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {blocksPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s ({stepsPerSecond:N0} subtree steps/s) | ETA {eta} | {GC.GetTotalMemory(false) >> 20:N0} MB managed{inFlight}";
     }
 
     private static string Name(int item) => item < 256 ? $"accounts 0x{item:x2}" : $"storage 0x{item - 256:x2}";

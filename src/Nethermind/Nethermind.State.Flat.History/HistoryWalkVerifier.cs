@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryWalkVerifier
 {
-    public const long DefaultMaxRowsPerPartition = 2_000_000;
+    public const long DefaultMaxRowsPerPartition = WalkResources.DefaultRowsPerPartition;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly IHistoryHeaderSource _headers;
@@ -65,13 +65,7 @@ public sealed class HistoryWalkVerifier
         ArgumentNullException.ThrowIfNull(rowFormat);
         ArgumentNullException.ThrowIfNull(logManager);
 
-        if (rowFormat.IsV3)
-        {
-            throw new InvalidConfigurationException(
-                "The every-block walk verifier only supports an unwindowed (v2) history: v2 rows are post-values a " +
-                "forward walk can apply directly, while a windowed database stores pre-values, carries no rows at " +
-                "all for unchanged keys, and has pruned the ancestry a genesis-anchored walk needs.", -1);
-        }
+        RequireUnwindowed(rowFormat);
 
         _history = history;
         _headers = headers;
@@ -80,6 +74,16 @@ public sealed class HistoryWalkVerifier
         _logManager = logManager;
         _maxRowsPerPartition = maxRowsPerPartition > 0 ? maxRowsPerPartition : DefaultMaxRowsPerPartition;
         _emitterSource = emitterSource;
+    }
+
+    public static void RequireUnwindowed(HistoryRowFormat rowFormat)
+    {
+        if (!rowFormat.IsV3) return;
+
+        throw new InvalidConfigurationException(
+            "The every-block walk verifier only supports an unwindowed (v2) history: v2 rows are post-values a " +
+            "forward walk can apply directly, while a windowed database stores pre-values, carries no rows at " +
+            "all for unchanged keys, and has pruned the ancestry a genesis-anchored walk needs.", -1);
     }
 
     public HistoryWalkVerdict VerifyRange(ulong fromInclusive, ulong toInclusive, CancellationToken token) =>

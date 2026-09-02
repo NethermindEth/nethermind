@@ -7,6 +7,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
 
 namespace Nethermind.State.Flat.History;
 
@@ -23,7 +24,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
     private readonly HistoryAvailability _availability;
     private readonly IFlatDbConfig _config;
-    private readonly HistoryWalkVerifier? _verifier;
+    private readonly Func<long, HistoryWalkVerifier>? _verifierFactory;
     private readonly ArchiveProofRetrofit? _retrofit;
     private readonly CommitmentMetadata _metadata;
     private readonly ILogger _logger;
@@ -71,9 +72,11 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         // Constructed only when the flag is on: the verifier refuses a windowed database in its constructor, and
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
         // never on a windowed node that left the flag alone.
-        _verifier = Started
-            ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, config.HistoryVerifyMaxRows, _retrofit)
-            : null;
+        if (Started)
+        {
+            HistoryWalkVerifier.RequireUnwindowed(rowFormat);
+            _verifierFactory = rows => new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, rows, _retrofit);
+        }
     }
 
     /// <summary>Launches the background verification. Called by the startup step, never from the constructor, so
@@ -103,9 +106,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
             {
                 if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
                 {
-                    int workers = _config.HistoryVerifySegments > 0
-                        ? _config.HistoryVerifySegments
-                        : Math.Max(1, Environment.ProcessorCount / 2);
+                    WalkResources resources = WalkResources.Resolve(_config);
+                    int workers = resources.Workers;
+                    HistoryWalkVerifier verifier = _verifierFactory!(resources.RowsPerPartition);
+                    if (_logger.IsInfo) _logger.Info($"History walk sized for this machine: {resources}.");
 
                     ulong from = 0;
                     ulong to = watermark;
@@ -125,7 +129,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                         long startedAt = Stopwatch.GetTimestamp();
                         ulong rangeFrom = from;
                         ulong rangeTo = to;
-                        HistoryWalkVerdict verdict = await Task.Run(() => _verifier!.VerifyRangeParallel(rangeFrom, rangeTo, workers, token), token);
+                        HistoryWalkVerdict verdict = await Task.Run(() => verifier.VerifyRangeParallel(rangeFrom, rangeTo, workers, token), token);
                         Volatile.Write(ref _verdict, verdict);
                         TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
 
