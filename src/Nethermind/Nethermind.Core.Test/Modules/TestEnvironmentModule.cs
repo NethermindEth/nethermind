@@ -14,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
