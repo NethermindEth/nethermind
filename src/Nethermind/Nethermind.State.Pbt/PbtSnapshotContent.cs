@@ -12,22 +12,50 @@ namespace Nethermind.State.Pbt;
 /// <summary>One immutable-at-seal diff layer of canonical EIP-8297 leaves, compressed nodes, and code references.</summary>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
-    internal readonly ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
-    internal readonly ConcurrentDictionary<PbtFullKey, byte[]?> Nodes = new();
+    private readonly Lock _treeLock = new();
+
+    internal ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
+    internal ConcurrentDictionary<PbtNodeLocator, byte[]?> Nodes = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        Leaves[key] = value is null || value.Value == default ? null : value;
+        lock (_treeLock) Leaves[key] = value is null || value.Value == default ? null : value;
     }
 
-    internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value) => Leaves.TryGetValue(key, out value);
+    internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value)
+    {
+        lock (_treeLock) return Leaves.TryGetValue(key, out value);
+    }
 
-    internal void SetNode(PbtFullKey locator, ReadOnlySpan<byte> encoding) =>
-        Nodes[locator] = encoding.IsEmpty ? null : encoding.ToArray();
+    internal void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding)
+    {
+        byte[]? ownedEncoding = encoding.IsEmpty ? null : encoding.ToArray();
+        lock (_treeLock) Nodes[locator] = ownedEncoding;
+    }
 
-    internal bool TryGetNode(PbtFullKey locator, out byte[]? encoding) => Nodes.TryGetValue(locator, out encoding);
+    internal bool TryGetNode(PbtNodeLocator locator, out byte[]? encoding)
+    {
+        lock (_treeLock) return Nodes.TryGetValue(locator, out encoding);
+    }
+
+    internal void ApplyTreeMutations(
+        IReadOnlyList<PbtLeafMutation> leafMutations,
+        IReadOnlyList<PbtNodeMutation> nodeMutations)
+    {
+        lock (_treeLock)
+        {
+            ConcurrentDictionary<PbtFullKey, ValueHash256?> leaves = new(Leaves);
+            ConcurrentDictionary<PbtNodeLocator, byte[]?> nodes = new(Nodes);
+            foreach (PbtLeafMutation mutation in leafMutations)
+                leaves[mutation.Key] = mutation.Value is null || mutation.Value.Value == default ? null : mutation.Value;
+            foreach (PbtNodeMutation mutation in nodeMutations)
+                nodes[mutation.Locator] = mutation.Encoding is null ? null : (byte[])mutation.Encoding.Clone();
+            Leaves = leaves;
+            Nodes = nodes;
+        }
+    }
 
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => CodeReferences[codeHash] = referenceCount;
 
@@ -36,8 +64,11 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        Leaves.NoLockClear();
-        Nodes.NoLockClear();
+        lock (_treeLock)
+        {
+            Leaves.NoLockClear();
+            Nodes.NoLockClear();
+        }
         CodeReferences.NoLockClear();
     }
 
@@ -50,9 +81,9 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             leafBytes += key.Length + (value is null ? 0 : ValueHash256.MemorySize);
         }
 
-        foreach ((PbtFullKey locator, byte[]? node) in Nodes)
+        foreach ((PbtNodeLocator locator, byte[]? node) in Nodes)
         {
-            nodeBytes += locator.Length + (node?.Length ?? 0);
+            nodeBytes += locator.Encode().Length + (node?.Length ?? 0);
         }
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));

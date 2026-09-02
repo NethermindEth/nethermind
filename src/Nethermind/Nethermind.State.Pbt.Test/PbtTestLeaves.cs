@@ -56,23 +56,6 @@ internal static class PbtTestLeaves
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
         into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
 
-    /// <summary>Lays <paramref name="leaves"/> out as one stem's leaves-only blob, the way a bulk load writes one.</summary>
-    /// <param name="leaves">Sub-index and its value, which is left-padded to the 32-byte leaf as the storage columns hand them over.</param>
-    public static byte[] Blob(params (byte SubIndex, byte[] Value)[] leaves)
-    {
-        IPbtStemChanges changes = PbtStemChanges.Rent();
-        foreach ((byte subIndex, byte[] value) in leaves)
-        {
-            ValueHash256 leaf = default;
-            value.CopyTo(leaf.BytesAsSpan[(ValueHash256.MemorySize - value.Length)..]);
-            changes = changes.Set(subIndex, leaf);
-        }
-
-        byte[] blob = StemLeafBlob.ApplyNoHash([], changes);
-        PbtStemChanges.Return(changes);
-        return blob;
-    }
-
     /// <summary>Orders leaves by their complete EIP-8297 keys.</summary>
     public static void SortByTreeKey(List<RebuildEntry> leaves) =>
         leaves.Sort(static (a, b) => a.Key.CompareTo(b.Key));

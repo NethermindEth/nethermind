@@ -31,7 +31,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new();
     public IPbtResourcePool ResourcePool { get; }
-    public PbtStoreCache StoreCache { get; }
     public IDb MetadataDb { get; } = new MemDb();
     public PbtCompactionSchedule Schedule { get; }
     public PbtSnapshotCompactor Compactor { get; }
@@ -57,25 +56,23 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, new PbtConfig()), new TestProcessExitSource(_cts));
         Persistence = _cachedReaderPersistence;
         ResourcePool = new PbtResourcePool(Config);
-        StoreCache = new PbtStoreCache(Config);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Compactor, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, StoreCache, Config, new MetricsConfig()), Config, TrieWarmer, CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, new MetricsConfig()), TrieWarmer, CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
         new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            Config.TrieNodeLayout, Config.RootFoldConcurrency, TrieWarmer);
+            TrieWarmer);
 
     public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
         await Manager.DisposeAsync();
         await _cachedReaderPersistence.DisposeAsync();
-        StoreCache.Dispose();
         _cts.Dispose();
     }
 

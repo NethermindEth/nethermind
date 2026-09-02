@@ -14,6 +14,7 @@ public interface IPbtPersistence
     IReader CreateReader();
 
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags);
+    IWriteBatch CreateStagingWriteBatch(WriteFlags flags);
 
     void Flush();
 
@@ -26,8 +27,8 @@ public interface IPbtPersistence
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves();
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix);
 
-        byte[]? GetNode(PbtFullKey locator);
-        IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes();
+        byte[]? GetNode(PbtNodeLocator locator);
+        IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }
@@ -35,7 +36,8 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetLeaf(PbtFullKey key, ValueHash256? value);
-        void SetNode(PbtFullKey locator, ReadOnlySpan<byte> encoding);
+        void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding);
         void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
+        void Commit();
     }
 }

@@ -31,7 +31,6 @@ public class PbtMirrorModule(IPbtConfig config) : Module
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // A second pool would halve cache hit rates.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<PbtStoreCache>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
             .AddSingleton<PbtCompactionSchedule>()
@@ -65,7 +64,6 @@ public class PbtMirrorModule(IPbtConfig config) : Module
                         : new PbtMirrorScopeProvider(
                             worldStateScopeProvider,
                             ctx.Resolve<IPbtDbManager>(),
-                            ctx.Resolve<IPbtResourcePool>(),
-                            ctx.Resolve<IPbtConfig>()));
+                            ctx.Resolve<IPbtResourcePool>()));
     }
 }

@@ -19,13 +19,14 @@ public class PbtColumnRoutingTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        PbtFullKey node = new([0x01, 0x02]);
+        PbtNodeLocator node = new([0xA0], 3);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {
             batch.SetLeaf(leaf, value);
             batch.SetNode(node, [0x11]);
+            batch.Commit();
         }
 
         using IPbtPersistence.IReader reader = persistence.CreateReader();

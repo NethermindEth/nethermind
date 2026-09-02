@@ -52,7 +52,12 @@ public sealed class PbtSnapshotBundle(
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetLeaf(key, value);
 
-    internal byte[]? GetNode(PbtFullKey locator)
+    internal void ApplyTreeMutations(
+        IReadOnlyList<PbtLeafMutation> leafMutations,
+        IReadOnlyList<PbtNodeMutation> nodeMutations) =>
+        WriteBuffer.ApplyTreeMutations(leafMutations, nodeMutations);
+
+    internal byte[]? GetNode(PbtNodeLocator locator)
     {
         if (WriteBuffer.TryGetNode(locator, out byte[]? encoding)) return encoding;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -76,6 +81,8 @@ public sealed class PbtSnapshotBundle(
 
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) =>
         WriteBuffer.SetCodeReference(codeHash, referenceCount);
+
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256?>> PendingLeafMutations() => WriteBuffer.Leaves;
 
     internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => EnumerateLeavesCore(null);
 
@@ -104,18 +111,18 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes()
+    internal IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
     {
-        SortedDictionary<PbtFullKey, byte[]?> visible = [];
-        foreach ((PbtFullKey locator, byte[] encoding) in readOnlyBundle.EnumerateNodes()) visible[locator] = encoding;
+        SortedDictionary<PbtNodeLocator, byte[]?> visible = [];
+        foreach ((PbtNodeLocator locator, byte[] encoding) in readOnlyBundle.EnumerateNodes()) visible[locator] = encoding;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach ((PbtFullKey locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
+            foreach ((PbtNodeLocator locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
         }
-        foreach ((PbtFullKey locator, byte[]? encoding) in WriteBuffer.Nodes) visible[locator] = encoding;
-        foreach ((PbtFullKey locator, byte[]? encoding) in visible)
+        foreach ((PbtNodeLocator locator, byte[]? encoding) in WriteBuffer.Nodes) visible[locator] = encoding;
+        foreach ((PbtNodeLocator locator, byte[]? encoding) in visible)
         {
-            if (encoding is not null) yield return new KeyValuePair<PbtFullKey, byte[]>(locator, encoding);
+            if (encoding is not null) yield return new KeyValuePair<PbtNodeLocator, byte[]>(locator, encoding);
         }
     }
 
@@ -128,22 +135,6 @@ public sealed class PbtSnapshotBundle(
     internal void DeletePrefix(PbtFullKey prefix)
     {
         foreach ((PbtFullKey key, _) in EnumerateLeaves(prefix)) WriteBuffer.SetLeaf(key, null);
-    }
-
-    internal void ReplaceNodes(IReadOnlyList<PbtEncodedNode> nodes)
-    {
-        SortedDictionary<PbtFullKey, byte[]> replacement = [];
-        foreach (PbtEncodedNode node in nodes)
-        {
-            PbtFullKey locator = new(node.LocatorEncoding.Span);
-            replacement[locator] = node.NodeEncoding.ToArray();
-        }
-
-        foreach ((PbtFullKey locator, _) in EnumerateNodes())
-        {
-            if (!replacement.ContainsKey(locator)) WriteBuffer.SetNode(locator, []);
-        }
-        foreach ((PbtFullKey locator, byte[] encoding) in replacement) WriteBuffer.SetNode(locator, encoding);
     }
 
     public Account? GetAccount(Address address)

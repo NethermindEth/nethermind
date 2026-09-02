@@ -32,10 +32,12 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).Root;
         if (report.InvalidLeafCount == 0)
         {
-            PbtCanonicalBuildResult rebuilt = PbtCanonicalTree.RebuildWithNodes(leaves);
-            report.ComputedRoot = rebuilt.RootHash;
+            PbtWriteBatch changes = new();
+            foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
+            PbtPhysicalNodeStore nodeStore = new(PbtNodeLayout.Record);
+            report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes);
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
-            ScanNodes(report, rebuilt.Nodes, cancellationToken);
+            ScanNodes(report, nodeStore.EnumerateRecords(), cancellationToken);
         }
         else
         {
@@ -72,7 +74,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         }
     }
 
-    private void ScanNodes(PbtScanReport report, IReadOnlyList<PbtEncodedNode> expectedNodes, CancellationToken cancellationToken)
+    private void ScanNodes(PbtScanReport report, IReadOnlyList<PbtNodeRecord> expectedNodes, CancellationToken cancellationToken)
     {
         IDb column = db.GetColumnDb(PbtColumns.CompressedNodes);
         if (column is not ISortedKeyValueStore sorted)
@@ -89,8 +91,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             report.NodeKeyBytes += view.CurrentKey.Length;
             report.NodeBytes += view.CurrentValue.Length;
             if (expectedIndex >= expectedNodes.Count ||
-                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].LocatorEncoding.Span) ||
-                !view.CurrentValue.SequenceEqual(expectedNodes[expectedIndex].NodeEncoding.Span))
+                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].Locator.Encode()) ||
+                !view.CurrentValue.SequenceEqual(expectedNodes[expectedIndex].Encoding.Span))
             {
                 report.InvalidNodeCount++;
             }

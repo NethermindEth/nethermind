@@ -48,8 +48,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        PbtTrieLayout writeLayout,
-        int rootFoldConcurrency,
         ITrieWarmer trieWarmer)
     {
         _currentStateId = currentStateId;
@@ -149,9 +147,13 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             else ApplyAccount(address, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
         }
         long start = Stopwatch.GetTimestamp();
-        PbtCanonicalBuildResult result = PbtCanonicalTree.RebuildWithNodes(Bundle.EnumerateLeaves());
-        Bundle.ReplaceNodes(result.Nodes);
-        _treeRoot = result.RootHash;
+        PbtWriteBatch changes = new();
+        foreach ((PbtFullKey key, ValueHash256? value) in Bundle.PendingLeafMutations())
+        {
+            if (value is null) changes.Delete(key);
+            else changes.Set(key, value.Value);
+        }
+        _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();

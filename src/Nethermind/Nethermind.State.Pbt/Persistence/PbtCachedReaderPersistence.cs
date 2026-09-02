@@ -21,7 +21,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
     private readonly Task _clearWorker;
     private SharedReader? _cachedReader;
     private int _pinDepth;
-    private bool _refreshPending;
     private int _isDisposed;
 
     public PbtCachedReaderPersistence(IPbtPersistence inner, IProcessExitSource processExitSource)
@@ -50,10 +49,12 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         }
         catch
         {
-            ReleaseReaderCachePin(refresh: false);
+            ReleaseReaderCachePin();
             throw;
         }
     }
+
+    public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) => _inner.CreateStagingWriteBatch(flags);
 
     public void Flush() => _inner.Flush();
 
@@ -64,27 +65,17 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         _pinDepth++;
     }
 
-    private void ReleaseReaderCachePin(bool refresh)
+    private void ReleaseReaderCachePin()
     {
-        SharedReader? stale = null;
-        try
-        {
-            using Lock.Scope _ = _cacheLock.EnterScope();
-            _refreshPending |= refresh;
-            if (--_pinDepth == 0)
-            {
-                if (_refreshPending && Volatile.Read(ref _isDisposed) == 0)
-                {
-                    stale = Unpublish();
-                    _cachedReader = new SharedReader(_inner.CreateReader());
-                }
-                _refreshPending = false;
-            }
-        }
-        finally
-        {
-            stale?.Dispose();
-        }
+        using Lock.Scope _ = _cacheLock.EnterScope();
+        _pinDepth--;
+    }
+
+    private void PublishCommittedState()
+    {
+        SharedReader? stale;
+        using (_cacheLock.EnterScope()) stale = Unpublish();
+        stale?.Dispose();
     }
 
     private void ClearReaderCache()
@@ -134,8 +125,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public ValueHash256? GetLeaf(PbtFullKey key) => inner.GetLeaf(key);
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => inner.EnumerateLeaves();
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => inner.EnumerateLeaves(prefix);
-        public byte[]? GetNode(PbtFullKey locator) => inner.GetNode(locator);
-        public IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes() => inner.EnumerateNodes();
+        public byte[]? GetNode(PbtNodeLocator locator) => inner.GetNode(locator);
+        public IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes() => inner.EnumerateNodes();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
@@ -143,20 +134,35 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
     private sealed class CacheClearingWriteBatch(IPbtPersistence.IWriteBatch inner, PbtCachedReaderPersistence parent) : IPbtPersistence.IWriteBatch
     {
-        private int _disposed;
+        private readonly Lock _stateLock = new();
+        private bool _commitAttempted;
+        private bool _disposed;
+
         public void SetLeaf(PbtFullKey key, ValueHash256? value) => inner.SetLeaf(key, value);
-        public void SetNode(PbtFullKey locator, ReadOnlySpan<byte> encoding) => inner.SetNode(locator, encoding);
+        public void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding) => inner.SetNode(locator, encoding);
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => inner.SetCodeReference(codeHash, referenceCount);
+
+        public void Commit()
+        {
+            using Lock.Scope _ = _stateLock.EnterScope();
+            if (_disposed || _commitAttempted) return;
+            _commitAttempted = true;
+            inner.Commit();
+            parent.PublishCommittedState();
+        }
+
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+            using Lock.Scope _ = _stateLock.EnterScope();
+            if (_disposed) return;
+            _disposed = true;
             try
             {
                 inner.Dispose();
             }
             finally
             {
-                parent.ReleaseReaderCachePin(refresh: true);
+                parent.ReleaseReaderCachePin();
             }
         }
     }

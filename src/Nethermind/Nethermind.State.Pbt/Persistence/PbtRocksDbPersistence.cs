@@ -10,50 +10,71 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Persistence;
 
 /// <summary><see cref="IPbtPersistence"/> backed by canonical PBT columns.</summary>
-public class PbtRocksDbPersistence : IPbtPersistence
+public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config) : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
+    private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    private const int SchemaEpoch = 7;
+    private const int SchemaEpoch = 8;
+    private const byte ValidState = 1;
 
-    private readonly IColumnsDb<PbtColumns> _db;
+    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
 
-    public PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
+    internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
+
+    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
-        _db = db;
-        EnsureSchema(db);
+        EnsureSchema(db, allowInterruptedImport);
+        return db;
     }
 
-    private static void EnsureSchema(IColumnsDb<PbtColumns> db)
+    private static void EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        byte[]? stored = metadata.Get(SchemaEpochKey);
-        if (stored is not null)
+        byte[]? storedEpoch = metadata.Get(SchemaEpochKey);
+        byte[]? storedCurrentState = metadata.Get(CurrentStateKey);
+        byte[]? storedValidity = metadata.Get(ValidStateKey);
+
+        if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
+            throw new InvalidDataException("Malformed PBT schema epoch. Delete the pbt database and rebuild or re-import.");
+        ValidateCurrentState(storedCurrentState);
+        ValidateValidity(storedValidity);
+
+        if (storedEpoch is null)
         {
-            if (stored.Length != sizeof(int)) throw new InvalidDataException("Malformed PBT schema epoch.");
-            int epoch = BinaryPrimitives.ReadInt32BigEndian(stored);
-            if (epoch != SchemaEpoch)
+            if (storedCurrentState is not null || storedValidity is not null || HasPopulatedDataColumn(db))
             {
-                throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Delete the pbt database and re-import.");
+                throw new InvalidDataException($"The populated pbt database has no schema epoch {SchemaEpoch} stamp. Delete the pbt database and rebuild or re-import.");
             }
-            ValidateCurrentState(metadata.Get(CurrentStateKey));
+
+            Span<byte> value = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
+            metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
             return;
         }
 
-        if (HasPopulatedColumn(db))
+        int epoch = BinaryPrimitives.ReadInt32BigEndian(storedEpoch);
+        if (epoch != SchemaEpoch)
         {
-            throw new InvalidDataException($"The populated pbt database has no schema epoch {SchemaEpoch} stamp. Delete the pbt database and re-import.");
+            throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Delete the pbt database and re-import.");
         }
 
-        Span<byte> value = stackalloc byte[sizeof(int)];
-        BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
-        metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
+        if ((storedCurrentState is null) != (storedValidity is null))
+        {
+            throw new InvalidDataException("The PBT validity marker and current-state metadata are inconsistent. Delete the pbt database and rebuild or re-import.");
+        }
+
+        if (storedValidity is not null) return;
+
+        if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
+        {
+            throw new InvalidDataException("The epoch-8 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
+        }
     }
 
-    private static bool HasPopulatedColumn(IColumnsDb<PbtColumns> db)
+    private static bool HasPopulatedDataColumn(IColumnsDb<PbtColumns> db)
     {
-        if (db.GetColumnDb(PbtColumns.Metadata).Get(CurrentStateKey) is not null) return true;
         PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.CompressedNodes, PbtColumns.CodeReferences,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes];
@@ -70,8 +91,11 @@ public class PbtRocksDbPersistence : IPbtPersistence
     {
         StateId current = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (current != from) throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {current}");
-        return new WriteBatch(_db, to, treeRoot, flags);
+        return new WriteBatch(_db, to, treeRoot, flags, publishState: true);
     }
+
+    public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
+        new WriteBatch(_db, default, default, flags, publishState: false);
 
     public void Flush() => _db.Flush();
 
@@ -86,7 +110,17 @@ public class PbtRocksDbPersistence : IPbtPersistence
 
     private static void ValidateCurrentState(byte[]? value)
     {
-        if (value is not null && value.Length != CurrentStateLength) throw new InvalidDataException("Malformed PBT current-state metadata.");
+        if (value is not null && value.Length != CurrentStateLength)
+            throw new InvalidDataException("Malformed PBT current-state metadata. Delete the pbt database and rebuild or re-import.");
+    }
+
+    private static void ValidateValidity(byte[]? value)
+    {
+        if (value is not [ValidState])
+        {
+            if (value is not null)
+                throw new InvalidDataException("Malformed PBT validity metadata. Delete the pbt database and rebuild or re-import.");
+        }
     }
 
     private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
@@ -130,14 +164,14 @@ public class PbtRocksDbPersistence : IPbtPersistence
             }
         }
 
-        public byte[]? GetNode(PbtFullKey locator) => snapshot.GetColumn(PbtColumns.CompressedNodes).Get(locator.Bytes);
+        public byte[]? GetNode(PbtNodeLocator locator) => snapshot.GetColumn(PbtColumns.CompressedNodes).Get(locator.Encode());
 
-        public IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes()
+        public IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
         {
             ISortedKeyValueStore nodes = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.CompressedNodes);
             using ISortedView view = nodes.GetViewBetween([], [0xFF, 0xFF]);
             while (view.MoveNext())
-                yield return new KeyValuePair<PbtFullKey, byte[]>(new PbtFullKey(view.CurrentKey), view.CurrentValue.ToArray());
+                yield return new KeyValuePair<PbtNodeLocator, byte[]>(PbtNodeLocator.Decode(view.CurrentKey), view.CurrentValue.ToArray());
         }
 
         public ulong GetCodeReference(in ValueHash256 codeHash)
@@ -151,7 +185,12 @@ public class PbtRocksDbPersistence : IPbtPersistence
         public void Dispose() => snapshot.Dispose();
     }
 
-    private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, ValueHash256 root, WriteFlags flags) : IPbtPersistence.IWriteBatch
+    private sealed class WriteBatch(
+        IColumnsDb<PbtColumns> db,
+        StateId to,
+        ValueHash256 root,
+        WriteFlags flags,
+        bool publishState) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
@@ -162,11 +201,12 @@ public class PbtRocksDbPersistence : IPbtPersistence
             else leaves.PutSpan(key.Bytes, value.Value.Bytes, flags);
         }
 
-        public void SetNode(PbtFullKey locator, ReadOnlySpan<byte> encoding)
+        public void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding)
         {
             IWriteBatch nodes = _batch.GetColumnBatch(PbtColumns.CompressedNodes);
-            if (encoding.IsEmpty) nodes.Set(locator.Bytes, null, flags);
-            else nodes.PutSpan(locator.Bytes, encoding, flags);
+            byte[] key = locator.Encode();
+            if (encoding.IsEmpty) nodes.Set(key, null, flags);
+            else nodes.PutSpan(key, encoding, flags);
         }
 
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)
@@ -182,15 +222,32 @@ public class PbtRocksDbPersistence : IPbtPersistence
             references.PutSpan(codeHash.Bytes, value, flags);
         }
 
-        public void Dispose()
+        private bool _completed;
+
+        public void Commit()
         {
-            Span<byte> value = stackalloc byte[CurrentStateLength];
-            BinaryPrimitives.WriteUInt64BigEndian(value, to.BlockNumber);
-            to.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
-            root.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
-            _batch.GetColumnBatch(PbtColumns.Metadata).PutSpan(CurrentStateKey, value, flags);
+            if (_completed) return;
+            _completed = true;
+            if (publishState)
+            {
+                Span<byte> value = stackalloc byte[CurrentStateLength];
+                BinaryPrimitives.WriteUInt64BigEndian(value, to.BlockNumber);
+                to.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
+                root.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
+                IWriteBatch metadata = _batch.GetColumnBatch(PbtColumns.Metadata);
+                metadata.PutSpan(CurrentStateKey, value, flags);
+                metadata.PutSpan(ValidStateKey, [ValidState], flags);
+            }
             _batch.Dispose();
             if (!flags.HasFlag(WriteFlags.DisableWAL)) db.Flush(onlyWal: true);
+        }
+
+        public void Dispose()
+        {
+            if (_completed) return;
+            _completed = true;
+            _batch.Clear();
+            _batch.Dispose();
         }
     }
 }

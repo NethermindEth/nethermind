@@ -16,8 +16,6 @@ public class PbtScopeProvider(
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
     bool isReadOnly,
-    PbtTrieLayout writeLayout,
-    int rootFoldConcurrency,
     ITrieWarmer trieWarmer) : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
@@ -28,6 +26,6 @@ public class PbtScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId stateId = new(baseBlock);
-        return new PbtWorldStateScope(stateId, baseBlock, manager.GatherBundle(stateId, usage), _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, writeLayout, rootFoldConcurrency, _trieWarmer);
+        return new PbtWorldStateScope(stateId, baseBlock, manager.GatherBundle(stateId, usage), _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, _trieWarmer);
     }
 }

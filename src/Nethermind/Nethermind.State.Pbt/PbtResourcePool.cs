@@ -52,19 +52,6 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnPendingFlatWrites(Usage usage, PbtPendingFlatWrites pending) => _categories[usage].ReturnPendingFlatWrites(pending);
 
-    public PbtLeafBlobCache GetLeafBlobCache(Usage usage) => _categories[usage].GetLeafBlobCache();
-
-    public void ReturnLeafBlobCache(Usage usage, PbtLeafBlobCache cache) => _categories[usage].ReturnLeafBlobCache(cache);
-
-    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage)
-    {
-        PbtWriteBatchBuilder builder = _categories[usage].GetWriteBatchBuilder();
-        builder.RentedFrom(this, usage);
-        return builder;
-    }
-
-    public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
-
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
     /// Takes the width actually merged, never the configured compact size: a segment is also persisted
@@ -129,15 +116,10 @@ public class PbtResourcePool : IPbtResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writeBatchBuilderPoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // Only main and read-only scopes rent builders, so layer sizing does not apply.
-        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _builderPool = new(writeBatchBuilderPoolSize);
         // A scope holds one bundle for each builder, so these pools are equally sized.
         private readonly ConcurrentStackPool<PbtPendingFlatWrites> _pendingPool = new(writeBatchBuilderPoolSize);
-        private readonly ConcurrentStackPool<PbtLeafBlobCache> _leafCachePool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
-        private readonly PooledResourceLabel _builderLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
         private readonly PooledResourceLabel _pendingLabel = new(usage.ToString(), nameof(PbtPendingFlatWrites));
-        private readonly PooledResourceLabel _leafCacheLabel = new(usage.ToString(), nameof(PbtLeafBlobCache));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -180,45 +162,6 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.PbtCachedPooledResource[_pendingLabel] = _pendingPool.PooledItemCount;
         }
 
-        public PbtLeafBlobCache GetLeafBlobCache()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_leafCacheLabel, 1);
-            if (_leafCachePool.TryGet(out PbtLeafBlobCache? cache))
-            {
-                Metrics.PbtCachedPooledResource[_leafCacheLabel] = _leafCachePool.PooledItemCount;
-                return cache;
-            }
-
-            Metrics.PbtCreatedPooledResource.AddBy(_leafCacheLabel, 1);
-            return new PbtLeafBlobCache();
-        }
-
-        public void ReturnLeafBlobCache(PbtLeafBlobCache cache)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_leafCacheLabel, -1);
-            _leafCachePool.Return(cache);
-            Metrics.PbtCachedPooledResource[_leafCacheLabel] = _leafCachePool.PooledItemCount;
-        }
-
-        public PbtWriteBatchBuilder GetWriteBatchBuilder()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_builderLabel, 1);
-            if (_builderPool.TryGet(out PbtWriteBatchBuilder? builder))
-            {
-                Metrics.PbtCachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
-                return builder;
-            }
-
-            Metrics.PbtCreatedPooledResource.AddBy(_builderLabel, 1);
-            return new PbtWriteBatchBuilder();
-        }
-
-        public void ReturnWriteBatchBuilder(PbtWriteBatchBuilder builder)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_builderLabel, -1);
-            _builderPool.Return(builder);
-            Metrics.PbtCachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
-        }
     }
 
     public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels

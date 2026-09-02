@@ -34,7 +34,8 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(second, Is.SameAs(first));
         ctx.Inner.Received(1).CreateReader();
 
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None).Dispose();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None))
+            batch.Commit();
 
         using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
 
@@ -54,7 +55,8 @@ public class PbtCachedReaderPersistenceTests
 
         ctx.Reader.DidNotReceive().Dispose();
 
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None).Dispose();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None))
+            batch.Commit();
 
         ctx.Reader.DidNotReceive().Dispose();
 
@@ -63,9 +65,9 @@ public class PbtCachedReaderPersistenceTests
         ctx.Reader.Received(1).Dispose();
     }
 
-    /// <summary>Readers use the prepared snapshot during a batch, which is refreshed only after the batch completes.</summary>
+    /// <summary>Readers use the prepared snapshot until Commit publishes the new state.</summary>
     [Test]
-    public async Task Snapshot_IsPreparedBeforeTheWriteBatch_AndRefreshedAfterItCompletes()
+    public async Task Snapshot_IsPreparedBeforeTheWriteBatch_AndRefreshedImmediatelyAfterCommit()
     {
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
@@ -84,26 +86,23 @@ public class PbtCachedReaderPersistenceTests
         Assert.That(alsoDuringBatch, Is.SameAs(duringBatch));
         ctx.Inner.Received(1).CreateReader();
 
-        ctx.Batch.ClearReceivedCalls();
         ctx.Inner.ClearReceivedCalls();
-        batch.Dispose();
+        batch.Commit();
+        using IPbtPersistence.IReader afterCommitBeforeDispose = persistence.CreateReader();
 
-        Received.InOrder(() =>
-        {
-            ctx.Batch.Dispose();
-            ctx.Inner.CreateReader();
-        });
+        Assert.That(afterCommitBeforeDispose, Is.Not.SameAs(duringBatch));
         ctx.Inner.Received(1).CreateReader();
 
-        using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
+        batch.Dispose();
+        using IPbtPersistence.IReader afterDispose = persistence.CreateReader();
 
-        Assert.That(afterCommit, Is.Not.SameAs(duringBatch));
+        Assert.That(afterDispose, Is.SameAs(afterCommitBeforeDispose));
         ctx.Inner.Received(1).CreateReader();
     }
 
-    /// <summary>A snapshot becomes stale only after all writing batches close.</summary>
+    /// <summary>Overlapping batches release cache pins independently without changing publication visibility.</summary>
     [Test]
-    public async Task OverlappingWriteBatches_HoldTheSnapshot_UntilTheLastOneCloses()
+    public async Task OverlappingWriteBatches_RefreshOnCommit_AndReleasePinsIndependently()
     {
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
@@ -112,35 +111,69 @@ public class PbtCachedReaderPersistenceTests
         IPbtPersistence.IWriteBatch second = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
 
         using IPbtPersistence.IReader pinned = persistence.CreateReader();
+        first.Commit();
+        using IPbtPersistence.IReader afterFirstCommit = persistence.CreateReader();
+
+        Assert.That(afterFirstCommit, Is.Not.SameAs(pinned));
+
         first.Dispose();
-
-        using (IPbtPersistence.IReader stillPinned = persistence.CreateReader()) Assert.That(stillPinned, Is.SameAs(pinned));
-        ctx.Inner.Received(1).CreateReader();
-
         second.Dispose();
-        ctx.Inner.Received(2).CreateReader();
+        using IPbtPersistence.IReader afterBothDispose = persistence.CreateReader();
 
-        using IPbtPersistence.IReader afterLastCommit = persistence.CreateReader();
-
-        Assert.That(afterLastCommit, Is.Not.SameAs(pinned));
+        Assert.That(afterBothDispose, Is.SameAs(afterFirstCommit));
         ctx.Inner.Received(2).CreateReader();
     }
 
     [Test]
-    public async Task WriteBatch_ThatThrowsOnDispose_StillRefreshesTheSnapshot()
+    public async Task RepeatedCommitAndDispose_PublishAndReleaseOnlyOnce()
     {
         Context ctx = new();
-        ctx.Batch.When(static batch => batch.Dispose()).Do(static _ => throw new InvalidOperationException("flush failed"));
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+        batch.Commit();
+        batch.Commit();
+        batch.Dispose();
+        batch.Dispose();
+
+        ctx.Batch.Received(1).Commit();
+        ctx.Batch.Received(1).Dispose();
+        ctx.Inner.Received(1).CreateReader();
+    }
+
+    [Test]
+    public async Task DisposingUncommittedBatch_DoesNotRefreshTheSnapshot()
+    {
+        Context ctx = new();
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+
+        using IPbtPersistence.IReader beforeAbort = persistence.CreateReader();
+        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None).Dispose();
+        using IPbtPersistence.IReader afterAbort = persistence.CreateReader();
+
+        Assert.That(afterAbort, Is.SameAs(beforeAbort));
+        ctx.Batch.DidNotReceive().Commit();
+        ctx.Inner.Received(1).CreateReader();
+    }
+
+    [Test]
+    public async Task FailedCommit_DoesNotRefreshTheSnapshot_AndDisposeReleasesThePin()
+    {
+        Context ctx = new();
+        ctx.Batch.When(static batch => batch.Commit()).Do(static _ => throw new InvalidOperationException("commit failed"));
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
         using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
         IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
 
-        Assert.That(() => batch.Dispose(), Throws.InvalidOperationException);
-        using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
+        Assert.That(() => batch.Commit(), Throws.InvalidOperationException);
+        using IPbtPersistence.IReader afterFailedCommit = persistence.CreateReader();
+        Assert.That(afterFailedCommit, Is.SameAs(beforeCommit));
 
-        Assert.That(afterCommit, Is.Not.SameAs(beforeCommit));
-        ctx.Inner.Received(2).CreateReader();
+        batch.Dispose();
+        using IPbtPersistence.IReader afterDispose = persistence.CreateReader();
+        Assert.That(afterDispose, Is.SameAs(beforeCommit));
+        ctx.Inner.Received(1).CreateReader();
     }
 
     /// <summary>Disposing an unclaimed batch releases its cache pin.</summary>
@@ -157,11 +190,27 @@ public class PbtCachedReaderPersistenceTests
             Throws.InvalidOperationException);
 
         using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None).Dispose();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None))
+            batch.Commit();
 
         using IPbtPersistence.IReader afterCommit = persistence.CreateReader();
 
         Assert.That(afterCommit, Is.Not.SameAs(beforeCommit));
+    }
+
+    [Test]
+    public async Task Staging_write_does_not_publish_or_refresh_the_cached_reader()
+    {
+        Context ctx = new();
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+        using IPbtPersistence.IReader beforeStaging = persistence.CreateReader();
+
+        persistence.CreateStagingWriteBatch(WriteFlags.None).Dispose();
+
+        using IPbtPersistence.IReader afterStaging = persistence.CreateReader();
+        Assert.That(afterStaging, Is.SameAs(beforeStaging));
+        ctx.Inner.Received(1).CreateReader();
+        ctx.Inner.Received(1).CreateStagingWriteBatch(WriteFlags.None);
     }
 
     [Test]
@@ -196,6 +245,7 @@ public class PbtCachedReaderPersistenceTests
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
             Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
                 .Returns(Batch);
+            Inner.CreateStagingWriteBatch(Arg.Any<WriteFlags>()).Returns(Batch);
         }
 
         public PbtCachedReaderPersistence Build() => new(Inner, Substitute.For<IProcessExitSource>());

@@ -2,175 +2,102 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>
-/// Independent port of the EIP-8297 Python reference implementation used as a test oracle.
-/// </summary>
+/// <summary>Independent rebuild-from-entries oracle for the variable-length EIP-8297 tree.</summary>
 public sealed class EipReferenceTree
 {
-    private object? _root;
+    private readonly SortedDictionary<byte[], byte[]> _entries = new(ByteArrayComparer.Instance);
 
-    private sealed class RefStemNode(byte[] stem)
-    {
-        public byte[] Stem { get; } = stem;
-        public byte[]?[] Values { get; } = new byte[]?[256];
-    }
-
-    private sealed class RefInternalNode
-    {
-        public object? Left { get; set; }
-        public object? Right { get; set; }
-    }
-
+    /// <summary>Adds or replaces a complete key and its 32-byte value.</summary>
     public void Insert(ReadOnlySpan<byte> key, byte[] value)
     {
-        if (key.Length != 32 || value.Length != 32) throw new ArgumentException("key and value must be 32 bytes");
-        byte[] stem = key[..31].ToArray();
-        byte subIndex = key[31];
+        ArgumentNullException.ThrowIfNull(value);
+        if (key.Length is < 1 or > 8192) throw new ArgumentException("key must contain 1 through 8192 bytes", nameof(key));
+        if (value.Length != 32) throw new ArgumentException("value must be 32 bytes", nameof(value));
 
-        if (_root is null)
+        foreach (byte[] existing in _entries.Keys)
         {
-            RefStemNode stemNode = new(stem);
-            stemNode.Values[subIndex] = value;
-            _root = stemNode;
-            return;
-        }
-
-        _root = Insert(_root, stem, subIndex, value, 0);
-    }
-
-    private static object Insert(object? node, byte[] stem, byte subIndex, byte[] value, int depth)
-    {
-        if (node is null)
-        {
-            RefStemNode created = new(stem);
-            created.Values[subIndex] = value;
-            return created;
-        }
-
-        int[] stemBits = ToBits(stem);
-        if (node is RefStemNode stemNode)
-        {
-            if (stemNode.Stem.AsSpan().SequenceEqual(stem))
+            if (!existing.AsSpan().SequenceEqual(key) && (IsPrefix(existing, key) || IsPrefix(key, existing)))
             {
-                stemNode.Values[subIndex] = value;
-                return stemNode;
-            }
-
-            return SplitLeaf(stemNode, stemBits, ToBits(stemNode.Stem), subIndex, value, depth);
-        }
-
-        // Stem nodes may occur at depth 248; only internal nodes are invalid there.
-        if (depth >= 248) throw new InvalidOperationException("depth must be less than 248");
-
-        RefInternalNode internalNode = (RefInternalNode)node;
-        if (stemBits[depth] == 0)
-        {
-            internalNode.Left = Insert(internalNode.Left, stem, subIndex, value, depth + 1);
-        }
-        else
-        {
-            internalNode.Right = Insert(internalNode.Right, stem, subIndex, value, depth + 1);
-        }
-
-        return internalNode;
-    }
-
-    private static object SplitLeaf(RefStemNode leaf, int[] stemBits, int[] existingStemBits, byte subIndex, byte[] value, int depth)
-    {
-        RefInternalNode newInternal = new();
-        if (stemBits[depth] == existingStemBits[depth])
-        {
-            object split = SplitLeaf(leaf, stemBits, existingStemBits, subIndex, value, depth + 1);
-            if (stemBits[depth] == 0)
-            {
-                newInternal.Left = split;
-            }
-            else
-            {
-                newInternal.Right = split;
-            }
-        }
-        else
-        {
-            RefStemNode created = new(ToBytes(stemBits));
-            created.Values[subIndex] = value;
-            if (stemBits[depth] == 0)
-            {
-                newInternal.Left = created;
-                newInternal.Right = leaf;
-            }
-            else
-            {
-                newInternal.Right = created;
-                newInternal.Left = leaf;
+                throw new ArgumentException("keys must be prefix-free", nameof(key));
             }
         }
 
-        return newInternal;
+        _entries[key.ToArray()] = (byte[])value.Clone();
     }
 
-    public byte[] Merkelize() => Merkelize(_root);
+    /// <summary>Removes a key, returning whether it was present.</summary>
+    public bool Delete(ReadOnlySpan<byte> key) => _entries.Remove(key.ToArray());
 
-    private static byte[] Merkelize(object? node)
+    /// <summary>Returns the root hash, or 32 zero bytes for an empty tree.</summary>
+    public byte[] Merkelize()
     {
-        if (node is null) return new byte[32];
-        if (node is RefInternalNode internalNode)
-        {
-            return Hash([.. Merkelize(internalNode.Left), .. Merkelize(internalNode.Right)]);
-        }
-
-        RefStemNode stemNode = (RefStemNode)node;
-        byte[][] level = new byte[256][];
-        for (int i = 0; i < 256; i++)
-        {
-            level[i] = Hash(stemNode.Values[i]);
-        }
-
-        while (level.Length > 1)
-        {
-            byte[][] newLevel = new byte[level.Length / 2][];
-            for (int i = 0; i < newLevel.Length; i++)
-            {
-                newLevel[i] = Hash([.. level[2 * i], .. level[2 * i + 1]]);
-            }
-
-            level = newLevel;
-        }
-
-        return Hash([.. stemNode.Stem, 0, .. level[0]]);
+        KeyValuePair<byte[], byte[]>[] entries = [.. _entries];
+        return entries.Length == 0 ? new byte[32] : Fold(entries, 0, entries.Length, 0);
     }
 
-    private static byte[] Hash(byte[]? data)
+    private static byte[] Fold(KeyValuePair<byte[], byte[]>[] entries, int start, int end, int depth)
     {
-        if (data is null || (data.Length == 64 && !data.AsSpan().ContainsAnyExcept((byte)0))) return new byte[32];
-        if (data.Length is not (32 or 64)) throw new ArgumentException("data must be 32 or 64 bytes");
-        byte[] output = new byte[32];
-        Blake3.Hasher.Hash(data, output);
-        return output;
-    }
+        if (end - start == 1) return Hash([0, .. entries[start].Key, .. entries[start].Value]);
 
-    private static int[] ToBits(byte[] data)
-    {
-        int[] bits = new int[data.Length * 8];
-        for (int i = 0; i < bits.Length; i++)
+        int differing = FirstDifference(entries[start].Key, entries[end - 1].Key, depth);
+        int shortestBitLength = Math.Min(entries[start].Key.Length, entries[end - 1].Key.Length) * 8;
+        if (differing == shortestBitLength) throw new InvalidOperationException("keys must be prefix-free");
+
+        int split = start + 1;
+        while (split < end && Bit(entries[split].Key, differing) == 0) split++;
+
+        byte[] left = Fold(entries, start, split, differing + 1);
+        byte[] right = Fold(entries, split, end, differing + 1);
+        int prefixBits = differing - depth;
+        if (prefixBits > ushort.MaxValue) throw new InvalidOperationException("branch prefix is too long");
+
+        byte[] prefix = new byte[(prefixBits + 7) / 8];
+        for (int bit = 0; bit < prefixBits; bit++)
         {
-            bits[i] = (data[i >> 3] >> (7 - (i & 7))) & 1;
+            if (Bit(entries[start].Key, depth + bit) != 0) prefix[bit / 8] |= (byte)(1 << (7 - bit % 8));
         }
 
-        return bits;
+        byte[] preimage = new byte[3 + prefix.Length + 64];
+        preimage[0] = 1;
+        BinaryPrimitives.WriteUInt16BigEndian(preimage.AsSpan(1), (ushort)prefixBits);
+        prefix.CopyTo(preimage, 3);
+        left.CopyTo(preimage, 3 + prefix.Length);
+        right.CopyTo(preimage, 3 + prefix.Length + 32);
+        return Hash(preimage);
     }
 
-    private static byte[] ToBytes(int[] bits)
+    private static bool IsPrefix(ReadOnlySpan<byte> prefix, ReadOnlySpan<byte> value) =>
+        prefix.Length <= value.Length && value[..prefix.Length].SequenceEqual(prefix);
+
+    private static int FirstDifference(byte[] first, byte[] last, int start)
     {
-        byte[] data = new byte[bits.Length / 8];
-        for (int i = 0; i < bits.Length; i++)
+        int length = Math.Min(first.Length, last.Length) * 8;
+        for (int bit = start; bit < length; bit++)
         {
-            if (bits[i] != 0) data[i >> 3] |= (byte)(1 << (7 - (i & 7)));
+            if (Bit(first, bit) != Bit(last, bit)) return bit;
         }
 
-        return data;
+        return length;
+    }
+
+    private static int Bit(byte[] key, int bit) => (key[bit / 8] >> (7 - bit % 8)) & 1;
+
+    private static byte[] Hash(byte[] data)
+    {
+        byte[] result = new byte[32];
+        Blake3.Hasher.Hash(data, result);
+        return result;
+    }
+
+    private sealed class ByteArrayComparer : IComparer<byte[]>
+    {
+        public static ByteArrayComparer Instance { get; } = new();
+
+        public int Compare(byte[]? x, byte[]? y) => x.AsSpan().SequenceCompareTo(y);
     }
 }

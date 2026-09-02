@@ -23,13 +23,10 @@ namespace Nethermind.State.Pbt.Mirror;
 public class PbtMirrorScopeProvider(
     IWorldStateScopeProvider authoritative,
     IPbtDbManager manager,
-    IPbtResourcePool resourcePool,
-    IPbtConfig config) : IWorldStateScopeProvider
+    IPbtResourcePool resourcePool) : IWorldStateScopeProvider
 {
     private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
 
-    private readonly PbtTrieLayout _writeLayout = config.TrieNodeLayout;
-    private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
 
     public bool HasRoot(BlockHeader? baseBlock) =>
         authoritative.HasRoot(baseBlock) && manager.HasStateForBlock(new StateId(baseBlock));
@@ -51,8 +48,6 @@ public class PbtMirrorScopeProvider(
                 resourcePool,
                 PbtResourcePool.Usage.MainBlockProcessing,
                 isReadOnly: false,
-                _writeLayout,
-                _rootFoldConcurrency,
                 _noopTrieWarmer);
 
             return new Scope(authoritativeScope, pbtScope);

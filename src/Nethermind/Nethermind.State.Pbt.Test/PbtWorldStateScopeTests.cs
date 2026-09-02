@@ -19,65 +19,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtWorldStateScopeTests
 {
-    // StaticPool<T>'s default cap bounds the drain loop.
-    private const int MaxPooledStemChanges = 4096;
-
-    /// <summary>
-    /// A scope abandoned with pending writes — an exception mid-block, or a branch dropped before its
-    /// final fold — never reaches the drain in <c>BuildChanges</c>, so its rented maps must come back
-    /// on disposal instead of being lost to the GC, which would silently starve the shared pool.
-    /// </summary>
-    [Test]
-    public async Task Dispose_WithPendingWrites_ReturnsEveryRentedStemChanges()
-    {
-        DrainStemChangesPool();
-        SingleStemChanges first = new();
-        SingleStemChanges second = new();
-        StaticPool<SingleStemChanges>.Return(first);
-        StaticPool<SingleStemChanges>.Return(second);
-
-        await using PbtTestContext ctx = new();
-        PbtScopeProvider provider = ctx.CreateScopeProvider();
-
-        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
-        {
-            // Distinct header and storage stems each rent one map.
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(TestItem.AddressC, 2);
-            storageBatch.Set(3, [0x11]);
-            storageBatch.Set(500, [0x11]);
-        }
-
-        // Disposal alone must return the maps.
-        object[] rented = [StaticPool<SingleStemChanges>.Rent(), StaticPool<SingleStemChanges>.Rent()];
-        Assert.That(rented, Is.EquivalentTo(new object[] { first, second }));
-    }
-
-    /// <summary>Disposing twice must not return a map twice: two owners of one pooled map corrupt an unrelated stem.</summary>
-    [Test]
-    public async Task Dispose_CalledTwice_DoesNotReturnAStemChangesTwice()
-    {
-        DrainStemChangesPool();
-        SingleStemChanges seeded = new();
-        StaticPool<SingleStemChanges>.Return(seeded);
-
-        await using PbtTestContext ctx = new();
-        PbtScopeProvider provider = ctx.CreateScopeProvider();
-
-        IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
-        {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(TestItem.AddressC, 1);
-            storageBatch.Set(500, [0x11]);
-        }
-
-        scope.Dispose();
-        scope.Dispose();
-
-        Assert.That(StaticPool<SingleStemChanges>.Rent(), Is.SameAs(seeded), "the one rented map must come back exactly once");
-        Assert.That(StaticPool<SingleStemChanges>.Rent(), Is.Not.SameAs(seeded), "a second dispose must not re-return it");
-    }
-
     /// <summary>
     /// A read-only scope is read-only with respect to the repository, not to itself: it processes and
     /// commits locally like any other, and only keeps the result to itself.
@@ -249,16 +190,4 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    private static void DrainStemChangesPool()
-    {
-        SingleStemChanges sentinel = new();
-        StaticPool<SingleStemChanges>.Return(sentinel);
-
-        for (int i = 0; i <= MaxPooledStemChanges; i++)
-        {
-            if (ReferenceEquals(StaticPool<SingleStemChanges>.Rent(), sentinel)) return;
-        }
-
-        Assert.Fail("the stem-change pool never returned the sentinel, so it could not be drained");
-    }
 }

@@ -19,13 +19,10 @@ public class PbtWorldStateManager(
     IPbtResourcePool resourcePool,
     PbtStateReader stateReader,
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
-    IPbtConfig config,
     ITrieWarmer trieWarmer,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtTrieLayout _writeLayout = config.TrieNodeLayout;
-    private readonly int _rootFoldConcurrency = config.RootFoldConcurrency;
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeLayout, config.RootFoldConcurrency, trieWarmer);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, trieWarmer);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -37,7 +34,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeLayout, _rootFoldConcurrency, trieWarmer);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, trieWarmer);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

@@ -55,7 +55,6 @@ public class PbtScopeProviderBenchmark
 
     private SnapshotableMemColumnsDb<PbtColumns>? _pbtDb;
     private PbtDbManager? _pbtManager;
-    private PbtStoreCache? _pbtStoreCache;
     private IWorldStateScopeProvider _provider = null!;
 
     private BlockHeader _baseHeader = null!;
@@ -74,20 +73,8 @@ public class PbtScopeProviderBenchmark
     [Params(SlotLayout.Dense, SlotLayout.Spread)]
     public SlotLayout StorageLayout { get; set; }
 
-    // State writes scale linearly with layer depth, so this benchmark fixes depth at one.
-    /// <summary>Which layout the PBT backend stores its nodes in; ignored by the trie backend.</summary>
-    [Params(
-        PbtTrieLayout.FourLevelEveryLevel,
-        PbtTrieLayout.FourLevelInterleaved,
-        PbtTrieLayout.FourLevelBoundaryOnly)]
-    public PbtTrieLayout Layout { get; set; }
-
     [Params(1)]
     public int ChainDepth { get; set; }
-
-    // PBT only: 1 folds on the calling thread; 0 uses processor count. Batches under 1024 stems fold serially.
-    [Params(1, 0)]
-    public int RootFoldConcurrency { get; set; }
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -125,11 +112,10 @@ public class PbtScopeProviderBenchmark
     private IWorldStateScopeProvider CreatePbtProvider()
     {
         _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
-        PbtConfig config = new() { TrieNodeLayout = Layout };
+        PbtConfig config = new();
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb, config);
         PbtResourcePool resourcePool = new(config);
-        _pbtStoreCache = new PbtStoreCache(config);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
@@ -139,7 +125,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.TrieNodeLayout, RootFoldConcurrency, new NoopTrieWarmer());
+            new NoopTrieWarmer());
     }
 
     [Benchmark]
@@ -190,7 +176,6 @@ public class PbtScopeProviderBenchmark
         {
             _cts.Cancel();
             _pbtManager.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            _pbtStoreCache!.Dispose();
             _pbtDb!.Dispose();
         }
 

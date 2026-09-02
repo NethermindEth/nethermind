@@ -36,7 +36,7 @@ public class PbtSnapshotCompactor(
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
                 foreach ((PbtFullKey key, ValueHash256? value) in content.Leaves) merged.SetLeaf(key, value);
-                foreach ((PbtFullKey locator, byte[]? node) in content.Nodes) merged.SetNode(locator, node ?? []);
+                foreach ((PbtNodeLocator locator, byte[]? node) in content.Nodes) merged.SetNode(locator, node ?? []);
                 foreach ((ValueHash256 hash, ulong? count) in content.CodeReferences) merged.SetCodeReference(hash, count);
             }
 

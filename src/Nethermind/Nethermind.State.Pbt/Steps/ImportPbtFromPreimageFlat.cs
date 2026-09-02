@@ -27,7 +27,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// <summary>Rebuilds PBT state from a preimage-flat database, then exits.</summary>
 /// <remarks>
 /// Raw-address source order differs from hash-derived stem order, so phase one writes
-/// <see cref="PbtLeafFormat.LeavesOnly"/> blobs keyed by stem and phase two folds their ordered scans.
+/// Complete-key leaves are staged before phase two folds their ordered scans.
 /// The phases cannot overlap because address partitions scatter across the entire stem space.
 /// </remarks>
 [RunnerStepDependencies(
@@ -76,13 +76,11 @@ public class ImportPbtFromPreimageFlat(
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        using (IPbtPersistence.IReader pbtReader = pbtPersistence.CreateReader())
+        if (pbtPersistence.IsValid)
         {
-            if (pbtReader.CurrentState != StateId.PreGenesis)
-            {
-                if (_logger.IsInfo) _logger.Info($"PBT state already populated ({pbtReader.CurrentState}); skipping preimage-flat import.");
-                return;
-            }
+            using IPbtPersistence.IReader pbtReader = pbtPersistence.CreateReader();
+            if (_logger.IsInfo) _logger.Info($"PBT state already populated ({pbtReader.CurrentState}); skipping preimage-flat import.");
+            return;
         }
 
         FlatStateId sourceState;
@@ -200,9 +198,10 @@ public class ImportPbtFromPreimageFlat(
 
                 // Limit each source snapshot and write batch to one range.
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
-                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
+                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateStagingWriteBatch(WriteFlags.DisableWAL))
                 {
                     CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
+                    batch.Commit();
                 }
 
                 Interlocked.Increment(ref donePartitions);
@@ -265,12 +264,6 @@ public class ImportPbtFromPreimageFlat(
         {
             await loggingCts.CancelAsync();
             await logging;
-        }
-
-        using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
-        {
-            foreach ((ValueHash256 codeHash, ulong count) in _codeReferences)
-                batch.SetCodeReference(codeHash, count);
         }
 
         // Batches skipped the WAL; flush before phase two reads them.
@@ -398,7 +391,7 @@ public class ImportPbtFromPreimageFlat(
 
         try
         {
-            await rebuilder.Rebuild(entries.Reader, targetState, cancellationToken);
+            await rebuilder.Rebuild(entries.Reader, _codeReferences, targetState, cancellationToken);
         }
         finally
         {
@@ -481,7 +474,7 @@ public class ImportPbtFromPreimageFlat(
 
     private static byte[] PastEveryKey()
     {
-        byte[] key = new byte[Math.Max(Stem.Length, TrieNodeKey.Length) + 1];
+        byte[] key = new byte[PbtFullKey.MaxLength + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }

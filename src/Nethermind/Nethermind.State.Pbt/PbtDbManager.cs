@@ -283,8 +283,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public ValueHash256? GetLeaf(PbtFullKey key) => null;
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
-        public byte[]? GetNode(PbtFullKey locator) => null;
-        public IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes() => [];
+        public byte[]? GetNode(PbtNodeLocator locator) => null;
+        public IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes() => [];
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
 
         public void Dispose()

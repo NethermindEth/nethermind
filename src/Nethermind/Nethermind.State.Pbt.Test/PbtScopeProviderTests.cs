@@ -24,12 +24,10 @@ namespace Nethermind.State.Pbt.Test;
 /// layouts (FourLevelEveryLevel, FourLevelInterleaved, and FourLevelBoundaryOnly), all folding to the
 /// same reference roots.
 /// </param>
-[TestFixture(PbtTrieLayout.FourLevelInterleaved)]
-[TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
-[TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
-public class PbtScopeProviderTests(PbtTrieLayout layout)
+[TestFixture]
+public class PbtScopeProviderTests
 {
-    private PbtTestContext NewContext() => new(config: new PbtConfig { TrieNodeLayout = layout });
+    private static PbtTestContext NewContext() => new();
 
     private static readonly IReleaseSpec Spec = Prague.Instance;
 

@@ -43,7 +43,7 @@ internal static class PbtReferenceModel
 
     public static ValueHash256 Root(Dictionary<string, byte[]> model)
     {
-        CurrentEipReferenceTree reference = new();
+        EipReferenceTree reference = new();
         foreach ((string key, byte[] value) in model) reference.Insert(Bytes.FromHexString(key), value);
         return new ValueHash256(reference.Merkelize());
     }

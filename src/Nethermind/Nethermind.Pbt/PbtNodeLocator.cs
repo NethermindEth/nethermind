@@ -6,7 +6,7 @@ using System.Buffers.Binary;
 namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
-internal sealed class PbtNodeLocator : IEquatable<PbtNodeLocator>
+public sealed class PbtNodeLocator : IEquatable<PbtNodeLocator>, IComparable<PbtNodeLocator>
 {
     private readonly byte[] _path;
 
@@ -80,6 +80,13 @@ internal sealed class PbtNodeLocator : IEquatable<PbtNodeLocator>
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
         return new PbtNodeLocator(path, depth);
+    }
+
+    public int CompareTo(PbtNodeLocator? other)
+    {
+        if (other is null) return 1;
+        int depthComparison = BitDepth.CompareTo(other.BitDepth);
+        return depthComparison != 0 ? depthComparison : Path.SequenceCompareTo(other.Path);
     }
 
     public bool Equals(PbtNodeLocator? other) => other is not null && BitDepth == other.BitDepth && Path.SequenceEqual(other.Path);

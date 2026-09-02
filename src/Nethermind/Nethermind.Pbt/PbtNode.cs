@@ -6,17 +6,17 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-internal abstract record PbtCanonicalNode
+internal abstract record PbtNode
 {
     internal abstract ValueHash256 Hash { get; }
 }
 
-internal sealed record PbtLeafNode(PbtFullKey Key, byte[] Value) : PbtCanonicalNode
+internal sealed record PbtLeafNode(PbtFullKey Key, byte[] Value) : PbtNode
 {
     internal override ValueHash256 Hash => PbtNodeCodec.HashLeaf(Key, Value);
 }
 
-internal sealed record PbtBranchNode(PbtBitPrefix Prefix, ValueHash256 LeftHash, ValueHash256 RightHash) : PbtCanonicalNode
+internal sealed record PbtBranchNode(PbtBitPrefix Prefix, ValueHash256 LeftHash, ValueHash256 RightHash) : PbtNode
 {
     internal override ValueHash256 Hash => PbtNodeCodec.HashBranch(Prefix, LeftHash, RightHash);
 }
@@ -26,14 +26,14 @@ internal static class PbtNodeCodec
     private const byte LeafTag = 0;
     private const byte BranchTag = 1;
 
-    public static byte[] Encode(PbtCanonicalNode node) => node switch
+    public static byte[] Encode(PbtNode node) => node switch
     {
         PbtLeafNode leaf => EncodeLeaf(leaf),
         PbtBranchNode branch => EncodeBranch(branch),
         _ => throw new ArgumentOutOfRangeException(nameof(node)),
     };
 
-    public static PbtCanonicalNode Decode(ReadOnlySpan<byte> encoding)
+    public static PbtNode Decode(ReadOnlySpan<byte> encoding)
     {
         if (encoding.IsEmpty) throw new InvalidDataException("A PBT node encoding cannot be empty.");
         return encoding[0] switch

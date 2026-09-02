@@ -37,7 +37,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetLeaf(key);
     }
 
-    internal byte[]? GetNode(PbtFullKey locator)
+    internal byte[]? GetNode(PbtNodeLocator locator)
     {
         GuardDispose();
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -85,19 +85,19 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes()
+    internal IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
     {
         GuardDispose();
-        SortedDictionary<PbtFullKey, byte[]?> visible = [];
-        foreach ((PbtFullKey locator, byte[] encoding) in reader.EnumerateNodes()) visible[locator] = encoding;
+        SortedDictionary<PbtNodeLocator, byte[]?> visible = [];
+        foreach ((PbtNodeLocator locator, byte[] encoding) in reader.EnumerateNodes()) visible[locator] = encoding;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach ((PbtFullKey locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
+            foreach ((PbtNodeLocator locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
         }
 
-        foreach ((PbtFullKey locator, byte[]? encoding) in visible)
+        foreach ((PbtNodeLocator locator, byte[]? encoding) in visible)
         {
-            if (encoding is not null) yield return new KeyValuePair<PbtFullKey, byte[]>(locator, encoding);
+            if (encoding is not null) yield return new KeyValuePair<PbtNodeLocator, byte[]>(locator, encoding);
         }
     }
 

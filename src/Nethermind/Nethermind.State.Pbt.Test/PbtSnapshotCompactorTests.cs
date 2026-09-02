@@ -18,7 +18,7 @@ public class PbtSnapshotCompactorTests
     public void Compact_PreservesNewestCanonicalLeafAndNode()
     {
         PbtFullKey key = new([1]);
-        PbtFullKey locator = new([2]);
+        PbtNodeLocator locator = new([0x80], 1);
         PbtSnapshotContent older = new(); older.SetLeaf(key, TestItem.KeccakA.ValueHash256); older.SetNode(locator, [1]);
         PbtSnapshotContent newer = new(); newer.SetLeaf(key, TestItem.KeccakB.ValueHash256); newer.SetNode(locator, [2]);
         using PbtSnapshotPooledList chain = new(2);

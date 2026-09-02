@@ -88,31 +88,6 @@ public static class Metrics
         Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
     }
 
-    [GaugeMetric]
-    [Description("Retained payload bytes in the shared pbt store cache, by partition and value type, excluding cache entry and data-structure overhead")]
-    [KeyIsLabel("partition", "type")]
-    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheMemory { get; } = NewStoreCacheMetric();
-
-    [CounterMetric]
-    [Description("Reads served by the shared pbt store cache, by partition and value type")]
-    [KeyIsLabel("partition", "type")]
-    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheHits { get; } = NewStoreCacheMetric();
-
-    [CounterMetric]
-    [Description("Reads that missed the shared pbt store cache, by partition and value type")]
-    [KeyIsLabel("partition", "type")]
-    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtStoreCacheMisses { get; } = NewStoreCacheMetric();
-
-    private static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> NewStoreCacheMetric() => new()
-    {
-        [AccountLeafSnapshotMemory] = 0,
-        [AccountTrieSnapshotMemory] = 0,
-        [CodeLeafSnapshotMemory] = 0,
-        [CodeTrieSnapshotMemory] = 0,
-        [StorageLeafSnapshotMemory] = 0,
-        [StorageTrieSnapshotMemory] = 0,
-    };
-
     private static long _pbtTrieWarmerTriggered;
 
     [CounterMetric]
@@ -128,17 +103,6 @@ public static class Metrics
     public static long PbtTrieWarmerSkippedByDeduplication => Volatile.Read(ref _pbtTrieWarmerSkippedByDeduplication);
 
     internal static void IncrementPbtTrieWarmerSkippedByDeduplication() => Interlocked.Increment(ref _pbtTrieWarmerSkippedByDeduplication);
-
-    [DetailedMetric]
-    [CounterMetric]
-    [Description("Reads served by a pbt bundle's leaf blob cache")]
-    public static long PbtLeafBlobCacheHits { get; set; }
-
-    /// <inheritdoc cref="PbtLeafBlobCacheHits"/>
-    [DetailedMetric]
-    [CounterMetric]
-    [Description("Reads that missed a pbt bundle's leaf blob cache and went to the shared view")]
-    public static long PbtLeafBlobCacheMisses { get; set; }
 
     [GaugeMetric]
     [Description("Number of layers in the most recently assembled pbt read-only snapshot bundle")]

@@ -21,16 +21,10 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <param name="layout">
-/// The rebuild is a producer of its own — it folds windows of sorted leaves rather than a block's
-/// writes — so it is run under each of the three four-level layouts, against the same reference root.
-/// </param>
-[TestFixture(PbtTrieLayout.FourLevelInterleaved)]
-[TestFixture(PbtTrieLayout.FourLevelBoundaryOnly)]
-[TestFixture(PbtTrieLayout.FourLevelEveryLevel)]
-public class PbtRebuilderTests(PbtTrieLayout layout)
+[TestFixture]
+public class PbtRebuilderTests
 {
-    private PbtConfig Config => new() { TrieNodeLayout = layout };
+    private PbtConfig Config => new();
 
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model)
     {
@@ -67,29 +61,31 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         return leaves;
     }
 
-    private async Task<ValueHash256> Fold(List<RebuildEntry> leaves, int flushEntryInterval, int maxWindowStems, StateId targetState, PbtRocksDbPersistence target, ILogManager? logManager = null)
+    private static async Task<ValueHash256> Rebuild(
+        List<RebuildEntry> leaves,
+        int chunkSize,
+        StateId targetState,
+        PbtRocksDbPersistence target,
+        ILogManager? logManager = null)
     {
-        ArrayPoolList<RebuildEntry> entries = new(leaves.Count); // ownership passes to Rebuild, which disposes it
-        foreach (RebuildEntry leaf in leaves) entries.Add(leaf);
-
-        PbtRebuilder rebuilder = new(target, logManager ?? LimboLogs.Instance, Config) { FlushEntryInterval = flushEntryInterval, MaxWindowStems = maxWindowStems };
+        PbtRebuilder rebuilder = new(target, logManager ?? LimboLogs.Instance);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
-        channel.Writer.TryWrite(entries);
+        for (int offset = 0; offset < leaves.Count; offset += chunkSize)
+        {
+            int count = Math.Min(chunkSize, leaves.Count - offset);
+            ArrayPoolList<RebuildEntry> chunk = new(count);
+            for (int index = 0; index < count; index++) chunk.Add(leaves[offset + index]);
+            channel.Writer.TryWrite(chunk);
+        }
         channel.Writer.Complete();
 
         return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None);
     }
 
-    // A window seals on whichever of its two bounds it reaches first, and seals on a stem boundary
-    // either way: a leaf bound of 1 commits a window per stem, a stem bound of 1 the same, and larger
-    // values of either fold the state in fewer windows. All must yield the same root — batching
-    // invariance.
-    [TestCase(1, int.MaxValue)]
-    [TestCase(3, int.MaxValue)]
-    [TestCase(1_000, int.MaxValue)]
-    [TestCase(int.MaxValue, 1)]
-    [TestCase(int.MaxValue, 2)]
-    public async Task Rebuild_matches_reference_root(int flushEntryInterval, int maxWindowStems)
+    [TestCase(1)]
+    [TestCase(3)]
+    [TestCase(int.MaxValue)]
+    public async Task Rebuild_matches_reference_root_across_channel_chunks(int chunkSize)
     {
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model);
@@ -101,24 +97,33 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         // the header root the source claims is unrelated to the tree root the fold produces, so the
         // two must be recorded separately rather than one standing in for the other
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, maxWindowStems, targetState, target);
+        ValueHash256 root = await Rebuild(leaves, chunkSize, targetState, target);
 
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
+        PbtPhysicalNodeStore incrementalStore = new();
+        ValueHash256 incrementalRoot = default;
+        foreach (RebuildEntry leaf in leaves)
+        {
+            PbtWriteBatch incrementalChange = new();
+            incrementalChange.Set(leaf.Key, leaf.Leaf);
+            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, incrementalChange);
+        }
 
         using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
-        Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
+            Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and one-batch rebuild must have the same root");
+            Assert.That(CanonicalNodes(reader.EnumerateNodes()), Is.EqualTo(CanonicalNodes(incrementalStore.EnumerateRecords())),
+                "incremental replay and one-batch rebuild must have the exact same locator/node graph");
+            Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
+            Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
+        }
     }
 
-    /// <summary>
-    /// Ordering is what keeps each window a contiguous stem range, but it is not what makes the fold
-    /// correct: the same leaves in any order must fold to the same root. Pinning that keeps the
-    /// importer free to reorder its passes.
-    /// </summary>
     [TestCase(1)]
     [TestCase(3)]
-    [TestCase(1_000)]
-    public async Task Rebuild_is_independent_of_entry_order(int flushEntryInterval)
+    [TestCase(int.MaxValue)]
+    public async Task Rebuild_is_independent_of_entry_and_chunk_order(int chunkSize)
     {
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model);
@@ -133,7 +138,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
 
-        ValueHash256 root = await Fold(leaves, flushEntryInterval, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target);
+        ValueHash256 root = await Rebuild(leaves, chunkSize, new StateId(7, TestItem.KeccakA.ValueHash256), target);
 
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
@@ -160,7 +165,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
-        await Fold(leaves, int.MaxValue, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target, logManager);
+        await Rebuild(leaves, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target, logManager);
 
         Assert.That(messages, Has.Some.Contains("PBT rebuild complete").And.Some.Contains("3 leaves"));
     }
@@ -170,7 +175,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, Config);
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance);
 
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.Complete();
@@ -181,6 +186,24 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
         using IPbtPersistence.IReader reader = target.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(targetState));
+    }
+
+    private static string[] CanonicalNodes(IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> nodes)
+    {
+        List<string> result = [];
+        foreach ((PbtNodeLocator locator, byte[] encoding) in nodes)
+            result.Add($"{Convert.ToHexString(locator.Encode())}:{Convert.ToHexString(encoding)}");
+        result.Sort(StringComparer.Ordinal);
+        return [.. result];
+    }
+
+    private static string[] CanonicalNodes(IReadOnlyList<PbtNodeRecord> nodes)
+    {
+        List<string> result = new(nodes.Count);
+        foreach (PbtNodeRecord node in nodes)
+            result.Add($"{Convert.ToHexString(node.Locator.Encode())}:{Convert.ToHexString(node.Encoding.Span)}");
+        result.Sort(StringComparer.Ordinal);
+        return [.. result];
     }
 
     private static RebuildEntry Entry(byte first, byte second)

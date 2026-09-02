@@ -162,7 +162,8 @@ public class PbtPersistenceCoordinator(
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
 
         foreach ((PbtFullKey key, ValueHash256? value) in content.Leaves) batch.SetLeaf(key, value);
-        foreach ((PbtFullKey locator, byte[]? node) in content.Nodes) batch.SetNode(locator, node ?? []);
+        foreach ((PbtNodeLocator locator, byte[]? node) in content.Nodes) batch.SetNode(locator, node ?? []);
         foreach ((ValueHash256 codeHash, ulong? count) in content.CodeReferences) batch.SetCodeReference(codeHash, count);
+        batch.Commit();
     }
 }
