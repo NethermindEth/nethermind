@@ -1553,12 +1553,16 @@ public ref struct EvmStack
         }
         else
         {
+#if ZK_EVM
+            WriteBeWord(ref head, in value);
+#else
             ulong u3 = ReverseBytes(value.u3);
             ulong u2 = ReverseBytes(value.u2);
             ulong u1 = ReverseBytes(value.u1);
             ulong u0 = ReverseBytes(value.u0);
 
             head = Vector256.Create(u3, u2, u1, u0).AsByte();
+#endif
         }
 
         if (TTracingInst.IsActive)
@@ -1584,6 +1588,27 @@ public ref struct EvmStack
     }
 
 #if ZK_EVM
+    // Writes a UInt256 as one big-endian 32-byte stack word — the counterpart of ReadBeWord,
+    // with the same small-value shortcut: pushed values are dominated by counters and offsets
+    // whose high limbs are zero, which need one lane swapped instead of four.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteBeWord(ref EvmWord head, in UInt256 value)
+    {
+        ref ulong d = ref Unsafe.As<EvmWord, ulong>(ref head);
+        ulong low = ZkEvmBitOperations.Bswap64(value.u0);
+        if ((value.u1 | value.u2 | value.u3) == 0)
+        {
+            d = 0;
+            Unsafe.Add(ref d, 1) = 0;
+            Unsafe.Add(ref d, 2) = 0;
+            Unsafe.Add(ref d, 3) = low;
+        }
+        else
+        {
+            ZkEvmBitOperations.Bswap256(in value, ref head);
+        }
+    }
+
     // Reads one big-endian 32-byte stack word into a UInt256. RISC-V has no byte-swap
     // instruction, so reversing endianness is a software shuffle. Words produced by
     // PUSH0/PUSH1/PUSH2 and the like have their high 24 bytes zero, so the common case
