@@ -11,20 +11,48 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
-public sealed class ForwardCommitmentCapture(
-    IColumnsDb<FlatHistoryColumns> history,
-    CommitmentDepthPolicy policy,
-    CommitmentMetadata metadata,
-    ArchiveProofSettings settings,
-    ILogManager logManager)
+public sealed class ForwardCommitmentCapture
 {
     public const int MaxBufferedBlocks = 4096;
+    public const long DefaultMaxBufferedBytes = 256L * 1024 * 1024;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<ForwardCommitmentCapture>();
+    private readonly IColumnsDb<FlatHistoryColumns> _history;
+    private readonly CommitmentDepthPolicy _policy;
+    private readonly CommitmentMetadata _metadata;
+    private readonly ArchiveProofSettings _settings;
+    private readonly long _maxBufferedBytes;
+    private readonly ILogger _logger;
     private readonly SortedDictionary<ulong, CapturedBlock> _buffered = [];
+    private long _bufferedBytes;
     private bool _stopped;
 
-    public bool Enabled => settings.BuildEnabled;
+    public ForwardCommitmentCapture(
+        IColumnsDb<FlatHistoryColumns> history,
+        CommitmentDepthPolicy policy,
+        CommitmentMetadata metadata,
+        ArchiveProofSettings settings,
+        ILogManager logManager)
+        : this(history, policy, metadata, settings, logManager, DefaultMaxBufferedBytes)
+    {
+    }
+
+    internal ForwardCommitmentCapture(
+        IColumnsDb<FlatHistoryColumns> history,
+        CommitmentDepthPolicy policy,
+        CommitmentMetadata metadata,
+        ArchiveProofSettings settings,
+        ILogManager logManager,
+        long maxBufferedBytes)
+    {
+        _history = history;
+        _policy = policy;
+        _metadata = metadata;
+        _settings = settings;
+        _maxBufferedBytes = maxBufferedBytes;
+        _logger = logManager.GetClassLogger<ForwardCommitmentCapture>();
+    }
+
+    public bool Enabled => _settings.BuildEnabled;
 
     public void Capture(ulong block, Snapshot snapshot)
     {
@@ -32,16 +60,16 @@ public sealed class ForwardCommitmentCapture(
 
         try
         {
-            CapturedBlock captured = new(snapshot.StateNodesCount, snapshot.StorageNodesCount);
+            CapturedBlock captured = new();
             foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in snapshot.StateNodes)
             {
-                captured.Accounts.Add(new NodeChange(default, entry.Key.Key, entry.Value.FullRlp.ToArray() ?? []));
+                AddAccount(captured, entry.Key.Key, entry.Value.FullRlp.AsSpan());
             }
 
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> entry in snapshot.StorageNodes)
             {
                 (Hash256 accountPath, TreePath path) = entry.Key.Key;
-                captured.Storages.Add(new NodeChange(new ValueHash256(accountPath.Bytes), path, entry.Value.FullRlp.ToArray() ?? []));
+                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, entry.Value.FullRlp.AsSpan());
             }
 
             Buffer(block, captured);
@@ -58,15 +86,15 @@ public sealed class ForwardCommitmentCapture(
 
         try
         {
-            CapturedBlock captured = new(0, 0);
+            CapturedBlock captured = new();
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
             {
-                captured.Accounts.Add(new NodeChange(default, entry.Path, entry.Rlp.ToArray()));
+                AddAccount(captured, entry.Path, entry.Rlp);
             }
 
             foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
             {
-                captured.Storages.Add(new NodeChange(entry.AddressHash, entry.Path, entry.Rlp.ToArray()));
+                AddStorage(captured, entry.AddressHash, entry.Path, entry.Rlp);
             }
 
             Buffer(block, captured);
@@ -77,7 +105,11 @@ public sealed class ForwardCommitmentCapture(
         }
     }
 
-    public void Discard() => _buffered.Clear();
+    public void Discard()
+    {
+        _buffered.Clear();
+        _bufferedBytes = 0;
+    }
 
     public void Complete()
     {
@@ -93,28 +125,46 @@ public sealed class ForwardCommitmentCapture(
         }
         finally
         {
-            _buffered.Clear();
+            Discard();
         }
+    }
+
+    private void AddAccount(CapturedBlock captured, in TreePath path, ReadOnlySpan<byte> rlp)
+    {
+        if (rlp.Length < Hash256.Size || path.Length > _policy.AccountCheckpointDepth + 1) return;
+
+        captured.Accounts.Add(new NodeChange(default, path, rlp.ToArray()));
+        captured.Bytes += rlp.Length;
+    }
+
+    private void AddStorage(CapturedBlock captured, in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp)
+    {
+        if (path.Length >= _policy.LargeTrieSignalDepth) captured.DeepStorageTries.Add(accountPath);
+        if (rlp.Length < Hash256.Size || path.Length > _policy.StorageCheckpointDepth + 1) return;
+
+        captured.Storages.Add(new NodeChange(accountPath, path, rlp.ToArray()));
+        captured.Bytes += rlp.Length;
     }
 
     private void Buffer(ulong block, CapturedBlock captured)
     {
-        if (_buffered.Count >= MaxBufferedBlocks)
+        if (_buffered.Count >= MaxBufferedBlocks || _bufferedBytes + captured.Bytes > _maxBufferedBytes)
         {
-            _buffered.Clear();
+            Discard();
             _stopped = true;
             if (_logger.IsWarn) _logger.Warn(
-                $"Archive proof commitment capture at the tip stopped: a single capture round spans more than {MaxBufferedBlocks} blocks. The retrofit walk covers that range instead.");
+                $"Archive proof commitment capture at the tip stopped: a single capture round spans more than {MaxBufferedBlocks} blocks or {_maxBufferedBytes} bytes of trie nodes. The retrofit walk covers that range instead.");
             return;
         }
 
         _buffered[block] = captured;
+        _bufferedBytes += captured.Bytes;
     }
 
     private void Stop(Exception e)
     {
         _stopped = true;
-        _buffered.Clear();
+        Discard();
         if (_logger.IsError) _logger.Error("Archive proof commitment capture at the tip failed and is stopped until restart; the retrofit walk can rebuild the missing range.", e);
     }
 
@@ -124,39 +174,42 @@ public sealed class ForwardCommitmentCapture(
         ulong last = _buffered.Keys.Last();
 
         EnsureStamp();
-        using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(history, policy))
+        using (CommitmentEmitter emitter = CommitmentEmitter.ForTip(_history, _policy, _metadata.WindowWriteLock))
         {
             foreach ((ulong block, CapturedBlock captured) in _buffered)
             {
                 emitter.BeginBlock(block);
+                foreach (ValueHash256 account in captured.DeepStorageTries) emitter.RecordStorageDepthReached(account, _policy.LargeTrieSignalDepth);
                 foreach (NodeChange change in captured.Accounts) emitter.RecordAccountNode(change.Path, change.Rlp);
                 foreach (NodeChange change in captured.Storages) emitter.RecordStorageNode(change.Scope, change.Path, change.Rlp);
                 emitter.CompleteBlock();
             }
         }
 
-        metadata.AdvanceTipSeries(first, last, out bool restarted);
+        _metadata.AdvanceTipSeries(first, last, out bool restarted);
         if (restarted && _logger.IsWarn) _logger.Warn(
             $"Archive proof commitments at the tip resume at block {first} after a gap; the series restarts there and the gap is left to the retrofit walk.");
     }
 
     private void EnsureStamp()
     {
-        if (metadata.TryReadStamp(policy, out bool matches))
+        if (_metadata.TryReadStamp(_policy, out bool matches))
         {
             if (matches) return;
 
             throw new InvalidConfigurationException(
-                $"The archive proof commitment columns were written under a different layout than this node is configured for ({policy}).", -1);
+                $"The archive proof commitment columns were written under a different layout than this node is configured for ({_policy}).", -1);
         }
 
-        metadata.WriteStamp(policy);
+        _metadata.WriteStamp(_policy);
     }
 
-    private sealed class CapturedBlock(int accounts, int storages)
+    private sealed class CapturedBlock
     {
-        public readonly List<NodeChange> Accounts = new(accounts);
-        public readonly List<NodeChange> Storages = new(storages);
+        public readonly List<NodeChange> Accounts = [];
+        public readonly List<NodeChange> Storages = [];
+        public readonly HashSet<ValueHash256> DeepStorageTries = [];
+        public long Bytes;
     }
 
     private readonly record struct NodeChange(ValueHash256 Scope, TreePath Path, byte[] Rlp);

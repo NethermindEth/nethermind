@@ -35,7 +35,7 @@ internal sealed class CommitmentStore
         return _column.Get(rowKey[..keyLength]);
     }
 
-    public RowChain OpenAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix)
+    public RowChain OpenAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix, ResolutionBudget? budget = null)
     {
         Span<byte> seekKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int keyLength = CommitmentKeyLayout.WriteSeekKey(seekKey, prefix, suffix);
@@ -43,15 +43,16 @@ internal sealed class CommitmentStore
         Span<byte> upperBound = stackalloc byte[CommitmentKeyLayout.MaxKeyLength + 1];
         int upperLength = CommitmentKeyLayout.WriteUpperBound(upperBound, prefix);
 
-        return new RowChain(_column.GetViewBetween(seekKey[..keyLength], upperBound[..upperLength]), keyLength);
+        return new RowChain(_column.GetViewBetween(seekKey[..keyLength], upperBound[..upperLength]), keyLength, budget);
     }
 
-    public readonly struct RowChain(ISortedView view, int keyLength) : IDisposable
+    public readonly struct RowChain(ISortedView view, int keyLength, ResolutionBudget? budget) : IDisposable
     {
         public bool MoveNext()
         {
             while (view.MoveNext())
             {
+                budget?.ChargeRow();
                 if (view.CurrentKey.Length == keyLength) return true;
             }
 

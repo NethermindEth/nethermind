@@ -5,6 +5,8 @@ namespace Nethermind.State.Flat.History.Proofs;
 
 public interface ICommitmentEmitterSource
 {
+    CommitmentDepthPolicy Policy { get; }
+
     ulong WindowGranularity { get; }
 
     CommitmentEmitter CreateEmitter();

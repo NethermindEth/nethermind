@@ -17,7 +17,7 @@ internal sealed class AccountHistoryScope(
 {
     private static readonly AccountDecoder Decoder = new();
 
-    public override CommitmentTier TierOf(int depth) => Policy.AccountTier(depth);
+    public override bool HasCommitmentRows(int depth) => depth <= Policy.AccountCheckpointDepth;
 
     public override bool MayHaveExactRows(int depth) => depth <= Policy.AccountExactDepth;
 

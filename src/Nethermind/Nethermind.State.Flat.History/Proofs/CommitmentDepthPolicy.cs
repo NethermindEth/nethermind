@@ -9,6 +9,7 @@ namespace Nethermind.State.Flat.History.Proofs;
 public sealed class CommitmentDepthPolicy
 {
     public const int MaxTrieDepth = 64;
+    public const int MaxStampedDepth = 15;
     public const int DefaultAccountExactDepth = 2;
     public const int DefaultAccountCheckpointDepth = 7;
     public const int DefaultStorageExactDepth = 2;
@@ -40,14 +41,14 @@ public sealed class CommitmentDepthPolicy
                 "of changes long enough to take seconds.", -1);
         }
 
-        if (accountExactDepth < 0 || accountExactDepth > accountCheckpointDepth || accountCheckpointDepth > MaxTrieDepth)
+        if (accountExactDepth < 0 || accountExactDepth > accountCheckpointDepth || accountCheckpointDepth > MaxStampedDepth)
         {
-            throw new InvalidConfigurationException($"Account commitment depths exact<={accountExactDepth}, checkpoint<={accountCheckpointDepth} are not ordered.", -1);
+            throw new InvalidConfigurationException($"Account commitment depths exact<={accountExactDepth}, checkpoint<={accountCheckpointDepth} are not ordered or exceed the stamped maximum {MaxStampedDepth}.", -1);
         }
 
-        if (storageExactDepth < 0 || storageExactDepth > storageCheckpointDepth || storageCheckpointDepth > MaxTrieDepth || largeTrieSignalDepth <= storageExactDepth)
+        if (storageExactDepth < 0 || storageExactDepth > storageCheckpointDepth || storageCheckpointDepth > MaxStampedDepth || largeTrieSignalDepth <= storageExactDepth || largeTrieSignalDepth > MaxTrieDepth)
         {
-            throw new InvalidConfigurationException($"Storage commitment depths exact<={storageExactDepth}, checkpoint<={storageCheckpointDepth}, large-trie signal {largeTrieSignalDepth} are not ordered.", -1);
+            throw new InvalidConfigurationException($"Storage commitment depths exact<={storageExactDepth}, checkpoint<={storageCheckpointDepth}, large-trie signal {largeTrieSignalDepth} are not ordered or exceed the stamped maximum {MaxStampedDepth}.", -1);
         }
 
         IntervalLog2 = intervalLog2;
@@ -114,5 +115,5 @@ public sealed class CommitmentDepthPolicy
     }
 
     public override string ToString() =>
-        $"K=2^{IntervalLog2}, accounts exact<={AccountExactDepth} checkpoint<={AccountCheckpointDepth}, storage exact<={StorageExactDepth} (tries reaching depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
+        $"K=2^{IntervalLog2}, accounts exact<={AccountExactDepth} checkpoint<={AccountCheckpointDepth}, storage exact<={StorageExactDepth} (once a trie has reached depth {LargeTrieSignalDepth}) checkpoint<={StorageCheckpointDepth}";
 }

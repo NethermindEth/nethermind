@@ -19,6 +19,8 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
     private readonly object _lock = new();
 
+    public object WindowWriteLock { get; } = new();
+
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)
     {
         byte[]? stamp = _column.Get(StampKey);
@@ -47,13 +49,28 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
 
     public bool TryGetTipSeries(out ulong startInclusive, out ulong frontierInclusive) => TryReadRange(TipSeriesKey, out startInclusive, out frontierInclusive);
 
-    public void PublishVerifiedCoverage(ulong fromInclusive, ulong toInclusive)
+    public bool TryPublishVerifiedCoverage(ulong fromInclusive, ulong toInclusive, out ulong coveredFrom, out ulong coveredTo)
     {
         lock (_lock)
         {
-            if (TryReadRange(CoverageKey, out ulong from, out ulong to) && from <= fromInclusive && to >= toInclusive) return;
+            coveredFrom = fromInclusive;
+            coveredTo = toInclusive;
+            if (TryReadRange(CoverageKey, out ulong from, out ulong to))
+            {
+                if (fromInclusive > to + 1 || (to != ulong.MaxValue && toInclusive + 1 < from))
+                {
+                    coveredFrom = from;
+                    coveredTo = to;
+                    return false;
+                }
 
-            WriteRange(CoverageKey, fromInclusive, toInclusive);
+                coveredFrom = Math.Min(from, fromInclusive);
+                coveredTo = Math.Max(to, toInclusive);
+                if (coveredFrom == from && coveredTo == to) return true;
+            }
+
+            WriteRange(CoverageKey, coveredFrom, coveredTo);
+            return true;
         }
     }
 

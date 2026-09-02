@@ -102,6 +102,26 @@ public class ForwardCommitmentCaptureTests
     }
 
     [Test]
+    public void A_capture_round_holding_more_trie_bytes_than_the_bound_stops_instead_of_growing()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ForwardCommitmentCapture bounded = new(
+            _historyColumns, CommitmentDepthPolicy.Default, _metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance, maxBufferedBytes: 100);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, bounded);
+        for (ulong block = 0; block <= 3; block++) CommitBlock(block, PerChangePath, LeafRlp((int)block));
+
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AccountRowAtOrBelow(PerChangePath, 3, exact: true), Is.Null,
+                "a round whose buffered trie nodes exceed the byte bound is dropped whole; the retrofit walk owns that range");
+            Assert.That(_metadata.TryGetTipSeries(out _, out _), Is.False, "nothing was replayed, so no tip series may claim the range");
+        }
+    }
+
+    [Test]
     public void A_storage_node_is_recorded_under_its_accounts_identity()
     {
         Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -122,7 +142,7 @@ public class ForwardCommitmentCaptureTests
     [Test]
     public void The_published_coverage_follows_the_tip_once_the_retrofit_walk_has_reached_it()
     {
-        _metadata.PublishVerifiedCoverage(0, 1);
+        _metadata.TryPublishVerifiedCoverage(0, 1, out _, out _);
         for (ulong block = 0; block <= 3; block++) CommitBlock(block, PerChangePath, LeafRlp((int)block));
 
         _writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);

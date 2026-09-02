@@ -31,11 +31,11 @@ public class HistoryWalkVerifierTests
     [TearDown]
     public void TearDown() => _historyColumns.Dispose();
 
-    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxMaterializedRows = HistoryWalkVerifier.DefaultMaxMaterializedRows)
+    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxMaterializedRows, emitterSource: null);
+        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null);
     }
 
     private sealed class FakeHeaders : IHistoryHeaderSource
@@ -125,29 +125,67 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
-    public void A_range_needing_more_rows_than_the_ceiling_is_declined_before_the_partition_allocates_them()
+    public void A_subtree_above_the_row_budget_is_split_and_streamed_and_the_range_still_verifies()
     {
         Account a0 = new(1, 100);
         Account a1 = new(2, 200);
         Account a2 = new(3, 300);
+        Account b0 = new(5, 500);
+        byte[] slotV1 = [0xAB];
+        byte[] slotV2 = [0xCD];
+        Account c1 = new(1, 50, StorageRootOf((Slot, slotV1)), Keccak.OfAnEmptyString);
+        Account c2 = new(2, 50, StorageRootOf((Slot, slotV2)), Keccak.OfAnEmptyString);
+        Address addrC = TestItem.AddressC;
 
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, addrC, block: 1, c1);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, addrC, Slot, block: 1, slotV1);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 2, a2);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, addrC, block: 2, c2);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, addrC, Slot, block: 2, slotV2);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0), (AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrA, a1), (AddrB, b0), (addrC, c1));
+        headers.Roots[2] = StateRootOf((AddrA, a2), (AddrB, b0), (addrC, c2));
+        MarkAll(headers);
+
+        HistoryWalkVerdict split = CreateVerifier(headers, maxRowsPerPartition: 1).VerifyRange(0, 2, CancellationToken.None);
+        HistoryWalkVerdict whole = CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(split.Mismatches, Is.Empty,
+                "a budget of one row forces every subtree to split down to single keys and stream them; the combined roots must still match every header");
+            Assert.That(split.Verified, Is.True);
+            Assert.That(split.BlocksCompared, Is.EqualTo(3UL));
+            Assert.That(whole.Verified, Is.True, "the same range under the normal budget must verify identically");
+        }
+    }
+
+    [Test]
+    public void A_verify_only_walk_leaves_no_rows_behind_in_the_commitment_columns()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
 
         FakeHeaders headers = new();
         headers.Roots[0] = StateRootOf((AddrA, a0));
         headers.Roots[1] = StateRootOf((AddrA, a1));
-        headers.Roots[2] = StateRootOf((AddrA, a2));
         MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 1).VerifyRange(0, 1, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => CreateVerifier(headers, maxMaterializedRows: 1).VerifyRange(0, 2, CancellationToken.None),
-                Throws.InstanceOf<InvalidConfigurationException>(),
-                "a request whose working set exceeds the ceiling must be declined rather than allowed to exhaust the node");
-            Assert.That(CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None).Verified, Is.True,
-                "the same range under the normal ceiling must still verify");
+            Assert.That(verdict.Verified, Is.True);
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Count(), Is.Zero,
+                "the per-block series a verification streams through the commitment column are scratch and must be gone when it finishes");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys().Count(), Is.Zero);
         }
     }
 
@@ -276,13 +314,13 @@ public class HistoryWalkVerifierTests
         headers.Roots[3] = StateRootOf((AddrA, a3));
 
         MarkAll(headers);
-        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRangeParallel(0, 3, segments: 3, CancellationToken.None);
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRangeParallel(0, 3, workers: 3, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verdict.Mismatches, Is.Empty);
             Assert.That(verdict.Verified, Is.True,
-                "each segment builds its own start state from the rows and anchors it to its own start header, so splitting must never weaken the proof");
+                "workers replay disjoint subtrees whose roots are combined into one root per block, so the worker count must never weaken the proof");
             Assert.That(verdict.BlocksCompared, Is.GreaterThanOrEqualTo(4UL));
         }
     }
@@ -302,13 +340,13 @@ public class HistoryWalkVerifierTests
         headers.Roots[3] = StateRootOf((AddrA, before));
 
         MarkAll(headers);
-        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRangeParallel(0, 3, segments: 2, CancellationToken.None);
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRangeParallel(0, 3, workers: 2, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verdict.Verified, Is.False);
             Assert.That(verdict.Mismatches.Select(m => m.Block), Does.Contain(2UL),
-                "the segment covering the corrupted height must report it even though the other segments are clean");
+                "the root combined from all subtrees must report the corrupted height even though every other height is clean");
         }
     }
 
@@ -346,7 +384,7 @@ public class HistoryWalkVerifierTests
             _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100 });
 
         Assert.That(
-            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxMaterializedRows, emitterSource: null),
+            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
     }

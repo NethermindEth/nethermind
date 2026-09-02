@@ -9,7 +9,6 @@ namespace Nethermind.State.Flat.History.Proofs;
 
 internal sealed class HistoricalTrieNodeBuilder(
     TrieHistoryScope scope,
-    ValueHash256 trieScope,
     ulong block,
     ResolutionBudget budget,
     int fanOut,
@@ -19,13 +18,14 @@ internal sealed class HistoricalTrieNodeBuilder(
 
     public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
     {
-        if (cache is not null && cache.TryGet(trieScope, path, block, out byte[]? cached) && cached is not null) return cached;
+        ValueHash256 expected = expectedHash.ValueHash256;
+        if (cache is not null && cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
 
         byte[]? rlp = ResolveRlp(path, fanOut > 1);
-        if (rlp is not null && Keccak.Compute(rlp) == expectedHash) return Publish(path, rlp);
+        if (rlp is not null && Keccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         rlp = RebuildRlp(path);
-        if (rlp is not null && Keccak.Compute(rlp) == expectedHash) return Publish(path, rlp);
+        if (rlp is not null && Keccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         throw new StateUnavailableException(
             $"The node at {path} as of block {block} rebuilt to {(rlp is null ? "nothing" : Keccak.Compute(rlp).ToString())} instead of the " +
@@ -33,41 +33,38 @@ internal sealed class HistoricalTrieNodeBuilder(
             "state root, so no proof is served for this height.");
     }
 
-    private byte[] Publish(in TreePath path, byte[] rlp)
+    private byte[] Publish(in ValueHash256 hash, byte[] rlp)
     {
-        cache?.Set(trieScope, path, block, rlp);
+        cache?.Set(hash, rlp);
         return rlp;
     }
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren)
     {
-        CommitmentTier tier = scope.TierOf(path.Length);
+        if (!scope.HasCommitmentRows(path.Length)) return RebuildRlp(path);
+
         if (scope.MayHaveExactRows(path.Length))
         {
-            using CommitmentStore.RowChain exact = scope.OpenRows(path, exact: true, block);
+            using CommitmentStore.RowChain exact = scope.OpenRows(path, exact: true, block, budget);
             if (exact.MoveNext() && ParentRowCodec.IsValid(exact.CurrentValue) && !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)) && Materialize(exact) is { } fromExact)
             {
                 return fromExact;
             }
         }
 
-        return tier switch
-        {
-            CommitmentTier.PerChange or CommitmentTier.Checkpoint => ResolveCheckpointed(path, parallelChildren),
-            _ => RebuildRlp(path),
-        };
+        return ResolveCheckpointed(path, parallelChildren);
     }
 
     private bool NewerCheckpointRowExists(in TreePath path, ulong exactLastBlock)
     {
-        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, scope.Policy.WindowAtOrBelow(block) + 1);
+        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, scope.Policy.WindowAtOrBelow(block) + 1, budget);
         return chain.MoveNext() && ParentRowCodec.IsValid(chain.CurrentValue) && ParentRowCodec.LastBlock(chain.CurrentValue) > exactLastBlock && ParentRowCodec.LastBlock(chain.CurrentValue) <= block;
     }
 
     private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren)
     {
         ulong anchor = scope.Policy.WindowAtOrBelow(block);
-        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, anchor + 1);
+        using CommitmentStore.RowChain chain = scope.OpenRows(path, exact: false, anchor + 1, budget);
         if (!chain.MoveNext()) return RebuildRlp(path);
         if (!ParentRowCodec.IsValid(chain.CurrentValue)) return RebuildRlp(path);
         if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= block) return Materialize(chain);
@@ -76,11 +73,11 @@ internal sealed class HistoricalTrieNodeBuilder(
         if (!ParentRowCodec.IsBranchRow(movedRow)) return RebuildRlp(path);
 
         ushort presenceMoved = ParentRowCodec.Presence(movedRow);
-        ushort changed = (ushort)(ParentRowCodec.Changed(movedRow) & presenceMoved);
+        ushort changed = ParentRowCodec.Changed(movedRow);
         byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
 
         ushort presenceAnchor = 0;
-        using (CommitmentStore.RowChain anchored = scope.OpenRows(path, exact: false, anchor))
+        using (CommitmentStore.RowChain anchored = scope.OpenRows(path, exact: false, anchor, budget))
         {
             if (anchored.MoveNext() && ParentRowCodec.IsBranchRow(anchored.CurrentValue))
             {

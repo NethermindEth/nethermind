@@ -13,14 +13,16 @@ internal sealed class CommitmentRecordingTrieStore : IScopedTrieStore
     private readonly IScopedTrieStore _inner;
     private readonly CommitmentEmitter _emitter;
     private readonly ValueHash256? _storageAccount;
+    private readonly int _minRecordedDepth;
     private readonly RecordingCommitter _committer;
     private TrieNode? _committedRoot;
 
-    public CommitmentRecordingTrieStore(IScopedTrieStore inner, CommitmentEmitter emitter, ValueHash256? storageAccount)
+    public CommitmentRecordingTrieStore(IScopedTrieStore inner, CommitmentEmitter emitter, ValueHash256? storageAccount, int minRecordedDepth = 0)
     {
         _inner = inner;
         _emitter = emitter;
         _storageAccount = storageAccount;
+        _minRecordedDepth = minRecordedDepth;
         _committer = new RecordingCommitter(this);
     }
 
@@ -42,7 +44,7 @@ internal sealed class CommitmentRecordingTrieStore : IScopedTrieStore
     private void Record(in TreePath path, TrieNode node)
     {
         if (path.Length == 0) _committedRoot = node;
-        if (!Recording) return;
+        if (!Recording || path.Length < _minRecordedDepth) return;
 
         if (_storageAccount is { } account) _emitter.RecordStorageNode(account, path, node.FullRlp.AsSpan());
         else _emitter.RecordAccountNode(path, node.FullRlp.AsSpan());

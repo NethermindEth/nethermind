@@ -18,7 +18,7 @@ internal abstract class TrieHistoryScope(
 
     public CommitmentDepthPolicy Policy => policy;
 
-    public abstract CommitmentTier TierOf(int depth);
+    public abstract bool HasCommitmentRows(int depth);
 
     public abstract bool MayHaveExactRows(int depth);
 
@@ -36,11 +36,11 @@ internal abstract class TrieHistoryScope(
 
     protected virtual bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block) => true;
 
-    public CommitmentStore.RowChain OpenRows(in TreePath path, bool exact, ulong suffix)
+    public CommitmentStore.RowChain OpenRows(in TreePath path, bool exact, ulong suffix, ResolutionBudget? budget = null)
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = WriteCommitmentPrefix(prefix, path, exact);
-        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix);
+        return commitments.OpenAtOrBelow(prefix[..prefixLength], suffix, budget);
     }
 
     public void EnumerateLeaves(in TreePath prefix, ulong block, ResolutionBudget budget, List<TrieLeaf> leaves)

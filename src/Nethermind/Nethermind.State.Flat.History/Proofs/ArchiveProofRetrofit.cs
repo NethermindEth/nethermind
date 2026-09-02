@@ -18,9 +18,11 @@ public sealed class ArchiveProofRetrofit(
 
     public bool Enabled => settings.RetrofitEnabled;
 
+    public CommitmentDepthPolicy Policy => policy;
+
     public ulong WindowGranularity => policy.Interval;
 
-    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy);
+    public CommitmentEmitter CreateEmitter() => CommitmentEmitter.ForWalk(history, policy, metadata.WindowWriteLock);
 
     public void Prepare()
     {
@@ -38,8 +40,14 @@ public sealed class ArchiveProofRetrofit(
 
     public void PublishCoverage(ulong fromInclusive, ulong toInclusive)
     {
-        metadata.PublishVerifiedCoverage(fromInclusive, toInclusive);
+        if (!metadata.TryPublishVerifiedCoverage(fromInclusive, toInclusive, out ulong coveredFrom, out ulong coveredTo))
+        {
+            if (_logger.IsWarn) _logger.Warn(
+                $"Archive proof commitments for blocks {fromInclusive} to {toInclusive} were built but not published: they do not touch the already published coverage {coveredFrom} to {coveredTo}, and coverage is one contiguous range. Build the gap between them to join the two.");
+            return;
+        }
+
         if (_logger.IsInfo) _logger.Info(
-            $"Archive proof commitments cover blocks {fromInclusive} to {toInclusive}; eth_getProof serves that range once FlatDb.ArchiveProofServeEnabled is on.");
+            $"Archive proof commitments cover blocks {coveredFrom} to {coveredTo}; eth_getProof serves that range once FlatDb.ArchiveProofServeEnabled is on.");
     }
 }

@@ -66,6 +66,65 @@ public class ArchiveProofTests
         }
     }
 
+    [TestCase(1ul, TestName = "SplitBuild_FirstBlock")]
+    [TestCase(65ul, TestName = "SplitBuild_InsideAnOpenWindow")]
+    [TestCase(Blocks, TestName = "SplitBuild_Head")]
+    public void A_build_that_splits_every_subtree_and_streams_every_key_yields_the_same_proofs(ulong block)
+    {
+        BuildCommitments(maxRowsPerPartition: 1);
+
+        foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
+        {
+            AssertProofMatchesTheTrie(address, block, address == Contract ? ContractSlots : []);
+        }
+
+        CorruptEveryAccountRow();
+        AccountProof fromCommitments = ProveFromArchive(_accounts[3], block: 6);
+        Assert.That(fromCommitments.Proof!.Select(static item => item.ToHexString()),
+            Is.EqualTo(_chain.ExpectedProof(_accounts[3], 6).Proof!.Select(static item => item.ToHexString())),
+            "rows combined upward from single-key partitions must leave the same commitment column a whole-subtree replay leaves");
+    }
+
+    [Test]
+    public void A_build_leaves_no_scratch_series_behind()
+    {
+        BuildCommitments(maxRowsPerPartition: 1);
+
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(column.GetAllKeys().Any(static key => key[0] == 0xFD), Is.False,
+            "the per-block series that carry subtree roots between partitions and their combine are scratch and must be deleted once consumed");
+    }
+
+    [Test]
+    public void An_account_created_and_deleted_inside_one_checkpoint_window_is_served_from_commitments_alone()
+    {
+        Address transient = TestItem.AddressE;
+        ulong born = Blocks + 6;
+        ulong died = Blocks + 10;
+        ulong queried = Blocks + 8;
+        for (ulong number = Blocks + 1; number <= Blocks + 20; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[(int)(current % AccountCount)], (UInt256)(9000 + current));
+                if (current == born) block.SetBalance(transient, 777);
+                if (current == died) block.SetAccount(transient, null);
+            });
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(transient, queried);
+
+        CorruptEveryAccountRow();
+        AccountProof actual = ProveFromArchive(transient, queried);
+
+        Assert.That(actual.Proof!.Select(static item => item.ToHexString()),
+            Is.EqualTo(expected.Proof!.Select(static item => item.ToHexString())),
+            "a child that appeared and vanished inside one window is in neither the anchor's nor the window's end presence, so only its changed bit lets the resolver find it without a rebuild");
+    }
+
     [Test]
     public void A_storage_proof_built_from_commitments_equals_the_proof_that_blocks_own_trie_gives()
     {
@@ -242,7 +301,7 @@ public class ArchiveProofTests
         _chain.PublishWatermark();
     }
 
-    private void BuildCommitments()
+    private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
         ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
         retrofit.Prepare();
@@ -252,9 +311,9 @@ public class ArchiveProofTests
 
         HistoryWalkVerifier verifier = new(
             _historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
-            HistoryWalkVerifier.DefaultMaxMaterializedRows, retrofit);
+            maxRowsPerPartition, retrofit);
 
-        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, segments: 3, CancellationToken.None);
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
 
         Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
         retrofit.PublishCoverage(0, _chain.Head);

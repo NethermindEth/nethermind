@@ -42,6 +42,11 @@ internal static class BranchRlp
 
             children[index] = reader.Read(prefixLength + contentLength).ToArray();
         }
+
+        if (reader.PeekPrefixAndContentLength().ContentLength != 0)
+        {
+            throw new InvalidDataException("A branch of a fixed-width-key trie carries no value; this node is not a state or storage trie branch.");
+        }
     }
 
     public static byte[] Encode(byte[]?[] children)

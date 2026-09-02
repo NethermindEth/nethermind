@@ -9,7 +9,9 @@ internal static class ParentRowCodec
 {
     private const byte BranchKind = 0;
     private const byte WholeNodeKind = 1;
-    private const int HeaderLength = 1 + sizeof(ulong) + sizeof(ushort) + sizeof(ushort);
+    private const byte EmptyKind = 2;
+    private const int KindAndBlockLength = 1 + sizeof(ulong);
+    private const int HeaderLength = KindAndBlockLength + sizeof(ushort) + sizeof(ushort);
 
     public static byte[] EncodeBranch(ulong lastBlock, ushort presence, ushort changed, byte[]?[] children)
     {
@@ -42,20 +44,30 @@ internal static class ParentRowCodec
 
     public static byte[] EncodeWholeNode(ulong lastBlock, ReadOnlySpan<byte> nodeRlp)
     {
-        byte[] row = new byte[1 + sizeof(ulong) + nodeRlp.Length];
+        byte[] row = new byte[KindAndBlockLength + nodeRlp.Length];
         row[0] = WholeNodeKind;
         BinaryPrimitives.WriteUInt64BigEndian(row.AsSpan(1), lastBlock);
-        nodeRlp.CopyTo(row.AsSpan(1 + sizeof(ulong)));
+        nodeRlp.CopyTo(row.AsSpan(KindAndBlockLength));
+        return row;
+    }
+
+    public static byte[] EncodeEmpty(ulong lastBlock)
+    {
+        byte[] row = new byte[KindAndBlockLength];
+        row[0] = EmptyKind;
+        BinaryPrimitives.WriteUInt64BigEndian(row.AsSpan(1), lastBlock);
         return row;
     }
 
     public static bool IsBranchRow(ReadOnlySpan<byte> row) => row.Length >= HeaderLength && row[0] == BranchKind && PayloadIsConsistent(row);
 
-    public static bool IsWholeNodeRow(ReadOnlySpan<byte> row) => row.Length > 1 + sizeof(ulong) && row[0] == WholeNodeKind;
+    public static bool IsWholeNodeRow(ReadOnlySpan<byte> row) => row.Length > KindAndBlockLength && row[0] == WholeNodeKind;
 
-    public static bool IsValid(ReadOnlySpan<byte> row) => IsBranchRow(row) || IsWholeNodeRow(row);
+    public static bool IsEmptyRow(ReadOnlySpan<byte> row) => row.Length == KindAndBlockLength && row[0] == EmptyKind;
 
-    public static ReadOnlySpan<byte> WholeNodeRlp(ReadOnlySpan<byte> row) => row[(1 + sizeof(ulong))..];
+    public static bool IsValid(ReadOnlySpan<byte> row) => IsBranchRow(row) || IsWholeNodeRow(row) || IsEmptyRow(row);
+
+    public static ReadOnlySpan<byte> WholeNodeRlp(ReadOnlySpan<byte> row) => row[KindAndBlockLength..];
 
     public static ulong LastBlock(ReadOnlySpan<byte> row) => BinaryPrimitives.ReadUInt64BigEndian(row[1..]);
 

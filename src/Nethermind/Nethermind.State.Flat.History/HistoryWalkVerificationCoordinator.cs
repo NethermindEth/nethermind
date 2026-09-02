@@ -104,7 +104,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                         : Math.Max(1, Environment.ProcessorCount / 2);
 
                     if (_logger.IsInfo) _logger.Info(
-                        $"History walk verification starting: every block in [0, {watermark}] against this node's own headers, {segments} segments.");
+                        $"History walk verification starting: every block in [0, {watermark}] against this node's own headers, {segments} workers.");
 
                     _retrofit?.Prepare();
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -11,18 +12,24 @@ namespace Nethermind.State.Flat.History.Proofs;
 public sealed class CommitmentEmitter : IDisposable
 {
     public const int DefaultMaxOpenWindowNodes = 200_000;
+    public const byte LargeTrieFlag = 0xFF;
     private const int MaxRowsPerBatch = 65_536;
-    private static readonly object WindowWriteLock = new();
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
     private readonly CommitmentStore _accounts;
     private readonly CommitmentStore _storages;
+    private readonly IDb _storageColumn;
+    private readonly object _windowWriteLock;
     private readonly bool _writeThrough;
     private readonly int _maxOpenWindowNodes;
 
-    private readonly Dictionary<NodePathKey, byte[]> _blockNodes = [];
+    private readonly Dictionary<NodePathKey, byte[]?> _blockNodes = [];
+    private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
+    private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
+    private readonly Dictionary<ValueHash256, bool> _largeTries = [];
+    private readonly Dictionary<NodePathKey, bool> _exactBranches = [];
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly HashSet<NodePathKey> _touchedThisBlock = [];
     private readonly byte[]?[] _children = new byte[]?[BranchRlp.ChildCount];
@@ -31,27 +38,40 @@ public sealed class CommitmentEmitter : IDisposable
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
     private int _rowsInBatch;
     private ulong _block;
+    private bool _haveBlock;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, bool writeThrough, int maxOpenWindowNodes)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock, bool writeThrough, int maxOpenWindowNodes)
     {
         _history = history;
         _policy = policy;
+        _windowWriteLock = windowWriteLock;
         _writeThrough = writeThrough;
         _maxOpenWindowNodes = maxOpenWindowNodes;
         _accounts = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.AccountCommitments));
-        _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments));
+        _storageColumn = history.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        _storages = new CommitmentStore(_storageColumn);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, int maxOpenWindowNodes = DefaultMaxOpenWindowNodes) =>
-        new(history, policy, writeThrough: false, maxOpenWindowNodes);
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock, int maxOpenWindowNodes = DefaultMaxOpenWindowNodes) =>
+        new(history, policy, windowWriteLock, writeThrough: false, maxOpenWindowNodes);
 
-    public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy) =>
-        new(history, policy, writeThrough: true, DefaultMaxOpenWindowNodes);
+    public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, object windowWriteLock) =>
+        new(history, policy, windowWriteLock, writeThrough: true, DefaultMaxOpenWindowNodes);
+
+    public CommitmentDepthPolicy Policy => _policy;
 
     public void BeginBlock(ulong block)
     {
+        if (_haveBlock && _windows.Count > 0 && _policy.WindowClosingAt(block) != _policy.WindowClosingAt(_block))
+        {
+            FlushWindows(_policy.WindowClosingAt(_block));
+        }
+
         _block = block;
+        _haveBlock = true;
         _blockNodes.Clear();
+        _blockChanged.Clear();
+        _blockDirtyChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _touchedThisBlock.Clear();
     }
@@ -60,27 +80,76 @@ public sealed class CommitmentEmitter : IDisposable
     {
         if (rlp.Length < Hash256.Size) return;
 
-        _blockNodes[NodePathKey.ForAccount(path)] = rlp;
+        RecordAccount(path, rlp, changed: null);
     }
 
-    public void RecordAccountNode(in TreePath path, ReadOnlySpan<byte> rlp) => RecordAccountNode(path, rlp.ToArray());
+    public void RecordAccountNode(in TreePath path, ReadOnlySpan<byte> rlp)
+    {
+        if (rlp.Length < Hash256.Size || path.Length > _policy.AccountCheckpointDepth + 1) return;
+        if (path.Length == _policy.AccountCheckpointDepth + 1)
+        {
+            _blockDirtyChildren.Add(NodePathKey.ForAccount(path));
+            return;
+        }
+
+        RecordAccount(path, rlp.ToArray(), changed: null);
+    }
+
+    public void RecordAccountNode(in TreePath path, byte[] rlp, ushort changedChildren) => RecordAccount(path, rlp, changedChildren);
+
+    public void RecordAccountEmpty(in TreePath path) => RecordAccount(path, rlp: null, changed: null);
 
     public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, byte[] rlp)
     {
+        NoteStorageDepth(accountPath, path.Length);
         if (rlp.Length < Hash256.Size) return;
 
-        _blockNodes[NodePathKey.ForStorage(accountPath, path)] = rlp;
-        _blockStorageMaxDepth[accountPath] = Math.Max(_blockStorageMaxDepth.GetValueOrDefault(accountPath), path.Length);
+        RecordStorage(accountPath, path, rlp, changed: null);
     }
 
-    public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp) => RecordStorageNode(accountPath, path, rlp.ToArray());
+    public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp)
+    {
+        NoteStorageDepth(accountPath, path.Length);
+        if (rlp.Length < Hash256.Size || path.Length > _policy.StorageCheckpointDepth + 1) return;
+        if (path.Length == _policy.StorageCheckpointDepth + 1)
+        {
+            _blockDirtyChildren.Add(NodePathKey.ForStorage(accountPath, path));
+            return;
+        }
+
+        RecordStorage(accountPath, path, rlp.ToArray(), changed: null);
+    }
+
+    public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, byte[] rlp, ushort changedChildren) =>
+        RecordStorage(accountPath, path, rlp, changedChildren);
+
+    public void RecordStorageEmpty(in ValueHash256 accountPath, in TreePath path) => RecordStorage(accountPath, path, rlp: null, changed: null);
+
+    public void RecordStorageDepthReached(in ValueHash256 accountPath, int depth) => NoteStorageDepth(accountPath, depth);
+
+    public bool IsLargeStorageTrie(in ValueHash256 accountPath)
+    {
+        if (_blockStorageMaxDepth.TryGetValue(accountPath, out int depth) && depth >= _policy.LargeTrieSignalDepth)
+        {
+            MarkLarge(accountPath);
+            return true;
+        }
+
+        if (_largeTries.TryGetValue(accountPath, out bool large)) return large;
+
+        Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
+        WriteLargeTrieFlagKey(flagKey, accountPath);
+        large = _storageColumn.KeyExists(flagKey);
+        _largeTries[accountPath] = large;
+        return large;
+    }
 
     public void CompleteBlock()
     {
-        foreach ((NodePathKey key, byte[] rlp) in _blockNodes)
+        foreach ((NodePathKey key, byte[]? rlp) in _blockNodes)
         {
             CommitmentTier tier = key.IsStorage
-                ? _policy.StorageTier(key.Depth, _blockStorageMaxDepth.GetValueOrDefault(key.Scope) >= _policy.LargeTrieSignalDepth)
+                ? _policy.StorageTier(key.Depth, IsLargeStorageTrie(key.Scope))
                 : _policy.AccountTier(key.Depth);
 
             switch (tier)
@@ -97,7 +166,7 @@ public sealed class CommitmentEmitter : IDisposable
         if (_writeThrough)
         {
             ulong window = _policy.WindowClosingAt(_block);
-            lock (WindowWriteLock)
+            lock (_windowWriteLock)
             {
                 foreach (NodePathKey key in _touchedThisBlock) MergeWrite(key, _windows[key], window);
                 CommitBatch();
@@ -114,18 +183,92 @@ public sealed class CommitmentEmitter : IDisposable
         }
     }
 
-    public void FlushOpenWindows(ulong lastBlock) => FlushWindows(_policy.WindowClosingAt(lastBlock));
+    public void FlushOpenWindows()
+    {
+        if (_haveBlock) FlushWindows(_policy.WindowClosingAt(_block));
+    }
 
     public void Dispose() => CommitBatch();
 
-    private void WriteExact(in NodePathKey key, byte[] rlp)
+    public static void WriteLargeTrieFlagKey(Span<byte> destination, in ValueHash256 accountPath)
+    {
+        CommitmentKeyLayout.WriteIdentity(destination, accountPath);
+        destination[CommitmentKeyLayout.IdentityLength] = LargeTrieFlag;
+    }
+
+    private void RecordAccount(in TreePath path, byte[]? rlp, ushort? changed)
+    {
+        int depth = path.Length;
+        if (depth > _policy.AccountCheckpointDepth + 1) return;
+
+        NodePathKey key = NodePathKey.ForAccount(path);
+        if (depth == _policy.AccountCheckpointDepth + 1)
+        {
+            _blockDirtyChildren.Add(key);
+            return;
+        }
+
+        Record(key, rlp, changed);
+    }
+
+    private void RecordStorage(in ValueHash256 accountPath, in TreePath path, byte[]? rlp, ushort? changed)
+    {
+        int depth = path.Length;
+        if (depth > _policy.StorageCheckpointDepth + 1) return;
+
+        NodePathKey key = NodePathKey.ForStorage(accountPath, path);
+        if (depth == _policy.StorageCheckpointDepth + 1)
+        {
+            _blockDirtyChildren.Add(key);
+            return;
+        }
+
+        Record(key, rlp, changed);
+    }
+
+    private void Record(in NodePathKey key, byte[]? rlp, ushort? changed)
+    {
+        _blockNodes[key] = rlp;
+        if (changed is { } mask) _blockChanged[key] = mask;
+        else _blockChanged.Remove(key);
+    }
+
+    private void NoteStorageDepth(in ValueHash256 accountPath, int depth)
+    {
+        if (depth < _policy.LargeTrieSignalDepth) return;
+
+        _blockStorageMaxDepth[accountPath] = Math.Max(_blockStorageMaxDepth.GetValueOrDefault(accountPath), depth);
+    }
+
+    private void MarkLarge(in ValueHash256 accountPath)
+    {
+        if (_largeTries.TryGetValue(accountPath, out bool large) && large) return;
+
+        _largeTries[accountPath] = true;
+        Span<byte> flagKey = stackalloc byte[CommitmentKeyLayout.IdentityLength + 1];
+        WriteLargeTrieFlagKey(flagKey, accountPath);
+        if (_storageColumn.KeyExists(flagKey)) return;
+
+        Span<byte> since = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(since, _block);
+        GetBatch(FlatHistoryColumns.StorageCommitments).PutSpan(flagKey, since);
+    }
+
+    private void WriteExact(in NodePathKey key, byte[]? rlp)
     {
         byte[] row;
-        if (BranchRlp.IsBranch(rlp))
+        bool isBranch = false;
+        if (rlp is null)
         {
+            row = ParentRowCodec.EncodeEmpty(_block);
+        }
+        else if (BranchRlp.IsBranch(rlp))
+        {
+            isBranch = true;
             BranchRlp.ReadChildren(rlp, _children);
             ushort presence = PresenceOf(_children);
-            ushort changed = CommitmentDepthPolicy.IsFullVectorSuffix(_block) ? presence : ChangedChildren(key, _children);
+            bool wasBranch = _exactBranches.TryGetValue(key, out bool previous) && previous;
+            ushort changed = CommitmentDepthPolicy.IsFullVectorSuffix(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             row = ParentRowCodec.EncodeBranch(_block, presence, changed, _children);
         }
         else
@@ -133,10 +276,11 @@ public sealed class CommitmentEmitter : IDisposable
             row = ParentRowCodec.EncodeWholeNode(_block, rlp);
         }
 
+        _exactBranches[key] = isBranch;
         Write(key, exact: true, _block, row);
     }
 
-    private void Accumulate(in NodePathKey key, byte[] rlp)
+    private void Accumulate(in NodePathKey key, byte[]? rlp)
     {
         if (!_windows.TryGetValue(key, out WindowState? state))
         {
@@ -147,22 +291,37 @@ public sealed class CommitmentEmitter : IDisposable
         _touchedThisBlock.Add(key);
         state.LastBlock = _block;
 
-        if (!BranchRlp.IsBranch(rlp))
+        if (rlp is null)
         {
-            state.WholeNodeRlp = rlp;
+            state.Kind = WindowKind.Empty;
+            state.WholeNodeRlp = null;
+            state.Presence = 0;
             return;
         }
 
-        state.WholeNodeRlp = null;
+        if (!BranchRlp.IsBranch(rlp))
+        {
+            state.Kind = WindowKind.Whole;
+            state.WholeNodeRlp = rlp;
+            state.Presence = 0;
+            return;
+        }
+
         BranchRlp.ReadChildren(rlp, _children);
-        state.Presence = PresenceOf(_children);
-        state.Changed |= ChangedChildren(key, _children);
+        ushort presence = PresenceOf(_children);
+        ushort changed = ChangedChildren(key, _children);
+        if (state.Kind is WindowKind.Whole or WindowKind.Empty) changed |= presence;
+
+        state.Kind = WindowKind.Branch;
+        state.WholeNodeRlp = null;
+        state.Presence = presence;
+        state.Changed |= changed;
         Array.Copy(_children, state.Latest, BranchRlp.ChildCount);
     }
 
     private void FlushWindows(ulong window)
     {
-        lock (WindowWriteLock)
+        lock (_windowWriteLock)
         {
             foreach ((NodePathKey key, WindowState state) in _windows) MergeWrite(key, state, window);
             CommitBatch();
@@ -184,13 +343,13 @@ public sealed class CommitmentEmitter : IDisposable
     private static byte[] Merge(byte[]? existing, WindowState state, ulong window, byte[]?[] merged)
     {
         bool full = CommitmentDepthPolicy.IsFullVectorSuffix(window);
-        if (existing is null || (!ParentRowCodec.IsBranchRow(existing) && !ParentRowCodec.IsWholeNodeRow(existing)))
+        if (existing is null || !ParentRowCodec.IsValid(existing))
         {
             return Encode(state, full);
         }
 
         bool existingNewer = ParentRowCodec.LastBlock(existing) > state.LastBlock;
-        if (state.WholeNodeRlp is not null || !ParentRowCodec.IsBranchRow(existing))
+        if (state.Kind != WindowKind.Branch || !ParentRowCodec.IsBranchRow(existing))
         {
             return existingNewer ? existing : Encode(state, full);
         }
@@ -198,48 +357,51 @@ public sealed class CommitmentEmitter : IDisposable
         Array.Clear(merged);
         ushort existingChanged = ParentRowCodec.Changed(existing);
         ushort changed = (ushort)(existingChanged | state.Changed);
-        ushort presence = existingNewer ? ParentRowCodec.Presence(existing) : state.Presence;
         ulong lastBlock = Math.Max(ParentRowCodec.LastBlock(existing), state.LastBlock);
 
+        ushort presence;
         if (existingNewer)
         {
+            presence = ParentRowCodec.Presence(existing);
             ParentRowCodec.Fill(existing, existingChanged, merged);
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                if (merged[index] is null && ((state.Changed >> index) & 1) == 1) merged[index] = state.Latest[index];
+                if (((existingChanged >> index) & 1) == 0) merged[index] = state.Latest[index];
             }
         }
         else
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++)
-            {
-                if (((state.Changed >> index) & 1) == 1) merged[index] = state.Latest[index];
-            }
-
-            ParentRowCodec.Fill(existing, (ushort)(existingChanged & ~state.Changed), merged);
+            presence = state.Presence;
+            Array.Copy(state.Latest, merged, BranchRlp.ChildCount);
         }
 
-        if (full && !existingNewer)
-        {
-            return ParentRowCodec.EncodeBranch(lastBlock, presence, presence, state.Latest);
-        }
-
-        return ParentRowCodec.EncodeBranch(lastBlock, presence, (ushort)(changed & presence & PresenceOf(merged)), merged);
+        return ParentRowCodec.EncodeBranch(lastBlock, presence, full ? (ushort)(presence | changed) : changed, merged);
     }
 
     private static byte[] Encode(WindowState state, bool full) =>
-        state.WholeNodeRlp is { } whole
-            ? ParentRowCodec.EncodeWholeNode(state.LastBlock, whole)
-            : ParentRowCodec.EncodeBranch(state.LastBlock, state.Presence, (ushort)((full ? state.Presence : state.Changed & state.Presence) & PresenceOf(state.Latest)), state.Latest);
+        state.Kind switch
+        {
+            WindowKind.Empty => ParentRowCodec.EncodeEmpty(state.LastBlock),
+            WindowKind.Whole => ParentRowCodec.EncodeWholeNode(state.LastBlock, state.WholeNodeRlp!),
+            _ => ParentRowCodec.EncodeBranch(state.LastBlock, state.Presence, full ? (ushort)(state.Presence | state.Changed) : state.Changed, state.Latest),
+        };
 
     private ushort ChangedChildren(in NodePathKey key, byte[]?[] children)
     {
+        if (_blockChanged.TryGetValue(key, out ushort explicitMask)) return explicitMask;
+
         ushort changed = 0;
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
             byte[]? child = children[index];
             if (child is null) continue;
-            if (child.Length < Hash256.Size || _blockNodes.ContainsKey(key.Child(index))) changed |= (ushort)(1 << index);
+
+            if (child.Length < Hash256.Size) changed |= (ushort)(1 << index);
+            else
+            {
+                NodePathKey childKey = key.Child(index);
+                if (_blockNodes.ContainsKey(childKey) || _blockDirtyChildren.Contains(childKey)) changed |= (ushort)(1 << index);
+            }
         }
 
         return changed;
@@ -279,8 +441,17 @@ public sealed class CommitmentEmitter : IDisposable
         _rowsInBatch = 0;
     }
 
+    private enum WindowKind : byte
+    {
+        Unknown,
+        Branch,
+        Whole,
+        Empty,
+    }
+
     private sealed class WindowState
     {
+        public WindowKind Kind;
         public ulong LastBlock;
         public ushort Presence;
         public ushort Changed;

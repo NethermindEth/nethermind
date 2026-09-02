@@ -62,12 +62,12 @@ public sealed class ArchiveProofSource(
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget) =>
-        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy), ValueKeccak.Zero, block, budget, _fanOut, _nodeCache);
+        new(new AccountHistoryScope(_accountRows, rowFormat, _accountCommitments, policy), block, budget, _fanOut, _nodeCache);
 
     private HistoricalTrieNodeBuilder CreateStorageBuilder(in ValueHash256 accountPath, ulong block, ResolutionBudget budget) =>
         new(
             new StorageHistoryScope(_storageRows, rowFormat, _storageCommitments, policy, _clears, accountPath, _rlpWrapSlots),
-            accountPath, block, budget, _fanOut, _nodeCache);
+            block, budget, _fanOut, _nodeCache);
 
     private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget) =>
         new(

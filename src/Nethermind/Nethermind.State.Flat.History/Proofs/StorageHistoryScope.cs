@@ -27,7 +27,7 @@ internal sealed class StorageHistoryScope(
 
     private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
 
-    public override CommitmentTier TierOf(int depth) => Policy.StorageTier(depth, largeTrie: false);
+    public override bool HasCommitmentRows(int depth) => depth <= Policy.StorageCheckpointDepth;
 
     public override bool MayHaveExactRows(int depth) => depth <= Policy.StorageExactDepth;
 
