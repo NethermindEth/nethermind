@@ -125,10 +125,27 @@ public class FrameTxMempoolDosMeasurement
     private static int StuffedSignatureCount(ulong ceiling) =>
         (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
 
-    /// <summary>Floor below which a per-signature cost is not a real public-key recovery. Measured ~49 us per
-    /// entry on the development box, and an isolated <c>EthereumEcdsa.RecoverAddress</c> costs 47 to 51 us, so
-    /// 25 clears the slowest plausible machine while still catching a cache with a partial hit rate.</summary>
-    private const double MinCredibleRecoveryMicros = 25.0;
+    /// <summary>
+    /// Fraction of a locally timed recovery below which the per-signature admission cost cannot be real curve
+    /// work.
+    /// </summary>
+    /// <remarks>
+    /// This was a fixed 25 us, justified from an isolated <c>RecoverAddress</c> costing 47 to 51 us here. That
+    /// compared the wrong quantities: the guarded value is whole-admission p50 over the entry count, which is
+    /// <c>fixed_overhead / count + recovery</c>, and it varies with count rather than being a per-recovery
+    /// figure. On a reviewer's machine the four cases read 27.0, 40.4, 32.1 and 40.6, putting the 100k control
+    /// point 8% above the floor in Debug. Release and a faster runner both push it down, so the guard fired on
+    /// faster hardware, which is backwards for a floor.
+    /// <para>
+    /// Calibrating against a recovery timed in the same process makes it hardware-relative. The guarded value
+    /// is always at least one recovery, so half of one leaves margin for noise while a memoised path, which
+    /// collapses to <c>fixed_overhead / count</c>, still falls far below.
+    /// </para>
+    /// </remarks>
+    private const double MinRecoveryFractionForCredibleWork = 0.5;
+
+    /// <summary>Recoveries timed to calibrate the floor. Enough to outlast tiering on a native call.</summary>
+    private const int RecoveryCalibrationSamples = 200;
 
     /// <summary>
     /// The share of its granted budget a burn shape must consume for the run to count as a burn.
@@ -640,8 +657,10 @@ public class FrameTxMempoolDosMeasurement
 
         // The failure this shape is most exposed to: a memoised verification would collapse the cost and still
         // emit a plausible row. A public-key recovery cannot be this cheap.
-        Assert.That(admissionPerSignature, Is.GreaterThan(MinCredibleRecoveryMicros),
-            $"{admissionPerSignature:F1} us per signature is too cheap for real curve work; suspect a cache");
+        double recoveryMicros = TimeOneRecovery();
+        Assert.That(admissionPerSignature, Is.GreaterThan(recoveryMicros * MinRecoveryFractionForCredibleWork),
+            $"{admissionPerSignature:F1} us per signature against a locally timed recovery of "
+            + $"{recoveryMicros:F1} us is too cheap for real curve work; suspect a cache");
 
         Emit($"case=signature_reject scheme=secp256k1 ceiling={ceiling} signatures={count} "
              + $"declared_gas={declaredGas} samples={Samples} submit_p50_us={p50:F1} "
@@ -655,6 +674,29 @@ public class FrameTxMempoolDosMeasurement
     /// different digest, so recovery runs and only then fails the signer compare; a wrong length or a
     /// non-canonical <c>s</c> would be refused before any curve work and measure nothing.
     /// </summary>
+    /// <summary>
+    /// Median cost of one <c>secp256k1</c> public-key recovery on this machine, timed through the same call
+    /// the signature filter makes, so the credibility floor scales with the hardware instead of a constant.
+    /// </summary>
+    private double TimeOneRecovery()
+    {
+        Hash256 digest = new(ValueKeccak.Compute("calibration"u8).ToByteArray());
+        Signature signature = _ethereumEcdsa.Sign(TestItem.PrivateKeyA, digest);
+
+        for (int i = 0; i < RecoveryCalibrationSamples; i++) _ethereumEcdsa.RecoverAddress(signature, digest);
+
+        List<double> micros = new(RecoveryCalibrationSamples);
+        for (int i = 0; i < RecoveryCalibrationSamples; i++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            _ethereumEcdsa.RecoverAddress(signature, digest);
+            micros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+        }
+
+        micros.Sort();
+        return Percentile(micros, 0.50);
+    }
+
     private TxFrameSignature[] BuildSecp256k1Signatures(int count)
     {
         TxFrameSignature[] entries = new TxFrameSignature[count];
