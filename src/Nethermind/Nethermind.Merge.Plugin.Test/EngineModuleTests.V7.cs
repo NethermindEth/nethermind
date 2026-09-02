@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
@@ -552,6 +553,54 @@ public partial class EngineModuleTests
             Assert.That(inclusionList.Count, Is.EqualTo(2));
             Assert.That(inclusionListBytes, Does.Contain(tx1Bytes));
             Assert.That(inclusionListBytes, Does.Contain(tx2Bytes));
+        }
+    }
+
+    // The consensus layer names the block the list must be appendable to, so the parameter has to reach
+    // the handler: dispatching it as a no-argument method answers -32602 and no list is ever built.
+    [Test]
+    public async Task GetInclusionListV1_accepts_the_parent_block_hash()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_getInclusionListV1), chain.BlockTree.HeadHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Does.Contain("\"result\""));
+            Assert.That(response, Does.Not.Contain("\"error\""));
+        }
+    }
+
+    [Test]
+    public async Task GetInclusionListV1_without_a_parent_block_hash_builds_on_the_head()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_getInclusionListV1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Does.Contain("\"result\""));
+            Assert.That(response, Does.Not.Contain("\"error\""));
+        }
+    }
+
+    // A list built on a block this node does not have could not be appended to it.
+    [Test]
+    public async Task GetInclusionListV1_rejects_an_unknown_parent_block_hash()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
+
+        ResultWrapper<InclusionListBytes> result =
+            await chain.EngineRpcModule.engine_getInclusionListV1(TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }
 

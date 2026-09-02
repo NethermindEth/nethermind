@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.TxPool;
@@ -14,12 +16,25 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
-    ISpecProvider specProvider) : IHandler<InclusionListBytes>
+    ISpecProvider specProvider) : IHandler<Hash256?, InclusionListBytes>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
 
-    public ResultWrapper<InclusionListBytes> Handle()
-        => !specProvider.GetFinalSpec().IsEip7805Enabled
-            ? ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork)
-            : ResultWrapper<InclusionListBytes>.Success(_inclusionListBuilder?.GetInclusionList() ?? new InclusionListBytes(0));
+    /// <param name="parentBlockHash">Block the list must be appendable to; the head when omitted.</param>
+    public ResultWrapper<InclusionListBytes> Handle(Hash256? parentBlockHash)
+    {
+        if (!specProvider.GetFinalSpec().IsEip7805Enabled)
+            return ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+
+        BlockHeader? parent = null;
+        if (parentBlockHash is not null)
+        {
+            // Failing beats answering for the head: a list built on the wrong parent is silently unappendable.
+            parent = blockTree.FindHeader(parentBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent is null)
+                return ResultWrapper<InclusionListBytes>.Fail($"Unknown parent block {parentBlockHash}", ErrorCodes.InvalidParams);
+        }
+
+        return ResultWrapper<InclusionListBytes>.Success(_inclusionListBuilder?.GetInclusionList(parent) ?? new InclusionListBytes(0));
+    }
 }
