@@ -109,7 +109,7 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: 100_000, UInt256.Zero, default);
+        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: PrefixFrameGas, UInt256.Zero, default);
         AcceptTxResult result = Accept(state, cache, FrameTx([selfRelay], nonce: 1));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
