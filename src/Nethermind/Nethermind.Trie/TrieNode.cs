@@ -467,33 +467,31 @@ namespace Nethermind.Trie
         public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
+            if (NodeType != NodeType.Unknown) return true;
+
             try
             {
                 CappedArray<byte> rlp = ReadRlp();
-                if (NodeType == NodeType.Unknown)
+                if (rlp.IsNull)
                 {
-                    if (rlp.IsNull)
+                    Hash256 keccak = Keccak;
+                    if (keccak is null)
                     {
-                        Hash256 keccak = Keccak;
-                        if (keccak is null)
-                        {
-                            return false;
-                        }
-
-                        byte[] fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
-
-                        if (fullRlp is null)
-                        {
-                            return false;
-                        }
-
-                        WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                        IsPersisted = true;
+                        return false;
                     }
-                }
-                else
-                {
-                    return true;
+
+                    byte[] fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+
+                    if (fullRlp is null)
+                    {
+                        return false;
+                    }
+
+                    // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
+                    if (NodeType != NodeType.Unknown) return true;
+
+                    WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                    IsPersisted = true;
                 }
 
                 return TryDecodeRlp(in rlp, bufferPool);
@@ -820,6 +818,7 @@ namespace Nethermind.Trie
             else if (childOrRef is Hash256 reference)
             {
                 child = tree.FindCachedOrUnknown(childPath, reference);
+                if (child.IsWarmerOwnedNonVolatile && child.NodeType != NodeType.Unknown) _nodeData[childIndex] = child;
             }
             else
             {
@@ -1346,7 +1345,7 @@ namespace Nethermind.Trie
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                 childOrRef = child;
-                                if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
+                                data = child.IsWarmerOwnedNonVolatile && child.NodeType == NodeType.Unknown ? keccak : child;
 
                                 break;
                             }
@@ -1527,7 +1526,7 @@ namespace Nethermind.Trie
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                                     childOrRef = child;
-                                    if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
+                                    data = child.IsWarmerOwnedNonVolatile && child.NodeType == NodeType.Unknown ? keccak : child;
 
                                     break;
                                 }
@@ -1566,6 +1565,7 @@ namespace Nethermind.Trie
                 else if (childOrRef is Hash256 reference)
                 {
                     child = tree.FindCachedOrUnknown(childPath, reference);
+                    if (child.IsWarmerOwnedNonVolatile && child.NodeType != NodeType.Unknown) node._nodeData[childIndex] = child;
                 }
                 else
                 {

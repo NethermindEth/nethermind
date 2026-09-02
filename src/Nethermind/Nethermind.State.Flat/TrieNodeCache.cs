@@ -156,10 +156,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is not { } source || (!source.IsWarmerOwned && source.IsHashOnlyPlaceholder())) continue;
+                if (shard[j].node is not { } source) continue;
 
-                TrieNode? newNode = source.IsWarmerOwned
-                    ? TryMaterializeResolvedWarmerNode(source)
+                TrieNode? newNode = source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source)
+                    : source.IsHashOnlyPlaceholder() ? null
                     : source;
                 if (newNode is not null)
                 {

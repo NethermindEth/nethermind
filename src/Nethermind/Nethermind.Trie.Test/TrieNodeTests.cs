@@ -121,6 +121,32 @@ public class TrieNodeTests
         resolver.Received(1).TryLoadRlp(TreePath.Empty, hash, ReadFlags.None);
     }
 
+    // Warmer jobs resolve one shared node concurrently: a decode another job published while this load was in
+    // flight must be kept, not replaced by a second decode of the same bytes.
+    [Test]
+    public void Try_resolve_keeps_a_decode_published_during_the_load()
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        ITrieNodeResolver racingResolver = Substitute.For<ITrieNodeResolver>();
+        racingResolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(rlp);
+        INodeData? racingDecode = null;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        {
+            trieNode.ResolveNode(racingResolver, TreePath.Empty);
+            racingDecode = trieNode.NodeData;
+            return rlp;
+        });
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            Assert.That(trieNode.NodeData, Is.SameAs(racingDecode));
+        }
+    }
+
     [Test]
     public void Warmer_owned_child_is_memoized_in_the_parent_only_once_decoded()
     {
