@@ -33,7 +33,9 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // frame whose target declines, which moves the real payer past the frame the cap keys on.
         // Revalidation itself is account-keyed, so it does not see a helper contract an opaque prefix
         // reaches through CALL*, nor the block context the prefix reads, and it skips the frameless
-        // blob-pool record entirely, whose prefix is no longer there to re-resolve.
+        // blob-pool record entirely, whose prefix is no longer there to re-resolve. A record admitted while
+        // the simulator could not answer stays outside the exposure ledger even once a payer resolves,
+        // because recording one on a pooled record would race its removal.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
