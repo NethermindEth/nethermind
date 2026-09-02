@@ -1056,11 +1056,29 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await VerifyBlockAccessListsWith(sourceServer, syncPivotNumber, token);
             }, cancellationToken);
 
+        // Retry re-runs assertion failures but not errors, so a timeout has to fail rather than throw
+        // for the [Retry] on these tests to absorb it.
         private async Task ExecuteSyncFromServer(
             IContainer server,
             Func<IContainer, CancellationToken, Task> verification,
             CancellationToken cancellationToken,
             ulong finalizedDistanceFromHead = 250)
+        {
+            try
+            {
+                await ExecuteSyncFromServerCore(server, verification, cancellationToken, finalizedDistanceFromHead);
+            }
+            catch (OperationCanceledException e) when (cancellationToken.IsCancellationRequested)
+            {
+                Assert.Fail($"Sync did not finish before the test timeout.{Environment.NewLine}{e}");
+            }
+        }
+
+        private async Task ExecuteSyncFromServerCore(
+            IContainer server,
+            Func<IContainer, CancellationToken, Task> verification,
+            CancellationToken cancellationToken,
+            ulong finalizedDistanceFromHead)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
