@@ -587,7 +587,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     JsonRpcRequest request = CreateRequest(rootElement);
                     if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
 
-                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context, cancellationToken);
                     await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
                     break;
 
@@ -616,7 +616,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (_logger.IsDebug) _logger.Debug($"JSON RPC request {request.Method}");
 
-            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context, cancellationToken);
             await WriteSingleEntryAsync(response, sink, cancellationToken);
         }
         finally
@@ -651,7 +651,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 JsonRpcRequest jsonRpcRequest = CreateRequest(item);
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                    : await HandleSingleRequest(jsonRpcRequest, context);
+                    : await HandleSingleRequest(jsonRpcRequest, context, cancellationToken);
 
                 if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requestCount} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
                 if (_logger.IsTrace) TraceResult(response);
@@ -724,7 +724,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(jsonRpcRequest)
-                    : await HandleSingleRequest(jsonRpcRequest, context);
+                    : await HandleSingleRequest(jsonRpcRequest, context, cancellationToken);
 
                 if (_logger.IsTrace)
                 {
@@ -895,12 +895,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
 
-        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
+        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime))
             : AwaitAndCreateEntryAsync(responseTask, request, startTime);

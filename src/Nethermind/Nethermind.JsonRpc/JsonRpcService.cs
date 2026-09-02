@@ -12,6 +12,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -27,16 +28,37 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
-    private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
-    private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
-    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    private readonly ILogger _logger;
+    private readonly IRpcModuleProvider _rpcModuleProvider;
+    private readonly EvmAdmissionGate _gate;
+    private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly int _maxLoggedRequestParametersCharacters;
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
+        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig, logManager))
+    {
+    }
+
+    // Lets tests drive the gate on a manual TimeProvider.
+    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, EvmAdmissionGate gate)
+    {
+        _logger = logManager.GetClassLogger<JsonRpcService>();
+        _rpcModuleProvider = rpcModuleProvider;
+        _gate = gate;
+        _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
+        _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    }
+
+    /// <inheritdoc/>
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context) =>
+        SendRequestAsync(rpcRequest, context, CancellationToken.None);
+
+    /// <inheritdoc/>
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken)
     {
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
@@ -47,7 +69,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context, cancellationToken);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -62,6 +84,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             try
             {
                 return await responseTask;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -91,76 +117,100 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
-    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(
-            request,
-            methodName,
-            method,
-            out object?[]? parameters,
-            out int parameterCount,
-            out bool returnParametersToPool);
-        if (value is not null)
-        {
-            return value;
-        }
-
-        IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
-        if (rpcModule is IContextAwareRpcModule contextAwareModule)
-        {
-            contextAwareModule.Context = context;
-        }
-        bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
-        IResultWrapper? resultWrapper = null;
+        // Admitted before the parameters are bound so a shed request never pays for deserializing them; ungated methods never
+        // measure their params. Released in the finally once the invocation and any task it returned have completed: no
+        // EvmExecution method streams its result, so nothing runs under the permit after that (see IsEvmExecution).
+        EvmAdmissionGate.Lease lease = method.IsEvmExecution
+            ? await _gate.AdmitAsync(EvmAdmissionGate.Weigh(request.ParamsUtf8Length), cancellationToken)
+            : default;
+        bool invoked = false;
         try
         {
-            object? invocationResult = parameterCount switch
+            JsonRpcErrorResponse? value = PrepareParameters(
+                request,
+                methodName,
+                method,
+                out object?[]? parameters,
+                out int parameterCount,
+                out bool returnParametersToPool);
+            if (value is not null)
             {
-                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-            };
-            ReturnParameters(parameters, returnParametersToPool);
-
-            switch (invocationResult)
-            {
-                case IResultWrapper wrapper:
-                    resultWrapper = wrapper;
-                    break;
-                case Task task:
-                    await task;
-                    resultWrapper = method.ReadTaskResult(task);
-                    break;
-                default:
-                    break;
+                return value;
             }
-        }
-        catch (Exception ex)
-        {
-            return HandleInvocationException(ex, methodName, request, returnAction);
+
+            IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
+            if (rpcModule is IContextAwareRpcModule contextAwareModule)
+            {
+                contextAwareModule.Context = context;
+            }
+            bool returnImmediately = methodName != GetLogsMethodName;
+            Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(method, rpcModule);
+            IResultWrapper? resultWrapper = null;
+            try
+            {
+                invoked = true;
+                object? invocationResult = parameterCount switch
+                {
+                    0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                    > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                    _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+                };
+                ReturnParameters(parameters, returnParametersToPool);
+
+                switch (invocationResult)
+                {
+                    case IResultWrapper wrapper:
+                        resultWrapper = wrapper;
+                        break;
+                    case Task task:
+                        await task;
+                        resultWrapper = method.ReadTaskResult(task);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                return HandleInvocationException(ex, methodName, request, returnAction);
+            }
+            finally
+            {
+                if (returnImmediately)
+                {
+                    _rpcModuleProvider.Return(method, rpcModule);
+                }
+            }
+
+            if (resultWrapper is null)
+            {
+                return HandleMissingResultWrapper(request, methodName, returnAction);
+            }
+
+            if (resultWrapper is JsonRpcResponse response)
+            {
+                return response.WithResponseContext(in request.IdRef, returnAction);
+            }
+
+            return HandleUnsupportedResultWrapper(request, methodName, returnAction);
         }
         finally
         {
-            if (returnImmediately)
+            // A binding or rental failure held the permit for microseconds without executing anything; only an invocation that
+            // started is a service-time observation.
+            if (invoked)
             {
-                _rpcModuleProvider.Return(method, rpcModule);
+                lease.Dispose();
+            }
+            else
+            {
+                lease.ReleaseWithoutSampling();
             }
         }
-
-        if (resultWrapper is null)
-        {
-            return HandleMissingResultWrapper(request, methodName, returnAction);
-        }
-
-        if (resultWrapper is JsonRpcResponse response)
-        {
-            return response.WithResponseContext(in request.IdRef, returnAction);
-        }
-
-        return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
