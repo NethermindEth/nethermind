@@ -281,6 +281,17 @@ public static class FrameTxValidation
             total = Saturating(total, frames[i].ExecutionGasLimit);
         }
 
+        return Saturating(total, SignatureVerificationWorkGas(transaction));
+    }
+
+    /// <summary>
+    /// The gas <c>validate_signature</c> spends verifying a frame transaction's signatures, saturating at
+    /// <see cref="ulong.MaxValue"/>. Scheme-weighted, so it reflects the elliptic-curve work each entry costs;
+    /// an ARBITRARY entry contributes only its cheap structural-check cost, its witness being verified by frame code.
+    /// </summary>
+    public static ulong SignatureVerificationWorkGas(Transaction transaction)
+    {
+        ulong total = 0;
         foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
         {
             total = Saturating(total, SignatureVerificationGas(signature.Scheme));
