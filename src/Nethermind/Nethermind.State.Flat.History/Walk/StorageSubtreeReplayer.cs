@@ -52,101 +52,107 @@ internal sealed class StorageSubtreeReplayer(
 
         List<StreamedSlot> streams = [];
         Span<byte> flatKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-        foreach ((int contractIndex, ValueHash256 slot) in rows.StreamedSlots)
+        try
         {
-            Contract contract = contracts[contractIndex];
-            HistoryRowScanner.WriteStorageFlatKey(flatKey, contract.Identity, slot);
-            HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
-            if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
+            foreach ((int contractIndex, ValueHash256 slot) in rows.StreamedSlots)
             {
-                contract.Tree!.Set(slot, start, rlpEncode: !rlpWrapSlots);
+                Contract contract = contracts[contractIndex];
+                HistoryRowScanner.WriteStorageFlatKey(flatKey, contract.Identity, slot);
+                HistoryRowCursor cursor = new(storageHistory, rowFormat, flatKey, from, to, token);
+                if (cursor.TryReadStart(out ulong writtenAt, out byte[] start) && start.Length > 0 && !HistoryRowScanner.KilledByClear(clears, contract.Identity, writtenAt, asOf: from))
+                {
+                    contract.Tree!.Set(slot, start, rlpEncode: !rlpWrapSlots);
+                }
+
+                streams.Add(new StreamedSlot(contractIndex, slot, cursor, cursor.MoveNext()));
             }
 
-            streams.Add(new StreamedSlot(contractIndex, slot, cursor, cursor.MoveNext()));
-        }
-
-        foreach (StorageRowRef row in rows.Start)
-        {
-            contracts[row.Contract].Tree!.Set(row.Slot, rows.Arena.Slice(row.Offset, row.Length).ToArray(), rlpEncode: !rlpWrapSlots);
-        }
-
-        emitter?.BeginBlock(from);
-        foreach (Contract contract in contracts)
-        {
-            contract.Recompute();
-            contract.PublishAnchor(from, emitter);
-        }
-
-        emitter?.CompleteBlock();
-
-        rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
-        List<(ulong Block, int Contract)> clearEvents = [];
-        foreach (ClearRecord clear in clears)
-        {
-            if (clear.Block > from && clear.Block <= to && rows.TryGetContract(clear.Identity, out int contract)) clearEvents.Add((clear.Block, contract));
-        }
-
-        clearEvents.Sort(static (a, b) => a.Block.CompareTo(b.Block));
-
-        HashSet<int> touched = [];
-        int nextDelta = 0;
-        int nextClear = 0;
-        while (true)
-        {
-            token.ThrowIfCancellationRequested();
-            ulong block = ulong.MaxValue;
-            if (nextDelta < rows.Deltas.Count) block = rows.Deltas[nextDelta].Block;
-            if (nextClear < clearEvents.Count && clearEvents[nextClear].Block < block) block = clearEvents[nextClear].Block;
-            foreach (StreamedSlot stream in streams)
+            foreach (StorageRowRef row in rows.Start)
             {
-                if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
-            }
-
-            if (block == ulong.MaxValue) break;
-
-            if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
-            {
-                progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
-                progress.Replaying(item, block);
-            }
-
-            emitter?.BeginBlock(block);
-            touched.Clear();
-            while (nextClear < clearEvents.Count && clearEvents[nextClear].Block == block)
-            {
-                int contract = clearEvents[nextClear++].Contract;
-                contracts[contract].Reset(emitter, logManager);
-                touched.Add(contract);
-            }
-
-            while (nextDelta < rows.Deltas.Count && rows.Deltas[nextDelta].Block == block)
-            {
-                StorageRowRef row = rows.Deltas[nextDelta++];
                 contracts[row.Contract].Tree!.Set(row.Slot, rows.Arena.Slice(row.Offset, row.Length).ToArray(), rlpEncode: !rlpWrapSlots);
-                touched.Add(row.Contract);
             }
 
-            foreach (StreamedSlot stream in streams)
+            emitter?.BeginBlock(from);
+            foreach (Contract contract in contracts)
             {
-                if (!stream.HasRow || stream.Rows.Block != block) continue;
-
-                contracts[stream.Contract].Tree!.Set(stream.Slot, stream.Rows.Value.ToArray(), rlpEncode: !rlpWrapSlots);
-                touched.Add(stream.Contract);
-                stream.HasRow = stream.Rows.MoveNext();
-            }
-
-            foreach (int index in touched)
-            {
-                Contract contract = contracts[index];
                 contract.Recompute();
-                contract.PublishChange(block, emitter);
+                contract.PublishAnchor(from, emitter);
             }
 
             emitter?.CompleteBlock();
-        }
 
-        foreach (StreamedSlot stream in streams) stream.Rows.Dispose();
-        foreach (Contract contract in contracts) contract.Finish();
+            rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
+            List<(ulong Block, int Contract)> clearEvents = [];
+            foreach (ClearRecord clear in clears)
+            {
+                if (clear.Block > from && clear.Block <= to && rows.TryGetContract(clear.Identity, out int contract)) clearEvents.Add((clear.Block, contract));
+            }
+
+            clearEvents.Sort(static (a, b) => a.Block.CompareTo(b.Block));
+
+            HashSet<int> touched = [];
+            int nextDelta = 0;
+            int nextClear = 0;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                ulong block = ulong.MaxValue;
+                if (nextDelta < rows.Deltas.Count) block = rows.Deltas[nextDelta].Block;
+                if (nextClear < clearEvents.Count && clearEvents[nextClear].Block < block) block = clearEvents[nextClear].Block;
+                foreach (StreamedSlot stream in streams)
+                {
+                    if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
+                }
+
+                if (block == ulong.MaxValue) break;
+
+                if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
+                {
+                    progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
+                    progress.Replaying(item, block);
+                }
+
+                emitter?.BeginBlock(block);
+                touched.Clear();
+                while (nextClear < clearEvents.Count && clearEvents[nextClear].Block == block)
+                {
+                    int contract = clearEvents[nextClear++].Contract;
+                    contracts[contract].Reset(emitter, logManager);
+                    touched.Add(contract);
+                }
+
+                while (nextDelta < rows.Deltas.Count && rows.Deltas[nextDelta].Block == block)
+                {
+                    StorageRowRef row = rows.Deltas[nextDelta++];
+                    contracts[row.Contract].Tree!.Set(row.Slot, rows.Arena.Slice(row.Offset, row.Length).ToArray(), rlpEncode: !rlpWrapSlots);
+                    touched.Add(row.Contract);
+                }
+
+                foreach (StreamedSlot stream in streams)
+                {
+                    if (!stream.HasRow || stream.Rows.Block != block) continue;
+
+                    contracts[stream.Contract].Tree!.Set(stream.Slot, stream.Rows.Value.ToArray(), rlpEncode: !rlpWrapSlots);
+                    touched.Add(stream.Contract);
+                    stream.HasRow = stream.Rows.MoveNext();
+                }
+
+                foreach (int index in touched)
+                {
+                    Contract contract = contracts[index];
+                    contract.Recompute();
+                    contract.PublishChange(block, emitter);
+                }
+
+                emitter?.CompleteBlock();
+            }
+
+        }
+        finally
+        {
+            foreach (StreamedSlot stream in streams) stream.Rows.Dispose();
+            foreach (Contract contract in contracts) contract?.Finish();
+        }
     }
 
     private sealed class StreamedSlot(int contract, ValueHash256 slot, HistoryRowCursor rows, bool hasRow)

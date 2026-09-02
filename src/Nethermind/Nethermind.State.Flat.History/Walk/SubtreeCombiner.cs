@@ -42,8 +42,9 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
             }
 
-            current.Release();
+            NodeView previous = current;
             current = children.Combine();
+            previous.Release();
             emitter?.BeginBlock(block);
             publisher.Publish(block, current, emitter);
             emitter?.CompleteBlock();
@@ -122,13 +123,15 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                     if (groups[nibble].NextBlock != block) continue;
 
                     groups[nibble].ApplyAt(block);
-                    groupViews[nibble].Release();
+                    NodeView previousGroup = groupViews[nibble];
                     groupViews[nibble] = groups[nibble].Combine();
+                    previousGroup.Release();
                     if (groupPublishers[nibble].IsNew(groupViews[nibble].Hash)) groupPublishers[nibble].Publish(block, groupViews[nibble], emitter);
                 }
 
-                current.Release();
+                NodeView previousRoot = current;
                 current = NodeViews.Combine(groupViews);
+                previousRoot.Release();
                 if (rootPublisher.IsNew(current.Hash)) rootPublisher.Publish(block, current, emitter);
                 emitter?.CompleteBlock();
 
@@ -167,12 +170,20 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
         public ChildSeries(SeriesReader reader, SeriesKey[] keys, ulong from, ulong to, int rowsPerCursor, CancellationToken token)
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            try
             {
-                _states[index] = reader.ReadStart(keys[index], from);
-                _views[index] = _states[index].ToView();
-                _cursors[index] = reader.Open(keys[index], from, to, rowsPerCursor, token);
-                _hasRow[index] = _cursors[index].MoveNext();
+                for (int index = 0; index < BranchRlp.ChildCount; index++)
+                {
+                    _states[index] = reader.ReadStart(keys[index], from);
+                    _views[index] = _states[index].ToView();
+                    _cursors[index] = reader.Open(keys[index], from, to, rowsPerCursor, token);
+                    _hasRow[index] = _cursors[index].MoveNext();
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
             }
         }
 
@@ -206,8 +217,9 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 if (!_hasRow[index] || _cursors[index].Block != block) continue;
 
                 _states[index].Apply(_cursors[index].Row);
-                _views[index].Release();
+                NodeView previous = _views[index];
                 _views[index] = _states[index].ToView();
+                previous.Release();
                 _hasRow[index] = _cursors[index].MoveNext();
             }
         }

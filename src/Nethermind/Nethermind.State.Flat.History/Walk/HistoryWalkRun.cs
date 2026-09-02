@@ -222,8 +222,15 @@ internal sealed class HistoryWalkRun
         _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, group =>
         {
             using StoragePartitionRows rows = group.Rows;
-            if (group.Overflow) ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
-            else ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item);
+            if (group.Overflow)
+            {
+                rows.Reset();
+                ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
+            }
+            else
+            {
+                ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item);
+            }
         }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
 
     private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item)

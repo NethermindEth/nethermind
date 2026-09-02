@@ -163,7 +163,7 @@ internal static class ParentRowCodec
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
             if (((changed >> index) & 1) == 0) continue;
-            if (position >= row.Length) return false;
+            if (position >= row.Length || row[position] > ChildVector.SlotSize) return false;
 
             position += 1 + row[position];
         }

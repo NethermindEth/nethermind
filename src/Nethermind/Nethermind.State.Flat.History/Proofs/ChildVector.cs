@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -9,18 +8,24 @@ namespace Nethermind.State.Flat.History.Proofs;
 internal sealed class ChildVector
 {
     public const int SlotSize = Hash256.Size;
-    private const int PoolCapacity = 4096;
-    private static readonly ConcurrentBag<ChildVector> Pool = [];
+    private const int PoolCapacityPerThread = 512;
+    [ThreadStatic]
+    private static Stack<ChildVector>? t_pool;
 
     private readonly byte[] _bytes = new byte[BranchRlp.ChildCount * SlotSize];
     private readonly byte[] _lengths = new byte[BranchRlp.ChildCount];
 
-    public static ChildVector Rent() => Pool.TryTake(out ChildVector? vector) ? vector : new ChildVector();
+    public static ChildVector Rent()
+    {
+        Stack<ChildVector>? pool = t_pool;
+        return pool is { Count: > 0 } ? pool.Pop() : new ChildVector();
+    }
 
     public static void Return(ChildVector vector)
     {
         vector.Clear();
-        if (Pool.Count < PoolCapacity) Pool.Add(vector);
+        Stack<ChildVector> pool = t_pool ??= new Stack<ChildVector>(PoolCapacityPerThread);
+        if (pool.Count < PoolCapacityPerThread) pool.Push(vector);
     }
 
     public ReadOnlySpan<byte> this[int index] => _bytes.AsSpan(index * SlotSize, _lengths[index]);

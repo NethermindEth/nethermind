@@ -33,74 +33,79 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         using SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);
 
         List<StreamedAccount> streams = [];
-        foreach (ValueHash256 path in rows.StreamedPaths)
+        try
         {
-            HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, from, to, token);
-            ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
-            if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
+            foreach (ValueHash256 path in rows.StreamedPaths)
             {
-                state.Set(path, HistoryRowScanner.DecodeAccount(start));
-                startRoot = HistoryRowScanner.StorageRootOf(start);
+                HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, from, to, token);
+                ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
+                if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
+                {
+                    state.Set(path, HistoryRowScanner.DecodeAccount(start));
+                    startRoot = HistoryRowScanner.StorageRootOf(start);
+                }
+
+                streams.Add(new StreamedAccount(path, cursor, cursor.MoveNext(), startRoot));
             }
 
-            streams.Add(new StreamedAccount(path, cursor, cursor.MoveNext(), startRoot));
-        }
-
-        foreach (AccountRowRef row in rows.Start)
-        {
-            state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
-        }
-
-        emitter?.BeginBlock(from);
-        Recompute(state, changes, emitter, prefix.Length);
-        Publish(publisher, from, state, prefix.Length, store, emitter);
-        emitter?.CompleteBlock();
-
-        rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
-        int next = 0;
-        while (true)
-        {
-            token.ThrowIfCancellationRequested();
-            ulong block = ulong.MaxValue;
-            if (next < rows.Deltas.Count) block = rows.Deltas[next].Block;
-            foreach (StreamedAccount stream in streams)
+            foreach (AccountRowRef row in rows.Start)
             {
-                if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
-            }
-
-            if (block == ulong.MaxValue) break;
-
-            if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
-            {
-                progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
-                progress.Replaying(item, block);
-            }
-
-            emitter?.BeginBlock(block);
-            while (next < rows.Deltas.Count && rows.Deltas[next].Block == block)
-            {
-                AccountRowRef row = rows.Deltas[next++];
                 state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
             }
 
-            foreach (StreamedAccount stream in streams)
-            {
-                if (!stream.HasRow || stream.Rows.Block != block) continue;
-
-                ReadOnlySpan<byte> value = stream.Rows.Value;
-                state.Set(stream.Path, HistoryRowScanner.DecodeAccount(value));
-                ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
-                if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
-                stream.LastRoot = root;
-                stream.HasRow = stream.Rows.MoveNext();
-            }
-
+            emitter?.BeginBlock(from);
             Recompute(state, changes, emitter, prefix.Length);
-            if (publisher.IsNew(state.RootHash.ValueHash256)) Publish(publisher, block, state, prefix.Length, store, emitter);
+            Publish(publisher, from, state, prefix.Length, store, emitter);
             emitter?.CompleteBlock();
-        }
 
-        foreach (StreamedAccount stream in streams) stream.Rows.Dispose();
+            rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
+            int next = 0;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                ulong block = ulong.MaxValue;
+                if (next < rows.Deltas.Count) block = rows.Deltas[next].Block;
+                foreach (StreamedAccount stream in streams)
+                {
+                    if (stream.HasRow && stream.Rows.Block < block) block = stream.Rows.Block;
+                }
+
+                if (block == ulong.MaxValue) break;
+
+                if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
+                {
+                    progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
+                    progress.Replaying(item, block);
+                }
+
+                emitter?.BeginBlock(block);
+                while (next < rows.Deltas.Count && rows.Deltas[next].Block == block)
+                {
+                    AccountRowRef row = rows.Deltas[next++];
+                    state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                }
+
+                foreach (StreamedAccount stream in streams)
+                {
+                    if (!stream.HasRow || stream.Rows.Block != block) continue;
+
+                    ReadOnlySpan<byte> value = stream.Rows.Value;
+                    state.Set(stream.Path, HistoryRowScanner.DecodeAccount(value));
+                    ValueHash256 root = HistoryRowScanner.StorageRootOf(value);
+                    if (root != stream.LastRoot) moveCheck.OnMoved(stream.Path, block, stream.LastRoot, root);
+                    stream.LastRoot = root;
+                    stream.HasRow = stream.Rows.MoveNext();
+                }
+
+                Recompute(state, changes, emitter, prefix.Length);
+                if (publisher.IsNew(state.RootHash.ValueHash256)) Publish(publisher, block, state, prefix.Length, store, emitter);
+                emitter?.CompleteBlock();
+            }
+        }
+        finally
+        {
+            foreach (StreamedAccount stream in streams) stream.Rows.Dispose();
+        }
     }
 
     private static void Publish(SeriesPublisher publisher, ulong block, StateTree state, int depth, ITrieNodeResolver resolver, CommitmentEmitter? emitter)
