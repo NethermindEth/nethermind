@@ -97,7 +97,7 @@ public sealed class NodeRecordProvider(
     {
         IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
         LocalNodeRecordState state = CreateState(effectiveHeader, ip);
-        LogEndpointIssues(GetEndpointIssues(ip, state));
+        LogEndpointIssues(ip, state);
         return CreateSignedRecord(state, NextSequence(previousSequence));
     }
 
@@ -120,46 +120,24 @@ public sealed class NodeRecordProvider(
         return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
 
-    private static EndpointIssues GetEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
-    {
-        EndpointIssues endpointIssues = EndpointIssues.None;
-
-        if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
-        {
-            endpointIssues |= EndpointIssues.IPv4NotAdvertised;
-        }
-
-        if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
-        {
-            endpointIssues |= EndpointIssues.IPv6NotAdvertised;
-        }
-
-        if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)
-        {
-            endpointIssues |= EndpointIssues.NoExternalIpAdvertised;
-        }
-
-        return endpointIssues;
-    }
-
-    private void LogEndpointIssues(EndpointIssues endpointIssues)
+    private void LogEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
     {
         if (!_logger.IsWarn)
         {
             return;
         }
 
-        if ((endpointIssues & EndpointIssues.IPv4NotAdvertised) != 0)
+        if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
         {
             _logger.Warn("External IPv4 address is available but not advertised because the node does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
         }
 
-        if ((endpointIssues & EndpointIssues.IPv6NotAdvertised) != 0)
+        if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
         {
             _logger.Warn("External IPv6 address is available but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
         }
 
-        if ((endpointIssues & EndpointIssues.NoExternalIpAdvertised) != 0)
+        if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)
         {
             _logger.Warn("No external IP address is advertised; the node will not be discoverable by peers.");
         }
@@ -210,13 +188,4 @@ public sealed class NodeRecordProvider(
         int TcpPort,
         int UdpPort,
         NetworkForkId ForkId);
-
-    [Flags]
-    private enum EndpointIssues
-    {
-        None = 0,
-        IPv4NotAdvertised = 1,
-        IPv6NotAdvertised = 2,
-        NoExternalIpAdvertised = 4
-    }
 }

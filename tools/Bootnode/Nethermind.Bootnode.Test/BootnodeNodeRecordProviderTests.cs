@@ -97,8 +97,17 @@ public class BootnodeNodeRecordProviderTests
         AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
     }
 
-    [Test]
-    public async Task Discovery_only_node_record_suppresses_ipv6_when_listener_is_ipv4_only()
+    [TestCase("0.0.0.0", "192.0.2.1", "2001:db8::1", "192.0.2.1", null, "External IPv6 address", 0)]
+    [TestCase("fd00:beef:cafe::11", "192.0.2.1", "2001:db8::1", null, "2001:db8::1", "External IPv4 address", 0)]
+    [TestCase("0.0.0.0", null, "2001:db8::1", null, null, "External IPv6 address", 1)]
+    public async Task Discovery_only_node_record_warns_once_when_endpoint_is_suppressed(
+        string localIp,
+        string? externalIpV4,
+        string? externalIpV6,
+        string? expectedIp,
+        string? expectedIp6,
+        string suppressedWarningPrefix,
+        int noExternalWarningCount)
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
@@ -111,12 +120,12 @@ public class BootnodeNodeRecordProviderTests
             DiscoveryPort = 30303,
             P2PPort = 0
         };
-        RecordingLogManager logManager = new();
+        WarningLogManager logManager = new();
         IIPResolver.NethermindIp resolvedIp = new(
-            IPAddress.Any,
+            IPAddress.Parse(localIp),
             IPAddress.None,
-            externalIpV4: null,
-            IPAddress.Parse("2001:db8::1"));
+            externalIpV4 is null ? null : IPAddress.Parse(externalIpV4),
+            externalIpV6 is null ? null : IPAddress.Parse(externalIpV6));
 
         BootnodeNodeRecordProvider provider = CreateProvider(
             protectedPrivateKey,
@@ -128,11 +137,12 @@ public class BootnodeNodeRecordProviderTests
         await provider.GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
-        AssertEndpointEntries(decoded, expectedIp: null, expectedIp6: null);
+        AssertEndpointEntries(decoded, expectedIp, expectedIp6);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(logManager.DebugMessages, Has.Some.StartsWith("External IPv6 address"));
-            Assert.That(logManager.WarningMessages.Count(message => message.StartsWith("No external IP address")), Is.EqualTo(1));
+            Assert.That(logManager.WarningMessages, Has.Exactly(1).StartsWith(suppressedWarningPrefix));
+            Assert.That(logManager.WarningMessages, Has.Exactly(noExternalWarningCount).StartsWith("No external IP address"));
+            Assert.That(logManager.WarningMessages, Has.Count.EqualTo(1 + noExternalWarningCount));
         }
     }
 
@@ -265,30 +275,29 @@ public class BootnodeNodeRecordProviderTests
             logManager ?? LimboLogs.Instance,
             dataDir);
 
-    private sealed class RecordingLogManager : ILogManager
+    private sealed class WarningLogManager : ILogManager
     {
         private readonly RecordingLogger _logger;
 
-        public RecordingLogManager() => _logger = new(DebugMessages, WarningMessages);
+        public WarningLogManager() => _logger = new(WarningMessages);
 
-        public List<string> DebugMessages { get; } = [];
         public List<string> WarningMessages { get; } = [];
 
         public ILogger GetClassLogger<T>() => new(_logger);
 
         public ILogger GetLogger(string loggerName) => new(_logger);
 
-        private sealed class RecordingLogger(List<string> debugMessages, List<string> warningMessages) : InterfaceLogger
+        private sealed class RecordingLogger(List<string> warningMessages) : InterfaceLogger
         {
             public void Info(string text) { }
             public void Warn(string text) => warningMessages.Add(text);
-            public void Debug(string text) => debugMessages.Add(text);
+            public void Debug(string text) { }
             public void Trace(string text) { }
             public void Error(string text, Exception? ex = null) { }
 
             public bool IsInfo => false;
             public bool IsWarn => true;
-            public bool IsDebug => true;
+            public bool IsDebug => false;
             public bool IsTrace => false;
             public bool IsError => false;
         }
