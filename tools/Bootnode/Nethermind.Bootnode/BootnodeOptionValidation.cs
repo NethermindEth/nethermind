@@ -71,7 +71,7 @@ internal static class BootnodeOptionValidation
             null => true,
             _ => false
         };
-        if (!hasExpectedFamily || ipAddress.IsUnspecified)
+        if (!hasExpectedFamily || ipAddress.IsWildcardOrNone)
         {
             throw new ArgumentException($"{optionName} must be a usable external IP address.", optionName);
         }

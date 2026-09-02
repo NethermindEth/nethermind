@@ -72,7 +72,7 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             AddressFamily.InterNetworkV6,
             nameof(NetworkConfig.ExternalIpV6));
 
-        if (!externalIp.IsUnspecified)
+        if (!externalIp.IsWildcardOrNone)
         {
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }

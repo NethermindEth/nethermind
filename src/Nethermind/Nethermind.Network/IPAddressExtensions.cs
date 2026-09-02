@@ -16,8 +16,8 @@ public static class IPAddressExtensions
         /// Returns <c>true</c> for wildcard IPv4 or IPv6 addresses and the <see cref="IPAddress.None"/>
         /// sentinel, including IPv4-mapped forms.
         /// </summary>
-        public bool IsUnspecified
-            => ParsedIPAddress.Parse(ipAddress).IsUnspecified;
+        public bool IsWildcardOrNone
+            => ParsedIPAddress.Parse(ipAddress).IsWildcardOrNone;
 
         /// <summary>
         /// Returns <c>true</c> for loopback, private, link-local, CGNAT, and IPv6 ULA addresses.

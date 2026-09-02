@@ -85,7 +85,7 @@ namespace Nethermind.Network
                     ipAddress = ipAddress.MapToIPv4();
                 }
 
-                if (ipAddress.IsUnspecified)
+                if (ipAddress.IsWildcardOrNone)
                 {
                     return null;
                 }

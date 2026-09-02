@@ -190,7 +190,7 @@ public class NodeFilterTests
     [TestCase("::ffff:255.255.255.255", true, Description = "IPv4-mapped None sentinel")]
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
-    public void IPAddressExtensions_IsUnspecified(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsUnspecified, Is.EqualTo(expected));
+    public void IPAddressExtensions_IsWildcardOrNone(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsWildcardOrNone, Is.EqualTo(expected));
 
     [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
     [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]

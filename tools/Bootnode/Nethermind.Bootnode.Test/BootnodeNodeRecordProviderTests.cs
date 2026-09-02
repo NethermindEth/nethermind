@@ -111,26 +111,28 @@ public class BootnodeNodeRecordProviderTests
             DiscoveryPort = 30303,
             P2PPort = 0
         };
-        DebugLogManager logManager = new();
+        RecordingLogManager logManager = new();
         IIPResolver.NethermindIp resolvedIp = new(
             IPAddress.Any,
             IPAddress.None,
             externalIpV4: null,
             IPAddress.Parse("2001:db8::1"));
 
-        NodeRecord nodeRecord = await CreateProvider(
+        BootnodeNodeRecordProvider provider = CreateProvider(
             protectedPrivateKey,
             dataDir,
             networkConfig,
             resolvedIp,
-            logManager).GetCurrentAsync();
+            logManager);
+        NodeRecord nodeRecord = await provider.GetCurrentAsync();
+        await provider.GetCurrentAsync();
         NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
 
         AssertEndpointEntries(decoded, expectedIp: null, expectedIp6: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logManager.DebugMessages, Has.Some.StartsWith("External IPv6 address"));
-            Assert.That(logManager.DebugMessages, Has.Some.StartsWith("No external IP address"));
+            Assert.That(logManager.WarningMessages.Count(message => message.StartsWith("No external IP address")), Is.EqualTo(1));
         }
     }
 
@@ -263,28 +265,29 @@ public class BootnodeNodeRecordProviderTests
             logManager ?? LimboLogs.Instance,
             dataDir);
 
-    private sealed class DebugLogManager : ILogManager
+    private sealed class RecordingLogManager : ILogManager
     {
         private readonly RecordingLogger _logger;
 
-        public DebugLogManager() => _logger = new(DebugMessages);
+        public RecordingLogManager() => _logger = new(DebugMessages, WarningMessages);
 
         public List<string> DebugMessages { get; } = [];
+        public List<string> WarningMessages { get; } = [];
 
         public ILogger GetClassLogger<T>() => new(_logger);
 
         public ILogger GetLogger(string loggerName) => new(_logger);
 
-        private sealed class RecordingLogger(List<string> debugMessages) : InterfaceLogger
+        private sealed class RecordingLogger(List<string> debugMessages, List<string> warningMessages) : InterfaceLogger
         {
             public void Info(string text) { }
-            public void Warn(string text) { }
+            public void Warn(string text) => warningMessages.Add(text);
             public void Debug(string text) => debugMessages.Add(text);
             public void Trace(string text) { }
             public void Error(string text, Exception? ex = null) { }
 
             public bool IsInfo => false;
-            public bool IsWarn => false;
+            public bool IsWarn => true;
             public bool IsDebug => true;
             public bool IsTrace => false;
             public bool IsError => false;

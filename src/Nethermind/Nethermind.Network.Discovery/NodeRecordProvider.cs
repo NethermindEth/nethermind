@@ -77,7 +77,8 @@ public sealed class NodeRecordProvider(
         LocalNodeRecord current = await currentTask;
         try
         {
-            (LocalNodeRecordState state, _) = await CreateState(head, CancellationToken.None);
+            IIPResolver.NethermindIp ip = await ipResolver.Resolve(CancellationToken.None);
+            LocalNodeRecordState state = CreateState(head, ip);
             if (current.State == state)
             {
                 return current;
@@ -94,16 +95,14 @@ public sealed class NodeRecordProvider(
 
     private async Task<LocalNodeRecord> PrepareNodeRecord(BlockHeader? effectiveHeader, ulong previousSequence, CancellationToken cancellationToken)
     {
-        (LocalNodeRecordState state, EndpointIssues endpointIssues) = await CreateState(effectiveHeader, cancellationToken);
-        LogEndpointIssues(endpointIssues);
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
+        LocalNodeRecordState state = CreateState(effectiveHeader, ip);
+        LogEndpointIssues(GetEndpointIssues(ip, state));
         return CreateSignedRecord(state, NextSequence(previousSequence));
     }
 
-    private async ValueTask<(LocalNodeRecordState State, EndpointIssues EndpointIssues)> CreateState(
-        BlockHeader? effectiveHeader,
-        CancellationToken cancellationToken)
+    private LocalNodeRecordState CreateState(BlockHeader? effectiveHeader, IIPResolver.NethermindIp ip)
     {
-        IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
@@ -117,25 +116,30 @@ public sealed class NodeRecordProvider(
         IPAddress? externalIpV6 = DiscoveryAddressSupport.SupportsFamily(ip.LocalIp, AddressFamily.InterNetworkV6)
             ? resolvedExternalIpV6
             : null;
+
+        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+    }
+
+    private static EndpointIssues GetEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
+    {
         EndpointIssues endpointIssues = EndpointIssues.None;
 
-        if (resolvedExternalIpV4 is not null && externalIpV4 is null)
+        if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
         {
             endpointIssues |= EndpointIssues.IPv4NotAdvertised;
         }
 
-        if (resolvedExternalIpV6 is not null && externalIpV6 is null)
+        if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
         {
             endpointIssues |= EndpointIssues.IPv6NotAdvertised;
         }
 
-        if (externalIpV4 is null && externalIpV6 is null)
+        if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)
         {
             endpointIssues |= EndpointIssues.NoExternalIpAdvertised;
         }
 
-        LocalNodeRecordState state = new(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
-        return (state, endpointIssues);
+        return endpointIssues;
     }
 
     private void LogEndpointIssues(EndpointIssues endpointIssues)
