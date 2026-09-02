@@ -732,6 +732,7 @@ jobs:
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -846,6 +847,7 @@ jobs:
           BASELINE_MODE: ${{ needs.resolve.outputs.baseline_mode }}
           BASELINE_CACHE_HIT: ${{ steps.baseline-check.outputs.usable == 'true' }}
           BASELINE_FALLBACK_IMAGE: nethermindeth/nethermind:master
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail

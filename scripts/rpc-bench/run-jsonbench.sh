@@ -71,15 +71,26 @@ mkdir -p "$work/io/out"
 # fetches of a private repo per run, which the server eventually refuses mid-sweep. Reuse a checkout
 # already parked at the requested commit, restored to pristine (cells write fixtures under it).
 # A non-sha ref cannot be compared this way and still re-fetches, as before.
-if [[ "$(git -C "$work/src" rev-parse HEAD 2>/dev/null)" == "$JB_REF" ]]; then
+parked_head="$(git -C "$work/src" rev-parse HEAD 2>&1 || true)"
+if [[ "$parked_head" == "$JB_REF" ]]; then
   log "Reusing the $JB_REPO@$JB_REF checkout at $work/src"
   git -C "$work/src" clean -qfdx || die "failed to restore the json-bench checkout to a pristine state"
 else
-  log "Cloning $JB_REPO@$JB_REF..."
+  log "Cloning $JB_REPO@$JB_REF (parked checkout: ${parked_head:-none})..."
   as_root rm -rf "$work/src"
   git init -q "$work/src"
   git -C "$work/src" remote add origin "$JB_REPO"
-  git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" || die "failed to fetch $JB_REF from $JB_REPO"
+  # Anonymous fetches from github.com get throttled with a 401 partway through a sweep; the job token
+  # reads public repos without that limit, and a transient failure is retried before the cell is lost.
+  fetch_auth=()
+  [[ -n "${GH_TOKEN:-}" ]] && fetch_auth=(-c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)")
+  fetched=false
+  for attempt in 1 2 3; do
+    if GIT_TERMINAL_PROMPT=0 git "${fetch_auth[@]+"${fetch_auth[@]}"}" -C "$work/src" fetch -q --depth 1 origin "$JB_REF"; then fetched=true; break; fi
+    log "fetch attempt $attempt of $JB_REF failed; retrying in $((attempt * 5))s"
+    sleep $((attempt * 5))
+  done
+  [[ "$fetched" == "true" ]] || die "failed to fetch $JB_REF from $JB_REPO"
   git -C "$work/src" checkout -q FETCH_HEAD
 fi
 runner_dockerfile="$work/src/runner/Dockerfile"
