@@ -208,8 +208,6 @@ public class FrameTxProducerRetryMeasurement
     [TestCase(500_000ul, 8)]
     public void ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(verifyGas);
-
         _stateProvider.CreateAccount(Sender, 100.Ether);
         _stateProvider.InsertCode(Sender, NeverApproves(), Spec);
         _stateProvider.Commit(Spec);

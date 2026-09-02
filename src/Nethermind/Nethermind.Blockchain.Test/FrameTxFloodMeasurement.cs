@@ -18,6 +18,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -169,6 +170,31 @@ public class FrameTxFloodMeasurement
     /// <summary>Payload the flood transactions' calldata starts with, before the per-sample salt. Empty for
     /// the synthetic shapes.</summary>
     private byte[] _frameCalldataPrefix = [];
+
+    /// <summary>Signature entries the flood's frame carries. Empty for every shape except signature-stuffed.</summary>
+    private TxFrameSignature[] _frameSignatures = [];
+
+    /// <summary>
+    /// What the flood's frame declares as its own execution gas limit. Equal to the ceiling under test for
+    /// every shape except signature-stuffed, whose frame never executes and only has to clear the entry
+    /// charge — for that shape the ceiling is spent via <see cref="_frameSignatures"/> instead, so this is
+    /// <see cref="MinimalFrameGas"/>.
+    /// </summary>
+    private ulong _frameExecutionGasLimit;
+
+    /// <summary>Frame budget for the signature-stuffed shape: well-formed, and small enough that the
+    /// declared total is signature gas. The frame never executes, so this only has to clear the 100-gas
+    /// entry charge.</summary>
+    private const ulong MinimalFrameGas = 400;
+
+    /// <summary>
+    /// The most secp256k1 entries <paramref name="ceiling"/> admits once <see cref="MinimalFrameGas"/> is
+    /// reserved for the frame. EIP-8141 rule 6 charges
+    /// <see cref="Eip8141Constants.Secp256k1VerificationGasCost"/> per entry against the same budget the
+    /// validation prefix draws from, so this is the whole ceiling spent on recovery instead of on execution.
+    /// </summary>
+    private static int StuffedSignatureCount(ulong ceiling) =>
+        (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
 
     private FloodTestBlockchain _chain = null!;
     private BlockHeader _parent = null!;
@@ -330,6 +356,7 @@ public class FrameTxFloodMeasurement
     {
         _chain = null!;
         _frameCalldataPrefix = [];
+        _frameSignatures = [];
     }
 
     [TearDown]
@@ -337,36 +364,55 @@ public class FrameTxFloodMeasurement
 
     /// <summary>
     /// The guard every other case in this fixture rests on: that a submitted frame transaction actually
-    /// reaches the EVM-backed simulator and is rejected there — for every shape the flood/ramp cases sweep,
-    /// not only the synthetic one.
+    /// reaches the rejection path it claims to — the EVM-backed simulator for every shape but one, the
+    /// signature filter for signature-stuffed — for every shape the flood/ramp cases sweep, not only the
+    /// synthetic one.
     /// </summary>
     /// <remarks>
     /// Without this, a flood of transactions dropped by a cheap upstream filter would show a delightful
     /// <c>Δ</c> of nearly zero while measuring nothing at all. No other test in the repository exercises the
     /// simulator that <c>BlockProcessingModule</c> wires into every pool, so its presence is asserted here
     /// rather than assumed. Carries no <see cref="SkipUnlessSingleCore"/> gate: it proves a correctness
-    /// property, not a contention one.
+    /// property, not a contention one. The signature-stuffed case runs at 500,000 deliberately, not the
+    /// stock 300,000 ceiling — proving the property this shape exists to demonstrate, that it is reachable
+    /// there without <c>raise_verify_gas_const</c>.
     /// </remarks>
     [TestCase("keccak-wide")]
     [TestCase("groth16-236k")]
     [TestCase("groth16-300k")]
     [TestCase("groth16-500k")]
     [TestCase("groth16-soispoke")]
+    [TestCase("signature-stuffed")]
     public async Task Admission_flood_actually_reaches_the_simulator(string shape)
     {
-        ulong ceiling = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.Ceiling : Eip8141Constants.MaxVerifyGas;
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        bool isSignatureStuffed = shape == "signature-stuffed";
+        ulong ceiling = isSignatureStuffed ? 500_000
+            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.Ceiling
+            : Eip8141Constants.MaxVerifyGas;
+        if (!isSignatureStuffed) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
-        long failuresBefore = Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed);
-        AcceptTxResult result = _chain.TxPool.SubmitTx(FloodFrameTx(0, ceiling), TxHandlingOptions.None);
+        long simulationFailuresBefore = Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed);
+        long signatureFailuresBefore = Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid;
+        AcceptTxResult result = _chain.TxPool.SubmitTx(FloodFrameTx(0), TxHandlingOptions.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed),
-                $"the transaction must be rejected by the simulation stage, not a cheaper filter (got {result})");
-            Assert.That(Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed),
-                Is.GreaterThan(failuresBefore), "the simulation-failure counter did not move, so the EVM never ran");
+            if (isSignatureStuffed)
+            {
+                Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Accepted),
+                    $"the transaction must be refused, not admitted (got {result})");
+                Assert.That(Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid,
+                    Is.GreaterThan(signatureFailuresBefore),
+                    "the signature-failure counter did not move, so the refusal was not attributed to the signature filter");
+            }
+            else
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed),
+                    $"the transaction must be rejected by the simulation stage, not a cheaper filter (got {result})");
+                Assert.That(Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed),
+                    Is.GreaterThan(simulationFailuresBefore), "the simulation-failure counter did not move, so the EVM never ran");
+            }
             Assert.That(_chain.TxPool.GetPendingTransactionsCount(), Is.Zero,
                 "a rejected frame transaction must not occupy a pool slot");
         }
@@ -430,12 +476,16 @@ public class FrameTxFloodMeasurement
     public async Task Block_production_delay_under_flood_and_retries(ulong ceiling, int kRetry, int offeredRate)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        // Only the flooded arms submit through TxPool/simulation, where CapFrameGas still clamps a stock
+        // build; the no-flood arms never reach ExecutionOptions.FrameValidationPrefixOnly at all (the
+        // producer path calls Execute() directly), so the const never binds them — proven in-tree by
+        // FrameTxVerifyDosMeasurement, which pushes 1,048,576 gas through that same uncapped path.
+        if (offeredRate > 0) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
         using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
         FloodOutcome outcome = offeredRate > 0
-            ? MeasureProductionUnderFlood(rig, ceiling, offeredRate)
+            ? MeasureProductionUnderFlood(rig, offeredRate)
             : NoFloodProductionOutcome(rig);
 
         double p50 = Percentile(outcome.ProcessMicros, 0.50);
@@ -603,14 +653,39 @@ public class FrameTxFloodMeasurement
     public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
         await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
 
+    /// <summary>
+    /// The worst known adversarial shape's <c>Δ</c>: the plan asks to replace the adversarial baseline "if
+    /// benchmarking identifies a more expensive CPU-per-gas shape", and <c>FrameTxMempoolDosMeasurement</c>'s
+    /// <c>t_reject</c> data already shows signature-stuffing costs ~16% more per gas than <c>keccak-wide</c>
+    /// at 300k. Run alongside <c>keccak-wide</c> rather than replacing it, so both are on record.
+    /// </summary>
+    /// <remarks>
+    /// No delivered-rate floor here (unlike <see cref="Block_production_delay_under_flood_and_retries"/>'s
+    /// <c>MinDeliveredRateFloor</c>): this method already reports <c>saturated=</c> rather than asserting on
+    /// it, for every shape. Signature-stuffing costs ~4,950 µs at 300k (<c>1 / t_reject ≈ 200 tx/s</c>), so
+    /// the <c>offeredRate=200</c> row sits close to the saturation point and may show <c>achieved_rate</c>
+    /// well under the label — expected, and visible on the row rather than hidden by it.
+    /// </remarks>
+    [TestCase(100_000ul, 50)]
+    [TestCase(100_000ul, 200)]
+    [TestCase(236_285ul, 50)]
+    [TestCase(236_285ul, 200)]
+    [TestCase(300_000ul, 50)]
+    [TestCase(300_000ul, 200)]
+    [TestCase(500_000ul, 50)]
+    [TestCase(500_000ul, 200)]
+    public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
+        await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate);
+
     private async Task MeasureFloodDelay(string shape, ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        // Not for signature-stuffed: CapFrameGas never binds a rejection that happens before simulation.
+        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
-        FloodOutcome flooded = MeasureUnderFlood(ceiling, offeredRate);
+        FloodOutcome flooded = MeasureUnderFlood(offeredRate, RejectionCounterFor(shape));
 
         // A second idle baseline after the flood. If the two disagree materially the run drifted — from JIT
         // tiering, frequency scaling or a noisy neighbour — and Δ is that drift as much as it is the flood.
@@ -683,10 +758,26 @@ public class FrameTxFloodMeasurement
     public async Task Sustainable_rejection_rate_by_ramp_groth16(string shape) =>
         await MeasureSustainableRate(shape, Groth16Sweeps[shape].Ceiling);
 
+    /// <summary>The worst known adversarial shape's <c>R_max</c> — see
+    /// <see cref="Block_processing_delay_under_admission_flood_signature_stuffed"/> for why it's swept
+    /// alongside <c>keccak-wide</c> rather than in place of it.</summary>
+    /// <remarks>
+    /// At 500,000, signature-stuffing is ~8,250 µs uncontended (~121 tx/s), less under contention — the
+    /// closest of any case in this fixture to failing to clear even the ramp's first rate point (50 tx/s)
+    /// and tripping <c>Assert.That(lastSustained, Is.GreaterThan(0))</c>.
+    /// </remarks>
+    [TestCase(100_000ul)]
+    [TestCase(236_285ul)]
+    [TestCase(300_000ul)]
+    [TestCase(500_000ul)]
+    public async Task Sustainable_rejection_rate_by_ramp_signature_stuffed(ulong ceiling) =>
+        await MeasureSustainableRate("signature-stuffed", ceiling);
+
     private async Task MeasureSustainableRate(string shape, ulong ceiling)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        // Not for signature-stuffed: CapFrameGas never binds a rejection that happens before simulation.
+        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
         // The baseline is reused by every rate point, so one still descending the JIT tiers would surface as
@@ -695,8 +786,18 @@ public class FrameTxFloodMeasurement
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         double w0 = Percentile(baseline, 0.50);
 
-        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", extraFields: "", w0, rate => MeasureUnderFlood(ceiling, rate));
+        Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", extraFields: "", w0,
+            rate => MeasureUnderFlood(rate, rejectionCounter));
     }
+
+    /// <summary>The metrics-delta rejection counter for <paramref name="shape"/>, or <see langword="null"/>
+    /// for shapes <see cref="AcceptTxResult.FrameSimulationFailed"/> already identifies unambiguously.
+    /// </summary>
+    private static Func<long>? RejectionCounterFor(string shape) =>
+        shape == "signature-stuffed"
+            ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid
+            : null;
 
     /// <summary>
     /// <c>R_max(C, K_retry)</c>: the campaign's sustainable-rate ramp, crossed with producer-side retry
@@ -705,12 +806,19 @@ public class FrameTxFloodMeasurement
     /// <see cref="Block_processing_delay_under_admission_flood"/>.
     /// </summary>
     /// <remarks>
-    /// Held at <c>K_retry</c> ∈ {1, 8} rather than the full {1, 2, 4, 8} sweep
+    /// Held at <c>K_retry</c> ∈ {1, 8} for 236,285/300,000/500,000 rather than the full {1, 2, 4, 8} sweep
     /// <see cref="FrameTxProducerRetryMeasurement.ProducerRetriesAreBoundedByKRetry"/> uses: this case pays a
-    /// full rate ramp per point, so the extremes are what a first pass affords. Fill in 2 and 4 at whichever
-    /// ceiling the extremes disagree at, rather than paying for the full grid everywhere up front.
+    /// full rate ramp per point, so the extremes are what a first pass affords elsewhere. 100,000 gets the
+    /// full sweep because it is the plan's control point, the one ceiling every other point's cost is read
+    /// against — see <see cref="Sustainable_rejection_rate_by_ramp"/> — so its <c>K_retry</c> axis is filled
+    /// in completely rather than only at the extremes. On this rig the ramp's 50 tx/s grid is coarse against
+    /// admission serialised behind one lock, so a single run's <c>R_max</c> here can land on either of two
+    /// adjacent grid points; read it as a range, not a point estimate, until it is measured on the pinned
+    /// single-core runner this harness is designed for.
     /// </remarks>
     [TestCase(100_000ul, 1)]
+    [TestCase(100_000ul, 2)]
+    [TestCase(100_000ul, 4)]
     [TestCase(100_000ul, 8)]
     [TestCase(236_285ul, 1)]
     [TestCase(236_285ul, 8)]
@@ -729,7 +837,7 @@ public class FrameTxFloodMeasurement
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
         RunRateRamp(ceiling, "keccak-wide", "rate_ramp_with_retries", "r_max_with_retries", $"k_retry={kRetry} ", w0,
-            rate => MeasureProductionUnderFlood(rig, ceiling, rate));
+            rate => MeasureProductionUnderFlood(rig, rate));
     }
 
     /// <summary>
@@ -828,18 +936,29 @@ public class FrameTxFloodMeasurement
     /// <summary>
     /// Runs the open-loop flood on a background thread while block processing is timed on this one.
     /// </summary>
-    private FloodOutcome MeasureUnderFlood(ulong ceiling, int offeredRate) =>
-        MeasureUnderFloodGeneric(ceiling, offeredRate,
+    /// <param name="rejectionCounter">
+    /// Reads a Metrics counter attributing rejections to a specific filter in bulk, across the sampled
+    /// window, instead of trusting the generator's own per-call tally. Needed for signature-stuffed:
+    /// <c>FrameTxSignatureFilter</c> returns the generic <see cref="AcceptTxResult.Invalid"/>, not a
+    /// dedicated value, so a per-call check cannot attribute a rejection to that filter specifically — and
+    /// a weaker <c>!= Accepted</c> tally would let <c>flood_rejected == flood_submitted</c> pass even if the
+    /// whole flood died at a cheaper upstream filter, which is exactly the failure this guards against.
+    /// <see langword="null"/> for the two shapes <see cref="AcceptTxResult.FrameSimulationFailed"/> already
+    /// identifies unambiguously.
+    /// </param>
+    private FloodOutcome MeasureUnderFlood(int offeredRate, Func<long>? rejectionCounter = null) =>
+        MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { RunFor(FloodSettle); RunFor(WarmupWindow); },
-            measure: window => MeasureBlockProcessing(window, TimeSpan.Zero));
+            measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
+            rejectionCounter);
 
     /// <summary>
     /// Runs the open-loop flood on a background thread while a producer that is also re-executing a
     /// never-approving prefix is measured on this one — the production-path counterpart to
     /// <see cref="MeasureUnderFlood"/>.
     /// </summary>
-    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, ulong ceiling, int offeredRate) =>
-        MeasureUnderFloodGeneric(ceiling, offeredRate,
+    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, int offeredRate) =>
+        MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
             measure: rig.Measure);
 
@@ -850,9 +969,9 @@ public class FrameTxFloodMeasurement
     /// something is block processing or block production.
     /// </summary>
     private FloodOutcome MeasureUnderFloodGeneric(
-        ulong ceiling, int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure)
+        int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure, Func<long>? rejectionCounter = null)
     {
-        _floodTxs = BuildFloodTransactions(ceiling, _saltCursor);
+        _floodTxs = BuildFloodTransactions(_saltCursor);
         _saltCursor += FloodPoolSize;
 
         using CancellationTokenSource cts = new();
@@ -865,6 +984,7 @@ public class FrameTxFloodMeasurement
         // period the sampled distribution came from rather than the whole thread lifetime.
         int submittedAtStart = Volatile.Read(ref generator.Submitted);
         int rejectedAtStart = Volatile.Read(ref generator.Rejected);
+        long rejectionCounterAtStart = rejectionCounter?.Invoke() ?? 0;
         int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
 
         // Reset rather than differenced: lag is a running maximum, and the settle and warmup phases are the
@@ -877,7 +997,9 @@ public class FrameTxFloodMeasurement
 
         long windowEnd = Stopwatch.GetTimestamp();
         int submittedInWindow = Volatile.Read(ref generator.Submitted) - submittedAtStart;
-        int rejectedInWindow = Volatile.Read(ref generator.Rejected) - rejectedAtStart;
+        int rejectedInWindow = rejectionCounter is null
+            ? Volatile.Read(ref generator.Rejected) - rejectedAtStart
+            : (int)(rejectionCounter() - rejectionCounterAtStart);
         int queueGrowth = _chain.TxPool.GetPendingTransactionsCount() - pendingAtStart;
 
         Assert.That(generator.Stop(cts), Is.True,
@@ -917,9 +1039,12 @@ public class FrameTxFloodMeasurement
     /// </summary>
     private async Task BuildChain(string shape, ulong ceiling)
     {
-        byte[] attackCode = LoadAttackCode(shape);
+        byte[] attackCode = LoadAttackCode(shape, ceiling);
 
-        _chain = await FloodTestBlockchain.CreateFlood(builder =>
+        // Disabled (0) for every shape except signature-stuffed, which needs the precheck configured at the
+        // ceiling under test instead — see FloodTestBlockchain's remarks.
+        ulong verifyGasCeiling = shape == "signature-stuffed" ? ceiling : 0;
+        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
@@ -993,19 +1118,20 @@ public class FrameTxFloodMeasurement
     /// salt in the frame's calldata, without which the already-known filter would short-circuit the flood
     /// after its first transaction.
     /// </remarks>
-    private Transaction[] BuildFloodTransactions(ulong ceiling, int saltBase)
+    private Transaction[] BuildFloodTransactions(int saltBase)
     {
         Transaction[] txs = new Transaction[FloodPoolSize];
-        for (int i = 0; i < txs.Length; i++) txs[i] = FloodFrameTx(saltBase + i, ceiling);
+        for (int i = 0; i < txs.Length; i++) txs[i] = FloodFrameTx(saltBase + i);
         return txs;
     }
 
     /// <summary>
     /// The flood generator's transaction: <see cref="_frameCalldataPrefix"/> followed by the per-sample salt,
     /// so a Groth16 payload keeps its selector and arguments byte-for-byte and the verifier ignores the
-    /// trailing surplus.
+    /// trailing surplus, declaring <see cref="_frameExecutionGasLimit"/> and carrying
+    /// <see cref="_frameSignatures"/> — both set by <see cref="LoadAttackCode"/> for the shape under test.
     /// </summary>
-    private Transaction FloodFrameTx(int salt, ulong ceiling)
+    private Transaction FloodFrameTx(int salt)
     {
         byte[] data = new byte[_frameCalldataPrefix.Length + 32];
         _frameCalldataPrefix.CopyTo(data, 0);
@@ -1017,8 +1143,8 @@ public class FrameTxFloodMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Attacker,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
-            FrameSignatures = [],
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
+            FrameSignatures = _frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -1062,26 +1188,75 @@ public class FrameTxFloodMeasurement
             .PushData(0)
             .Op(Instruction.JUMP)
             .Done,
+        // The signature-stuffed shape's placeholder body: never executed (refused at the signature filter
+        // before simulation), so any code works. Chosen over keccak-wide deliberately — if filter ordering
+        // ever changes, this fails loudly at three ops instead of silently burning budget and producing a
+        // plausible-looking wrong number.
+        "banned-opcode" => Prepare.EvmCode
+            .Op(Instruction.TIMESTAMP)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done,
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
     };
 
     /// <summary>
-    /// Resolves the attacker's code for <paramref name="shape"/>, setting <see cref="_frameCalldataPrefix"/>
-    /// as a side effect — empty for the synthetic shapes, the shipped invalid Groth16 payload for the
-    /// privacy ones.
+    /// Resolves the attacker's code for <paramref name="shape"/> at <paramref name="ceiling"/>, setting
+    /// <see cref="_frameCalldataPrefix"/>, <see cref="_frameSignatures"/> and
+    /// <see cref="_frameExecutionGasLimit"/> as a side effect — empty/ceiling for the synthetic shapes, the
+    /// shipped invalid Groth16 payload for the privacy ones, and a stuffed signature list at the minimal
+    /// frame budget for signature-stuffed.
     /// </summary>
     /// <returns>The runtime bytecode to seed as the attacker's code.</returns>
-    private byte[] LoadAttackCode(string shape)
+    private byte[] LoadAttackCode(string shape, ulong ceiling)
     {
         if (Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep))
         {
             byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
             _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
+            _frameSignatures = [];
+            _frameExecutionGasLimit = ceiling;
             return verifierCode;
         }
 
+        if (shape == "signature-stuffed")
+        {
+            _frameCalldataPrefix = [];
+            _frameSignatures = BuildSecp256k1Signatures(StuffedSignatureCount(ceiling));
+            _frameExecutionGasLimit = MinimalFrameGas;
+            return PrefixCode("banned-opcode");
+        }
+
         _frameCalldataPrefix = [];
+        _frameSignatures = [];
+        _frameExecutionGasLimit = ceiling;
         return PrefixCode(shape);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> secp256k1 entries, every one of which the pool fully recovers. The last signs
+    /// a different digest, so recovery runs and only then fails the signer compare; a wrong length or a
+    /// non-canonical <c>s</c> would be refused before any curve work and measure nothing.
+    /// </summary>
+    private static TxFrameSignature[] BuildSecp256k1Signatures(int count)
+    {
+        EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+        TxFrameSignature[] entries = new TxFrameSignature[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] msg = ValueKeccak.Compute(BitConverter.GetBytes(i)).ToByteArray();
+            byte[] signed = i == count - 1 ? ValueKeccak.Compute("mismatch"u8).ToByteArray() : msg;
+            Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed));
+
+            byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            raw[0] = signature.RecoveryId;
+            signature.RAsSpan.CopyTo(raw.AsSpan(1));
+            signature.SAsSpan.CopyTo(raw.AsSpan(33));
+            entries[i] = new TxFrameSignature(
+                TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyA.Address, msg, raw);
+        }
+
+        return entries;
     }
 
     /// <summary>
@@ -1128,27 +1303,37 @@ public class FrameTxFloodMeasurement
     }
 
     /// <summary>
-    /// A test chain whose pool does not apply the static declared-gas precheck.
+    /// A test chain whose pool's declared-gas precheck is configured per shape, not fixed.
     /// </summary>
     /// <remarks>
     /// <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> defaults to 300,000 and gates filter stage 7, well before the
     /// EVM. Left at its default, every ceiling above it is rejected on declared gas alone and never reaches
-    /// the simulator, which is a different measurement wearing this ceiling's label. Setting it to <c>0</c>
-    /// lifts that precheck only; the processor still caps each prefix frame at the
+    /// the simulator, which is a different measurement wearing this ceiling's label. For the shapes that need
+    /// to reach the simulator above the const, <paramref name="verifyGasCeiling"/> is <c>0</c>, lifting the
+    /// precheck entirely — the processor still caps each prefix frame at the
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> <c>const</c>, which is what
-    /// <see cref="Eip8141MeasurementGuards.SkipIfCeilingUnreachable"/> guards.
+    /// <see cref="Eip8141MeasurementGuards.SkipIfCeilingUnreachable"/> guards. For signature-stuffed, which
+    /// never reaches the simulator at all, disabling the precheck globally would describe a node no operator
+    /// runs (a real node keeps the 300,000 default, fourteen filters ahead of the signature filter, and
+    /// refuses a high-declared-gas transaction for free) — so that shape configures the precheck at the
+    /// ceiling under test instead, the same fix <c>FrameTxMempoolDosMeasurement</c> already applies.
     /// </remarks>
+    /// <param name="verifyGasCeiling">The <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> value for this chain — an
+    /// operator-configured ceiling, or <c>0</c> to disable the precheck.</param>
     private sealed class FloodTestBlockchain : BasicTestBlockchain
     {
-        public static async Task<FloodTestBlockchain> CreateFlood(Action<ContainerBuilder>? configurer = null)
+        private ulong _verifyGasCeiling;
+
+        public static async Task<FloodTestBlockchain> CreateFlood(
+            ulong verifyGasCeiling, Action<ContainerBuilder>? configurer = null)
         {
-            FloodTestBlockchain chain = new();
+            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling };
             await chain.Build(configurer);
             return chain;
         }
 
         protected override IEnumerable<IConfig> CreateConfigs() =>
-            [new BlocksConfig { MinGasPrice = 0 }, new TxPoolConfig { FrameTxMaxVerifyGas = 0 }];
+            [new BlocksConfig { MinGasPrice = 0 }, new TxPoolConfig { FrameTxMaxVerifyGas = _verifyGasCeiling }];
     }
 
     /// <summary>

@@ -218,6 +218,17 @@ public class FrameTxMempoolDosMeasurement
     /// <param name="Ops">Instructions the outermost frame executed — the unit the pool's tracing overhead is charged in.</param>
     private readonly record struct FrameGasReadout(ulong Available, ulong Burned, int Ops);
 
+    /// <summary>
+    /// The campaign's Groth16 sweep points, three synthetic and one real.
+    /// </summary>
+    /// <remarks>
+    /// The three synthetic points' public inputs are 6-bit integers, which reconstruct the gas shape correctly
+    /// — <c>ecMul</c> is priced flat at 6,000 gas regardless of the scalar — but understate the CPU, which is
+    /// proportional to the scalar's bit length. Measured A/B at identical gas, one case per process: +53% CPU
+    /// at 8 public inputs (<c>groth16-236k</c>) and +72% at 18 (<c>groth16-300k</c>); no figure was measured
+    /// for the 49-input point. <c>groth16-soispoke</c> carries full-width scalars from a real proof and is not
+    /// subject to this understatement.
+    /// </remarks>
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
         ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
