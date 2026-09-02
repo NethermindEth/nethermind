@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -87,9 +88,13 @@ namespace Nethermind.Network
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                    if (_logger.IsTrace) TracePersistedNodeFailure(nodeRlp, e);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TracePersistedNodeFailure(byte[] nodeRlp, Exception exception) =>
+                _logger.Trace($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {exception.Message}");
         }
 
         public void UpdateNode(NetworkNode node)
