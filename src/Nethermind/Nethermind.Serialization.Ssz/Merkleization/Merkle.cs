@@ -36,8 +36,6 @@ public static partial class Merkle
 
     public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
 
-    private static UInt256 Compute(Span<UInt256> span) => MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
-
     internal static UInt256 HashConcatenation(UInt256 left, UInt256 right, int level)
     {
         if (IsZeroHash(left, level) && IsZeroHash(right, level))
@@ -45,10 +43,7 @@ public static partial class Merkle
             return ZeroHashes[level + 1];
         }
 
-        Span<UInt256> concatenation = stackalloc UInt256[2];
-        concatenation[0] = left;
-        concatenation[1] = right;
-        return Compute(concatenation);
+        return HashPair(in left, in right);
     }
 
     private static bool IsZeroHash(UInt256 span, int level) => span.Equals(ZeroHashes[level]);
