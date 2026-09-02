@@ -1,17 +1,20 @@
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Trie.Benchmark
 {
     [MemoryDiagnoser]
-    [DryJob(RuntimeMoniker.NetCoreApp31)]
+    [DryJob]
     public class CacheBenchmark
     {
+        private static readonly ValueHash256 KeccakA = ValueKeccak.Compute("A");
+        private static readonly ValueHash256 KeccakB = ValueKeccak.Compute("B");
+        private static readonly ValueHash256 KeccakC = ValueKeccak.Compute("C");
+        private static readonly ValueHash256 KeccakD = ValueKeccak.Compute("D");
+
         // public readonly struct Param
         // {
         //     public Param(byte[] bytes)
@@ -45,7 +48,7 @@ namespace Nethermind.Trie.Benchmark
         // public Param Input { get; set; }
 
         [Benchmark]
-        public MemCountingCache Pre_init_trie_cache_160()
+        public MemCountingCache Pre_init_trie_cache()
         {
             MemCountingCache memCountingCache
                 = new(MemorySizes.MiB, string.Empty);
@@ -53,44 +56,44 @@ namespace Nethermind.Trie.Benchmark
         }
 
         [Benchmark]
-        public MemCountingCache Post_init_trie_cache_with_item_400()
+        public MemCountingCache Post_init_trie_cache_with_item()
         {
             MemCountingCache cache
                 = new(MemorySizes.MiB, string.Empty);
-            cache.Set(Keccak.Zero, Array.Empty<byte>());
+            cache.Set(ValueKeccak.Zero, Array.Empty<byte>());
             return cache;
         }
 
         [Benchmark]
-        public MemCountingCache With_2_items_cache_504()
+        public MemCountingCache With_2_items_cache()
         {
             MemCountingCache cache
                 = new(MemorySizes.MiB, string.Empty);
-            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
+            cache.Set(KeccakA, Array.Empty<byte>());
+            cache.Set(KeccakB, Array.Empty<byte>());
             return cache;
         }
 
         [Benchmark]
-        public MemCountingCache With_3_items_cache_608()
+        public MemCountingCache With_3_items_cache()
         {
             MemCountingCache cache
                 = new(MemorySizes.MiB, string.Empty);
-            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
+            cache.Set(KeccakA, Array.Empty<byte>());
+            cache.Set(KeccakB, Array.Empty<byte>());
+            cache.Set(KeccakC, Array.Empty<byte>());
             return cache;
         }
 
         [Benchmark]
-        public MemCountingCache Post_dictionary_growth_cache_824_and_136_lost()
+        public MemCountingCache Post_dictionary_growth_cache()
         {
             MemCountingCache cache
                 = new(MemorySizes.MiB, string.Empty);
-            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
-            cache.Set(TestItem.KeccakD, Array.Empty<byte>());
+            cache.Set(KeccakA, Array.Empty<byte>());
+            cache.Set(KeccakB, Array.Empty<byte>());
+            cache.Set(KeccakC, Array.Empty<byte>());
+            cache.Set(KeccakD, Array.Empty<byte>());
             return cache;
         }
     }

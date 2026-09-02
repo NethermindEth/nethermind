@@ -22,7 +22,6 @@
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
-    <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Init\Nethermind.Init.csproj" />
     <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
@@ -60,4 +59,5 @@
   <Project Path="Nethermind.Network.Benchmark/Nethermind.Network.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark/Nethermind.Precompiles.Benchmark.csproj" />
   <Project Path="Nethermind.Precompiles.Benchmark.Test/Nethermind.Precompiles.Benchmark.Test.csproj" />
+  <Project Path="Nethermind.Trie.Benchmark/Nethermind.Trie.Benchmark.csproj" />
 </Solution>
