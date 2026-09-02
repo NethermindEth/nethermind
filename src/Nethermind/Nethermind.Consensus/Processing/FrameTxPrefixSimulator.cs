@@ -21,8 +21,8 @@ using Metrics = Nethermind.TxPool.Metrics;
 namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IFrameTxPrefixSimulator"/>
-/// <remarks>Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout
-/// per simulation (which also caps the wait for the serialized env), and a cumulative per-head budget.</remarks>
+/// <remarks>Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout per
+/// simulation, and a cumulative per-head budget. A busy simulator sheds rather than queues.</remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
@@ -62,8 +62,17 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.Undecided("no chain head to simulate against");
         }
 
-        // Bounded wait: an admission thread must not queue indefinitely behind other peers' simulations.
-        if (!Monitor.TryEnter(_lock, _timeout > TimeSpan.Zero ? _timeout : Timeout.InfiniteTimeSpan))
+        // Advisory, and ahead of the lock on purpose: under spam this rejects nearly everything, so making
+        // each arrival contend for the lock to learn it would amplify the load the budget exists to shed.
+        if (!local && !HasHeadBudgetHint(head))
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
+        }
+
+        // No wait: admission runs on a small pool of background threads that also serve sync, and this one
+        // holds the pool's head read lock, so parking here would spend capacity rather than shed load.
+        if (!Monitor.TryEnter(_lock))
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
@@ -91,7 +100,7 @@ public sealed class FrameTxPrefixSimulator(
             }
             finally
             {
-                _budgetSpentTicks += Stopwatch.GetTimestamp() - startedAt;
+                Volatile.Write(ref _budgetSpentTicks, _budgetSpentTicks + Stopwatch.GetTimestamp() - startedAt);
             }
         }
         finally
@@ -185,6 +194,14 @@ public sealed class FrameTxPrefixSimulator(
     private static bool IsNodeFault(Exception e) =>
         e is IInternalNethermindException or ObjectDisposedException or IOException;
 
+    /// <summary>Lock-free read of the per-head budget, used only to shed before contending for the lock.</summary>
+    /// <remarks>Advisory: a stale read costs at most one extra simulation, and the in-lock check stays
+    /// authoritative. A head it has not seen yet reads as having room, since entering resets the budget.</remarks>
+    private bool HasHeadBudgetHint(BlockHeader head) =>
+        _headBudgetTicks <= 0
+        || Volatile.Read(ref _budgetHead) != head.Hash
+        || Volatile.Read(ref _budgetSpentTicks) < _headBudgetTicks;
+
     /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
     /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
     /// a stalled head keeps its exhausted budget. A reorg re-admits its transactions as gossip, so they are
@@ -195,8 +212,8 @@ public sealed class FrameTxPrefixSimulator(
 
         if (_budgetHead != head.Hash)
         {
-            _budgetHead = head.Hash;
-            _budgetSpentTicks = 0;
+            Volatile.Write(ref _budgetSpentTicks, 0);
+            Volatile.Write(ref _budgetHead, head.Hash);
         }
 
         return _budgetSpentTicks < _headBudgetTicks;
