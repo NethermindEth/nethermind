@@ -593,6 +593,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
         }
 
+        // Not routed through RunWithTimeout: at a 10-minute budget a retried timeout would exceed the
+        // job budget, turning a clean error into a report-less job timeout.
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
 
         PrivateKey serverKey = TestItem.PrivateKeyE;
