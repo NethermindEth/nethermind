@@ -38,6 +38,22 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Lowest_served_block_follows_the_latest_push_but_never_drops_below_the_published_boundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        ulong published = tree.GetLowestBlock();
+
+        tree.UpdateLowestServedBlock(published + 500);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 500));
+
+        tree.UpdateLowestServedBlock(published + 100);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 100), "the served floor follows a descending frontier down");
+
+        tree.UpdateLowestServedBlock(0);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
+    }
+
     private TestMemDb _blocksInfosDb = null!;
     private TestMemDb _headersDb = null!;
     private TestMemDb _blocksDb = null!;

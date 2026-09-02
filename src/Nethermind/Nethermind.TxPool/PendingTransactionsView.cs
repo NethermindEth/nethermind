@@ -20,17 +20,21 @@ public readonly struct PendingTransactionsView(
     IDictionary<AddressAsKey, Transaction[]> blobTransactions,
     bool isRevalidated)
 {
-    private static readonly IDictionary<AddressAsKey, Transaction[]> _empty =
+    private static readonly IReadOnlyDictionary<AddressAsKey, Transaction[]> _empty =
         new ReadOnlyDictionary<AddressAsKey, Transaction[]>(new Dictionary<AddressAsKey, Transaction[]>());
 
-    private readonly IDictionary<AddressAsKey, Transaction[]>? _transactions = transactions;
-    private readonly IDictionary<AddressAsKey, Transaction[]>? _blobTransactions = blobTransactions;
+    private readonly IReadOnlyDictionary<AddressAsKey, Transaction[]>? _transactions =
+        transactions as IReadOnlyDictionary<AddressAsKey, Transaction[]>
+        ?? new ReadOnlyDictionary<AddressAsKey, Transaction[]>(transactions);
+    private readonly IReadOnlyDictionary<AddressAsKey, Transaction[]>? _blobTransactions =
+        blobTransactions as IReadOnlyDictionary<AddressAsKey, Transaction[]>
+        ?? new ReadOnlyDictionary<AddressAsKey, Transaction[]>(blobTransactions);
 
     /// <summary>Non-blob transactions grouped by sender address, sorted by nonce and later tx pool sorting.</summary>
-    public IDictionary<AddressAsKey, Transaction[]> Transactions => _transactions ?? _empty;
+    public IReadOnlyDictionary<AddressAsKey, Transaction[]> Transactions => _transactions ?? _empty;
 
     /// <summary>Blob transaction light equivalences grouped by sender address, sorted the same way.</summary>
-    public IDictionary<AddressAsKey, Transaction[]> BlobTransactions => _blobTransactions ?? _empty;
+    public IReadOnlyDictionary<AddressAsKey, Transaction[]> BlobTransactions => _blobTransactions ?? _empty;
 
     /// <summary>
     /// Whether every transaction in this view has already been validated against the target block's release
