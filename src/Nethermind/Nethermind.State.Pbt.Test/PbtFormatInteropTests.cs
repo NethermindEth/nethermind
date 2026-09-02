@@ -29,12 +29,12 @@ public class PbtFormatInteropTests
             oracle.Insert(key, value);
         }
 
-        PbtNodeGroupStore source = new();
+        using PbtNodeGroupStore source = new();
         ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch);
-        PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(
+        using PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(
             sourceRoot, source.ExportPhysicalPayloads());
 
-        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(
             sourceRoot, target.ExportPhysicalPayloads());
 
         using (Assert.EnterMultipleScope())

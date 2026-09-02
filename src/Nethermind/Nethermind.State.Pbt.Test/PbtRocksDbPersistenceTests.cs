@@ -23,7 +23,7 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
 
     [Test]
-    public void Completed_epoch_9_store_reopens_and_serves_canonical_records()
+    public void Completed_epoch_10_store_reopens_and_serves_canonical_records()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
@@ -102,6 +102,53 @@ public class PbtRocksDbPersistenceTests
     }
 
     [Test]
+    public void Grouped_writes_use_the_fixed_footer_and_release_rented_payloads()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        TrackingMemoryProvider memoryProvider = new();
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig(), memoryProvider);
+        PbtNodePath path = new([0], 1);
+        byte[] node = BranchNode(1);
+
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+            StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None))
+        {
+            batch.SetNode(path, node);
+            batch.Commit();
+        }
+
+        byte[] payload = db.GetColumnDb(PbtColumns.NodeGroups).GetAll().Single().Value!;
+        PbtNodeGroupReader reader = new(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.TrailerLength));
+            Assert.That(reader.GetNode(PbtFourLevelGroupGeometry.Locate(path).Position).ToArray(), Is.EqualTo(node));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Failed_group_write_releases_rented_payloads_without_committing()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> inner = new("pbt");
+        FailNextCommitColumnsDb db = new(inner);
+        TrackingMemoryProvider memoryProvider = new();
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig(), memoryProvider);
+        db.FailNextCommit = true;
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
+            StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None);
+        batch.SetNode(new PbtNodePath([], 0), BranchNode(1));
+
+        Assert.That(() => batch.Commit(), Throws.TypeOf<IOException>());
+        batch.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
     public void Fresh_store_is_versioned_but_remains_unpublished_until_the_first_commit()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
@@ -111,7 +158,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(9)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(10)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -204,12 +251,13 @@ public class PbtRocksDbPersistenceTests
     {
         yield return new TestCaseData(Epoch(7), null, null, false).SetName("Rejects_epoch_7");
         yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
+        yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(9), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(9), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(9), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(9), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(9), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(10), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(10), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(10), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(10), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(10), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }

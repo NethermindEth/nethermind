@@ -34,7 +34,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         {
             PbtWriteBatch changes = new();
             foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
-            PbtNodeGroupStore nodeStore = new();
+            using PbtNodeGroupStore nodeStore = new();
             report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes);
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
             ScanNodes(report, nodeStore.EnumerateRecords(), cancellationToken);
@@ -92,13 +92,15 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                 try
                 {
                     PbtNodePath groupKey = DecodeGroupKey(view.CurrentKey);
-                    PbtNodeGroup group = PbtNodeGroupCodec.Decode(groupKey, view.CurrentValue);
-                    foreach (PbtNodeRecord node in group.EnumerateNodes())
+                    PbtNodeGroupReader reader = new(groupKey, view.CurrentValue);
+                    PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
+                    while (enumerator.MoveNext())
                     {
-                        actualNodes.Add(node);
+                        PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, enumerator.CurrentPosition);
+                        actualNodes.Add(new PbtNodeRecord(path, enumerator.Current));
                         report.NodeCount++;
-                        report.NodeKeyBytes += node.Path.Encode().Length;
-                        report.NodeBytes += node.Encoding.Length;
+                        report.NodeKeyBytes += path.Encode().Length;
+                        report.NodeBytes += enumerator.Current.Length;
                     }
                 }
                 catch (Exception exception) when (exception is InvalidDataException or ArgumentException)

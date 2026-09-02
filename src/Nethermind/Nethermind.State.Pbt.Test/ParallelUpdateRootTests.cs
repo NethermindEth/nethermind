@@ -17,7 +17,7 @@ public class ParallelUpdateRootTests
     public async Task Concurrent_independent_folds_equal_serial_fold()
     {
         (byte[] Key, byte[]? Value)[] entries = Entries(seed: 8297, count: 2000);
-        PbtTreeHarness serial = new();
+        using PbtTreeHarness serial = new();
         ValueHash256 expectedRoot = serial.ApplyBatch(entries);
         string[] expectedRecords = serial.CanonicalRecords();
 
@@ -26,7 +26,7 @@ public class ParallelUpdateRootTests
         {
             tasks[worker] = Task.Run(() =>
             {
-                PbtTreeHarness parallel = new();
+                using PbtTreeHarness parallel = new();
                 return (parallel.ApplyBatch(entries), parallel.CanonicalRecords());
             });
         }
@@ -54,6 +54,8 @@ public class ParallelUpdateRootTests
         ];
 
         PbtTreeHarness[] trees = await Task.WhenAll(tasks);
+        using (trees[0])
+        using (trees[1])
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trees[1].RootHash, Is.EqualTo(trees[0].RootHash));

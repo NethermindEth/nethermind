@@ -3,23 +3,29 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
 /// <summary><see cref="IPbtPersistence"/> backed by canonical PBT columns.</summary>
-public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config) : IPbtPersistence
+public class PbtRocksDbPersistence(
+    IColumnsDb<PbtColumns> db,
+    IPbtConfig config,
+    IRefCountingMemoryProvider? memoryProvider = null) : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    private const int SchemaEpoch = 9;
+    private const int SchemaEpoch = 10;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
+    private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
 
     internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
@@ -69,7 +75,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
-            throw new InvalidDataException("The epoch-9 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
+            throw new InvalidDataException("The epoch-10 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
         }
     }
 
@@ -91,11 +97,11 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
     {
         StateId current = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (current != from) throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {current}");
-        return new WriteBatch(_db, to, treeRoot, flags, publishState: true);
+        return new WriteBatch(_db, _memoryProvider, to, treeRoot, flags, publishState: true);
     }
 
     public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
-        new WriteBatch(_db, default, default, flags, publishState: false);
+        new WriteBatch(_db, _memoryProvider, default, default, flags, publishState: false);
 
     public void Flush() => _db.Flush();
 
@@ -167,9 +173,19 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
         public byte[]? GetNode(PbtNodePath path)
         {
             PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
-            byte[]? payload = snapshot.GetColumn(PbtColumns.NodeGroups).Get(location.GroupKey.Encode());
-            if (payload is null) return null;
-            return PbtNodeGroupCodec.Decode(location.GroupKey, payload).GetNode(location.Position)?.ToArray();
+            IReadOnlyKeyValueStore groups = snapshot.GetColumn(PbtColumns.NodeGroups);
+            Span<byte> payload = groups.GetSpan(location.GroupKey.Encode());
+            if (payload.IsNull()) return null;
+
+            try
+            {
+                PbtNodeGroupReader reader = new(location.GroupKey, payload);
+                return reader.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
+            }
+            finally
+            {
+                groups.DangerousReleaseMemory(payload);
+            }
         }
 
         public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
@@ -181,9 +197,13 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
                 while (view.MoveNext())
                 {
                     PbtNodePath groupKey = DecodeGroupKey(view.CurrentKey);
-                    PbtNodeGroup group = PbtNodeGroupCodec.Decode(groupKey, view.CurrentValue);
-                    foreach (PbtNodeRecord node in group.EnumerateNodes())
-                        nodes.Add(new KeyValuePair<PbtNodePath, byte[]>(node.Path, node.Encoding.ToArray()));
+                    PbtNodeGroupReader reader = new(groupKey, view.CurrentValue);
+                    PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
+                    while (enumerator.MoveNext())
+                    {
+                        PbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, enumerator.CurrentPosition);
+                        nodes.Add(new KeyValuePair<PbtNodePath, byte[]>(path, enumerator.Current.ToArray()));
+                    }
                 }
             }
 
@@ -212,6 +232,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
 
     private sealed class WriteBatch(
         IColumnsDb<PbtColumns> db,
+        IRefCountingMemoryProvider memoryProvider,
         StateId to,
         ValueHash256 root,
         WriteFlags flags,
@@ -295,12 +316,19 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
             {
                 Dictionary<int, byte[]> nodes = [];
                 byte[] encodedGroupKey = groupKey.Encode();
-                byte[]? priorPayload = groups.Get(encodedGroupKey);
-                if (priorPayload is not null)
+                Span<byte> priorPayload = groups.GetSpan(encodedGroupKey);
+                if (!priorPayload.IsNull())
                 {
-                    PbtNodeGroup prior = PbtNodeGroupCodec.Decode(groupKey, priorPayload);
-                    foreach (PbtNodeRecord record in prior.EnumerateNodes())
-                        nodes[PbtFourLevelGroupGeometry.PositionOf(record.Path)] = record.Encoding.ToArray();
+                    try
+                    {
+                        PbtNodeGroupReader reader = new(groupKey, priorPayload);
+                        PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
+                        while (enumerator.MoveNext()) nodes[enumerator.CurrentPosition] = enumerator.Current.ToArray();
+                    }
+                    finally
+                    {
+                        groups.DangerousReleaseMemory(priorPayload);
+                    }
                 }
 
                 foreach ((int position, byte[]? encoding) in mutations)
@@ -325,7 +353,20 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
                 List<PbtNodeRecord> records = new(nodes.Count);
                 foreach ((int position, byte[] encoding) in nodes)
                     records.Add(new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
-                groupsBatch.PutSpan(encodedGroupKey, PbtNodeGroupCodec.Encode(groupKey, records), flags);
+
+                BufferWriter writer = new(memoryProvider);
+                RefCountingMemory? encodedGroup = null;
+                try
+                {
+                    PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+                    encodedGroup = writer.Detach();
+                    groupsBatch.PutSpan(encodedGroupKey, encodedGroup!.GetSpan(), flags);
+                }
+                finally
+                {
+                    ((IDisposable?)encodedGroup)?.Dispose();
+                    writer.Dispose();
+                }
             }
         }
 

@@ -35,7 +35,7 @@ internal static class PbtNodeCodec
 
     public static PbtNode Decode(ReadOnlySpan<byte> encoding)
     {
-        if (encoding.IsEmpty) throw new InvalidDataException("A PBT node encoding cannot be empty.");
+        ValidateExact(encoding);
         return encoding[0] switch
         {
             LeafTag => DecodeLeaf(encoding),
@@ -44,26 +44,41 @@ internal static class PbtNodeCodec
         };
     }
 
-    /// <summary>Decodes the node at the beginning of a span and returns its encoded length.</summary>
-    /// <remarks>The remaining span is intentionally ignored; use <see cref="Decode(ReadOnlySpan{byte})"/> when an exact span is required.</remarks>
-    internal static PbtNode Decode(ReadOnlySpan<byte> encoding, out int consumed)
+    /// <summary>Validates the exact structural encoding of one node without allocating.</summary>
+    internal static void ValidateExact(ReadOnlySpan<byte> encoding)
     {
-        consumed = 0;
         if (encoding.IsEmpty) throw new InvalidDataException("A PBT node encoding cannot be empty.");
         if (encoding[0] is not LeafTag and not BranchTag) throw new InvalidDataException("Unknown PBT node tag.");
         if (encoding.Length < 3) throw new InvalidDataException("Truncated PBT node encoding.");
 
-        int encodedLength = encoding[0] switch
+        if (encoding[0] == LeafTag)
         {
-            LeafTag => checked(3 + BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]) + 32),
-            BranchTag => checked(3 + PbtBitPrefix.ByteCount(BinaryPrimitives.ReadUInt16BigEndian(encoding[1..])) + 64),
-            _ => throw new InvalidDataException("Unknown PBT node tag."),
-        };
-        if (encoding.Length < encodedLength) throw new InvalidDataException("Truncated PBT node encoding.");
+            int keyLength = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
+            if (keyLength is < 1 or > PbtFullKey.MaxLength)
+                throw new InvalidDataException("Invalid PBT leaf key length.");
+            int encodedLength = checked(3 + keyLength + 32);
+            if (encoding.Length != encodedLength) throw new InvalidDataException("Invalid PBT leaf encoding length.");
+            return;
+        }
 
-        PbtNode node = Decode(encoding[..encodedLength]);
-        consumed = encodedLength;
-        return node;
+        int bitCount = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
+        int prefixByteCount = PbtBitPrefix.ByteCount(bitCount);
+        int encodedBranchLength = checked(3 + prefixByteCount + 64);
+        if (encoding.Length != encodedBranchLength) throw new InvalidDataException("Invalid PBT branch encoding length.");
+        if (bitCount % 8 != 0 && (encoding[2 + prefixByteCount] & (0xFF >> (bitCount % 8))) != 0)
+            throw new InvalidDataException("Invalid PBT branch prefix.");
+
+        int leftHashOffset = 3 + prefixByteCount;
+        if (IsZero(encoding[leftHashOffset..(leftHashOffset + 32)])
+            || IsZero(encoding[(leftHashOffset + 32)..(leftHashOffset + 64)]))
+            throw new InvalidDataException("A PBT branch must have two non-empty children.");
+    }
+
+    private static bool IsZero(ReadOnlySpan<byte> bytes)
+    {
+        for (int index = 0; index < bytes.Length; index++)
+            if (bytes[index] != 0) return false;
+        return true;
     }
 
     internal static ValueHash256 HashLeaf(PbtFullKey key, ReadOnlySpan<byte> value)

@@ -25,7 +25,7 @@ public class StemTrieTests
         second[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
         byte[] firstValue = Value(1);
         byte[] secondValue = Value(2);
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
 
         tree.ApplyBatch([(first, firstValue)]);
@@ -56,9 +56,9 @@ public class StemTrieTests
             (Key(0x10, 0x00, 65), Value(3)),
             (Key(0x12, 0x40, 257), Value(4)),
         ];
-        PbtTreeHarness incremental = new();
+        using PbtTreeHarness incremental = new();
         foreach ((byte[] key, byte[]? value) in entries) incremental.ApplyBatch([(key, value)]);
-        PbtTreeHarness rebuilt = new();
+        using PbtTreeHarness rebuilt = new();
         rebuilt.ApplyBatch(entries);
 
         using (Assert.EnterMultipleScope())

@@ -9,7 +9,7 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>Drives <see cref="TrieUpdater"/> over a persistent variable-length complete-key store.</summary>
-internal sealed class PbtTreeHarness
+internal sealed class PbtTreeHarness : IDisposable
 {
     private PbtNodeGroupStore _store = new();
 
@@ -37,8 +37,16 @@ internal sealed class PbtTreeHarness
         return encoding is not null;
     }
 
-    public void Reopen() =>
-        _store = PbtNodeGroupStore.FromPhysicalPayloads(RootHash, PhysicalPayloads);
+    public void Reopen()
+    {
+        IReadOnlyList<PbtPhysicalPayload> payloads = PhysicalPayloads;
+        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(RootHash, payloads);
+        PbtNodeGroupStore prior = _store;
+        _store = reopened;
+        prior.Dispose();
+    }
+
+    public void Dispose() => _store.Dispose();
 
     public string[] CanonicalRecords()
     {

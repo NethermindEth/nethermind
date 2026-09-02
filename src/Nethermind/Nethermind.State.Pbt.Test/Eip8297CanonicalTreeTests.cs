@@ -16,7 +16,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Trie_updater_matches_independent_oracle_through_variable_length_mutations()
     {
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         byte[][] keys = [[0x00], [0x40], [0x41, 0x80], [0xFF, 0x10], [0x12, 0x34, 0x56, 0x78]];
         for (int index = 0; index < keys.Length; index++)
@@ -45,7 +45,7 @@ public class Eip8297CanonicalTreeTests
             random.NextBytes(keys[index].AsSpan(1));
         }
 
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         for (int operation = 0; operation < 1000; operation++)
         {
@@ -71,7 +71,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Split_inside_compressed_prefix_and_delete_merge_stay_canonical()
     {
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         byte[] first = [0x12, 0x00];
         byte[] second = [0x12, 0x80];
@@ -95,7 +95,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Failed_prefix_batch_is_atomic()
     {
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         byte[] original = [0x12];
         tree.ApplyBatch([(original, Value(1))]);
         ValueHash256 root = tree.RootHash;
@@ -119,8 +119,8 @@ public class Eip8297CanonicalTreeTests
             ([0x80], Value(1)), ([0x40], Value(2)), ([0x20], Value(3)),
             ([0x10], Value(4)), ([0x08], Value(5)), ([0x04], Value(6)),
         ];
-        PbtTreeHarness forward = new();
-        PbtTreeHarness reverse = new();
+        using PbtTreeHarness forward = new();
+        using PbtTreeHarness reverse = new();
         foreach ((byte[] key, byte[]? value) in entries) forward.ApplyBatch([(key, value)]);
         for (int index = entries.Length - 1; index >= 0; index--) reverse.ApplyBatch([entries[index]]);
 
@@ -163,7 +163,7 @@ public class Eip8297CanonicalTreeTests
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));
         Assert.Throws<InvalidDataException>(() => PbtNodePath.Decode([0, 0, 0, 1, 0x01]));
 
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         tree.ApplyBatch([([0x12], Value(1))]);
         Assert.Throws<ArgumentException>(() => tree.ApplyBatch([([0x12, 0x34], Value(2))]));
     }
@@ -173,7 +173,7 @@ public class Eip8297CanonicalTreeTests
     {
         byte[] key = [0x12, 0x34];
         byte[] value = Value(7);
-        PbtTreeHarness tree = new();
+        using PbtTreeHarness tree = new();
         tree.ApplyBatch([(key, value)]);
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(Hash([0, .. key, .. value])));
     }

@@ -181,7 +181,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_9_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_10_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -262,7 +262,7 @@ public class ImportPbtFromPreimageFlatTests
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
         PbtWriteBatch changes = new();
         changes.Set(key, value);
-        PbtNodeGroupStore nodeStore = new();
+        using PbtNodeGroupStore nodeStore = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes);
         ValueHash256 persistedRoot = corruptNode ? root : TestItem.KeccakB.ValueHash256;
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
