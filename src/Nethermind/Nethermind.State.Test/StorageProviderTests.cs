@@ -607,7 +607,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_clears_cache()
     {
-        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
@@ -996,7 +996,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_persist_between_commit()
     {
-        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
@@ -1244,7 +1244,7 @@ public class StorageProviderTests(bool useFlat)
     [TestCase(false)]
     public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
 

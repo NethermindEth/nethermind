@@ -316,6 +316,8 @@ public class ScopeProviderTests(bool useFlat)
     private static readonly StorageCell SlotC5 = new(TestItem.AddressC, 5);
     private static readonly StorageCell SlotE1 = new(TestItem.AddressE, 1);
 
+    private static PreBlockCaches NewCaches() => new(TestPreBlockCachesConfig.Small);
+
     private static BlockHeader HeaderAt(Hash256 stateRoot, ulong number) =>
         Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(number).TestObject;
 
@@ -348,7 +350,7 @@ public class ScopeProviderTests(bool useFlat)
     /// </summary>
     private static (PreBlockCaches Caches, WorldState Consumer) WarmConsumerCaches(Context ctx, Hash256 baseRoot)
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider consumerProvider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         WorldState consumer = new(consumerProvider, LimboLogs.Instance);
         caches.PrepareFor(baseRoot);
@@ -780,7 +782,7 @@ public class ScopeProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         caches.PrepareFor(baseRoot);
         WorldState state = new(ctx.ScopeProvider, LimboLogs.Instance);
 
@@ -883,7 +885,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_WriteBack_UnderContention_ClearsTheCachesAndForgetsTheState()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         AddressAsKey keyA = TestItem.AddressA;
         AddressAsKey keyB = TestItem.AddressB;
         caches.PrepareFor(TestItem.KeccakA);
@@ -931,7 +933,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_WriteBackInBackground_LeavesTheCommitThread_AndIsJoinedBeforeTheCachesAreRead()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         caches.PrepareFor(TestItem.KeccakA);
         using ManualResetEventSlim writing = new();
         using ManualResetEventSlim release = new();
@@ -964,7 +966,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_WriteBackInBackground_ThatFaults_DropsTheCachesInsteadOfFailingTheBlock()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         AddressAsKey key = TestItem.AddressA;
         caches.PrepareFor(TestItem.KeccakA);
         caches.StateCache.Set(in key, new Account(1, 100));
@@ -986,7 +988,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_WriteBackInBackground_ThatFailsToRelease_StillDoesNotFailTheNextBlock()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         caches.PrepareFor(TestItem.KeccakA);
         TestSnapshot snapshot = new(_ => { }, disposeFailure: new InvalidOperationException("release failed"));
 
@@ -1000,7 +1002,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_WriteBackInBackground_TakesNoSnapshotWhenTheCachesDescribeAnotherState()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         caches.PrepareFor(TestItem.KeccakA);
 
         bool taken = false;
@@ -1040,7 +1042,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_UnchangedRoot_WritesNothingBack()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         AddressAsKey key = TestItem.AddressA;
         caches.PrepareFor(TestItem.KeccakA);
         caches.StateCache.Set(in key, new Account(1, 100));
@@ -1073,7 +1075,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ConsumerScope_OpeningFailure_LeavesNothingBehind()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         caches.ConsumerScopeOpened += () => throw new InvalidOperationException("join failed");
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
@@ -1123,7 +1125,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ConsumerScope_StaysOpenUntilTheUnderlyingScopeIsDisposed()
     {
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         bool openDuringBaseDispose = false;
         baseScope.When(s => s.Dispose()).Do(_ => openDuringBaseDispose = caches.ConsumerScopeOpen);
@@ -1163,7 +1165,7 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         // isPrewarmer: false targets the main-processing scope where HintBal actually runs.
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
@@ -1183,7 +1185,7 @@ public class ScopeProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider provider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
 
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
@@ -1207,7 +1209,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
             new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider main = new(decorated, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
@@ -1239,7 +1241,7 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         if (cached)
         {
             // A carried entry spares the populator its read, but the commit still needs the account's trie path warmed.
@@ -1265,7 +1267,7 @@ public class ScopeProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
@@ -1299,7 +1301,7 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         // The driver vouches for the caches before any populator fills them.
         caches.PrepareFor(stateRoot);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
@@ -1354,7 +1356,7 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         StorageCell cell = new(TestItem.AddressA, 1);
@@ -1397,7 +1399,7 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        PreBlockCaches caches = new();
+        PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider main = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;

@@ -15,7 +15,9 @@ namespace Nethermind.Core.Collections;
 /// Design goals:
 /// - Lock-free reads (seqlock pattern) - readers never take locks.
 /// - Best-effort writes - writers skip on contention.
-/// - O(1) logical Clear() via a global epoch (no per-entry zeroing).
+/// - O(1) logical Clear() via a global epoch (no per-entry zeroing). Cleared entries keep referencing their
+///   key and value until the slot is written again, so a cache sized for its working set holds that working
+///   set alive whether or not it has been cleared.
 /// - 2-way skew-associative: each way uses independent hash bits for set indexing,
 ///   breaking correlation between ways ("power of two choices"). Keys that collide
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
