@@ -15,9 +15,10 @@ public interface IFrameTxPrefixSimulator
     /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
     /// <param name="token">Honored at entry and polled cooperatively during execution. It does not gate access
     /// to the serialized processing env; a busy simulator sheds immediately rather than waiting for it.</param>
-    /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
-    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
-    /// exposed, it is the one admission path with no cumulative bound.</param>
+    /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers,
+    /// and the only caller that waits for a busy simulator rather than shedding, since it runs on the RPC
+    /// thread. The per-simulation timeout bounds both, and <c>MAX_VERIFY_GAS</c> still applies. Assumes a
+    /// trusted RPC: publicly exposed, it is the one admission path with no cumulative bound.</param>
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false);
 }
 

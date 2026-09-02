@@ -70,9 +70,10 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
         }
 
-        // No wait: admission runs on a small pool of background threads that also serve sync, and this one
-        // holds the pool's head read lock, so parking here would spend capacity rather than shed load.
-        if (!Monitor.TryEnter(_lock))
+        // No wait for gossip: that admission runs on a small pool of background threads which also serve
+        // sync. A local submission is on the RPC thread instead, so shedding it protects nothing and would
+        // hand a peer the exemption from the per-head budget it was given.
+        if (!Monitor.TryEnter(_lock, local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
