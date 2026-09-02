@@ -84,6 +84,14 @@ public interface IWorldStateScopeProvider
         void Commit(ulong blockNumber);
 
         /// <summary>
+        /// Called by the world state right after <see cref="Commit"/>. The world state writes the final value of every
+        /// account and storage slot the block touched into the returned batch and disposes it, before discarding its
+        /// own record of them, so a scope that caches the state it reads can bring that cache forward to the
+        /// committed state. A scope without such a cache returns <see langword="null"/>.
+        /// </summary>
+        IWorldStateWriteBatch? StartCommittedStateWriteBack() => null;
+
+        /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.
         /// Walks the BAL in parallel and, per account, enqueues trie-warmer jobs for the
         /// addresses + changed storage slots. When <paramref name="sink"/> is supplied, the

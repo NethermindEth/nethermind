@@ -773,6 +773,22 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static void ThrowUnexpectedCommitPosition(int expected, int actual)
         => throw new InvalidOperationException($"Expected checked value {actual} to be equal to {expected}");
 
+    /// <summary>
+    /// Whether <paramref name="address"/> has an account at the end of the block, or <see langword="null"/> when the block
+    /// never loaded the account through this provider.
+    /// </summary>
+    internal bool? HasAccountAtBlockEnd(Address address) =>
+        _blockChanges.TryGetValue(address, out ChangeTrace change) ? change.After is not null : null;
+
+    /// <summary>Writes the final value of every account the block touched, reads included, into <paramref name="writeBatch"/>.</summary>
+    internal void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        foreach (KeyValuePair<AddressAsKey, ChangeTrace> change in _blockChanges)
+        {
+            writeBatch.Set(change.Key.Value, change.Value.After);
+        }
+    }
+
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         int writes = 0;

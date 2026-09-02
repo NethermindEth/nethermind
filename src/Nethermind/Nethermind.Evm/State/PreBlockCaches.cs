@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -34,11 +35,7 @@ public class PreBlockCaches
     private int _consumerScopes;
 
     private readonly Lock _reconcileLock = new();
-    private readonly BlockWriteSet _pendingWrites = new();
-    // Once sealed, the pending writes take the caches from _pendingWritesBase to _pendingWritesRoot; a null root
-    // means a block is still recording into them.
-    private Hash256? _pendingWritesBase;
-    private Hash256? _pendingWritesRoot;
+    private readonly WriteBackBatch _writeBack;
     // State root the account and storage caches reflect; null until PrepareFor establishes one.
     private Hash256? _validFor;
 
@@ -58,6 +55,7 @@ public class PreBlockCaches
             () => { _stateCache.Clear(); return CacheType.None; },
             () => { _precompileCache.NoLockClear(); return CacheType.None; }
         ];
+        _writeBack = new WriteBackBatch(this);
     }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
@@ -145,7 +143,7 @@ public class PreBlockCaches
             isDirty |= clearCache();
         }
 
-        ForgetIdentity();
+        _validFor = null;
         return isDirty;
     }
 
@@ -154,60 +152,18 @@ public class PreBlockCaches
     {
         _storageCache.Clear();
         _stateCache.Clear();
-        ForgetIdentity();
-    }
-
-    private void ForgetIdentity()
-    {
         _validFor = null;
-        // A sealed write set describes a transition the emptied caches no longer need; an unsealed one belongs to
-        // the block still recording into it.
-        if (_pendingWritesRoot is not null) ClearPendingWrites();
     }
 
     /// <summary>Drops the per-block precompile results once a block has finished; the account and storage caches carry over.</summary>
     public void ClearPrecompileCache() => _precompileCache.NoLockClear();
 
-    /// <summary>The write set the main processing scope records the current block's committed values into.</summary>
-    public BlockWriteSet PendingWrites => _pendingWrites;
-
     /// <summary>The state root the account and storage caches reflect, or <see langword="null"/> when unknown.</summary>
     public Hash256? ValidFor => _validFor;
 
     /// <summary>
-    /// Marks the recorded writes as the persisted transition from <paramref name="baseStateRoot"/> to
-    /// <paramref name="stateRoot"/>, ready for <see cref="PrepareFor"/> to replay.
-    /// </summary>
-    public void SealPendingWrites(Hash256? baseStateRoot, Hash256 stateRoot)
-    {
-        lock (_reconcileLock)
-        {
-            if (_pendingWritesRoot is not null)
-            {
-                // The previous block's writes were never replayed, so the caches have fallen behind the persisted state.
-                ClearPendingWrites();
-                _validFor = null;
-                return;
-            }
-
-            _pendingWritesBase = baseStateRoot;
-            _pendingWritesRoot = stateRoot;
-        }
-    }
-
-    /// <summary>Drops writes recorded by a scope that never committed them, such as a discarded or failed block.</summary>
-    public void DiscardUnsealedWrites()
-    {
-        lock (_reconcileLock)
-        {
-            if (_pendingWritesRoot is null) _pendingWrites.Clear();
-        }
-    }
-
-    /// <summary>
     /// Makes the account and storage caches reflect the state at <paramref name="stateRoot"/>: keeps them when they
-    /// already do, replays the sealed block write set when that is what separates them from it, and clears them
-    /// (together with the per-block precompile cache) otherwise.
+    /// already do and clears them (together with the per-block precompile cache) otherwise.
     /// </summary>
     /// <remarks>
     /// For the driver, once every populator is joined: afterwards the caches are known to reflect
@@ -218,7 +174,7 @@ public class PreBlockCaches
     {
         lock (_reconcileLock)
         {
-            if (TryMakeValidFor(stateRoot)) return true;
+            if (stateRoot is not null && _validFor == stateRoot) return true;
 
             ClearCachesCore();
             _validFor = stateRoot;
@@ -228,7 +184,7 @@ public class PreBlockCaches
 
     /// <summary>
     /// Guards a consumer scope about to read state at <paramref name="stateRoot"/>: account and storage caches that
-    /// cannot be made to reflect it are cleared.
+    /// do not reflect it are cleared.
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="PrepareFor"/>, a clear here adopts no identity: only the driver vouches for the caches, once
@@ -239,37 +195,100 @@ public class PreBlockCaches
     {
         lock (_reconcileLock)
         {
-            if (!TryMakeValidFor(stateRoot)) ClearStateCachesCore();
+            if (stateRoot is null || _validFor != stateRoot) ClearStateCachesCore();
         }
     }
 
-    private bool TryMakeValidFor(Hash256? stateRoot)
+    /// <summary>
+    /// Begins bringing the account and storage caches from the state at <paramref name="baseStateRoot"/> to the
+    /// committed state at <paramref name="stateRoot"/>. The caller writes the final value of every account and
+    /// storage slot the block touched into the returned batch and disposes it; only then do the caches count as
+    /// reflecting <paramref name="stateRoot"/>.
+    /// </summary>
+    /// <returns>
+    /// <see langword="null"/> when the caches do not reflect <paramref name="baseStateRoot"/>: they then have nothing
+    /// to bring forward and stay as they are until the driver prepares them.
+    /// </returns>
+    /// <remarks>
+    /// Single-writer upsert: it runs while a consumer scope is open, so no speculative session is active, and after
+    /// the block's own pre-warming has been joined. A concurrent writer is still detected, and turns the caches into
+    /// a clear on dispose rather than into stale entries. <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/>
+    /// drops the whole storage cache, because a contract's pre-block slots cannot be enumerated; issue it only for a
+    /// contract that held storage before the block.
+    /// </remarks>
+    public IWorldStateScopeProvider.IWorldStateWriteBatch? BeginWriteBack(Hash256? baseStateRoot, Hash256 stateRoot)
     {
-        if (stateRoot is null || _validFor is null) return false;
-
-        Hash256? pendingRoot = _pendingWritesRoot;
-        if (pendingRoot is null) return _validFor == stateRoot;
-        if (_pendingWritesBase != _validFor) return false;
-
-        // Another block on the same parent: the caches still hold that parent, only the sealed writes are moot.
-        if (_validFor == stateRoot)
+        _reconcileLock.Enter();
+        if (baseStateRoot is null || _validFor != baseStateRoot)
         {
-            ClearPendingWrites();
-            return true;
+            _reconcileLock.Exit();
+            return null;
         }
 
-        if (pendingRoot != stateRoot || !_pendingWrites.TryApplyTo(_stateCache, _storageCache)) return false;
-
-        ClearPendingWrites();
-        _validFor = stateRoot;
-        return true;
+        _writeBack.Begin(stateRoot);
+        return _writeBack;
     }
 
-    private void ClearPendingWrites()
+    /// <summary>Applies a block's final values to the caches; holds <see cref="_reconcileLock"/> from <see cref="Begin"/> to <see cref="Dispose"/>.</summary>
+    private sealed class WriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        _pendingWrites.Clear();
-        _pendingWritesBase = null;
-        _pendingWritesRoot = null;
+        private readonly StorageWriteBackBatch _storage = new(caches._storageCache);
+        private Hash256 _stateRoot = null!;
+        private bool _contended;
+
+        public void Begin(Hash256 stateRoot)
+        {
+            _stateRoot = stateRoot;
+            _contended = false;
+            _storage.Contended = false;
+        }
+
+        // Never raised: nothing on the way into a cache recomputes a storage root.
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
+
+        public void Set(Address key, Account? account)
+        {
+            AddressAsKey addressAsKey = key;
+            if (!caches._stateCache.TrySetExclusive(in addressAsKey, account)) _contended = true;
+        }
+
+        // One contract at a time: the caller disposes each storage batch before creating the next.
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+        {
+            _storage.Address = key;
+            return _storage;
+        }
+
+        public void Dispose()
+        {
+            if (_contended || _storage.Contended)
+            {
+                // Another writer got in, so the caches now describe neither the base nor the committed state.
+                caches.ClearStateCachesCore();
+            }
+            else
+            {
+                caches._validFor = _stateRoot;
+            }
+
+            caches._reconcileLock.Exit();
+        }
+    }
+
+    private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public Address Address { get; set; } = null!;
+        public bool Contended { get; set; }
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            StorageCell cell = new(Address, in index);
+            if (!storageCache.TrySetExclusive(in cell, value)) Contended = true;
+        }
+
+        public void Clear() => storageCache.Clear();
+
+        public void Dispose() { }
     }
 
     /// <summary>

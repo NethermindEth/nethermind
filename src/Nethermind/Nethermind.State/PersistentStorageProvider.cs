@@ -348,6 +348,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         InvalidateStorageMemo();
     }
 
+    /// <summary>Writes the block's final storage values of every contract touched into <paramref name="writeBatch"/>; see <see cref="PerContractState.WriteBlockChanges"/>.</summary>
+    internal void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        {
+            PerContractState state = storage.Value;
+            // Without an account record the address was either read directly, so it exists unchanged, or created and
+            // removed within the block, which leaves no record; only the latter can have written its storage.
+            bool accountExists = _stateProvider.HasAccountAtBlockEnd(storage.Key.Value) ?? !state.WasWritten;
+            state.WriteBlockChanges(writeBatch, accountExists);
+        }
+    }
+
     private Address? _lastStorageAddress;
     private PerContractState? _lastStorage;
 
@@ -561,6 +574,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
+        public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
 
         public void Reset(int capacity)
@@ -665,6 +679,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
+        // Whether the contract held storage before the block and whether the block cleared it: together they say if a
+        // cache of pre-block slots must drop them. Captured at the first tree creation, before any flush moves the root.
+        private bool _hadStorageBeforeBlock;
+        private bool _storageRootSeen;
+        private bool _wasCleared;
         private PersistentStorageProvider _provider;
         private Address _address;
 
@@ -677,6 +696,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
+
+        public bool WasWritten => _wasWritten;
 
         public Hash256 StorageRoot
         {
@@ -700,6 +721,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend = _provider._currentScope.CreateStorageTree(_address);
 
             bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            if (!_storageRootSeen)
+            {
+                _storageRootSeen = true;
+                _hadStorageBeforeBlock = !isEmpty;
+            }
+
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree
@@ -710,12 +737,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
+            _wasCleared = true;
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
         {
             EnsureStorageTree();
+            // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
+            _wasCleared = true;
             return BlockChange.ClearRevertibly();
         }
 
@@ -727,6 +757,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            _hadStorageBeforeBlock = false;
+            _storageRootSeen = false;
+            _wasCleared = false;
             Pool.Return(this);
         }
 
@@ -836,6 +869,30 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             return (writes, skipped);
+        }
+
+        /// <summary>
+        /// Writes the block's final value of every slot touched, reads included, into <paramref name="writeBatch"/>,
+        /// preceded by a clear when the block wiped storage the contract held before it.
+        /// </summary>
+        /// <param name="accountExists">
+        /// Whether the account exists at the end of the block. Storage of an absent account went with it, so none of its
+        /// slots is state: only the clear of what it held before the block is written.
+        /// </param>
+        public void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, bool accountExists)
+        {
+            // A clear matters only to cached pre-block slots, which a contract without storage never had.
+            bool clear = _hadStorageBeforeBlock && (_wasCleared || !accountExists);
+            if (!clear && (!accountExists || BlockChange.Count == 0)) return;
+
+            using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(_address, accountExists ? BlockChange.Count : 0);
+            if (clear) storageWriteBatch.Clear();
+            if (!accountExists) return;
+
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                storageWriteBatch.Set(kvp.Key, kvp.Value.After);
+            }
         }
 
         public void RemoveStorageTree() => _backend = null;

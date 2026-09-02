@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -33,9 +32,10 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 }
 
 /// <summary>
-/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills. The consumer
-/// records its committed writes so the account and storage caches carry over to the next block; the driver
-/// (<c>BlockCachePreWarmer</c>) reconciles or clears them before any populator writes.
+/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills. When the
+/// consumer commits a block, the world state writes the block's final values back into the account and storage
+/// caches, so they carry over to the next block; the driver (<c>BlockCachePreWarmer</c>) keeps or clears them
+/// before any populator writes.
 /// </summary>
 /// <param name="prewarmerState">
 /// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
@@ -75,7 +75,7 @@ public class PrewarmerScopeProvider(
                 }
                 finally
                 {
-                    if (preBlockCaches.EndConsumerScope() == 0) preBlockCaches.DiscardUnsealedWrites();
+                    preBlockCaches.EndConsumerScope();
                 }
                 throw;
             }
@@ -105,7 +105,7 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
-        // Root of the state the next commit's writes start from: the base block's, then each committed root in turn.
+        // Root of the state the next commit starts from: the base block's, then each committed root in turn.
         private Hash256? _committedStateRoot = baseStateRoot;
 
         public void Dispose()
@@ -128,9 +128,8 @@ public class PrewarmerScopeProvider(
             }
             finally
             {
-                // Only now are the scope's background readers (HintBal) drained, so only now may a session take over the
-                // caches. Writes flushed by a block that never committed (discarded or failed) never reached the state.
-                if (preBlockCaches.EndConsumerScope() == 0) preBlockCaches.DiscardUnsealedWrites();
+                // Only now are the scope's background readers (HintBal) drained, so only now may a session take over the caches.
+                preBlockCaches.EndConsumerScope();
             }
         }
 
@@ -139,9 +138,6 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
-            // The block's first look at this storage sees the pre-block root: the eviction-proof answer to whether
-            // the account had storage, which the commit needs for any wipe of it.
-            if (!isPrewarmer) preBlockCaches.PendingWrites.RecordPreBlockStorage(address, baseTree.RootHash != Keccak.EmptyTreeHash);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
                 : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
@@ -150,8 +146,6 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = baseScope.StartWriteBatch(estimatedAccountNum);
-            // Only the consumer's writes become state, and they are what the caches must reflect for the next block.
-            if (!isPrewarmer) writeBatch = new RecordingWriteBatch(writeBatch, preBlockCaches);
             if (!_measureMetric)
             {
                 return writeBatch;
@@ -167,22 +161,23 @@ public class PrewarmerScopeProvider(
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
-            }
-            else
-            {
-                long sw = Stopwatch.GetTimestamp();
-                baseScope.Commit(blockNumber);
-                _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+                return;
             }
 
-            if (!isPrewarmer) SealWrites();
+            long sw = Stopwatch.GetTimestamp();
+            baseScope.Commit(blockNumber);
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
-        private void SealWrites()
+        // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
+        public IWorldStateScopeProvider.IWorldStateWriteBatch? StartCommittedStateWriteBack()
         {
+            if (isPrewarmer) return null;
+
             Hash256 stateRoot = baseScope.RootHash;
-            preBlockCaches.SealPendingWrites(_committedStateRoot, stateRoot);
+            IWorldStateScopeProvider.IWorldStateWriteBatch? writeBack = preBlockCaches.BeginWriteBack(_committedStateRoot, stateRoot);
             _committedStateRoot = stateRoot;
+            return writeBack;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -278,113 +273,6 @@ public class PrewarmerScopeProvider(
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
-    }
-
-    /// <summary>Mirrors the consumer's committed values into the pending <see cref="BlockWriteSet"/>.</summary>
-    private sealed class RecordingWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        private readonly IWorldStateScopeProvider.IWorldStateWriteBatch _baseWriteBatch;
-        private readonly PreBlockCaches _caches;
-        private readonly BlockWriteSet _writes;
-        private readonly List<RecordingStorageWriteBatch> _storageBatches = [];
-
-        public RecordingWriteBatch(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, PreBlockCaches caches)
-        {
-            _baseWriteBatch = baseWriteBatch;
-            _caches = caches;
-            _writes = caches.PendingWrites;
-            // Storage roots are only final when the base batch disposes; it republishes those accounts through this event.
-            _baseWriteBatch.OnAccountUpdated += OnBaseAccountUpdated;
-        }
-
-        private void OnBaseAccountUpdated(object? sender, IWorldStateScopeProvider.AccountUpdated updated)
-            => _writes.RecordAccount(updated.Address, updated.Account);
-
-        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
-        {
-            add => _baseWriteBatch.OnAccountUpdated += value;
-            remove => _baseWriteBatch.OnAccountUpdated -= value;
-        }
-
-        public void Set(Address key, Account? account)
-        {
-            // Removing an account removes its storage too, with or without a storage write batch for it.
-            if (account is null) _writes.RecordStorageWipe(key, HadStorage(key));
-            _writes.RecordAccount(key, account);
-            _baseWriteBatch.Set(key, account);
-        }
-
-        // hadStorage is resolved here, on the committing thread, because the storage batch's Clear runs on a parallel worker.
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-        {
-            RecordingStorageWriteBatch batch = new(_baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), _writes, key, HadStorage(key), estimatedEntries);
-            _storageBatches.Add(batch);
-            return batch;
-        }
-
-        // Whether the account held storage before this block. Every address that gets a storage batch had its tree
-        // created through the consumer scope, which recorded the answer. An account removed without touching its
-        // storage falls back to the pre-block cache; after an eviction the answer is unknown and the scope cannot tell
-        // (an earlier flush may already have emptied the account's storage), so assume it did and let the replay over-clear.
-        private bool HadStorage(Address address)
-        {
-            if (_writes.TryGetPreBlockStorage(address, out bool hadStorage)) return hadStorage;
-            AddressAsKey key = address;
-            return !_caches.StateCache.TryGetValue(in key, out Account? cached) || cached?.HasStorage == true;
-        }
-
-        public void Dispose()
-        {
-            _baseWriteBatch.Dispose();
-            // Slots written for an address that ends the block without an account are dropped or orphaned by the
-            // backend rather than committed, so a wipe supersedes their recording.
-            foreach (RecordingStorageWriteBatch batch in _storageBatches)
-            {
-                if (batch.RecordedWrites && !_writes.HasAccountRecord(batch.Address)) _writes.RecordStorageWipe(batch.Address, batch.HadStorage);
-            }
-        }
-    }
-
-    private sealed class RecordingStorageWriteBatch(
-        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
-        BlockWriteSet writes,
-        Address address,
-        bool hadStorage,
-        int estimatedEntries) : IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        // Buffered per batch so each parallel storage-commit worker takes the shared lock once.
-        private readonly ArrayPoolList<(StorageCell Cell, byte[] Value)> _cells = new(estimatedEntries);
-
-        public Address Address => address;
-        public bool HadStorage => hadStorage;
-        /// <summary>Whether any slot value was recorded; read by the owning batch once the parallel workers have been joined.</summary>
-        public bool RecordedWrites { get; private set; }
-
-        public void Set(in UInt256 index, byte[] value)
-        {
-            _cells.Add((new StorageCell(address, in index), value));
-            baseWriteBatch.Set(in index, value);
-        }
-
-        public void Clear()
-        {
-            writes.RecordStorageWipe(address, hadStorage);
-            baseWriteBatch.Clear();
-        }
-
-        public void Dispose()
-        {
-            try
-            {
-                baseWriteBatch.Dispose();
-                RecordedWrites = _cells.Count > 0;
-                writes.RecordStorage(_cells.AsSpan());
-            }
-            finally
-            {
-                _cells.Dispose();
-            }
-        }
     }
 
     private sealed class StorageTreeWrapper(

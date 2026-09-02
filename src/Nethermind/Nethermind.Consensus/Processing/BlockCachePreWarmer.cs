@@ -602,7 +602,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
         ClearWarmMarker();
-        // The account and storage caches carry over; PrepareFor reconciles them with this block's writes before the next use.
+        // The account and storage caches carry over: the block's commit wrote its final values into them, and PrepareFor
+        // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
         CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");

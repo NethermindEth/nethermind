@@ -557,28 +557,25 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void PreWarmCaches_ReplaysTheParentBlocksSealedWrites()
+    public void PreWarmCaches_KeepsTheCachesTheParentBlocksCommitBroughtForward()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
         BlockHeader head = BuildParentHeader();
         preBlockCaches.PrepareFor(head.StateRoot);
-        AddressAsKey written = TestItem.AddressD;
-        AddressAsKey untouched = TestItem.AddressC;
-        preBlockCaches.StateCache.Set(in written, new Account(123));
+        AddressAsKey untouched = TestItem.AddressD;
         preBlockCaches.StateCache.Set(in untouched, new Account(456));
-        // The block on top of head committed a new balance for the written account.
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithParentHash(head.Hash!).WithStateRoot(TestItem.KeccakB).TestObject;
-        preBlockCaches.PendingWrites.RecordAccount(written, new Account(7));
-        preBlockCaches.SealPendingWrites(head.StateRoot, parent.StateRoot!);
+        // Processing the block on top of head through the main world state writes its final values back.
+        BlockHeader parent = BuildOtherStateHeader(head);
 
         preWarmer.PreWarmCaches(BuildChildBlock(parent), parent, Osaka.Instance).GetAwaiter().GetResult();
 
+        AddressAsKey written = TestItem.AddressA;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(preBlockCaches.StateCache.TryGetValue(in written, out Account? account), Is.True);
-            Assert.That(account!.Balance, Is.EqualTo((UInt256)7), "the committed value replaces the pre-block one");
-            Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.True);
+            Assert.That(account!.Nonce, Is.EqualTo(1UL), "the committed value replaces the pre-block one");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.True, "entries the block did not touch carry over");
             Assert.That(preBlockCaches.ValidFor, Is.EqualTo(parent.StateRoot));
         }
     }

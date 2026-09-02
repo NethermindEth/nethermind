@@ -224,7 +224,18 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
+            WriteBackCommittedState();
             _persistentStorageProvider.ClearStorageMap();
+        }
+
+        // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
+        private void WriteBackCommittedState()
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch? writeBack = _currentScope.StartCommittedStateWriteBack();
+            if (writeBack is null) return;
+
+            _stateProvider.WriteBlockChanges(writeBack);
+            _persistentStorageProvider.WriteBlockChanges(writeBack);
         }
 
         public ulong GetNonce(Address address)
