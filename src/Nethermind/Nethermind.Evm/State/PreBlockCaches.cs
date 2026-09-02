@@ -10,6 +10,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
@@ -30,6 +31,16 @@ public class PreBlockCaches
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
+    private int _consumerScopes;
+
+    private readonly Lock _reconcileLock = new();
+    private readonly BlockWriteSet _pendingWrites = new();
+    // Once sealed, the pending writes take the caches from _pendingWritesBase to _pendingWritesRoot; a null root
+    // means a block is still recording into them.
+    private Hash256? _pendingWritesBase;
+    private Hash256? _pendingWritesRoot;
+    // State root the account and storage caches reflect; null until PrepareFor establishes one.
+    private Hash256? _validFor;
 
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
@@ -65,6 +76,28 @@ public class PreBlockCaches
     }
 
     /// <summary>
+    /// Whether a consumer scope is open: from <see cref="BeginConsumerScope"/> until <see cref="EndConsumerScope"/>,
+    /// which the consumer calls only once its underlying scope has been torn down and its background readers drained.
+    /// No speculative session may run in that time.
+    /// </summary>
+    public bool ConsumerScopeOpen => Volatile.Read(ref _consumerScopes) > 0;
+
+    /// <summary>
+    /// Raised by <see cref="BeginConsumerScope"/> before the consumer reads. The driver joins any speculative session
+    /// here, so a consumer scope and a session never coexist and nothing but the consumer writes while it is open.
+    /// </summary>
+    public event Action? ConsumerScopeOpened;
+
+    public void BeginConsumerScope()
+    {
+        Interlocked.Increment(ref _consumerScopes);
+        ConsumerScopeOpened?.Invoke();
+    }
+
+    /// <returns>The number of consumer scopes still open.</returns>
+    public int EndConsumerScope() => Interlocked.Decrement(ref _consumerScopes);
+
+    /// <summary>
     /// Starts a thread-local capture of backing-store storage misses made through this block cache.
     /// </summary>
     /// <remarks>
@@ -98,13 +131,145 @@ public class PreBlockCaches
 
     public CacheType ClearCaches()
     {
+        lock (_reconcileLock)
+        {
+            return ClearCachesCore();
+        }
+    }
+
+    private CacheType ClearCachesCore()
+    {
         CacheType isDirty = CacheType.None;
         foreach (Func<CacheType> clearCache in _clearCaches)
         {
             isDirty |= clearCache();
         }
 
+        ForgetIdentity();
         return isDirty;
+    }
+
+    // Epoch bumps only: safe while populators for another head are still writing, unlike the precompile dictionary's clear.
+    private void ClearStateCachesCore()
+    {
+        _storageCache.Clear();
+        _stateCache.Clear();
+        ForgetIdentity();
+    }
+
+    private void ForgetIdentity()
+    {
+        _validFor = null;
+        // A sealed write set describes a transition the emptied caches no longer need; an unsealed one belongs to
+        // the block still recording into it.
+        if (_pendingWritesRoot is not null) ClearPendingWrites();
+    }
+
+    /// <summary>Drops the per-block precompile results once a block has finished; the account and storage caches carry over.</summary>
+    public void ClearPrecompileCache() => _precompileCache.NoLockClear();
+
+    /// <summary>The write set the main processing scope records the current block's committed values into.</summary>
+    public BlockWriteSet PendingWrites => _pendingWrites;
+
+    /// <summary>The state root the account and storage caches reflect, or <see langword="null"/> when unknown.</summary>
+    public Hash256? ValidFor => _validFor;
+
+    /// <summary>
+    /// Marks the recorded writes as the persisted transition from <paramref name="baseStateRoot"/> to
+    /// <paramref name="stateRoot"/>, ready for <see cref="PrepareFor"/> to replay.
+    /// </summary>
+    public void SealPendingWrites(Hash256? baseStateRoot, Hash256 stateRoot)
+    {
+        lock (_reconcileLock)
+        {
+            if (_pendingWritesRoot is not null)
+            {
+                // The previous block's writes were never replayed, so the caches have fallen behind the persisted state.
+                ClearPendingWrites();
+                _validFor = null;
+                return;
+            }
+
+            _pendingWritesBase = baseStateRoot;
+            _pendingWritesRoot = stateRoot;
+        }
+    }
+
+    /// <summary>Drops writes recorded by a scope that never committed them, such as a discarded or failed block.</summary>
+    public void DiscardUnsealedWrites()
+    {
+        lock (_reconcileLock)
+        {
+            if (_pendingWritesRoot is null) _pendingWrites.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Makes the account and storage caches reflect the state at <paramref name="stateRoot"/>: keeps them when they
+    /// already do, replays the sealed block write set when that is what separates them from it, and clears them
+    /// (together with the per-block precompile cache) otherwise.
+    /// </summary>
+    /// <remarks>
+    /// For the driver, once every populator is joined: afterwards the caches are known to reflect
+    /// <paramref name="stateRoot"/>, so populators may fill them from that state.
+    /// </remarks>
+    /// <returns><see langword="true"/> when the caches were kept; <see langword="false"/> when they were cleared.</returns>
+    public bool PrepareFor(Hash256? stateRoot)
+    {
+        lock (_reconcileLock)
+        {
+            if (TryMakeValidFor(stateRoot)) return true;
+
+            ClearCachesCore();
+            _validFor = stateRoot;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Guards a consumer scope about to read state at <paramref name="stateRoot"/>: account and storage caches that
+    /// cannot be made to reflect it are cleared.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="PrepareFor"/>, a clear here adopts no identity: only the driver vouches for the caches, once
+    /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand joins any speculative session,
+    /// so no populator writes while this runs or while the scope reads.
+    /// </remarks>
+    public void EnsureNotStaleFor(Hash256? stateRoot)
+    {
+        lock (_reconcileLock)
+        {
+            if (!TryMakeValidFor(stateRoot)) ClearStateCachesCore();
+        }
+    }
+
+    private bool TryMakeValidFor(Hash256? stateRoot)
+    {
+        if (stateRoot is null || _validFor is null) return false;
+
+        Hash256? pendingRoot = _pendingWritesRoot;
+        if (pendingRoot is null) return _validFor == stateRoot;
+        if (_pendingWritesBase != _validFor) return false;
+
+        // Another block on the same parent: the caches still hold that parent, only the sealed writes are moot.
+        if (_validFor == stateRoot)
+        {
+            ClearPendingWrites();
+            return true;
+        }
+
+        if (pendingRoot != stateRoot || !_pendingWrites.TryApplyTo(_stateCache, _storageCache)) return false;
+
+        ClearPendingWrites();
+        _validFor = stateRoot;
+        return true;
+    }
+
+    private void ClearPendingWrites()
+    {
+        _pendingWrites.Clear();
+        _pendingWritesBase = null;
+        _pendingWritesRoot = null;
     }
 
     /// <summary>

@@ -391,27 +391,85 @@ public sealed class SeqlockCache<TKey, TValue>
     }
 
     /// <summary>
+    /// Single-writer upsert that is never silently dropped: overwrites every live copy of <paramref name="key"/>
+    /// (both ways are checked, since concurrent best-effort writers can leave the same key in both) or inserts
+    /// it when absent.
+    /// </summary>
+    /// <remarks>
+    /// The caller must be the only writer. Any observed lock or lost CAS means another writer is live, and the
+    /// method reports that instead of waiting for it.
+    /// </remarks>
+    /// <returns>
+    /// <see langword="true"/> when every copy of the key now holds <paramref name="value"/>; <see langword="false"/>
+    /// when another writer was observed, in which case a stale copy may remain and the caller must <see cref="Clear"/>.
+    /// </returns>
+    public bool TrySetExclusive(in TKey key, TValue? value)
+    {
+        long hashCode = key.GetHashCode64();
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
+        long hashPart = (hashCode >> HashShift) & HashMask;
+
+        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long tagToStore = epochTag | hashPart | OccupiedBit;
+        long epochOccTag = epochTag | OccupiedBit;
+
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
+
+        long h0 = Volatile.Read(ref e0.HashEpochSeqLock);
+        long h1 = Volatile.Read(ref e1.HashEpochSeqLock);
+        if (h0 < 0 || h1 < 0) return false; // locked: another writer is live
+
+        bool matched = false;
+        if ((h0 & TagMask) == tagToStore && e0.Key.Equals(in key))
+        {
+            if (!WriteEntry(ref e0, h0, in key, value, tagToStore)) return false;
+            matched = true;
+        }
+
+        if ((h1 & TagMask) == tagToStore && e1.Key.Equals(in key))
+        {
+            if (!WriteEntry(ref e1, h1, in key, value, tagToStore)) return false;
+            matched = true;
+        }
+
+        if (matched) return true;
+
+        // Absent: same victim preference as Set (stale/empty first, else alternate by hash bit).
+        bool h0Live = (h0 & EpochOccMask) == epochOccTag;
+        bool h1Live = (h1 & EpochOccMask) == epochOccTag;
+        bool pick0 = !h0Live || (h1Live && (hashPart & (1L << 17)) != 0);
+        return pick0
+            ? WriteEntry(ref e0, h0, in key, value, tagToStore)
+            : WriteEntry(ref e1, h1, in key, value, tagToStore);
+    }
+
+    /// <summary>
     /// Attempts a CAS-guarded write to a single entry.
     /// Kept out-of-line: the CAS atomic dominates latency, so call overhead is invisible,
     /// while de-duplication reclaims ~350 bytes of inlined copies across SetCore call sites.
     /// </summary>
+    /// <returns><see langword="false"/> when the entry was locked or the CAS lost to a concurrent writer.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore)
+    private static bool WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore)
     {
-        if (existing < 0) return; // locked
+        if (existing < 0) return false; // locked
 
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
 
         if (Interlocked.CompareExchange(ref entry.HashEpochSeqLock, lockedHeader, existing) != existing)
         {
-            return;
+            return false;
         }
 
         entry.Key = key;
         entry.Value = value;
 
         Volatile.Write(ref entry.HashEpochSeqLock, tagToStore | newSeq);
+        return true;
     }
 
     /// <summary>

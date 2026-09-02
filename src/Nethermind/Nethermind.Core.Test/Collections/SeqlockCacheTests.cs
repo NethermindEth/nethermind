@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,6 +43,36 @@ public class SeqlockCacheTests
         byte[] value = new byte[32];
         new Random(seed).NextBytes(value);
         return value;
+    }
+
+    /// <summary>Hashes to zero, so way 0 is entry 0 and way 1 is the first entry of the second half.</summary>
+    private readonly struct ZeroHashKey(int id) : IHash64bit<ZeroHashKey>
+    {
+        private readonly int _id = id;
+
+        public long GetHashCode64() => 0;
+        public bool Equals(in ZeroHashKey other) => _id == other._id;
+    }
+
+    private static Array Entries<TKey, TValue>(SeqlockCache<TKey, TValue> cache)
+        where TKey : struct, IHash64bit<TKey>
+        where TValue : class?
+        => (Array)typeof(SeqlockCache<TKey, TValue>)
+            .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(cache)!;
+
+    private static object? EntryValue(Array entries, int index)
+    {
+        object entry = entries.GetValue(index)!;
+        return entry.GetType().GetField("Value")!.GetValue(entry);
+    }
+
+    private static void LockEntry(Array entries, int index)
+    {
+        object entry = entries.GetValue(index)!;
+        FieldInfo header = entry.GetType().GetField("HashEpochSeqLock")!;
+        header.SetValue(entry, (long)header.GetValue(entry)! | long.MinValue);
+        entries.SetValue(entry, index);
     }
 
     [Test]
@@ -422,6 +453,58 @@ public class SeqlockCacheTests
 
         // All reads should have returned valid values (or miss due to concurrent write)
         Assert.That((validReads + misses), Is.EqualTo(iterations));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TrySetExclusive_writes_value(bool present)
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        if (present) cache.Set(in key, CreateValue(1));
+        byte[] value = CreateValue(2);
+
+        bool written = cache.TrySetExclusive(in key, value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.True);
+            Assert.That(cache.TryGetValue(in key, out byte[]? found), Is.True);
+            Assert.That(found, Is.SameAs(value));
+        }
+    }
+
+    [Test]
+    public void TrySetExclusive_updates_every_way_holding_the_key()
+    {
+        SeqlockCache<ZeroHashKey, byte[]> cache = new(setsBits: 4);
+        ZeroHashKey key = new(1);
+        cache.Set(in key, CreateValue(1));
+        Array entries = Entries(cache);
+        int way1 = entries.Length / 2;
+        // Only concurrent writers that skipped a locked way leave a key in both ways, so plant that state directly.
+        entries.SetValue(entries.GetValue(0), way1);
+        byte[] value = CreateValue(2);
+
+        bool written = cache.TrySetExclusive(in key, value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.True);
+            Assert.That(EntryValue(entries, 0), Is.SameAs(value), "way 0");
+            Assert.That(EntryValue(entries, way1), Is.SameAs(value), "way 1");
+        }
+    }
+
+    [Test]
+    public void TrySetExclusive_reports_a_locked_entry_instead_of_waiting()
+    {
+        SeqlockCache<ZeroHashKey, byte[]> cache = new(setsBits: 4);
+        ZeroHashKey key = new(1);
+        cache.Set(in key, CreateValue(1));
+        LockEntry(Entries(cache), 0);
+
+        Assert.That(cache.TrySetExclusive(in key, CreateValue(2)), Is.False);
     }
 
     [Test]

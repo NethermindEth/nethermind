@@ -22,7 +22,12 @@ public interface IBlockCachePreWarmer : IDisposable
     /// <returns>A task that completes when warming has finished; the caller awaits it before clearing the caches.</returns>
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
 
-    /// <summary>Clears the block-processing caches.</summary>
+    /// <summary>Ends a block's use of the block-processing caches once its warming has been joined.</summary>
+    /// <remarks>
+    /// Drops the per-block precompile results and the RLP node cache. The account and storage caches are kept: the next
+    /// <see cref="PreWarmCaches"/> or <see cref="StartSpeculativePreWarm"/> replays the block's committed writes into
+    /// them when it builds on that block, and clears them otherwise.
+    /// </remarks>
     /// <returns>
     /// The built-in implementation only reports <see cref="CacheType.Rlp"/>, which means that RLP node-storage caching
     /// was enabled, not necessarily that it contained entries. The storage, state, and precompile caches do not report
