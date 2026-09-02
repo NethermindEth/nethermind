@@ -10,9 +10,11 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:acee0ec11a2bb2199e941380ae0336caa429c
 ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
 # ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
 # the guest - fail at build time instead.
-# -Ot: the guest has no instruction cache, so the code-size cost of inlining buys nothing back
-# and favouring speed is close to free.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# The guest has no instruction cache, so the code-size cost of inlining buys nothing back
+# and favouring speed is close to free. Must land together with the TrieNode seqlock
+# collapse: -Ot over the seqlock builds a guest whose output success flag is 0.
+OPT_FLAGS ?= -Ot
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -53,7 +55,7 @@ build: dotnet-build
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
-		-Ot \
+		$(OPT_FLAGS) \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
