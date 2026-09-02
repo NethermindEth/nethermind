@@ -257,6 +257,10 @@ public class FrameTxMempoolDosMeasurement
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
+    /// <summary>Largest <c>STATICCALL</c> the last Groth16 probe made, which is the <c>ecPairing</c> call.
+    /// Emitted so a rig run can settle whether the pairing ran or errored; see the note at the guard.</summary>
+    private long _lastPairingCallGas;
+
     private ILogManager _logManager = null!;
     private ISpecProvider _specProvider = null!;
     private EthereumEcdsa _ethereumEcdsa = null!;
@@ -480,6 +484,7 @@ public class FrameTxMempoolDosMeasurement
         nonEvmMicros.Sort();
 
         Emit($"case=frame_reject shape={shape} verify_gas={_frameExecutionGasLimit} frame_gas_used={burnedGas} "
+             + (isGroth16 ? $"pairing_call_gas={_lastPairingCallGas} " : "")
              + $"frame_gas_available={gas.Available} frame_gas_burned={gas.Burned} frame_ops={gas.Ops} samples={Samples} "
              + $"submit_p50_us={Percentile(submitMicros, 0.50):F1} "
              + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} "
@@ -899,9 +904,26 @@ public class FrameTxMempoolDosMeasurement
         }
         // The pairing is the expensive half and the whole point of the workload. Assert it ran, from the call
         // costs, rather than inferring it from a total that another environment produced.
+        //
+        // KNOWN GAP, and the reason the cost is emitted below rather than pinned here. This threshold cannot
+        // separate a pairing that ran from one that errored. BN254PairingCheckPrecompile returns Errors.Failed
+        // for malformed or off-curve input, and an erroring precompile consumes every unit forwarded to it, so
+        // an early exit is charged more than a real pairing, not less. At sweep-236k a real 4-pair check was
+        // observed at 181,910 (priced 45,000 + 34,000 x 4, plus call overhead) while an all-gas burn would
+        // land near 184,000 -- 1.2% apart, too close to pin without a calibration run on the rig. The gas-band
+        // check below has the same blind spot, because each sweep point sizes its ceiling to just fit its
+        // workload. groth16-soispoke is the exception: it burns 248,437 against a 300,000 ceiling, so an
+        // all-gas burn falls far outside its band.
+        //
+        // Read pairing_call_gas on the emitted row after the first rig run and pin an exact expectation then.
         Assert.That(probe.CallCosts, Has.Some.GreaterThan(MinPairingCallGas),
             $"{sweep.Directory} made no ecPairing-sized call, so the prefix failed before the pairing and the "
             + "measurement describes an early exit rather than the full-cost workload");
+        _lastPairingCallGas = 0;
+        foreach (long cost in probe.CallCosts)
+        {
+            if (cost > _lastPairingCallGas) _lastPairingCallGas = cost;
+        }
 
         long slack = (long)(sweep.ExpectedFrameGas * Groth16GasTolerance);
         Assert.That((long)readout.Burned, Is.EqualTo((long)sweep.ExpectedFrameGas).Within(slack),
