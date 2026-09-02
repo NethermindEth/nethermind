@@ -379,9 +379,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// The storage half of a committed block's changes, detached from the provider that produced it.
     /// </summary>
     /// <remarks>
-    /// Owns the contract states until disposed. The provider drops them once the block is committed, so nothing else
-    /// reads or mutates them and the snapshot may be written on another thread, after the scope that produced it has
-    /// been disposed. Nothing it touches may reach that scope.
+    /// Owns the contract states until disposed, when it returns them to their pool. The provider gives them up once
+    /// the block is committed, so nothing else reads or mutates them and the snapshot may be written on another
+    /// thread, after the scope that produced it has been disposed. Nothing it touches may reach that scope.
     /// </remarks>
     private sealed class StorageChangeSnapshot(
         PersistentStorageProvider provider,
@@ -425,8 +425,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void Dispose()
         {
-            // The contract states go the way a committed block's always do, unpooled; only the containers are reused.
-            storages.Clear();
+            // Off the block's thread, so the contract states cost nothing to recycle here. Each was rented by the
+            // block that filled it and is released once, which is what keeps the pool sound.
+            storages.ResetAndClear();
             Volatile.Write(ref provider._spareStorages, storages);
             provider._stateProvider.ReturnRemovedAccounts(removedWithStorage);
         }

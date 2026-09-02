@@ -440,8 +440,16 @@ namespace Nethermind.State
 
             public void Dispose()
             {
-                accounts.Dispose();
-                storage.Dispose();
+                // The storage half owns the pooled contract states and the world state's spare collections, so it is
+                // released even if returning the account copy fails.
+                try
+                {
+                    accounts.Dispose();
+                }
+                finally
+                {
+                    storage.Dispose();
+                }
             }
         }
     }

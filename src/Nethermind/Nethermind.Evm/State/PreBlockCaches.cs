@@ -243,7 +243,7 @@ public class PreBlockCaches
     /// Called on the calling thread, and only once the caches look like they want the write-back, so a block whose
     /// changes would be dropped rarely pays to snapshot them. That check is advisory, taken outside the lock that
     /// guards the identity; the write itself checks again and may still drop what it was given. The snapshot is
-    /// disposed once written.
+    /// disposed once written, or as soon as it is clear that it will not be.
     /// </param>
     public void WriteBackInBackground(
         Hash256? baseStateRoot,
@@ -258,25 +258,44 @@ public class PreBlockCaches
             if (baseStateRoot is null || _validFor != baseStateRoot) return;
 
             IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = takeSnapshot();
-            // Nothing may escape: a faulted task would be rethrown into whichever block joins it next.
-            _pendingWriteBack = Task.Run(() =>
+            try
             {
-                try
+                // Nothing may escape: a faulted task would be rethrown into whichever block joins it next.
+                _pendingWriteBack = Task.Run(() =>
                 {
                     try
                     {
                         WriteBackCore(baseStateRoot, stateRoot, snapshot.WriteTo);
                     }
+                    catch (Exception e)
+                    {
+                        if (logger.IsError) logger.Error($"Pre-block cache write-back for state root {stateRoot} failed; the caches were dropped.", e);
+                    }
                     finally
                     {
-                        snapshot.Dispose();
+                        Release(snapshot, logger);
                     }
-                }
-                catch (Exception e)
-                {
-                    if (logger.IsError) logger.Error($"Pre-block cache write-back for state root {stateRoot} failed; the caches were dropped.", e);
-                }
-            });
+                });
+            }
+            catch (Exception e)
+            {
+                // No task will run, and the snapshot holds buffers the world state wants back.
+                Release(snapshot, logger);
+                if (logger.IsError) logger.Error($"Pre-block cache write-back for state root {stateRoot} could not be started.", e);
+            }
+        }
+    }
+
+    /// <summary>Gives a block's collections back. Never throws: a release failure must not reach a block either.</summary>
+    private static void Release(IWorldStateScopeProvider.IBlockChangeSnapshot snapshot, ILogger logger)
+    {
+        try
+        {
+            snapshot.Dispose();
+        }
+        catch (Exception e)
+        {
+            if (logger.IsError) logger.Error("Releasing the block collections of a pre-block cache write-back failed.", e);
         }
     }
 
