@@ -25,13 +25,7 @@ internal sealed class FrameTxPaymasterFilter(
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!tx.SupportsFrames)
-        {
-            return AcceptTxResult.Accepted;
-        }
-
-        Address? paymaster = FrameTxValidation.GetPrefixPaymaster(tx);
-        if (paymaster is null)
+        if (PendingPaymasterCache.KeyFor(tx) is not Address paymaster)
         {
             return AcceptTxResult.Accepted;
         }
@@ -66,5 +60,5 @@ internal sealed class FrameTxPaymasterFilter(
     /// slot while still taking one here.</remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster) =>
         PendingReplacement.Find(tx, standardPool, blobPool) is Transaction replaced
-        && paymaster == FrameTxValidation.GetPrefixPaymaster(replaced);
+        && paymaster == PendingPaymasterCache.KeyFor(replaced);
 }
