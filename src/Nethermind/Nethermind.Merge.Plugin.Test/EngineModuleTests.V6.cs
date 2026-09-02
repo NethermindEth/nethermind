@@ -929,16 +929,32 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker()
+    // Every forkchoice version that accepts custody columns must handle them identically (execution-apis#793).
+    private static IEnumerable<int> CustodyColumnFcuVersions()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        yield return EngineApiVersions.Fcu.V4;
+        yield return EngineApiVersions.Fcu.V5;
+    }
+
+    private static IReleaseSpec CustodyColumnFcuSpec(int version) =>
+        version == EngineApiVersions.Fcu.V4 ? Amsterdam.Instance : Bogota.Instance;
+
+    private static async Task<IResultWrapper> ForkchoiceUpdatedWithCustodyColumns(
+        IEngineRpcModule rpcModule, int version, ForkchoiceStateV1 forkchoiceState, BitArray custodyColumns) =>
+        version == EngineApiVersions.Fcu.V4
+            ? await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns)
+            : await rpcModule.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null, custodyColumns);
+
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_update_blob_custody_tracker(int version)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([1, 4, 9]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -947,16 +963,16 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker_even_when_forkchoice_fails()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_update_blob_custody_tracker_even_when_forkchoice_fails(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         BlobCellMask custodyMask = BlobCellMask.FromIndices([2, 7]);
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, TestItem.KeccakF, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: ToBitArray(custodyMask));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, ToBitArray(custodyMask));
 
         using (Assert.EnterMultipleScope())
         {
@@ -966,15 +982,15 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_reject_invalid_custody_columns_bitarray()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_reject_invalid_custody_columns_bitarray(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
         ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: new BitArray(0));
+        IResultWrapper result = await ForkchoiceUpdatedWithCustodyColumns(rpcModule, version, forkchoiceState, new BitArray(0));
 
         using (Assert.EnterMultipleScope())
         {

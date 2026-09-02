@@ -38,21 +38,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-    {
-        if (custodyColumns is { Length: not BlobCellMask.CellCount })
-        {
-            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
-                $"Custody columns must be exactly {BlobCellMask.FixedByteLength} bytes.",
-                ErrorCodes.InvalidParams));
-        }
-
-        if (custodyColumns is not null)
-        {
-            TryUpdateCustodyColumns(custodyColumns);
-        }
-
-        return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
-    }
+        => TryUpdateCustodyColumns(custodyColumns) is { } error
+            ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams))
+            : ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(
         IReadOnlyList<Hash256> blockHashes)
@@ -64,8 +52,17 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray)
         => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
 
-    private void TryUpdateCustodyColumns(BitArray custodyColumns)
+    /// <summary>Applies a custody-column update carried by a forkchoice call (execution-apis#793).</summary>
+    /// <remarks>Shared by every forkchoice version that accepts the field, so the validation and the
+    /// tracker update cannot drift apart between them. Applying is best-effort per execution-apis#793 —
+    /// a failure is logged and swallowed; only a malformed bitfield is reported back to the caller.</remarks>
+    /// <returns><c>null</c> when there is nothing to reject, otherwise the <c>InvalidParams</c> message.</returns>
+    private string? TryUpdateCustodyColumns(BitArray? custodyColumns)
     {
+        if (custodyColumns is null) return null;
+        if (custodyColumns.Length != BlobCellMask.CellCount)
+            return $"Custody columns must be exactly {BlobCellMask.FixedByteLength} bytes.";
+
         try
         {
             Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
@@ -84,5 +81,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to update blob custody columns: {ex.Message}");
         }
+
+        return null;
     }
 }
