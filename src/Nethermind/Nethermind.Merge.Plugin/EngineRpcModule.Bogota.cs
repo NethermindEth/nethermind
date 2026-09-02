@@ -74,7 +74,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
-        => TryUpdateCustodyColumns(custodyColumns) is { } error
+        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
             : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
 

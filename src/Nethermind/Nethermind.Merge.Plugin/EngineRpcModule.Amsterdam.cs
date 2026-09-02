@@ -38,7 +38,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => TryUpdateCustodyColumns(custodyColumns) is { } error
+        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams))
             : ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
 
@@ -52,12 +52,13 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray)
         => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
 
-    /// <summary>Applies a custody-column update carried by a forkchoice call (execution-apis#793).</summary>
+    /// <summary>Validates a custody-column update carried by a forkchoice call, and applies it
+    /// (execution-apis#793).</summary>
     /// <remarks>Shared by every forkchoice version that accepts the field, so the validation and the
     /// tracker update cannot drift apart between them. Applying is best-effort per execution-apis#793 —
     /// a failure is logged and swallowed; only a malformed bitfield is reported back to the caller.</remarks>
     /// <returns><c>null</c> when there is nothing to reject, otherwise the <c>InvalidParams</c> message.</returns>
-    private string? TryUpdateCustodyColumns(BitArray? custodyColumns)
+    private string? ValidateAndApplyCustodyColumns(BitArray? custodyColumns)
     {
         if (custodyColumns is null) return null;
         if (custodyColumns.Length != BlobCellMask.CellCount)

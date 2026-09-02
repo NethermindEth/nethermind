@@ -936,14 +936,27 @@ public partial class EngineModuleTests
         yield return EngineApiVersions.Fcu.V5;
     }
 
-    private static IReleaseSpec CustodyColumnFcuSpec(int version) =>
-        version == EngineApiVersions.Fcu.V4 ? Amsterdam.Instance : Bogota.Instance;
+    private static IReleaseSpec CustodyColumnFcuSpec(int version) => version switch
+    {
+        EngineApiVersions.Fcu.V4 => Amsterdam.Instance,
+        EngineApiVersions.Fcu.V5 => Bogota.Instance,
+        _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+    };
+
+    private static string CustodyColumnFcuMethodName(int version) => version switch
+    {
+        EngineApiVersions.Fcu.V4 => nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4),
+        EngineApiVersions.Fcu.V5 => nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5),
+        _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+    };
 
     private static async Task<IResultWrapper> ForkchoiceUpdatedWithCustodyColumns(
-        IEngineRpcModule rpcModule, int version, ForkchoiceStateV1 forkchoiceState, BitArray custodyColumns) =>
-        version == EngineApiVersions.Fcu.V4
-            ? await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns)
-            : await rpcModule.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null, custodyColumns);
+        IEngineRpcModule rpcModule, int version, ForkchoiceStateV1 forkchoiceState, BitArray custodyColumns) => version switch
+        {
+            EngineApiVersions.Fcu.V4 => await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns),
+            EngineApiVersions.Fcu.V5 => await rpcModule.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null, custodyColumns),
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unhandled forkchoice version")
+        };
 
     [TestCaseSource(nameof(CustodyColumnFcuVersions))]
     public async Task ForkchoiceUpdated_should_update_blob_custody_tracker(int version)
@@ -1000,10 +1013,10 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_accept_hex_custody_columns_bitarray_over_json_rpc()
+    [TestCaseSource(nameof(CustodyColumnFcuVersions))]
+    public async Task ForkchoiceUpdated_should_accept_hex_custody_columns_bitarray_over_json_rpc(int version)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
 
@@ -1016,7 +1029,7 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(
             rpcModule,
-            "engine_forkchoiceUpdatedV4",
+            CustodyColumnFcuMethodName(version),
             chain.JsonSerializer.Serialize(forkchoiceState),
             null,
             "0x00000000000000500000000010000400");
@@ -1032,11 +1045,24 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task ForkchoiceUpdatedV4_should_reject_invalid_hex_custody_columns_over_json_rpc()
+    // The prefix-less case only rejects if the version declares the strict BlobCellBitArrayConverter:
+    // the lenient fallback converter decodes it into a well-formed 128-bit mask, which then passes the
+    // length check behind it. So this is what holds the two versions' parameter binding together.
+    private static IEnumerable<TestCaseData> MalformedCustodyColumnsOverJsonRpc()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        foreach (int version in CustodyColumnFcuVersions())
+        {
+            yield return new TestCaseData(version, "0x");
+            yield return new TestCaseData(version, "00000000000000500000000010000400");
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedCustodyColumnsOverJsonRpc))]
+    public async Task ForkchoiceUpdated_should_reject_invalid_hex_custody_columns_over_json_rpc(int version, string custodyColumns)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: CustodyColumnFcuSpec(version));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
         var forkchoiceState = new
         {
             headBlockHash = chain.BlockTree.HeadHash.ToString(true),
@@ -1046,12 +1072,16 @@ public partial class EngineModuleTests
 
         string response = await RpcTest.TestSerializedRequest(
             rpcModule,
-            "engine_forkchoiceUpdatedV4",
+            CustodyColumnFcuMethodName(version),
             chain.JsonSerializer.Serialize(forkchoiceState),
             null,
-            "0x");
+            custodyColumns);
 
-        Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.Parse(response)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
+        }
     }
 
     [Test]
