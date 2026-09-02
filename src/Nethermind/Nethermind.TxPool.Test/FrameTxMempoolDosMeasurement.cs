@@ -192,7 +192,22 @@ public class FrameTxMempoolDosMeasurement
     /// its own nominal label, so its ceiling clears the workload rather than restating the sweep name, and the
     /// case only runs against a build whose constant was raised to match.
     /// </remarks>
-    private readonly record struct Groth16Sweep(string Directory, ulong Ceiling, ulong ExpectedFrameGas);
+    private readonly record struct Groth16Sweep(
+        string Directory, ulong Ceiling, ulong ExpectedFrameGas, Groth16Failure Failure);
+
+    /// <summary>How a Groth16 verifier reports a proof that fails the pairing equation.</summary>
+    /// <remarks>
+    /// Not cosmetic: it changes which assertion proves the pairing actually ran. A gnark verifier reverts
+    /// <c>ProofInvalid()</c>, so the frame reverts and the selector is the proof. A snarkjs verifier returns
+    /// <c>false</c>, so the frame <em>succeeds</em> and the prefix is rejected for never calling
+    /// <c>APPROVE</c> instead. Both are real rejections and both burn the full verification; only the
+    /// evidence differs.
+    /// </remarks>
+    private enum Groth16Failure
+    {
+        RevertsProofInvalid,
+        ReturnsFalse,
+    }
 
     /// <summary>
     /// What the validation prefix's outermost frame was actually given and actually did, read back out of the
@@ -205,9 +220,13 @@ public class FrameTxMempoolDosMeasurement
 
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
-        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190),
-        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 510_000, 501_141),
+        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256, Groth16Failure.RevertsProofInvalid),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 510_000, 501_141, Groth16Failure.RevertsProofInvalid),
+        // The plan's named workload, not a synthetic stand-in: soispoke's real spend verifier at ten public
+        // signals, carrying a real proof with one bit of the one-time authorizer flipped. It declares 300,000
+        // because its 248,437 clears the constant, so this is the one privacy point a stock build can measure.
+        ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
     private ILogManager _logManager = null!;
@@ -315,6 +334,7 @@ public class FrameTxMempoolDosMeasurement
     [TestCase("groth16-236k")]
     [TestCase("groth16-300k")]
     [TestCase("groth16-500k")]
+    [TestCase("groth16-soispoke")]
     public void Reject_cost_of_a_groth16_verifier_prefix(string shape) =>
         MeasureFrameRejection(shape, Groth16Sweeps[shape].Ceiling);
 
@@ -654,9 +674,17 @@ public class FrameTxMempoolDosMeasurement
     };
 
     /// <summary>The rejection each shape must produce, so a run cannot silently measure a different failure.</summary>
+    /// <remarks>
+    /// A shape that runs to completion without approving is rejected for the missing payer, not for a revert.
+    /// That is how a snarkjs verifier fails: it returns <c>false</c> rather than reverting, so the frame
+    /// succeeds and the prefix is refused one step later. Same rejection, same burned gas, different string.
+    /// </remarks>
     private static string ExpectedRejectionReason(string shape) => shape switch
     {
         "banned-opcode" => "banned opcode TIMESTAMP",
+        _ when Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep)
+               && sweep.Failure == Groth16Failure.ReturnsFalse
+            => "validation prefix never set a payer",
         _ => "validation prefix frame reverted"
     };
 
@@ -803,8 +831,19 @@ public class FrameTxMempoolDosMeasurement
             $"{sweep.Directory} entered the EVM with {readout.Available} gas against the {sweep.Ceiling} it "
             + $"declared. CapFrameGas clamped it at Eip8141Constants.MaxVerifyGas = {Eip8141Constants.MaxVerifyGas}, "
             + "so these are the constant's numbers wearing this ceiling's label.");
-        Assert.That(probe.TopLevelRevertOutput, Is.EqualTo(ProofInvalidSelector),
-            "the frame did not revert ProofInvalid(), so it failed somewhere other than the pairing equation");
+        if (sweep.Failure == Groth16Failure.RevertsProofInvalid)
+        {
+            Assert.That(probe.TopLevelRevertOutput, Is.EqualTo(ProofInvalidSelector),
+                "the frame did not revert ProofInvalid(), so it failed somewhere other than the pairing equation");
+        }
+        else
+        {
+            // snarkjs returns false instead of reverting, so the frame runs to completion and the prefix is
+            // rejected for never approving. A revert here would mean it failed somewhere it should not.
+            Assert.That(probe.TopLevelRevertOutput, Is.Null.Or.Empty,
+                "this verifier returns false rather than reverting, so a revert means the frame failed for "
+                + "some reason other than the pairing equation");
+        }
         // The pairing is the expensive half and the whole point of the workload. Assert it ran, from the call
         // costs, rather than inferring it from a total that another environment produced.
         Assert.That(probe.CallCosts, Has.Some.GreaterThan(MinPairingCallGas),
