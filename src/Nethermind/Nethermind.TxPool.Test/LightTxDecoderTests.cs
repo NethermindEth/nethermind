@@ -246,6 +246,122 @@ public class LightTxDecoderTests
         return bytes;
     }
 
+    // The nonce keys and the payer share one trailing group, because two adjacent optional sequences could not
+    // be told apart: RLP does not distinguish a 20-byte integer from an address, so a two-key list is
+    // byte-identical to a payer pair. All four combinations have to survive the round trip.
+    [TestCase(false, false, TestName = "neither keys nor payer")]
+    [TestCase(true, false, TestName = "keys alone")]
+    [TestCase(false, true, TestName = "payer alone")]
+    [TestCase(true, true, TestName = "keys and payer together")]
+    public void Round_trip_carries_the_nonce_keys_and_the_payer_in_one_group(bool withKeys, bool withPayer)
+    {
+        // Two keys, each 20 bytes wide: the shape that is byte-identical to an address plus a scalar.
+        UInt256[] keys = withKeys ? [UInt256.One << 152, (UInt256.One << 152) + 1] : null;
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 12_345;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)12_345 : null));
+        }
+    }
+
+    // Records written before the grouping end in a flat nonce_keys list. Its first element is a scalar where the
+    // grouped form always opens with the keys list, which is what lets one decoder read both.
+    [Test]
+    public void A_record_written_before_the_grouping_still_decodes()
+    {
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        // The legacy trailing field: a flat list of the keys 1 and 2, each a single RLP byte.
+        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC2, 0x01, 0x02];
+
+        LightTransaction decoded = LightTxDecoder.Decode(legacy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(new UInt256[] { 1, 2 }));
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // A payer that never reached the exposure gate holds no reservation, which this record cannot tell from a
+    // zero one: reserving, releasing and restoring zero are all no-ops. The payer itself must still survive.
+    [Test]
+    public void Round_trip_of_a_payer_without_a_reservation_keeps_the_payer()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx);
+        tx.PayerAddress = TestItem.AddressB;
+        tx.PayerExposure = null;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
+    // unguarded index: deciding the branch on it first read past the end of the buffer.
+    [Test]
+    public void An_empty_legacy_key_list_decodes_rather_than_reading_past_the_buffer()
+    {
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC0];
+
+        LightTransaction decoded = LightTxDecoder.Decode(legacy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.Null);
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // The group is written only for a payer, so a keys-only record keeps the flat list every earlier build
+    // writes — and stays readable by one, which a nested form would not be.
+    [Test]
+    public void A_keys_only_record_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The flat list alone: 0xc2 over two single-byte keys, with no outer group header.
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(LightTxDecoder.Decode(encoded).NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
+    // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
+    [Test]
+    public void A_payer_grows_the_record_by_the_group_alone()
+    {
+        Transaction bare = BlobCarryingTx(TxType.Blob);
+        Transaction withPayer = BlobCarryingTx(TxType.Blob);
+        withPayer.PayerAddress = TestItem.AddressB;
+        withPayer.PayerExposure = 1;
+
+        int grownBy = LightTxDecoder.Encode(withPayer).Length - LightTxDecoder.Encode(bare).Length;
+
+        // The group header, the empty keys list holding slot 0, the 21-byte address and a 1-byte reservation.
+        Assert.That(grownBy, Is.EqualTo(1 + 1 + 21 + 1));
+    }
+
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
     {
         byte[][] versionedHashes = [new byte[32]];
