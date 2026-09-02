@@ -67,31 +67,30 @@ public class ReceiptDecoderTests
     }
 
     [Test]
-    public void Optimism_compact_receipt_storage_decoding_rejects_null_log_entry()
+    public void Optimism_compact_receipt_storage_decoding_skips_empty_log_entry()
     {
         byte[] encoded = EncodeCompactReceiptWithNullLogEntry();
         OptimismCompactReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(encoded);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        TxReceipt receipt = decoder.DecodeGuardNotNull(ref reader);
 
-        void Decode()
-        {
-            RlpReader reader = new(encoded);
-            decoder.Decode(ref reader);
-        }
+        Assert.That(receipt.Logs, Is.Empty);
     }
 
     [Test]
-    public void Optimism_compact_receipt_storage_struct_ref_decoding_rejects_null_log_entry()
+    public void Optimism_compact_receipt_storage_struct_ref_decoding_returns_default_for_empty_log_entry()
     {
         OptimismCompactReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(Rlp.OfEmptyList.Bytes);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        decoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef logEntry);
 
-        void Decode()
+        using (Assert.EnterMultipleScope())
         {
-            RlpReader reader = new(Rlp.OfEmptyList.Bytes);
-            decoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out _);
+            Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
+            Assert.That(logEntry.Data.Length, Is.Zero);
+            Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
         }
     }
 
