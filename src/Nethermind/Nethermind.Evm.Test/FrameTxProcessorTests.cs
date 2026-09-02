@@ -1454,6 +1454,32 @@ public class FrameTxProcessorTests
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
 
+    [Test]
+    public void Execute_PostTxReverts_KeepsTheConsumedKeyedNonce()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        UInt256[] keys = [1, 7];
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+        tx.NonceKeys = keys;
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), "the consumed nonce set stays spent across the assertion revert");
+            }
+        }
+    }
+
     // An unrolled batch truncates the journal past the prefix snapshot taken inside it, so the failed
     // assertion below would otherwise restore into the future.
     [Test]
@@ -3225,16 +3251,14 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // A source written against the single-property contract must still satisfy the interface, so an
-    // upgrade cannot fail at type load; it just never installs a slice and offers no diff.
     [Test]
-    public void SetGeneratingBlockAccessList_SourceWithoutTheOverride_StaysIdle()
+    public void SetGeneratingBlockAccessList_SourceWithoutTheOverride_ThrowsRatherThanSilentlyDisablingDiffs()
     {
-        IBlockAccessListSource legacy = new SinglePropertyBlockAccessListSource();
+        IBlockAccessListSource readOnly = new SinglePropertyBlockAccessListSource();
 
-        legacy.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-
-        Assert.That(legacy.GeneratedBlockAccessList, Is.Null);
+        Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessListAtIndex()),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(readOnly.GeneratedBlockAccessList, Is.Null);
     }
 
     private sealed class SinglePropertyBlockAccessListSource : IBlockAccessListSource

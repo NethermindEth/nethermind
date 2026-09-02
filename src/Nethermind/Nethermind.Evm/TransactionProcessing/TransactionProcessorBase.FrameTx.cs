@@ -286,18 +286,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
             {
-                long remainingStateGas = (frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit) - frameStateGas;
-                if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
+                if (!TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas))
                 {
                     frameSucceeded = false;
-                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-                    frameGasUsed = frame.ExecutionGasLimit;
-                    frameStateGas = 0;
-                }
-                else
-                {
-                    frameGasUsed += (ulong)approvalStateGas;
-                    frameStateGas += approvalStateGas;
                 }
             }
             else if (!frameSucceeded)
@@ -580,18 +571,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             TxFrame[] frames = tx.Frames!;
+            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
+                bool isDeployFrame = OpensDeployPrefix(frames, i);
 
-                // EIP8141-GAP: deploy-frame carve-outs are unimplemented, so such a prefix is declined.
-                if (OpensDeployPrefix(frames, i))
-                {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
-                }
-
-                // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame ends it.
-                if (frame.Mode != TxFrame.ModeVerify)
+                // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
+                // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
+                if (!isDeployFrame && frame.Mode != TxFrame.ModeVerify)
                 {
                     break;
                 }
@@ -613,22 +601,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                     caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
 
-                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: true, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+                // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
+                // tracer cannot see from opcodes alone.
+                prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
+
+                // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
+                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
 
                 if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
                 {
-                    long remainingStateGas = (boundedFrame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)boundedFrame.StateGasLimit) - frameStateGas;
-                    if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
-                    {
-                        substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-                        frameGasUsed = boundedFrame.ExecutionGasLimit;
-                        frameStateGas = 0;
-                    }
-                    else
-                    {
-                        frameGasUsed += (ulong)approvalStateGas;
-                        frameStateGas += approvalStateGas;
-                    }
+                    TryApplyPostFrameApproval(frameContext, boundedFrame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref frameGasUsed, ref frameStateGas);
                 }
 
                 verifyGasUsed += frameGasUsed - (ulong)frameStateGas;
@@ -643,6 +625,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
 
                 frameContext.MarkFrameSucceeded(i);
+
+                // A deploy frame that leaves tx.sender codeless would have the VERIFY frames behind it
+                // validate against default code instead of the account being deployed.
+                if (isDeployFrame && WorldState.GetCodeHash(sender) == Keccak.OfAnEmptyString)
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame installed no code at tx.sender");
+                }
 
                 // Simulation stops at the first payer, once its frame has completed successfully.
                 if (frameContext.Payer is not null)
@@ -748,6 +737,28 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         && i + 1 < frames.Length
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == TxFrame.ModeVerify;
+
+    /// <summary>Applies a succeeded frame's pending approval scope, charging its state gas or, on failure,
+    /// replacing the substate with an out-of-gas halt.</summary>
+    private bool TryApplyPostFrameApproval(FrameTxContext frameContext, TxFrame frame, Address resolvedTarget, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ref TransactionSubstate substate, ref ulong frameGasUsed, ref long frameStateGas)
+    {
+        long stateLimit = frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit;
+        long remainingStateGas = stateLimit - frameStateGas;
+        if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
+        {
+            substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
+            {
+                ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+            };
+            frameGasUsed = frame.ExecutionGasLimit;
+            frameStateGas = 0;
+            return false;
+        }
+
+        frameGasUsed += (ulong)approvalStateGas;
+        frameStateGas += approvalStateGas;
+        return true;
+    }
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
@@ -891,23 +902,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
         {
-            long remainingStateGas = stateReservoirSeed - stateGasUsed;
-            if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
-            {
-                // The replacement is the substate the caller sees, so it has to carry the RIPEMD touch
-                // the frame recorded; the rollback below and the transaction accumulator both read it.
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions)
-                {
-                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
-                };
-                gasUsed = frame.ExecutionGasLimit;
-                stateGasUsed = 0;
-            }
-            else
-            {
-                gasUsed += (ulong)approvalStateGas;
-                stateGasUsed += approvalStateGas;
-            }
+            TryApplyPostFrameApproval(frameContext, frame, resolvedTarget, spec, in accessTracker, tracer, ref substate, ref gasUsed, ref stateGasUsed);
         }
 
         if (substate.ShouldRevert || substate.IsError)

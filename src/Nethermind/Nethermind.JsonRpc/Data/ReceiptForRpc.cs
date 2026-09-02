@@ -150,12 +150,21 @@ namespace Nethermind.JsonRpc.Data
             return logEntries;
         }
 
+        /// <summary>
+        /// The ceiling on the logs a frame-transaction receipt may carry across all of its frames. It reuses
+        /// the wire receipt decoder's 270k logs limit but applies it to the frame log union rather than per
+        /// frame, so this debug ingress is deliberately at least as strict as the P2P one: a 100M-gas
+        /// transaction emits on the order of 266k logs in total, so a receipt whose frames sum above this
+        /// cannot come from a valid block.
+        /// </summary>
+        private const int MaxLogs = 270_000;
+
         /// <summary>Binds the caller-supplied <see cref="FrameReceipts"/> to their core representation.</summary>
         /// <remarks>
         /// Reached with an unvalidated payload through <c>debug_insertReceipts</c>, so a shape EIP-8141
         /// cannot produce has to be rejected here rather than reaching the receipt store.
         /// </remarks>
-        /// <exception cref="JsonException">An entry is null, or there are more than EIP-8141's MAX_FRAMES of them.</exception>
+        /// <exception cref="JsonException">An entry is null, there are more than EIP-8141's MAX_FRAMES of them, or their logs exceed <see cref="MaxLogs"/> in aggregate.</exception>
         private TxFrameReceipt[] ToFrameReceipts()
         {
             if (FrameReceipts is not { Length: > 0 } frames)
@@ -169,12 +178,21 @@ namespace Nethermind.JsonRpc.Data
             }
 
             TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
+            long logCount = 0;
             for (int i = 0; i < frames.Length; i++)
             {
                 // The element annotation does not bind the deserializer: "frameReceipts": [null] reaches here.
-                frameReceipts[i] = frames[i] is { } frame
+                TxFrameReceipt frameReceipt = frames[i] is { } frame
                     ? frame.ToFrameReceipt()
                     : throw new JsonException($"Frame receipt {i} is null.");
+
+                logCount += frameReceipt.Logs.Length;
+                if (logCount > MaxLogs)
+                {
+                    throw new JsonException($"A frame transaction receipt carries at most {MaxLogs} logs across all frames.");
+                }
+
+                frameReceipts[i] = frameReceipt;
             }
 
             return frameReceipts;

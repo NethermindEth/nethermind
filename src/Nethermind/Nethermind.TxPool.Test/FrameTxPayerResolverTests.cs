@@ -90,13 +90,15 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        // A leading deploy frame is part of the recognized prefix, so it is skipped like the expiry frame.
-        yield return Case("DeployThenSelfVerify_PayerIsSender",
+        // A leading deploy frame is skipped like the expiry frame, but it also falsifies the default-code
+        // inference behind it: by the time the VERIFY frame runs, the deploy frame has installed code at
+        // tx.sender, so the frame dispatches that contract rather than the default code.
+        yield return Case("DeployThenSelfVerify_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
-            }, FrameTxPayerOutcome.Resolved, Sender);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // At most one deploy frame is skipped, so the second one is the frame that must name the payer and
         // does not: the same layout RecognizedPrefixLength rejects, keeping resolution and pricing aligned.
@@ -161,13 +163,13 @@ public class FrameTxPayerResolverTests
                 return FrameTx([ExpiryAt(9999), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
-        // The only shape where both prefix skips apply.
-        yield return Case("ExpiryThenDeployThenSelfVerify_PayerIsSender",
+        // The only shape where both prefix skips apply; the deploy frame still forces simulation.
+        yield return Case("ExpiryThenDeployThenSelfVerify_RequiresSimulation",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
                 return FrameTx([ExpiryAt(9999), DeployFrame(), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
-            }, FrameTxPayerOutcome.Resolved, Sender);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("ExpiryFrameOnly_NoPayer",
             state =>
@@ -199,7 +201,8 @@ public class FrameTxPayerResolverTests
     [Test]
     public void Resolve_DeployPrefix_AgreesWithValidationPricing()
     {
-        // Admission pricing and payer resolution must classify this prefix the same way, or they drift.
+        // Admission pricing and payer resolution must recognise the same prefix, or they drift: both take the
+        // deploy frame as part of it, pricing by charging for it and resolution by deferring to simulation.
         TestReadOnlyStateProvider state = new();
         DefaultCodeAccount(state, Sender);
         TxFrame deploy = DeployFrame();
@@ -212,8 +215,8 @@ public class FrameTxPayerResolverTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.Resolved));
-            Assert.That(resolution.Payer, Is.EqualTo(Sender));
+            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.RequiresSimulation));
+            Assert.That(resolution.Payer, Is.Null);
             // Recognized-prefix pricing stops at the self_verify frame, excluding the trailing frame's gas.
             Assert.That(verifyGas, Is.EqualTo(deploy.GasLimit + selfVerify.GasLimit + Eip8141Constants.Secp256k1VerificationGasCost));
         }
