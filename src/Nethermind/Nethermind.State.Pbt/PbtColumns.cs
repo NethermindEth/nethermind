@@ -10,8 +10,8 @@ public enum PbtColumns
     /// <summary>Current EIP-8297 complete keys mapped directly to 32-byte values.</summary>
     FullLeaves,
 
-    /// <summary>Canonical compressed nodes keyed by node path.</summary>
-    CompressedNodes,
+    /// <summary>Canonical four-level node groups keyed by their boundary path.</summary>
+    NodeGroups,
 
     /// <summary>Content-addressed overflow-code reference records.</summary>
     CodeReferences,

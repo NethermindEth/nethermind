@@ -181,7 +181,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_8_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_9_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -222,7 +222,8 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
             staging.SetLeaf(PbtStateKey.Account(TestItem.AddressC, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakB.ValueHash256);
-            staging.SetNode(new PbtNodePath([0x80], 1), [0x7F]);
+            PbtFullKey staleNodeKey = new([0x80]);
+            staging.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(staleNodeKey, TestItem.KeccakA.Bytes.ToArray())));
             staging.Commit();
         }
         pbtDb.GetColumnDb(PbtColumns.AccountLeaves)[new byte[] { 1 }] = [2];
@@ -261,7 +262,7 @@ public class ImportPbtFromPreimageFlatTests
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
         PbtWriteBatch changes = new();
         changes.Set(key, value);
-        PbtPhysicalNodeStore nodeStore = new();
+        PbtNodeGroupStore nodeStore = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(nodeStore, default, changes);
         ValueHash256 persistedRoot = corruptNode ? root : TestItem.KeccakB.ValueHash256;
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
@@ -271,13 +272,11 @@ public class ImportPbtFromPreimageFlatTests
             WriteFlags.None))
         {
             batch.SetLeaf(key, value);
-            foreach (PbtNodeRecord node in nodeStore.EnumerateRecords())
-            {
-                if (corruptNode) batch.SetNode(node.Path, [0x7F]);
-                else batch.SetNode(node.Path, node.Encoding.Span);
-            }
+            foreach (PbtNodeRecord node in nodeStore.EnumerateRecords()) batch.SetNode(node.Path, node.Encoding.Span);
             batch.Commit();
         }
+        if (corruptNode)
+            db.GetColumnDb(PbtColumns.NodeGroups)[new PbtNodePath([], 0).Encode()] = [0x7F];
 
         PbtScanReport report = await new PbtScanner(db, config, LimboLogs.Instance).Scan(CancellationToken.None);
 

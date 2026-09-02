@@ -37,7 +37,7 @@ internal sealed class PbtRocksDbConfigAdjuster(
     {
         nameof(PbtColumns.Metadata) => pbtConfig.MetadataRocksDbOptions,
         nameof(PbtColumns.FullLeaves) => pbtConfig.StorageLeavesRocksDbOptions,
-        nameof(PbtColumns.CompressedNodes) => pbtConfig.StorageTrieNodesRocksDbOptions,
+        nameof(PbtColumns.NodeGroups) => pbtConfig.StorageTrieNodesRocksDbOptions,
         nameof(PbtColumns.CodeReferences) => pbtConfig.CodeLeavesRocksDbOptions,
         nameof(PbtColumns.AccountLeaves) => pbtConfig.AccountLeavesRocksDbOptions,
         nameof(PbtColumns.CodeLeaves) => pbtConfig.CodeLeavesRocksDbOptions,

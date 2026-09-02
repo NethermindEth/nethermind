@@ -13,16 +13,10 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class Eip8297CanonicalTreeTests
 {
-    private static IEnumerable<TestCaseData> Layouts()
+    [Test]
+    public void Trie_updater_matches_independent_oracle_through_variable_length_mutations()
     {
-        yield return new TestCaseData(PbtNodeLayout.Record).SetName("Record_layout");
-        yield return new TestCaseData(PbtNodeLayout.HashBucket).SetName("Hash_bucket_layout");
-    }
-
-    [TestCaseSource(nameof(Layouts))]
-    public void Trie_updater_matches_independent_oracle_through_variable_length_mutations(PbtNodeLayout layout)
-    {
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         byte[][] keys = [[0x00], [0x40], [0x41, 0x80], [0xFF, 0x10], [0x12, 0x34, 0x56, 0x78]];
         for (int index = 0; index < keys.Length; index++)
@@ -39,8 +33,8 @@ public class Eip8297CanonicalTreeTests
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
 
-    [TestCaseSource(nameof(Layouts))]
-    public void Randomized_variable_length_sequences_match_oracle_and_reopen(PbtNodeLayout layout)
+    [Test]
+    public void Randomized_variable_length_sequences_match_oracle_and_reopen()
     {
         Random random = new(8297);
         byte[][] keys = new byte[128][];
@@ -51,7 +45,7 @@ public class Eip8297CanonicalTreeTests
             random.NextBytes(keys[index].AsSpan(1));
         }
 
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         for (int operation = 0; operation < 1000; operation++)
         {
@@ -74,22 +68,22 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCaseSource(nameof(Layouts))]
-    public void Split_inside_compressed_prefix_and_delete_merge_stay_canonical(PbtNodeLayout layout)
+    [Test]
+    public void Split_inside_compressed_prefix_and_delete_merge_stay_canonical()
     {
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         byte[] first = [0x12, 0x00];
         byte[] second = [0x12, 0x80];
-        byte[] crossTileSplit = [0x10, 0x00];
+        byte[] crossGroupSplit = [0x10, 0x00];
 
         tree.ApplyBatch([(first, Value(1)), (second, Value(2))]);
         oracle.Insert(first, Value(1));
         oracle.Insert(second, Value(2));
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "initial split");
 
-        tree.ApplyBatch([(crossTileSplit, Value(3)), (second, Value(4))]);
-        oracle.Insert(crossTileSplit, Value(3));
+        tree.ApplyBatch([(crossGroupSplit, Value(3)), (second, Value(4))]);
+        oracle.Insert(crossGroupSplit, Value(3));
         oracle.Insert(second, Value(4));
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "split inside prefix");
 
@@ -98,10 +92,10 @@ public class Eip8297CanonicalTreeTests
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "promotion and prefix merge");
     }
 
-    [TestCaseSource(nameof(Layouts))]
-    public void Failed_prefix_batch_is_atomic(PbtNodeLayout layout)
+    [Test]
+    public void Failed_prefix_batch_is_atomic()
     {
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         byte[] original = [0x12];
         tree.ApplyBatch([(original, Value(1))]);
         ValueHash256 root = tree.RootHash;
@@ -117,16 +111,16 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCaseSource(nameof(Layouts))]
-    public void Insertion_order_and_batch_boundaries_do_not_change_root_or_records(PbtNodeLayout layout)
+    [Test]
+    public void Insertion_order_and_batch_boundaries_do_not_change_root_or_records()
     {
         (byte[] Key, byte[]? Value)[] entries =
         [
             ([0x80], Value(1)), ([0x40], Value(2)), ([0x20], Value(3)),
             ([0x10], Value(4)), ([0x08], Value(5)), ([0x04], Value(6)),
         ];
-        PbtTreeHarness forward = new(layout);
-        PbtTreeHarness reverse = new(layout);
+        PbtTreeHarness forward = new();
+        PbtTreeHarness reverse = new();
         foreach ((byte[] key, byte[]? value) in entries) forward.ApplyBatch([(key, value)]);
         for (int index = entries.Length - 1; index >= 0; index--) reverse.ApplyBatch([entries[index]]);
 

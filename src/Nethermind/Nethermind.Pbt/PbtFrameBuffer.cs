@@ -7,7 +7,7 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// Scoped frame storage that keeps legacy tile buffers inline and rents wider buffers without
+/// Scoped frame storage that keeps small frame buffers inline and rents wider buffers without
 /// embedding their reference-bearing elements in every recursive frame.
 /// </summary>
 internal ref struct PbtFrameBuffer<T>

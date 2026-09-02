@@ -19,11 +19,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <param name="layout">
-/// The whole component stack — scope, snapshot, compaction, persistence — over the three four-level
-/// layouts (FourLevelEveryLevel, FourLevelInterleaved, and FourLevelBoundaryOnly), all folding to the
-/// same reference roots.
-/// </param>
 [TestFixture]
 public class PbtScopeProviderTests
 {

@@ -99,7 +99,7 @@ public class PbtRebuilderTests
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = await Rebuild(leaves, chunkSize, targetState, target);
 
-        PbtPhysicalNodeStore incrementalStore = new();
+        PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
         foreach (RebuildEntry leaf in leaves)
         {

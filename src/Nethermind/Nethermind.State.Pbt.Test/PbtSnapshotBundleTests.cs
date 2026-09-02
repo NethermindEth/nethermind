@@ -53,11 +53,11 @@ public class PbtSnapshotBundleTests
         PbtFullKey updateKey = new([3]);
         PbtWriteBatch initial = new();
         initial.Set(updateKey, new ValueHash256([4]));
-        PbtPhysicalNodeStore validStore = new();
+        PbtNodeGroupStore validStore = new();
         ValueHash256 validRoot = TrieUpdater.UpdateRoot(validStore, default, initial);
         PbtWriteBatch wrongNodeBatch = new();
         wrongNodeBatch.Set(new PbtFullKey([7]), new ValueHash256([8]));
-        PbtPhysicalNodeStore wrongNodeStore = new();
+        PbtNodeGroupStore wrongNodeStore = new();
         TrieUpdater.UpdateRoot(wrongNodeStore, default, wrongNodeBatch);
         reader.Node = hashMismatch ? wrongNodeStore.GetNode(new PbtNodePath([], 0)) : null;
         PbtWriteBatch changes = new();

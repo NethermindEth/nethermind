@@ -36,7 +36,7 @@ public readonly record struct Stem
 
     /// <summary>
     /// The stem's bytes followed by the zero byte that pads them to 32, for a reader whose window
-    /// runs past the last stem bit — the deepest tile of a tiling that does not divide 248 evenly.
+    /// runs past the last stem bit — the deepest group when the group width does not divide 248 evenly.
     /// </summary>
     internal ReadOnlySpan<byte> PaddedBytes => _bytes.Bytes;
 

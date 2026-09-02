@@ -12,9 +12,8 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class PbtFormatInteropTests
 {
-    [TestCase(PbtNodeLayout.Record, PbtNodeLayout.HashBucket)]
-    [TestCase(PbtNodeLayout.HashBucket, PbtNodeLayout.Record)]
-    public void Physical_payload_roundtrip_interoperates_with_other_layout(PbtNodeLayout sourceLayout, PbtNodeLayout targetLayout)
+    [Test]
+    public void Physical_payload_roundtrip()
     {
         Random random = new(8297);
         PbtWriteBatch batch = new();
@@ -30,13 +29,13 @@ public class PbtFormatInteropTests
             oracle.Insert(key, value);
         }
 
-        PbtPhysicalNodeStore source = new(sourceLayout);
+        PbtNodeGroupStore source = new();
         ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch);
-        PbtPhysicalNodeStore target = PbtPhysicalNodeStore.FromPhysicalPayloads(
-            sourceLayout, sourceRoot, source.ExportPhysicalPayloads());
-        target.Layout = targetLayout;
-        PbtPhysicalNodeStore reopened = PbtPhysicalNodeStore.FromPhysicalPayloads(
-            targetLayout, sourceRoot, target.ExportPhysicalPayloads());
+        PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(
+            sourceRoot, source.ExportPhysicalPayloads());
+
+        PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(
+            sourceRoot, target.ExportPhysicalPayloads());
 
         using (Assert.EnterMultipleScope())
         {
@@ -46,7 +45,7 @@ public class PbtFormatInteropTests
         }
     }
 
-    private static string[] CanonicalRecords(PbtPhysicalNodeStore store)
+    private static string[] CanonicalRecords(PbtNodeGroupStore store)
     {
         IReadOnlyList<PbtNodeRecord> records = store.EnumerateRecords();
         string[] result = new string[records.Count];

@@ -16,7 +16,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    private const int SchemaEpoch = 8;
+    private const int SchemaEpoch = 9;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
@@ -69,13 +69,13 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
-            throw new InvalidDataException("The epoch-8 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
+            throw new InvalidDataException("The epoch-9 PBT database contains an interrupted initialization. Delete the pbt database and rebuild, or enable the preimage-flat import to clear and retry it.");
         }
     }
 
     private static bool HasPopulatedDataColumn(IColumnsDb<PbtColumns> db)
     {
-        PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.CompressedNodes, PbtColumns.CodeReferences,
+        PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.NodeGroups, PbtColumns.CodeReferences,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes];
         foreach (PbtColumns column in columns)
@@ -164,14 +164,39 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
             }
         }
 
-        public byte[]? GetNode(PbtNodePath path) => snapshot.GetColumn(PbtColumns.CompressedNodes).Get(path.Encode());
+        public byte[]? GetNode(PbtNodePath path)
+        {
+            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+            byte[]? payload = snapshot.GetColumn(PbtColumns.NodeGroups).Get(location.GroupKey.Encode());
+            if (payload is null) return null;
+            return PbtNodeGroupCodec.Decode(location.GroupKey, payload).GetNode(location.Position)?.ToArray();
+        }
 
         public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
         {
-            ISortedKeyValueStore nodes = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.CompressedNodes);
-            using ISortedView view = nodes.GetViewBetween([], [0xFF, 0xFF]);
-            while (view.MoveNext())
-                yield return new KeyValuePair<PbtNodePath, byte[]>(PbtNodePath.Decode(view.CurrentKey), view.CurrentValue.ToArray());
+            ISortedKeyValueStore groups = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.NodeGroups);
+            List<KeyValuePair<PbtNodePath, byte[]>> nodes = [];
+            using (ISortedView view = groups.GetViewBetween([], [0xFF, 0xFF]))
+            {
+                while (view.MoveNext())
+                {
+                    PbtNodePath groupKey = DecodeGroupKey(view.CurrentKey);
+                    PbtNodeGroup group = PbtNodeGroupCodec.Decode(groupKey, view.CurrentValue);
+                    foreach (PbtNodeRecord node in group.EnumerateNodes())
+                        nodes.Add(new KeyValuePair<PbtNodePath, byte[]>(node.Path, node.Encoding.ToArray()));
+                }
+            }
+
+            nodes.Sort(static (left, right) => left.Key.CompareTo(right.Key));
+            return nodes;
+        }
+
+        private static PbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
+        {
+            PbtNodePath groupKey = PbtNodePath.Decode(encoding);
+            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
+            return groupKey;
         }
 
         public ulong GetCodeReference(in ValueHash256 codeHash)
@@ -193,6 +218,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
         bool publishState) : IPbtPersistence.IWriteBatch
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
+        private readonly Dictionary<PbtNodePath, Dictionary<int, byte[]?>> _nodeMutations = [];
 
         public void SetLeaf(PbtFullKey key, ValueHash256? value)
         {
@@ -203,10 +229,15 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
 
         public void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding)
         {
-            IWriteBatch nodes = _batch.GetColumnBatch(PbtColumns.CompressedNodes);
-            byte[] key = path.Encode();
-            if (encoding.IsEmpty) nodes.Set(key, null, flags);
-            else nodes.PutSpan(key, encoding, flags);
+            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+            if (!_nodeMutations.TryGetValue(location.GroupKey, out Dictionary<int, byte[]?>? mutations))
+            {
+                mutations = [];
+                _nodeMutations.Add(location.GroupKey, mutations);
+            }
+
+            if (!encoding.IsEmpty) _ = PbtNodeCodec.Decode(encoding);
+            mutations[location.Position] = encoding.IsEmpty ? null : encoding.ToArray();
         }
 
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)
@@ -227,19 +258,75 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
         public void Commit()
         {
             if (_completed) return;
-            _completed = true;
-            if (publishState)
+            try
             {
-                Span<byte> value = stackalloc byte[CurrentStateLength];
-                BinaryPrimitives.WriteUInt64BigEndian(value, to.BlockNumber);
-                to.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
-                root.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
-                IWriteBatch metadata = _batch.GetColumnBatch(PbtColumns.Metadata);
-                metadata.PutSpan(CurrentStateKey, value, flags);
-                metadata.PutSpan(ValidStateKey, [ValidState], flags);
+                ApplyNodeMutations();
+                if (publishState)
+                {
+                    Span<byte> value = stackalloc byte[CurrentStateLength];
+                    BinaryPrimitives.WriteUInt64BigEndian(value, to.BlockNumber);
+                    to.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
+                    root.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
+                    IWriteBatch metadata = _batch.GetColumnBatch(PbtColumns.Metadata);
+                    metadata.PutSpan(CurrentStateKey, value, flags);
+                    metadata.PutSpan(ValidStateKey, [ValidState], flags);
+                }
             }
+            catch
+            {
+                _completed = true;
+                _batch.Clear();
+                _batch.Dispose();
+                throw;
+            }
+
+            _completed = true;
             _batch.Dispose();
             if (!flags.HasFlag(WriteFlags.DisableWAL)) db.Flush(onlyWal: true);
+        }
+
+        private void ApplyNodeMutations()
+        {
+            if (_nodeMutations.Count == 0) return;
+
+            IWriteBatch groupsBatch = _batch.GetColumnBatch(PbtColumns.NodeGroups);
+            IDb groups = db.GetColumnDb(PbtColumns.NodeGroups);
+            foreach ((PbtNodePath groupKey, Dictionary<int, byte[]?> mutations) in _nodeMutations)
+            {
+                Dictionary<int, byte[]> nodes = [];
+                byte[] encodedGroupKey = groupKey.Encode();
+                byte[]? priorPayload = groups.Get(encodedGroupKey);
+                if (priorPayload is not null)
+                {
+                    PbtNodeGroup prior = PbtNodeGroupCodec.Decode(groupKey, priorPayload);
+                    foreach (PbtNodeRecord record in prior.EnumerateNodes())
+                        nodes[PbtFourLevelGroupGeometry.PositionOf(record.Path)] = record.Encoding.ToArray();
+                }
+
+                foreach ((int position, byte[]? encoding) in mutations)
+                {
+                    if (encoding is null)
+                    {
+                        nodes.Remove(position);
+                    }
+                    else
+                    {
+                        _ = PbtNodeCodec.Decode(encoding);
+                        nodes[position] = encoding;
+                    }
+                }
+
+                if (nodes.Count == 0)
+                {
+                    groupsBatch.Set(encodedGroupKey, null, flags);
+                    continue;
+                }
+
+                List<PbtNodeRecord> records = new(nodes.Count);
+                foreach ((int position, byte[] encoding) in nodes)
+                    records.Add(new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
+                groupsBatch.PutSpan(encodedGroupKey, PbtNodeGroupCodec.Encode(groupKey, records), flags);
+            }
         }
 
         public void Dispose()

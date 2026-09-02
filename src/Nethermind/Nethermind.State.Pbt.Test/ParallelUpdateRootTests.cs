@@ -13,12 +13,11 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class ParallelUpdateRootTests
 {
-    [TestCase(PbtNodeLayout.Record)]
-    [TestCase(PbtNodeLayout.HashBucket)]
-    public async Task Concurrent_independent_folds_equal_serial_fold(PbtNodeLayout layout)
+    [Test]
+    public async Task Concurrent_independent_folds_equal_serial_fold()
     {
         (byte[] Key, byte[]? Value)[] entries = Entries(seed: 8297, count: 2000);
-        PbtTreeHarness serial = new(layout);
+        PbtTreeHarness serial = new();
         ValueHash256 expectedRoot = serial.ApplyBatch(entries);
         string[] expectedRecords = serial.CanonicalRecords();
 
@@ -27,7 +26,7 @@ public class ParallelUpdateRootTests
         {
             tasks[worker] = Task.Run(() =>
             {
-                PbtTreeHarness parallel = new(layout);
+                PbtTreeHarness parallel = new();
                 return (parallel.ApplyBatch(entries), parallel.CanonicalRecords());
             });
         }
@@ -44,14 +43,14 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public async Task Concurrent_serial_and_layout_folds_match_across_mutation_sequences()
+    public async Task Concurrent_serial_folds_match_across_mutation_sequences()
     {
         (byte[] Key, byte[]? Value)[] initial = Entries(seed: 17, count: 1000);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
         Task<PbtTreeHarness>[] tasks =
         [
-            Task.Run(() => Apply(PbtNodeLayout.Record, initial, changes)),
-            Task.Run(() => Apply(PbtNodeLayout.HashBucket, initial, changes)),
+            Task.Run(() => Apply(initial, changes)),
+            Task.Run(() => Apply(initial, changes)),
         ];
 
         PbtTreeHarness[] trees = await Task.WhenAll(tasks);
@@ -62,9 +61,9 @@ public class ParallelUpdateRootTests
         }
     }
 
-    private static PbtTreeHarness Apply(PbtNodeLayout layout, params (byte[] Key, byte[]? Value)[][] batches)
+    private static PbtTreeHarness Apply(params (byte[] Key, byte[]? Value)[][] batches)
     {
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         foreach ((byte[] Key, byte[]? Value)[] batch in batches) tree.ApplyBatch(batch);
         return tree;
     }

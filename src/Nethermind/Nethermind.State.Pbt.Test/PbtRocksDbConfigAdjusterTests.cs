@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using FastEnumUtility;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
+using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -72,6 +77,41 @@ public class PbtRocksDbConfigAdjusterTests
             db.GetColumnDb(column).Set([(byte)column], [1]);
             Assert.That(db.GetColumnDb(column).Get([(byte)column]), Is.EqualTo(new byte[] { 1 }));
         }
+    }
+
+    [Test]
+    public void NodeGroupsReopenFromRocksDbAsCanonicalNodes()
+    {
+        using TempPath dbPath = TempPath.GetTempDirectory();
+        DbConfig dbConfig = new();
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
+        PbtFullKey key = new([0x80]);
+        PbtNodePath path = new([], 0);
+        byte[] encoding = PbtNodeCodec.Encode(new PbtLeafNode(key, new byte[ValueHash256.MemorySize]));
+        StateId state = new(1, new ValueHash256([1]));
+
+        using (ColumnsDb<PbtColumns> db = NewDb())
+        {
+            PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+            using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default, WriteFlags.None);
+            batch.SetNode(path, encoding);
+            batch.Commit();
+        }
+
+        using (ColumnsDb<PbtColumns> db = NewDb())
+        {
+            PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+            using IPbtPersistence.IReader reader = persistence.CreateReader();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(state));
+                Assert.That(reader.GetNode(path), Is.EqualTo(encoding));
+                Assert.That(reader.EnumerateNodes(), Is.EqualTo(new[] { new KeyValuePair<PbtNodePath, byte[]>(path, encoding) }));
+            }
+        }
+
+        ColumnsDb<PbtColumns> NewDb() => new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
+            adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
     }
 
     [Test]

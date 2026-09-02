@@ -19,13 +19,14 @@ public class PbtColumnRoutingTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        PbtNodePath node = new([0xA0], 3);
+        PbtNodePath node = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
+        byte[] nodeEncoding = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value.Bytes.ToArray()));
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {
             batch.SetLeaf(leaf, value);
-            batch.SetNode(node, [0x11]);
+            batch.SetNode(node, nodeEncoding);
             batch.Commit();
         }
 
@@ -33,9 +34,9 @@ public class PbtColumnRoutingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
-            Assert.That(reader.GetNode(node), Is.EqualTo(new byte[] { 0x11 }));
+            Assert.That(reader.GetNode(node), Is.EqualTo(nodeEncoding));
             Assert.That(db.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty);
-            Assert.That(db.GetColumnDb(PbtColumns.CompressedNodes).GetAll(), Is.Not.Empty);
+            Assert.That(db.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Not.Empty);
         }
     }
 }

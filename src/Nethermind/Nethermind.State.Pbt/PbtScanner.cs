@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Validates the full-key columns of a persisted EIP-8297 PBT database.</summary>
 /// <remarks>
 /// This diagnostic intentionally scans the canonical columns rather than interpreting obsolete
-/// stem blobs or tiled node groups. It validates state-layer leaf invariants and recomputes the
+/// stem blobs or node groups. It validates state-layer leaf invariants and recomputes the
 /// root from the visible full-key index.
 /// </remarks>
 public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
@@ -34,7 +34,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         {
             PbtWriteBatch changes = new();
             foreach ((PbtFullKey key, ValueHash256 value) in leaves) changes.Set(key, value);
-            PbtPhysicalNodeStore nodeStore = new(PbtNodeLayout.Record);
+            PbtNodeGroupStore nodeStore = new();
             report.ComputedRoot = TrieUpdater.UpdateRoot(nodeStore, default, changes);
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
             ScanNodes(report, nodeStore.EnumerateRecords(), cancellationToken);
@@ -76,31 +76,57 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private void ScanNodes(PbtScanReport report, IReadOnlyList<PbtNodeRecord> expectedNodes, CancellationToken cancellationToken)
     {
-        IDb column = db.GetColumnDb(PbtColumns.CompressedNodes);
+        IDb column = db.GetColumnDb(PbtColumns.NodeGroups);
         if (column is not ISortedKeyValueStore sorted)
         {
-            throw new InvalidOperationException($"The PBT {PbtColumns.CompressedNodes} column is a {column.GetType().Name}, which cannot be range scanned.");
+            throw new InvalidOperationException($"The PBT {PbtColumns.NodeGroups} column is a {column.GetType().Name}, which cannot be range scanned.");
         }
 
-        int expectedIndex = 0;
-        using ISortedView view = sorted.GetViewBetween([], [0xFF, 0xFF]);
-        while (view.MoveNext())
+        List<PbtNodeRecord> actualNodes = [];
+        int malformedGroupCount = 0;
+        using (ISortedView view = sorted.GetViewBetween([], [0xFF, 0xFF]))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            report.NodeCount++;
-            report.NodeKeyBytes += view.CurrentKey.Length;
-            report.NodeBytes += view.CurrentValue.Length;
-            if (expectedIndex >= expectedNodes.Count ||
-                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].Path.Encode()) ||
-                !view.CurrentValue.SequenceEqual(expectedNodes[expectedIndex].Encoding.Span))
+            while (view.MoveNext())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    PbtNodePath groupKey = DecodeGroupKey(view.CurrentKey);
+                    PbtNodeGroup group = PbtNodeGroupCodec.Decode(groupKey, view.CurrentValue);
+                    foreach (PbtNodeRecord node in group.EnumerateNodes())
+                    {
+                        actualNodes.Add(node);
+                        report.NodeCount++;
+                        report.NodeKeyBytes += node.Path.Encode().Length;
+                        report.NodeBytes += node.Encoding.Length;
+                    }
+                }
+                catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
+                {
+                    malformedGroupCount++;
+                }
+            }
+        }
+
+        actualNodes.Sort(static (left, right) => left.Path.CompareTo(right.Path));
+        int commonCount = Math.Min(actualNodes.Count, expectedNodes.Count);
+        for (int index = 0; index < commonCount; index++)
+        {
+            if (!actualNodes[index].Path.Equals(expectedNodes[index].Path)
+                || !actualNodes[index].Encoding.Span.SequenceEqual(expectedNodes[index].Encoding.Span))
             {
                 report.InvalidNodeCount++;
             }
-            expectedIndex++;
         }
+        report.InvalidNodeCount += Math.Max(malformedGroupCount, Math.Abs(actualNodes.Count - expectedNodes.Count));
+    }
 
-        if (expectedIndex < expectedNodes.Count)
-            report.InvalidNodeCount += expectedNodes.Count - expectedIndex;
+    private static PbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
+    {
+        PbtNodePath groupKey = PbtNodePath.Decode(encoding);
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
+        return groupKey;
     }
 
     private static bool TryValidateLeaf(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, out PbtFullKey? key)

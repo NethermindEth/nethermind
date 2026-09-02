@@ -8,9 +8,8 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-[TestFixture(PbtNodeLayout.Record)]
-[TestFixture(PbtNodeLayout.HashBucket)]
-public class StemTrieTests(PbtNodeLayout layout)
+[TestFixture]
+public class StemTrieTests
 {
     [TestCase(3)]
     [TestCase(7)]
@@ -26,7 +25,7 @@ public class StemTrieTests(PbtNodeLayout layout)
         second[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
         byte[] firstValue = Value(1);
         byte[] secondValue = Value(2);
-        PbtTreeHarness tree = new(layout);
+        PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
 
         tree.ApplyBatch([(first, firstValue)]);
@@ -48,7 +47,7 @@ public class StemTrieTests(PbtNodeLayout layout)
     }
 
     [Test]
-    public void Split_inside_long_prefix_and_cross_physical_tile_rebuild_identically()
+    public void Split_inside_long_prefix_and_cross_node_group_rebuild_identically()
     {
         (byte[] Key, byte[]? Value)[] entries =
         [
@@ -57,9 +56,9 @@ public class StemTrieTests(PbtNodeLayout layout)
             (Key(0x10, 0x00, 65), Value(3)),
             (Key(0x12, 0x40, 257), Value(4)),
         ];
-        PbtTreeHarness incremental = new(layout);
+        PbtTreeHarness incremental = new();
         foreach ((byte[] key, byte[]? value) in entries) incremental.ApplyBatch([(key, value)]);
-        PbtTreeHarness rebuilt = new(layout);
+        PbtTreeHarness rebuilt = new();
         rebuilt.ApplyBatch(entries);
 
         using (Assert.EnterMultipleScope())

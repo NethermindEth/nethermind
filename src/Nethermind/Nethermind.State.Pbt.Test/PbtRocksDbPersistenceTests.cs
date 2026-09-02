@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -22,19 +23,20 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
 
     [Test]
-    public void Completed_epoch_8_store_reopens_and_serves_canonical_records()
+    public void Completed_epoch_9_store_reopens_and_serves_canonical_records()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        PbtNodePath path = new([0xA0], 3);
+        PbtNodePath path = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
+        byte[] node = PbtNodeCodec.Encode(new PbtLeafNode(leaf, value.Bytes.ToArray()));
         StateId state = new(7, TestItem.KeccakB.ValueHash256);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
         {
             batch.SetLeaf(leaf, value);
-            batch.SetNode(path, [0x11, 0x22]);
+            batch.SetNode(path, node);
             batch.Commit();
         }
 
@@ -45,9 +47,58 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.CurrentState, Is.EqualTo(state));
             Assert.That(reader.CurrentRoot, Is.EqualTo(value));
             Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
-            Assert.That(reader.GetNode(path), Is.EqualTo(new byte[] { 0x11, 0x22 }));
+            Assert.That(reader.GetNode(path), Is.EqualTo(node));
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey), Is.EqualTo(new byte[] { 1 }));
         }
+    }
+
+    [Test]
+    public void Same_group_mutations_preserve_siblings_and_remove_the_empty_group()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        PbtNodePath firstPath = new([0], 1);
+        PbtNodePath secondPath = new([0], 2);
+        byte[] firstNode = BranchNode(1);
+        byte[] secondNode = BranchNode(2);
+        StateId firstState = new(1, TestItem.KeccakA.ValueHash256);
+        StateId secondState = new(2, TestItem.KeccakB.ValueHash256);
+
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default, WriteFlags.None))
+        {
+            batch.SetNode(firstPath, firstNode);
+            batch.SetNode(secondPath, secondNode);
+            batch.Commit();
+        }
+
+        IDb physicalGroups = db.GetColumnDb(PbtColumns.NodeGroups);
+        Assert.That(physicalGroups.GetAll().ToArray(), Has.Length.EqualTo(1));
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(firstState, secondState, default, WriteFlags.None))
+        {
+            batch.SetNode(firstPath, []);
+            batch.Commit();
+        }
+
+        using (IPbtPersistence.IReader reader = persistence.CreateReader())
+        {
+            KeyValuePair<PbtNodePath, byte[]>[] nodes = [.. reader.EnumerateNodes()];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.GetNode(firstPath), Is.Null);
+                Assert.That(reader.GetNode(secondPath), Is.EqualTo(secondNode));
+                Assert.That(nodes, Has.Length.EqualTo(1));
+                Assert.That(nodes[0].Key, Is.EqualTo(secondPath));
+                Assert.That(nodes[0].Value, Is.EqualTo(secondNode));
+                Assert.That(physicalGroups.GetAll().ToArray(), Has.Length.EqualTo(1));
+            }
+        }
+
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(secondState, new StateId(3, default), default, WriteFlags.None))
+        {
+            batch.SetNode(secondPath, []);
+            batch.Commit();
+        }
+        Assert.That(physicalGroups.GetAll(), Is.Empty);
     }
 
     [Test]
@@ -60,7 +111,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(8)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(9)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -131,7 +182,8 @@ public class PbtRocksDbPersistenceTests
             new StateId(7, TestItem.KeccakB.ValueHash256),
             TestItem.KeccakA.ValueHash256,
             WriteFlags.None);
-        final.SetNode(new PbtNodePath([0x80], 1), [0x11]);
+        PbtFullKey nodeKey = new([0x80]);
+        final.SetNode(new PbtNodePath([], 0), PbtNodeCodec.Encode(new PbtLeafNode(nodeKey, TestItem.KeccakA.Bytes.ToArray())));
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
         final.Dispose();
@@ -139,7 +191,7 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inner.GetColumnDb(PbtColumns.FullLeaves).Get(stagedLeaf.Bytes), Is.Not.Null);
-            Assert.That(inner.GetColumnDb(PbtColumns.CompressedNodes).GetAll(), Is.Empty);
+            Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
             Assert.That(() => new PbtRocksDbPersistence(inner, new PbtConfig()),
@@ -151,12 +203,13 @@ public class PbtRocksDbPersistenceTests
     private static IEnumerable<TestCaseData> InvalidMetadataCases()
     {
         yield return new TestCaseData(Epoch(7), null, null, false).SetName("Rejects_epoch_7");
-        yield return new TestCaseData(new byte[] { 8 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(8), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(8), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(8), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(8), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(8), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
+        yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
+        yield return new TestCaseData(Epoch(9), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(9), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(9), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(9), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(9), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -174,14 +227,14 @@ public class PbtRocksDbPersistenceTests
         if (currentState is not null) metadata[CurrentStateKey] = currentState;
         if (validity is not null) metadata[ValidStateKey] = validity;
         if (populateLegacyColumn) inner.GetColumnDb(PbtColumns.FullLeaves)[new byte[] { 1 }] = [2];
-        ThrowOnCompressedNodesDb db = new(inner);
+        ThrowOnNodeGroupsDb db = new(inner);
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.TypeOf<InvalidDataException>());
-        Assert.That(db.CompressedNodesAccessed, Is.False);
+        Assert.That(db.NodeGroupsAccessed, Is.False);
     }
 
     [TestCase(PbtColumns.FullLeaves)]
-    [TestCase(PbtColumns.CompressedNodes)]
+    [TestCase(PbtColumns.NodeGroups)]
     [TestCase(PbtColumns.CodeReferences)]
     [TestCase(PbtColumns.AccountLeaves)]
     [TestCase(PbtColumns.CodeLeaves)]
@@ -197,6 +250,11 @@ public class PbtRocksDbPersistenceTests
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains("no schema epoch"));
     }
+
+    private static byte[] BranchNode(byte marker) => PbtNodeCodec.Encode(new PbtBranchNode(
+        new PbtBitPrefix([], 0),
+        new ValueHash256([marker]),
+        new ValueHash256([(byte)(marker + 1)])));
 
     private static byte[] Epoch(int epoch)
     {
@@ -243,18 +301,18 @@ public class PbtRocksDbPersistenceTests
         }
     }
 
-    private sealed class ThrowOnCompressedNodesDb(IColumnsDb<PbtColumns> inner) : IColumnsDb<PbtColumns>
+    private sealed class ThrowOnNodeGroupsDb(IColumnsDb<PbtColumns> inner) : IColumnsDb<PbtColumns>
     {
-        public bool CompressedNodesAccessed { get; private set; }
+        public bool NodeGroupsAccessed { get; private set; }
         public IEnumerable<PbtColumns> ColumnKeys => inner.ColumnKeys;
         public long EstimatedCount => inner.EstimatedCount;
 
         public IDb GetColumnDb(PbtColumns key)
         {
-            if (key == PbtColumns.CompressedNodes)
+            if (key == PbtColumns.NodeGroups)
             {
-                CompressedNodesAccessed = true;
-                throw new AssertionException("Compressed nodes were accessed before metadata rejection.");
+                NodeGroupsAccessed = true;
+                throw new AssertionException("Node groups were accessed before metadata rejection.");
             }
             return inner.GetColumnDb(key);
         }

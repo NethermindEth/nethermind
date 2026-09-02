@@ -44,6 +44,28 @@ internal static class PbtNodeCodec
         };
     }
 
+    /// <summary>Decodes the node at the beginning of a span and returns its encoded length.</summary>
+    /// <remarks>The remaining span is intentionally ignored; use <see cref="Decode(ReadOnlySpan{byte})"/> when an exact span is required.</remarks>
+    internal static PbtNode Decode(ReadOnlySpan<byte> encoding, out int consumed)
+    {
+        consumed = 0;
+        if (encoding.IsEmpty) throw new InvalidDataException("A PBT node encoding cannot be empty.");
+        if (encoding[0] is not LeafTag and not BranchTag) throw new InvalidDataException("Unknown PBT node tag.");
+        if (encoding.Length < 3) throw new InvalidDataException("Truncated PBT node encoding.");
+
+        int encodedLength = encoding[0] switch
+        {
+            LeafTag => checked(3 + BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]) + 32),
+            BranchTag => checked(3 + PbtBitPrefix.ByteCount(BinaryPrimitives.ReadUInt16BigEndian(encoding[1..])) + 64),
+            _ => throw new InvalidDataException("Unknown PBT node tag."),
+        };
+        if (encoding.Length < encodedLength) throw new InvalidDataException("Truncated PBT node encoding.");
+
+        PbtNode node = Decode(encoding[..encodedLength]);
+        consumed = encodedLength;
+        return node;
+    }
+
     internal static ValueHash256 HashLeaf(PbtFullKey key, ReadOnlySpan<byte> value)
     {
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
