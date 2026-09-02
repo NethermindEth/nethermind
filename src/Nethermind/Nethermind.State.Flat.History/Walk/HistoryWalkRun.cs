@@ -168,7 +168,7 @@ internal sealed class HistoryWalkRun
 
     private void ProcessAccountPartition(in TreePath prefix, int item)
     {
-        AccountPartitionRows? rows = new();
+        using AccountPartitionRows rows = new();
         StoragePresenceProbe probe = new(_storageHistory);
         while (true)
         {
@@ -179,7 +179,7 @@ internal sealed class HistoryWalkRun
 
             if (outcome == ScanOutcome.Split)
             {
-                rows = null;
+                rows.Reset();
                 for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) ProcessAccountPartition(prefix.Append(nibble), item);
                 CombineAccount(prefix);
                 return;
@@ -215,13 +215,14 @@ internal sealed class HistoryWalkRun
     private void ProcessStorageRange(byte firstByte, int item) =>
         _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, group =>
         {
+            using StoragePartitionRows rows = group.Rows;
             if (group.Overflow) ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
-            else ReplayStorageGroup(TreePath.Empty, group.Rows, group.Clears, item);
+            else ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item);
         }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
 
     private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item)
     {
-        StoragePartitionRows? rows = new();
+        using StoragePartitionRows rows = new();
         while (true)
         {
             ScanOutcome outcome = _scanner.ScanStorage(storagePrefix, slotPrefix, _from, _to, _maxRowsPerPartition, rows, clears, _token);
@@ -237,7 +238,7 @@ internal sealed class HistoryWalkRun
             break;
         }
 
-        rows = null;
+        rows.Reset();
         HashSet<ValueHash256> seen = [];
         for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
         {

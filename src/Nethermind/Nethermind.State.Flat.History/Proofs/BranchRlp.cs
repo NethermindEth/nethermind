@@ -25,55 +25,47 @@ internal static class BranchRlp
         reader.ReadSequenceLength();
         for (int index = 0; index < ChildCount; index++)
         {
-            (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
-            if (contentLength == 0)
-            {
-                children[index] = null;
-                reader.SkipItem();
-                continue;
-            }
-
-            if (!reader.IsSequenceNext() && contentLength == Hash256.Size)
-            {
-                reader.SkipBytes(prefixLength);
-                children[index] = reader.Read(Hash256.Size).ToArray();
-                continue;
-            }
-
-            children[index] = reader.Read(prefixLength + contentLength).ToArray();
+            ReadOnlySpan<byte> reference = ReadChild(ref reader);
+            children[index] = reference.IsEmpty ? null : reference.ToArray();
         }
 
-        if (reader.PeekPrefixAndContentLength().ContentLength != 0)
+        RequireNoValue(ref reader);
+    }
+
+    public static void ReadChildren(ReadOnlySpan<byte> branchRlp, ChildVector children)
+    {
+        RlpReader reader = new(branchRlp);
+        reader.ReadSequenceLength();
+        for (int index = 0; index < ChildCount; index++)
         {
-            throw new InvalidDataException("A branch of a fixed-width-key trie carries no value; this node is not a state or storage trie branch.");
+            ReadOnlySpan<byte> reference = ReadChild(ref reader);
+            if (reference.IsEmpty) children.Clear(index);
+            else children.Set(index, reference);
         }
+
+        RequireNoValue(ref reader);
     }
 
     public static byte[] Encode(byte[]?[] children)
     {
         int contentLength = 1;
-        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index]);
+        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index]?.Length ?? 0);
 
         byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
         int position = Rlp.StartSequence(rlp, 0, contentLength);
-        for (int index = 0; index < ChildCount; index++)
-        {
-            byte[]? child = children[index];
-            if (child is null)
-            {
-                rlp[position++] = EmptyItem;
-            }
-            else if (child.Length == Hash256.Size)
-            {
-                position += Rlp.Encode(child, rlp.AsSpan(position));
-            }
-            else
-            {
-                child.CopyTo(rlp.AsSpan(position));
-                position += child.Length;
-            }
-        }
+        for (int index = 0; index < ChildCount; index++) position = WriteChild(rlp, position, children[index]);
+        rlp[position] = EmptyItem;
+        return rlp;
+    }
 
+    public static byte[] Encode(ChildVector children)
+    {
+        int contentLength = 1;
+        for (int index = 0; index < ChildCount; index++) contentLength += ItemLength(children[index].Length);
+
+        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
+        int position = Rlp.StartSequence(rlp, 0, contentLength);
+        for (int index = 0; index < ChildCount; index++) position = WriteChild(rlp, position, children[index]);
         rlp[position] = EmptyItem;
         return rlp;
     }
@@ -81,6 +73,46 @@ internal static class BranchRlp
     public static byte[] ReferenceOf(byte[] nodeRlp) =>
         nodeRlp.Length < Hash256.Size ? nodeRlp : Keccak.Compute(nodeRlp).BytesToArray();
 
-    private static int ItemLength(byte[]? child) =>
-        child is null ? 1 : child.Length == Hash256.Size ? 1 + Hash256.Size : child.Length;
+    private static ReadOnlySpan<byte> ReadChild(ref RlpReader reader)
+    {
+        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
+        if (contentLength == 0)
+        {
+            reader.SkipItem();
+            return ReadOnlySpan<byte>.Empty;
+        }
+
+        if (!reader.IsSequenceNext() && contentLength == Hash256.Size)
+        {
+            reader.SkipBytes(prefixLength);
+            return reader.Read(Hash256.Size);
+        }
+
+        return reader.Read(prefixLength + contentLength);
+    }
+
+    private static void RequireNoValue(ref RlpReader reader)
+    {
+        if (reader.PeekPrefixAndContentLength().ContentLength != 0)
+        {
+            throw new InvalidDataException("A branch of a fixed-width-key trie carries no value; this node is not a state or storage trie branch.");
+        }
+    }
+
+    private static int WriteChild(Span<byte> rlp, int position, ReadOnlySpan<byte> child)
+    {
+        if (child.IsEmpty)
+        {
+            rlp[position] = EmptyItem;
+            return position + 1;
+        }
+
+        if (child.Length == Hash256.Size) return Rlp.Encode(rlp, position, child);
+
+        child.CopyTo(rlp[position..]);
+        return position + child.Length;
+    }
+
+    private static int ItemLength(int childLength) =>
+        childLength == 0 ? 1 : childLength == Hash256.Size ? 1 + Hash256.Size : childLength;
 }

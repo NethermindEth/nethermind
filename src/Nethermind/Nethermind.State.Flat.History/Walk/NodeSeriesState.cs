@@ -5,9 +5,9 @@ using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class NodeSeriesState
+internal sealed class NodeSeriesState : IDisposable
 {
-    private readonly byte[]?[] _refs = new byte[]?[BranchRlp.ChildCount];
+    private readonly ChildVector _refs = ChildVector.Rent();
     private NodeViewKind _kind = NodeViewKind.Empty;
     private byte[]? _wholeRlp;
     private ushort _presence;
@@ -35,7 +35,7 @@ internal sealed class NodeSeriesState
 
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (((changed >> index) & 1) == 1 || ((presence >> index) & 1) == 0) _refs[index] = null;
+            if (((changed >> index) & 1) == 1 || ((presence >> index) & 1) == 0) _refs.Clear(index);
         }
 
         ParentRowCodec.Fill(row, changed, _refs);
@@ -72,8 +72,8 @@ internal sealed class NodeSeriesState
                 if (_presence == 0) return NodeView.Empty;
                 if (Missing() != 0) throw new InvalidDataException("A commitment series row lists a child it never carried a reference for.");
 
-                byte[]?[] copy = new byte[]?[BranchRlp.ChildCount];
-                Array.Copy(_refs, copy, BranchRlp.ChildCount);
+                ChildVector copy = ChildVector.Rent();
+                copy.CopyFrom(_refs);
                 return NodeView.Branch(copy);
         }
     }
@@ -83,7 +83,7 @@ internal sealed class NodeSeriesState
         ushort missing = 0;
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (((_presence >> index) & 1) == 1 && _refs[index] is null) missing |= (ushort)(1 << index);
+            if (((_presence >> index) & 1) == 1 && !_refs.IsPresent(index)) missing |= (ushort)(1 << index);
         }
 
         return missing;
@@ -94,6 +94,8 @@ internal sealed class NodeSeriesState
         _kind = kind;
         _wholeRlp = null;
         _presence = 0;
-        Array.Clear(_refs);
+        _refs.Clear();
     }
+
+    public void Dispose() => ChildVector.Return(_refs);
 }

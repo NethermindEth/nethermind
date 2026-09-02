@@ -13,6 +13,8 @@ internal static class ParentRowCodec
     private const int KindAndBlockLength = 1 + sizeof(ulong);
     private const int HeaderLength = KindAndBlockLength + sizeof(ushort) + sizeof(ushort);
 
+    public const int MaxBranchRowLength = HeaderLength + BranchRlp.ChildCount * (1 + ChildVector.SlotSize);
+
     public static byte[] EncodeBranch(ulong lastBlock, ushort presence, ushort changed, byte[]?[] children)
     {
         int length = HeaderLength;
@@ -22,42 +24,62 @@ internal static class ParentRowCodec
         }
 
         byte[] row = new byte[length];
-        row[0] = BranchKind;
-        BinaryPrimitives.WriteUInt64BigEndian(row.AsSpan(1), lastBlock);
-        BinaryPrimitives.WriteUInt16BigEndian(row.AsSpan(9), presence);
-        BinaryPrimitives.WriteUInt16BigEndian(row.AsSpan(11), changed);
+        WriteBranchHeader(row, lastBlock, presence, changed);
         int position = HeaderLength;
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
             if (((changed >> index) & 1) == 0) continue;
 
-            byte[]? child = children[index];
-            row[position++] = (byte)(child?.Length ?? 0);
-            if (child is null) continue;
-
-            child.CopyTo(row.AsSpan(position));
-            position += child.Length;
+            position = WriteChild(row, position, children[index]);
         }
 
         return row;
     }
 
+    public static int EncodeBranch(ulong lastBlock, ushort presence, ushort changed, ChildVector children, Span<byte> row)
+    {
+        WriteBranchHeader(row, lastBlock, presence, changed);
+        int position = HeaderLength;
+        for (int index = 0; index < BranchRlp.ChildCount; index++)
+        {
+            if (((changed >> index) & 1) == 0) continue;
+
+            position = WriteChild(row, position, children[index]);
+        }
+
+        return position;
+    }
+
     public static byte[] EncodeWholeNode(ulong lastBlock, ReadOnlySpan<byte> nodeRlp)
     {
         byte[] row = new byte[KindAndBlockLength + nodeRlp.Length];
-        row[0] = WholeNodeKind;
-        BinaryPrimitives.WriteUInt64BigEndian(row.AsSpan(1), lastBlock);
-        nodeRlp.CopyTo(row.AsSpan(KindAndBlockLength));
+        EncodeWholeNode(lastBlock, nodeRlp, row);
         return row;
+    }
+
+    public static int EncodeWholeNode(ulong lastBlock, ReadOnlySpan<byte> nodeRlp, Span<byte> row)
+    {
+        row[0] = WholeNodeKind;
+        BinaryPrimitives.WriteUInt64BigEndian(row[1..], lastBlock);
+        nodeRlp.CopyTo(row[KindAndBlockLength..]);
+        return KindAndBlockLength + nodeRlp.Length;
     }
 
     public static byte[] EncodeEmpty(ulong lastBlock)
     {
         byte[] row = new byte[KindAndBlockLength];
-        row[0] = EmptyKind;
-        BinaryPrimitives.WriteUInt64BigEndian(row.AsSpan(1), lastBlock);
+        EncodeEmpty(lastBlock, row);
         return row;
     }
+
+    public static int EncodeEmpty(ulong lastBlock, Span<byte> row)
+    {
+        row[0] = EmptyKind;
+        BinaryPrimitives.WriteUInt64BigEndian(row[1..], lastBlock);
+        return KindAndBlockLength;
+    }
+
+    public static int WholeNodeRowLength(int nodeRlpLength) => KindAndBlockLength + nodeRlpLength;
 
     public static bool IsBranchRow(ReadOnlySpan<byte> row) => row.Length >= HeaderLength && row[0] == BranchKind && PayloadIsConsistent(row);
 
@@ -95,6 +117,43 @@ internal static class ParentRowCodec
         }
 
         return filled;
+    }
+
+    public static ushort Fill(ReadOnlySpan<byte> row, ushort wanted, ChildVector children)
+    {
+        ushort changed = Changed(row);
+        ushort filled = 0;
+        int position = HeaderLength;
+        for (int index = 0; index < BranchRlp.ChildCount; index++)
+        {
+            if (((changed >> index) & 1) == 0) continue;
+
+            int length = row[position++];
+            if (((wanted >> index) & 1) == 1 && !children.IsPresent(index))
+            {
+                if (length != 0) children.Set(index, row.Slice(position, length));
+                filled |= (ushort)(1 << index);
+            }
+
+            position += length;
+        }
+
+        return filled;
+    }
+
+    private static void WriteBranchHeader(Span<byte> row, ulong lastBlock, ushort presence, ushort changed)
+    {
+        row[0] = BranchKind;
+        BinaryPrimitives.WriteUInt64BigEndian(row[1..], lastBlock);
+        BinaryPrimitives.WriteUInt16BigEndian(row[9..], presence);
+        BinaryPrimitives.WriteUInt16BigEndian(row[11..], changed);
+    }
+
+    private static int WriteChild(Span<byte> row, int position, ReadOnlySpan<byte> child)
+    {
+        row[position++] = (byte)child.Length;
+        child.CopyTo(row[position..]);
+        return position + child.Length;
     }
 
     private static bool PayloadIsConsistent(ReadOnlySpan<byte> row)

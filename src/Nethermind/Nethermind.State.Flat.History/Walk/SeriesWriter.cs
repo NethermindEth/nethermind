@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Proofs;
@@ -15,7 +16,21 @@ internal sealed class SeriesWriter(IColumnsDb<FlatHistoryColumns> history) : IDi
     private IWriteBatch? _batch;
     private int _rowsInBatch;
 
-    public void Write(in SeriesKey key, ulong block, byte[] row)
+    private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
+
+    public void WriteBranch(in SeriesKey key, ulong block, ushort presence, ushort changed, ChildVector children) =>
+        Write(key, block, _rowBuffer.AsSpan(0, ParentRowCodec.EncodeBranch(block, presence, changed, children, _rowBuffer)));
+
+    public void WriteWhole(in SeriesKey key, ulong block, ReadOnlySpan<byte> rlp)
+    {
+        byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(rlp.Length));
+        Write(key, block, row.AsSpan(0, ParentRowCodec.EncodeWholeNode(block, rlp, row)));
+        ArrayPool<byte>.Shared.Return(row);
+    }
+
+    public void WriteEmpty(in SeriesKey key, ulong block) => Write(key, block, _rowBuffer.AsSpan(0, ParentRowCodec.EncodeEmpty(block, _rowBuffer)));
+
+    private void Write(in SeriesKey key, ulong block, ReadOnlySpan<byte> row)
     {
         if (!key.Scratch) throw new InvalidOperationException("Only scratch series are written by the walk; exact commitment rows come from the emitter.");
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Walk;
@@ -9,16 +10,18 @@ internal readonly record struct StorageRowRef(int Contract, ValueHash256 Slot, u
 
 internal readonly record struct ClearRecord(ValueHash256 Identity, ulong Block);
 
-internal sealed class StoragePartitionRows
+internal sealed class StoragePartitionRows : IDisposable
 {
+    private const int InitialCapacity = 1024;
+
     private readonly Dictionary<ValueHash256, int> _contracts = [];
 
     public readonly List<ValueHash256> Identities = [];
     public readonly HashSet<(int Contract, ValueHash256 Slot)> StreamedSlots = [];
 
-    public List<StorageRowRef> Start { get; private set; } = [];
+    public ArrayPoolList<StorageRowRef> Start { get; private set; } = new(InitialCapacity);
 
-    public List<StorageRowRef> Deltas { get; private set; } = [];
+    public ArrayPoolList<StorageRowRef> Deltas { get; private set; } = new(InitialCapacity);
 
     public RowArena Arena { get; private set; } = new();
 
@@ -38,8 +41,16 @@ internal sealed class StoragePartitionRows
 
     public void Reset()
     {
-        Start = [];
-        Deltas = [];
+        Dispose();
+        Start = new ArrayPoolList<StorageRowRef>(InitialCapacity);
+        Deltas = new ArrayPoolList<StorageRowRef>(InitialCapacity);
         Arena = new RowArena();
+    }
+
+    public void Dispose()
+    {
+        Start.Dispose();
+        Deltas.Dispose();
+        Arena.Dispose();
     }
 }

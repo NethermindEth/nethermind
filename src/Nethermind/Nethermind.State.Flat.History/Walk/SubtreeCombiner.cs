@@ -25,8 +25,8 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
         SeriesKey[] keys = new SeriesKey[BranchRlp.ChildCount];
         for (int index = 0; index < BranchRlp.ChildCount; index++) keys[index] = childKey(index);
 
-        SeriesPublisher publisher = new(scope, parent, own, writer);
-        ChildSeries children = new(reader, keys, from, to, RowsPerCursor(BranchRlp.ChildCount), token);
+        using SeriesPublisher publisher = new(scope, parent, own, writer);
+        using ChildSeries children = new(reader, keys, from, to, RowsPerCursor(BranchRlp.ChildCount), token);
         NodeView current = children.Combine();
         emitter?.BeginBlock(from);
         publisher.Publish(from, current, emitter);
@@ -42,6 +42,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
             }
 
+            current.Release();
             current = children.Combine();
             emitter?.BeginBlock(block);
             publisher.Publish(block, current, emitter);
@@ -60,6 +61,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer.OnBlock(quiet, current);
         }
 
+        current.Release();
         foreach (SeriesKey key in keys)
         {
             if (key.Scratch) writer.Delete(key);
@@ -79,6 +81,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
         ChildSeries[] groups = new ChildSeries[BranchRlp.ChildCount];
         SeriesPublisher[] groupPublishers = new SeriesPublisher[BranchRlp.ChildCount];
         NodeView[] groupViews = new NodeView[BranchRlp.ChildCount];
+        try
         {
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
             {
@@ -89,7 +92,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 groupViews[nibble] = groups[nibble].Combine();
             }
 
-            SeriesPublisher rootPublisher = new(SeriesScope.Accounts, TreePath.Empty, key: null, writer);
+            using SeriesPublisher rootPublisher = new(SeriesScope.Accounts, TreePath.Empty, key: null, writer);
             NodeView current = NodeViews.Combine(groupViews);
             emitter?.BeginBlock(from);
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(from, groupViews[nibble], emitter);
@@ -119,10 +122,12 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                     if (groups[nibble].NextBlock != block) continue;
 
                     groups[nibble].ApplyAt(block);
+                    groupViews[nibble].Release();
                     groupViews[nibble] = groups[nibble].Combine();
                     if (groupPublishers[nibble].IsNew(groupViews[nibble].Hash)) groupPublishers[nibble].Publish(block, groupViews[nibble], emitter);
                 }
 
+                current.Release();
                 current = NodeViews.Combine(groupViews);
                 if (rootPublisher.IsNew(current.Hash)) rootPublisher.Publish(block, current, emitter);
                 emitter?.CompleteBlock();
@@ -132,6 +137,13 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             }
 
             for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = root.OnBlock(quiet, current);
+            current.Release();
+        }
+        finally
+        {
+            foreach (ChildSeries? group in groups) group?.Dispose();
+            foreach (SeriesPublisher? publisher in groupPublishers) publisher?.Dispose();
+            foreach (NodeView view in groupViews) view.Release();
         }
 
         for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
@@ -146,7 +158,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
     private int RowsPerCursor(int cursors) => (int)Math.Clamp(maxRowsPerPartition / cursors, SeriesReader.SeriesCursor.MinRowsBuffered, int.MaxValue);
 
-    private sealed class ChildSeries
+    private sealed class ChildSeries : IDisposable
     {
         private readonly NodeSeriesState[] _states = new NodeSeriesState[BranchRlp.ChildCount];
         private readonly SeriesReader.SeriesCursor[] _cursors = new SeriesReader.SeriesCursor[BranchRlp.ChildCount];
@@ -194,6 +206,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 if (!_hasRow[index] || _cursors[index].Block != block) continue;
 
                 _states[index].Apply(_cursors[index].Row);
+                _views[index].Release();
                 _views[index] = _states[index].ToView();
                 _hasRow[index] = _cursors[index].MoveNext();
             }
@@ -201,5 +214,11 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
         public NodeView Combine() => NodeViews.Combine(_views);
 
+        public void Dispose()
+        {
+            foreach (SeriesReader.SeriesCursor cursor in _cursors) cursor?.Dispose();
+            foreach (NodeSeriesState state in _states) state?.Dispose();
+            foreach (NodeView view in _views) view.Release();
+        }
     }
 }

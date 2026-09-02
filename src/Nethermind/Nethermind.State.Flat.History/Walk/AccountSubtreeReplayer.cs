@@ -30,7 +30,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         RawScopedTrieStore store = new(new MemDb());
         StateTree state = new(store, logManager);
         TrieChangeCollector? changes = emitter is null ? null : new TrieChangeCollector();
-        SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);
+        using SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);
 
         List<StreamedAccount> streams = [];
         foreach (ValueHash256 path in rows.StreamedPaths)
@@ -53,7 +53,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
 
         emitter?.BeginBlock(from);
         Recompute(state, changes, emitter, prefix.Length);
-        publisher.Publish(from, NodeViews.FromRoot(state.RootRef, prefix.Length, store), emitter);
+        Publish(publisher, from, state, prefix.Length, store, emitter);
         emitter?.CompleteBlock();
 
         rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
@@ -96,9 +96,18 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             }
 
             Recompute(state, changes, emitter, prefix.Length);
-            if (publisher.IsNew(state.RootHash.ValueHash256)) publisher.Publish(block, NodeViews.FromRoot(state.RootRef, prefix.Length, store), emitter);
+            if (publisher.IsNew(state.RootHash.ValueHash256)) Publish(publisher, block, state, prefix.Length, store, emitter);
             emitter?.CompleteBlock();
         }
+
+        foreach (StreamedAccount stream in streams) stream.Rows.Dispose();
+    }
+
+    private static void Publish(SeriesPublisher publisher, ulong block, StateTree state, int depth, ITrieNodeResolver resolver, CommitmentEmitter? emitter)
+    {
+        NodeView view = NodeViews.FromRoot(state.RootRef, depth, resolver);
+        publisher.Publish(block, view, emitter);
+        view.Release();
     }
 
     private static void Recompute(PatriciaTree tree, TrieChangeCollector? changes, CommitmentEmitter? emitter, int minRecordedDepth)

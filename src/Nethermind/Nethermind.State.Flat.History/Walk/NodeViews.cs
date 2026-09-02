@@ -49,13 +49,18 @@ internal static class NodeViews
 
         if (present >= 2)
         {
-            byte[]?[] references = new byte[]?[BranchRlp.ChildCount];
-            for (int index = 0; index < BranchRlp.ChildCount; index++) references[index] = children[index].Reference;
+            ChildVector references = ChildVector.Rent();
+            for (int index = 0; index < BranchRlp.ChildCount; index++) children[index].WriteReference(references, index);
             return NodeView.Branch(references);
         }
 
         NodeView child = children[only];
-        if (child.Kind == NodeViewKind.Branch) return NodeView.Whole(ExtensionRlp([(byte)only], child.Reference!));
+        if (child.Kind == NodeViewKind.Branch)
+        {
+            Span<byte> reference = stackalloc byte[Hash256.Size];
+            child.CopyReferenceTo(reference);
+            return NodeView.Whole(ExtensionRlp([(byte)only], reference[..child.ReferenceLength]));
+        }
 
         (byte[] nibbles, bool isLeaf, byte[] payload) = DecodeShortNode(child.Rlp!);
         byte[] merged = new byte[nibbles.Length + 1];
@@ -64,32 +69,7 @@ internal static class NodeViews
         return NodeView.Whole(isLeaf ? LeafRlp(merged, payload) : ExtensionRlp(merged, payload));
     }
 
-    public static ushort ChangedChildren(byte[]?[]? previous, byte[]?[] current)
-    {
-        ushort changed = 0;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            byte[]? before = previous?[index];
-            byte[]? after = current[index];
-            bool same = before is null ? after is null : after is not null && before.AsSpan().SequenceEqual(after);
-            if (!same) changed |= (ushort)(1 << index);
-        }
-
-        return changed;
-    }
-
-    public static ushort PresenceOf(byte[]?[] children)
-    {
-        ushort presence = 0;
-        for (int index = 0; index < BranchRlp.ChildCount; index++)
-        {
-            if (children[index] is not null) presence |= (ushort)(1 << index);
-        }
-
-        return presence;
-    }
-
-    public static byte[] ExtensionRlp(ReadOnlySpan<byte> nibbles, byte[] childReference)
+    public static byte[] ExtensionRlp(ReadOnlySpan<byte> nibbles, ReadOnlySpan<byte> childReference)
     {
         byte[] hexPrefix = HexPrefix.ToBytes(nibbles.ToArray(), isLeaf: false);
         int referenceLength = childReference.Length == Hash256.Size ? 1 + Hash256.Size : childReference.Length;
@@ -122,7 +102,7 @@ internal static class NodeViews
 
     private static NodeView AsBranch(byte[] rlp)
     {
-        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        ChildVector children = ChildVector.Rent();
         BranchRlp.ReadChildren(rlp, children);
         return NodeView.Branch(children);
     }

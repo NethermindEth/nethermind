@@ -15,34 +15,53 @@ internal enum NodeViewKind : byte
 
 internal readonly struct NodeView
 {
-    public static readonly NodeView Empty = new(NodeViewKind.Empty, null, null, Keccak.EmptyTreeHash.ValueHash256, null);
+    public static readonly NodeView Empty = new(NodeViewKind.Empty, null, null, Keccak.EmptyTreeHash.ValueHash256);
 
-    private NodeView(NodeViewKind kind, byte[]? rlp, byte[]?[]? children, in ValueHash256 hash, byte[]? reference)
+    private NodeView(NodeViewKind kind, byte[]? rlp, ChildVector? children, in ValueHash256 hash)
     {
         Kind = kind;
         Rlp = rlp;
         Children = children;
         Hash = hash;
-        Reference = reference;
     }
 
     public NodeViewKind Kind { get; }
 
     public byte[]? Rlp { get; }
 
-    public byte[]?[]? Children { get; }
+    public ChildVector? Children { get; }
 
     public ValueHash256 Hash { get; }
 
-    public byte[]? Reference { get; }
+    public bool IsInline => Rlp is not null && Rlp.Length < Hash256.Size;
 
-    public static NodeView Branch(byte[]?[] children) => Of(NodeViewKind.Branch, BranchRlp.Encode(children), children);
-
-    public static NodeView Whole(byte[] rlp) => Of(NodeViewKind.Whole, rlp, null);
-
-    private static NodeView Of(NodeViewKind kind, byte[] rlp, byte[]?[]? children)
+    public void WriteReference(ChildVector vector, int index)
     {
-        ValueHash256 hash = Keccak.Compute(rlp);
-        return new NodeView(kind, rlp, children, hash, rlp.Length < Hash256.Size ? rlp : hash.ToByteArray());
+        if (Rlp is null) vector.Clear(index);
+        else if (Rlp.Length < Hash256.Size) vector.Set(index, Rlp);
+        else vector.SetHash(index, Hash);
+    }
+
+    public int ReferenceLength => Rlp is null ? 0 : Rlp.Length < Hash256.Size ? Rlp.Length : Hash256.Size;
+
+    public void CopyReferenceTo(Span<byte> destination)
+    {
+        if (Rlp is null) return;
+
+        if (Rlp.Length < Hash256.Size) Rlp.CopyTo(destination);
+        else Hash.Bytes.CopyTo(destination);
+    }
+
+    public static NodeView Branch(ChildVector children)
+    {
+        byte[] rlp = BranchRlp.Encode(children);
+        return new NodeView(NodeViewKind.Branch, rlp, children, Keccak.Compute(rlp));
+    }
+
+    public static NodeView Whole(byte[] rlp) => new(NodeViewKind.Whole, rlp, null, Keccak.Compute(rlp));
+
+    public void Release()
+    {
+        if (Children is not null) ChildVector.Return(Children);
     }
 }

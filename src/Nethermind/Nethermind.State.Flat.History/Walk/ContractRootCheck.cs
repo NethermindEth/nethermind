@@ -18,6 +18,7 @@ internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, His
 
     public void Begin(in ValueHash256 identity, ulong from, ulong to, CancellationToken token)
     {
+        _rows?.Dispose();
         _rows = null;
         _hasRow = false;
         _previous = Keccak.EmptyTreeHash.ValueHash256;
@@ -50,6 +51,7 @@ internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, His
     public void End()
     {
         while (_hasRow) ConsumeRowOnly();
+        _rows?.Dispose();
         _rows = null;
     }
 

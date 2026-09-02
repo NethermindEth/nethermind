@@ -145,7 +145,8 @@ internal sealed class StorageSubtreeReplayer(
             emitter?.CompleteBlock();
         }
 
-        foreach (Contract contract in contracts) contract.Check?.End();
+        foreach (StreamedSlot stream in streams) stream.Rows.Dispose();
+        foreach (Contract contract in contracts) contract.Finish();
     }
 
     private sealed class StreamedSlot(int contract, ValueHash256 slot, HistoryRowCursor rows, bool hasRow)
@@ -182,14 +183,29 @@ internal sealed class StorageSubtreeReplayer(
             if (_emitter is not null) _changes.RecordStorage(_emitter, Identity, slotPrefix.Length);
         }
 
-        public void PublishAnchor(ulong block, CommitmentEmitter? emitter) =>
-            publisher?.Publish(block, NodeViews.FromRoot(Tree!.RootRef, slotPrefix.Length, _store!), emitter);
+        public void PublishAnchor(ulong block, CommitmentEmitter? emitter)
+        {
+            if (publisher is not null) PublishView(block, emitter);
+        }
 
         public void PublishChange(ulong block, CommitmentEmitter? emitter)
         {
             ValueHash256 root = Tree!.RootHash.ValueHash256;
             check?.OnRoot(block, root);
-            if (publisher is not null && publisher.IsNew(root)) publisher.Publish(block, NodeViews.FromRoot(Tree.RootRef, slotPrefix.Length, _store!), emitter);
+            if (publisher is not null && publisher.IsNew(root)) PublishView(block, emitter);
+        }
+
+        public void Finish()
+        {
+            check?.End();
+            publisher?.Dispose();
+        }
+
+        private void PublishView(ulong block, CommitmentEmitter? emitter)
+        {
+            NodeView view = NodeViews.FromRoot(Tree!.RootRef, slotPrefix.Length, _store!);
+            publisher!.Publish(block, view, emitter);
+            view.Release();
         }
     }
 }

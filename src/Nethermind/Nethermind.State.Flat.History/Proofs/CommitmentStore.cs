@@ -35,6 +35,15 @@ internal sealed class CommitmentStore
         return _column.Get(rowKey[..keyLength]);
     }
 
+    public Span<byte> GetExactSpan(scoped ReadOnlySpan<byte> prefix, ulong suffix)
+    {
+        Span<byte> rowKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int keyLength = CommitmentKeyLayout.WriteSeekKey(rowKey, prefix, suffix);
+        return _column.GetSpan(rowKey[..keyLength]);
+    }
+
+    public void Release(Span<byte> value) => _column.DangerousReleaseMemory(value);
+
     public RowChain OpenAtOrBelow(scoped ReadOnlySpan<byte> prefix, ulong suffix, ResolutionBudget? budget = null)
     {
         Span<byte> seekKey = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];

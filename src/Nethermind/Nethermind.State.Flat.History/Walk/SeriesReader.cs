@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Proofs;
 
@@ -35,14 +36,14 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
         return new SeriesCursor(column, prefix[..prefixLength], fromExclusive, toInclusive, maxRowsBuffered, token);
     }
 
-    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token)
+    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token) : IDisposable
     {
         public const int MinRowsBuffered = 64;
         private const ulong MinWindow = 64;
 
         private readonly RowArena _arena = new();
-        private readonly List<(ulong Block, int Offset, int Length)> _window = [];
         private readonly int _maxRows = Math.Max(MinRowsBuffered, maxRowsBuffered);
+        private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = new(Math.Min(Math.Max(MinRowsBuffered, maxRowsBuffered), 4096));
         private ulong _nextLow = fromExclusive + 1;
         private ulong _windowSize = Window;
         private int _position = -1;
@@ -93,13 +94,25 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
 
                 if (_window.Count > 0)
                 {
-                    _window.Reverse();
+                    for (int left = 0, right = _window.Count - 1; left < right; left++, right--)
+                    {
+                        (ulong Block, int Offset, int Length) swap = _window[left];
+                        _window[left] = _window[right];
+                        _window[right] = swap;
+                    }
+
                     _position = 0;
                     return true;
                 }
             }
 
             return false;
+        }
+
+        public void Dispose()
+        {
+            _window.Dispose();
+            _arena.Dispose();
         }
 
         private bool ReadDescending(ulong lo, ulong hi)

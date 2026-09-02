@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using Nethermind.Core.Collections;
+
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class RowArena
+internal sealed class RowArena : IDisposable
 {
     private const int ChunkShift = 24;
     private const int MaxChunkSize = 1 << ChunkShift;
     private const int MaxChunks = (int.MaxValue >> ChunkShift) + 1;
     private const int FirstChunkSize = 64 * 1024;
 
-    private readonly List<byte[]> _chunks = [];
+    private readonly ArrayPoolList<byte[]> _chunks = new(4);
     private int _position;
     private int _nextChunkSize = FirstChunkSize;
 
@@ -22,7 +25,7 @@ internal sealed class RowArena
         {
             if (_chunks.Count == MaxChunks) throw new InvalidOperationException("A history walk partition outgrew its row arena; lower FlatDb.HistoryVerifyMaxRows.");
 
-            _chunks.Add(new byte[Math.Max(_nextChunkSize, value.Length)]);
+            _chunks.Add(ArrayPool<byte>.Shared.Rent(Math.Max(_nextChunkSize, value.Length)));
             _position = 0;
             _nextChunkSize = Math.Min(MaxChunkSize, _nextChunkSize * 2);
         }
@@ -35,10 +38,21 @@ internal sealed class RowArena
 
     public void Clear()
     {
-        if (_chunks.Count > 1) _chunks.RemoveRange(1, _chunks.Count - 1);
+        for (int i = _chunks.Count - 1; i >= 1; i--)
+        {
+            ArrayPool<byte>.Shared.Return(_chunks[i]);
+            _chunks.ReduceCount(i);
+        }
+
         _position = 0;
     }
 
     public ReadOnlySpan<byte> Slice(int offset, int length) =>
         length == 0 ? ReadOnlySpan<byte>.Empty : _chunks[offset >> ChunkShift].AsSpan(offset & (MaxChunkSize - 1), length);
+
+    public void Dispose()
+    {
+        for (int i = 0; i < _chunks.Count; i++) ArrayPool<byte>.Shared.Return(_chunks[i]);
+        _chunks.Dispose();
+    }
 }

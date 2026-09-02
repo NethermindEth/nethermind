@@ -3,11 +3,12 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class HistoryRowCursor
+internal sealed class HistoryRowCursor : IDisposable
 {
     public const int ProbeRows = 4096;
     public const int MaxWindowRows = 4 * ProbeRows;
@@ -21,7 +22,7 @@ internal sealed class HistoryRowCursor
     private readonly ulong _to;
     private readonly CancellationToken _token;
     private readonly RowArena _arena = new();
-    private readonly List<(ulong Block, int Offset, int Length)> _window = [];
+    private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = new(ProbeRows);
     private int _position = -1;
     private ulong _nextLow;
     private ulong _windowSize;
@@ -112,7 +113,7 @@ internal sealed class HistoryRowCursor
             if (complete)
             {
                 _exhausted = true;
-                _window.Reverse();
+                ReverseWindow();
                 return true;
             }
 
@@ -130,10 +131,20 @@ internal sealed class HistoryRowCursor
                 continue;
             }
 
-            _window.Reverse();
+            ReverseWindow();
             if (hi == _to) _exhausted = true;
             else _nextLow = hi + 1;
             return true;
+        }
+    }
+
+    private void ReverseWindow()
+    {
+        for (int left = 0, right = _window.Count - 1; left < right; left++, right--)
+        {
+            (ulong Block, int Offset, int Length) swap = _window[left];
+            _window[left] = _window[right];
+            _window[right] = swap;
         }
     }
 
@@ -166,6 +177,12 @@ internal sealed class HistoryRowCursor
             ReadOnlySpan<byte> value = view.CurrentValue;
             _window.Add((block, _arena.Append(value), value.Length));
         }
+    }
+
+    public void Dispose()
+    {
+        _window.Dispose();
+        _arena.Dispose();
     }
 
     private bool Matches(ReadOnlySpan<byte> key) => key.Length == _flatKey.Length + sizeof(ulong) && key[.._flatKey.Length].SequenceEqual(_flatKey);
