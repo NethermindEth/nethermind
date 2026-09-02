@@ -27,6 +27,7 @@ namespace Nethermind.Core.Extensions
         private const ulong Lane1 = 0xC2B2AE3D27D4EB4FUL;
         private const ulong Lane2 = 0x165667B19E3779F9UL;
         private const ulong Lane3 = 0x85EBCA77C2B2AE63UL;
+        private const int WordWidth = 32;
 
         /// <summary>Seeds a lane multiplier for one key width.</summary>
         /// <remarks>
@@ -40,6 +41,13 @@ namespace Nethermind.Core.Extensions
         /// lane constants did not: a 20-byte key and its zero-padded 32-byte form previously mixed
         /// to the same value, because the tail read of the shorter key is the zero-extension of the
         /// longer one's and the unused lane contributes nothing.
+        /// <para>
+        /// This placement does not by itself make the mixer hard to collide.
+        /// <see cref="InstanceRandom"/> is a fixed literal in the guest, so the seeded multipliers
+        /// are public constants and remain odd and invertible: the same closed-form derivation
+        /// applies to them. What it buys is the width separation above, which fixes a present bug,
+        /// and a mixer that a per-run seed would actually harden instead of cancelling.
+        /// </para>
         /// </remarks>
         private static ulong SeededLane(ulong lane, int width) =>
             lane ^ ((ulong)ComputeSeed(width) << 1);
@@ -52,8 +60,6 @@ namespace Nethermind.Core.Extensions
         private static readonly ulong WordLane1 = SeededLane(Lane1, WordWidth);
         private static readonly ulong WordLane2 = SeededLane(Lane2, WordWidth);
         private static readonly ulong WordLane3 = SeededLane(Lane3, WordWidth);
-
-        private const int WordWidth = 32;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)

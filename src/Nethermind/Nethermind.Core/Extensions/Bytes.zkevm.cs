@@ -16,5 +16,5 @@ public static unsafe partial class Bytes
     /// shift/or pairs on whole words. See <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Bswap64(ulong value) => ZkEvmBitOperations.Bswap64(value);
+    internal static ulong Bswap64(ulong value) => ZkEvmBitOperations.Bswap64(value);
 }

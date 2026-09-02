@@ -19,5 +19,5 @@ public static unsafe partial class Bytes
     /// up its variant.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong Bswap64(ulong value) => BinaryPrimitives.ReverseEndianness(value);
+    internal static ulong Bswap64(ulong value) => BinaryPrimitives.ReverseEndianness(value);
 }
