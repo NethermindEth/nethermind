@@ -62,6 +62,8 @@ public class BlockImprovementContext : IBlockImprovementContext
                     (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
                 {
                     // Only update block if block has actually improved.
+                    // Block before fees: GetPayloadHandlerBase reads fees first, so a concurrent read
+                    // can only pair a new block with old fees and under-report blockValue.
                     CurrentBestBlock = block;
                     BlockFees = fees;
                 }
