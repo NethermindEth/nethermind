@@ -27,6 +27,19 @@ public class FrameTxValidationTests
         Assert.That(error, Is.EqualTo(expectedError));
     }
 
+    [TestCase(true, null)]
+    [TestCase(false, FrameTxValidation.PostTxNotEnabled)]
+    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
+    {
+        Transaction tx = CreateValidFrameTx(static tx =>
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx)]);
+
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
+
+        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+        Assert.That(error, Is.EqualTo(expectedError));
+    }
+
     private static IEnumerable<TestCaseData> ConstraintCases()
     {
         yield return Case("MinimalSelfVerifyFrame_Valid",

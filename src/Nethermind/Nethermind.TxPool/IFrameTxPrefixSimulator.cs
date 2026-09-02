@@ -13,8 +13,8 @@ public interface IFrameTxPrefixSimulator
     /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
     /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
     /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
-    /// <param name="token">Honored at entry and polled cooperatively during execution. It does not bound the
-    /// wait for the serialized processing env; the implementation's own timeout does, as a rejection.</param>
+    /// <param name="token">Honored at entry and polled cooperatively during execution. It does not gate access
+    /// to the serialized processing env; a busy simulator sheds immediately rather than waiting for it.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
     /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
     /// exposed, it is the one admission path with no cumulative bound.</param>

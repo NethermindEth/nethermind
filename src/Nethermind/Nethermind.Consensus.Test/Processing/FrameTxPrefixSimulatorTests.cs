@@ -5,8 +5,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -237,6 +239,80 @@ public class FrameTxPrefixSimulatorTests
         Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
     }
 
+    // The lock is held for the whole of a simulation, so a second arrival must shed rather than park: this
+    // runs on a small pool of background threads that also serve sync, and holds the pool's head read lock.
+    [Test]
+    public void Simulate_WhileAnotherSimulationHoldsTheEnv_ShedsInsteadOfWaiting()
+    {
+        using ManualResetEventSlim inside = new(false);
+        using ManualResetEventSlim release = new(false);
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        envFactory.Create().Returns(_ =>
+        {
+            inside.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+            throw new TestEnvUnavailableException();
+        });
+        // Far longer than this test may take, so a simulator that waits for the lock fails on the clock.
+        using FrameTxPrefixSimulator simulator = CreateSimulator(
+            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 0, timeoutMs: 30_000);
+
+        Task<FrameTxSimulationResult> holder = Task.Run(() => simulator.Simulate(FrameTx()));
+        Assert.That(inside.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first simulation never took the env");
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+        elapsed.Stop();
+        release.Set();
+        holder.Wait(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Reason, Does.Contain("busy"));
+            Assert.That(result.NodeBound, Is.True, "the peer did not choose when this node is busy");
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "shedding must not wait for the timeout");
+        }
+    }
+
+    // The budget rejects nearly everything under spam, so it is read before the lock; reading it after would
+    // make every arrival pay a contended acquisition to learn it had none.
+    [Test]
+    public void Simulate_WithNoBudgetLeft_ShedsWithoutContendingForTheEnv()
+    {
+        using ManualResetEventSlim inside = new(false);
+        using ManualResetEventSlim release = new(false);
+        int calls = 0;
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        envFactory.Create().Returns(_ =>
+        {
+            // The first call spends the budget and returns; the second holds the lock for the rest of the test.
+            if (Interlocked.Increment(ref calls) > 1)
+            {
+                inside.Set();
+                release.Wait(TimeSpan.FromSeconds(30));
+            }
+            else
+            {
+                Thread.Sleep(5);
+            }
+
+            throw new TestEnvUnavailableException();
+        });
+        using FrameTxPrefixSimulator simulator = CreateSimulator(
+            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1, timeoutMs: 30_000);
+
+        simulator.Simulate(FrameTx());
+        Task<FrameTxSimulationResult> holder = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
+        Assert.That(inside.Wait(TimeSpan.FromSeconds(10)), Is.True, "the second simulation never took the env");
+
+        // Both verdicts are available now, so reporting the budget is what proves the lock was never reached.
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+        release.Set();
+        holder.Wait(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Reason, Does.Contain("budget"));
+    }
+
     private static FrameTxPrefixSimulator Create(
         IReadOnlyTxProcessingEnvFactory envFactory,
         out IBlockFinder blockFinder,
@@ -294,11 +370,12 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory,
         IBlockFinder blockFinder,
         int budgetPerHeadMs,
-        InterfaceLogger? logSink = null) =>
+        InterfaceLogger? logSink = null,
+        int timeoutMs = 250) =>
         new(envFactory,
             blockFinder,
             new TestSpecProvider(Eip8141Prototype.Instance),
-            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs },
+            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs },
             logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)));
 
     private static Transaction FrameTx() => new()

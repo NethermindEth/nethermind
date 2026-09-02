@@ -27,6 +27,8 @@ namespace Nethermind.Core.Test.Encoding;
 public class FrameTxDecoderTests
 {
     private const int BlobVersionedHashesDecodeCap = ShardBlobNetworkWrapperRlp.BlobCountLimit;
+    private const int SignaturesDecodeCap = 1024;
+    private const int FrameDataDecodeCap = 30 * 1024 * 1024;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -121,19 +123,7 @@ public class FrameTxDecoderTests
     public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
     {
         // A wrapper holding only the body leaves the reader at the end of the buffer, where the peek reads out of bounds.
-        Rlp body = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
-            Rlp.Encode(0L),                          // nonce
-            Rlp.Encode(TestItem.AddressA.Bytes),     // sender
-            Rlp.Encode(Array.Empty<Rlp>()),          // frames
-            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
-            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
-        Rlp wrapper = Rlp.Encode(new[] { body });
-
-        byte[] payload = new byte[1 + wrapper.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        wrapper.Bytes.CopyTo(payload, 1);
+        byte[] payload = TypedPayload(Rlp.Encode(new[] { FrameTxBody() }));
 
         void Decode()
         {
@@ -149,21 +139,8 @@ public class FrameTxDecoderTests
     {
         // The payload is exactly 7 fields with no envelope signature, so an appended [v, r, s] triple must be
         // rejected: decoding it with a spurious signature is a divergence that also changes the transaction hash.
-        Rlp sequence = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
-            Rlp.Encode(0L),                          // nonce
-            Rlp.Encode(TestItem.AddressA.Bytes),     // sender
-            Rlp.Encode(Array.Empty<Rlp>()),          // frames
-            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
-            Rlp.Encode(Array.Empty<Rlp>()),          // blob_versioned_hashes
-            Rlp.Encode(27L),                         // trailing v
-            Rlp.Encode(new byte[32]),                // trailing r
-            Rlp.Encode(new byte[32]));               // trailing s
-
-        byte[] payload = new byte[1 + sequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        sequence.Bytes.CopyTo(payload, 1);
+        byte[] payload = TypedPayload(FrameTxBody(trailing:
+            [Rlp.Encode(27L), Rlp.Encode(new byte[32]), Rlp.Encode(new byte[32])]));
 
         void Decode()
         {
@@ -180,18 +157,7 @@ public class FrameTxDecoderTests
         // The sender is mandatory: a frame transaction names its payer outright rather than recovering
         // it from an envelope signature, so — unlike `to` or a frame target — an empty field has no
         // "absent" meaning and must not decode to a null sender.
-        Rlp sequence = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
-            Rlp.Encode(0L),                          // nonce
-            Rlp.Encode(Array.Empty<byte>()),         // sender, encoded as the empty string 0x80
-            Rlp.Encode(Array.Empty<Rlp>()),          // frames
-            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
-            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
-
-        byte[] payload = new byte[1 + sequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        sequence.Bytes.CopyTo(payload, 1);
+        byte[] payload = TypedPayload(FrameTxBody(sender: Rlp.Encode(Array.Empty<byte>()))); // the empty string 0x80
 
         void Decode()
         {
@@ -304,22 +270,34 @@ public class FrameTxDecoderTests
 
     private Transaction DecodeReferenceEnvelope(Rlp references)
     {
-        Rlp sequence = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),
-            Rlp.Encode(0L),
-            Rlp.Encode(TestItem.AddressA.Bytes),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)),
-            Rlp.Encode(Array.Empty<Rlp>()),
-            references);
-
-        byte[] payload = new byte[1 + sequence.Length];
-        payload[0] = (byte)TxType.FrameTx;
-        sequence.Bytes.CopyTo(payload, 1);
-
-        RlpReader reader = new(payload);
+        RlpReader reader = new(TypedPayload(FrameTxBody(trailing: references)));
         return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+    }
+
+    /// <summary>
+    /// Encodes the well-formed type-6 payload body that the hand-built payload tests start from.
+    /// </summary>
+    /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
+    /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
+    /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, params Rlp[] trailing) =>
+        Rlp.Encode([
+            chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
+            Rlp.Encode(0L),                                 // nonce
+            sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
+            Rlp.Encode(Array.Empty<Rlp>()),                 // frames
+            Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
+            Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
+            .. trailing]);
+
+    /// <summary>Prefixes <paramref name="rlp"/> with the frame transaction type byte.</summary>
+    private static byte[] TypedPayload(Rlp rlp)
+    {
+        byte[] payload = new byte[1 + rlp.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        rlp.Bytes.CopyTo(payload, 1);
+        return payload;
     }
 
     private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
@@ -493,6 +471,54 @@ public class FrameTxDecoderTests
         else
         {
             Assert.That(EncodeDecode(tx).BlobVersionedHashes!.Length, Is.EqualTo(hashCount));
+        }
+    }
+
+    [TestCase(SignaturesDecodeCap, false)]
+    [TestCase(SignaturesDecodeCap + 1, true)]
+    public void Decode_BoundsTheSignatureCount(int signatureCount, bool rejected)
+    {
+        Transaction tx = CreateFrameTx(signatures:
+            [.. Enumerable.Range(0, signatureCount).Select(static _ =>
+                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default))]);
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).FrameSignatures!.Length, Is.EqualTo(signatureCount));
+        }
+    }
+
+    [Test]
+    public void Decode_ChainIdAtTwoToThe64_ThrowsRatherThanTruncatingToU64()
+    {
+        byte[] payload = TypedPayload(FrameTxBody(chainId: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
+    }
+
+    [TestCase(FrameDataDecodeCap, false)]
+    [TestCase(FrameDataDecodeCap + 1, true)]
+    public void Decode_BoundsTheFrameDataLength(int dataLength, bool rejected)
+    {
+        Transaction tx = CreateFrameTx(frames: [Frame(data: new byte[dataLength])]);
+
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(tx), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(tx).Frames![0].Data.Length, Is.EqualTo(dataLength));
         }
     }
 

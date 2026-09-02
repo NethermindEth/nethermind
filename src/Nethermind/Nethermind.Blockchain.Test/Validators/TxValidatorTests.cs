@@ -689,6 +689,31 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_FrameTxWhenEip8141Disabled_ReturnsInvalidTxType()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+        };
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Prague.Instance.Name)));
+        }
+    }
+
+    [Test]
     public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
     {
         Transaction tx = Build.A.Transaction
@@ -1085,7 +1110,8 @@ public class TxValidatorTests
         yield return new TestCaseData(Array.Empty<RecentRootReference>(), false, false).SetName("IsWellFormed_FrameTxEmptyReferences_BeforeEip8272_ReturnFalse");
         yield return new TestCaseData(Array.Empty<RecentRootReference>(), true, true).SetName("IsWellFormed_FrameTxEmptyReferences_AfterEip8272_ReturnTrue");
         yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences], true, true).SetName("IsWellFormed_FrameTxFullReferences_AfterEip8272_ReturnTrue");
-        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, false).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_ReturnFalse");
+        // The cap belongs to FrameTxValidation, which FrameTxFieldsTxValidator applies elsewhere in the composite.
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, true).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_NotCappedHere");
     }
 
     [TestCaseSource(nameof(RecentRootReferenceEnvelopeCases))]
@@ -1095,6 +1121,29 @@ public class TxValidatorTests
         IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8272Enabled = eip8272Enabled };
 
         Assert.That(FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
+
+    /// <remarks>Pins the composite wiring that the envelope validator's dropped cap relies on: the cap survives
+    /// only while <see cref="FrameTxFieldsTxValidator"/> stays in the list, at whatever position.</remarks>
+    [TestCase(Eip8272Constants.MaxRecentRootReferences, ExpectedResult = true, TestName = "IsWellFormed_FrameTxAtCapRecentRootReferences_ReturnsTrue")]
+    [TestCase(Eip8272Constants.MaxRecentRootReferences + 1, ExpectedResult = false, TestName = "IsWellFormed_FrameTxOverCapRecentRootReferences_ReturnsFalse")]
+    public bool IsWellFormed_FrameTxRecentRootReferenceCap_IsEnforcedByTheComposite(int referenceCount)
+    {
+        RecentRootReference[] references = new RecentRootReference[referenceCount];
+        Array.Fill(references, new RecentRootReference(default, 0, default));
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+            RecentRootReferences = references,
+        };
+        OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+
+        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, spec).AsBool();
     }
 
     [Test]

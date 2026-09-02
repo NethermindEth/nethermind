@@ -631,10 +631,6 @@ public abstract class BlockchainTestBase
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
         // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
         ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
-        // The decoder names neither the field nor the type, so these widen both labels suite-wide to any
-        // untyped collection-limit rejection, not merely to the other fee field. No narrowing available.
-        ("TransactionException.GASPRICE_OVERFLOW", "Collection count of"),
-        ("TransactionException.PRIORITY_OVERFLOW", "Collection count of"),
         .. Eip8141Mappings(),
     ];
 
@@ -649,6 +645,11 @@ public abstract class BlockchainTestBase
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
         foreach (string fragment in FrameExceptionFragments.Decode)
             yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
+            yield return ("TransactionException.PRIORITY_OVERFLOW", fragment);
+        }
     }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;

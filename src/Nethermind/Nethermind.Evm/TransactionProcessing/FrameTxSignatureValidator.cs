@@ -132,18 +132,12 @@ public static class FrameTxSignatureValidator
 
         const int InputLength = Hash256.Size + TxFrameSignature.P256SignatureLength;
         byte[] input = ArrayPool<byte>.Shared.Rent(InputLength);
-        try
-        {
-            message.Bytes.CopyTo(input);
-            raw.CopyTo(input.AsSpan(Hash256.Size));
+        message.Bytes.CopyTo(input);
+        raw.CopyTo(input.AsSpan(Hash256.Size));
 
-            Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
-            return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(input);
-        }
+        Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
+        ArrayPool<byte>.Shared.Return(input);
+        return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
     }
 
     private static bool Fail(string message, out string? error)
