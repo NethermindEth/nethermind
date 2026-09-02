@@ -141,7 +141,7 @@ internal static class DiscoveryContainer
     {
         builder.Register(context => new BootnodeKademliaBucketSource(
                 protocol,
-                context.Resolve<IRoutingTable<Node, Hash256>>()))
+                context.Resolve<IRoutingTable<Node, ValueHash256>>()))
             .As<IBootnodeKademliaBucketSource>()
             .SingleInstance();
 

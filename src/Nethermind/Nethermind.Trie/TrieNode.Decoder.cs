@@ -497,19 +497,31 @@ namespace Nethermind.Trie
                 RlpReader rlpReader = item.RlpReader;
                 item.SeekChild(ref rlpReader, 0);
                 int position = 0;
+                // Unchanged children are consecutive bytes of the old RLP, so a run of them is one
+                // copy rather than one per child. Most branches change a single child, so this turns
+                // sixteen short copies into two.
+                int runStart = -1;
+                int runLength = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
                     object data = item._nodeData[i];
                     if (data is null)
                     {
                         int length = rlpReader.PeekNextRlpLength();
-                        ReadOnlySpan<byte> nextItem = rlpReader.Data.Slice(rlpReader.Position, length);
-                        nextItem.CopyTo(destination.Slice(position, nextItem.Length));
-                        position += nextItem.Length;
+                        if (runStart < 0) runStart = rlpReader.Position;
+                        runLength += length;
                         rlpReader.SkipBytes(length);
                     }
                     else
                     {
+                        if (runStart >= 0)
+                        {
+                            rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                            position += runLength;
+                            runStart = -1;
+                            runLength = 0;
+                        }
+
                         if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             destination[position++] = 128;
@@ -541,6 +553,11 @@ namespace Nethermind.Trie
 
                         rlpReader.SkipItem();
                     }
+                }
+
+                if (runStart >= 0)
+                {
+                    rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                 }
             }
         }

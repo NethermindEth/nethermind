@@ -140,7 +140,7 @@ public class BlockAccessListDecoderTests
             GC.Collect();
             GC.WaitForPendingFinalizers();
 
-            Assert.That(error.ToString(), Does.Not.Contain(nameof(ArrayPoolList<byte>)));
+            Assert.That(error.ToString(), Does.Not.Contain(nameof(ArrayPoolList<>)));
         }
         finally
         {

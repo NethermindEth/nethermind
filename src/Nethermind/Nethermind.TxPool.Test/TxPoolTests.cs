@@ -690,6 +690,17 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_keep_latest_revalidation_request_when_an_older_request_arrives_last()
+        {
+            LatestRevalidationRequest request = new();
+
+            request.Update(2);
+            request.Update(1);
+
+            Assert.That(request.Generation, Is.EqualTo(2));
+        }
+
+        [Test]
         public async Task should_retry_spec_change_revalidation_after_failure()
         {
             Block head = _blockTree.Head;

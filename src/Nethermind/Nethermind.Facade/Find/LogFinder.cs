@@ -87,7 +87,7 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        private bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
+        protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
             && filter.AddressFilter.Addresses.Count != 0
             && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);

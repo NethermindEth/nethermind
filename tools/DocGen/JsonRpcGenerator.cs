@@ -485,7 +485,7 @@ internal static class JsonRpcGenerator
     {
         JsonConverter converter = (JsonConverter)Activator.CreateInstance(converterType)!;
         MethodInfo write = converterType.GetMethod(
-            nameof(JsonConverter<object>.Write),
+            nameof(JsonConverter<>.Write),
             [typeof(Utf8JsonWriter), valueType, typeof(JsonSerializerOptions)])!;
 
         write.Invoke(converter, [writer, sample, EthereumJsonSerializer.JsonOptions]);

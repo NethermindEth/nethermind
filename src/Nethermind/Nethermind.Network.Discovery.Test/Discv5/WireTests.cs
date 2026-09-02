@@ -161,7 +161,132 @@ public class WireTests
         await cancellationSource.CancelAsync();
         await Task.WhenAll(runA, runB);
 
-        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && !HasEnr(node)));
+        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node =>
+            node.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
+            !HasEnr(node) &&
+            node.HighestObservedEnrSequence == peerA.NodeRecordProvider.Current.EnrSequence));
+    }
+
+    [TestCase(false, null, false, false)]
+    [TestCase(true, null, true, false)]
+    [TestCase(true, "2001:db8::2", false, false)]
+    [TestCase(true, "2001:db8::2", false, true)]
+    public async Task FindNeighbours_HandshakePreservesVerifiedEnrStateOnKnownNode(
+        bool includeEndpointInRecord,
+        string? recordIp,
+        bool expectRecordReplacement,
+        bool knownAsReplacement)
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        NodeRecord reachableRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            endpointA.Address,
+            tcpPort: endpointA.Port,
+            udpPort: endpointA.Port,
+            enrSequence: 1);
+        Node knownNodeA = new(TestItem.PrivateKeyA.PublicKey, endpointA);
+        knownNodeA.SetVerifiedEnr(reachableRecord);
+        BoundedDistanceKademlia tableB = new(TestItem.PrivateKeyB.PublicKey.Hash, capacityPerDistance: 16);
+        if (knownAsReplacement)
+        {
+            tableB.AddReplacement(knownNodeA);
+        }
+        else
+        {
+            tableB.AddOrRefresh(knownNodeA);
+        }
+
+        await using TestPeer peerA = CreatePeer(
+            TestItem.PrivateKeyA,
+            endpointA,
+            includeEndpointInRecord,
+            enrSequence: 2,
+            recordIp: recordIp is null ? null : IPAddress.Parse(recordIp));
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB, kademlia: tableB);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = peerB.NodeRecordProvider.Current
+        };
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task<Node[]?> findTask = peerA.Adapter.FindNeighbours(nodeB, TestItem.PrivateKeyC.PublicKey, cancellationSource.Token);
+        await PumpUntilComplete(findTask, peerA, peerB, cancellationSource.Token);
+        Node[]? nodes = await findTask;
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+
+        Assert.That(nodes, Is.Not.Null);
+        NodeRecord knownEnr = knownNodeA.Enr ?? throw new AssertionException("Expected the known node to retain its ENR.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(knownEnr.EnrSequence, Is.EqualTo(expectRecordReplacement ? 2 : 1));
+            Assert.That(knownNodeA.IsVerifiedEnr(knownEnr), Is.True);
+            Assert.That(knownNodeA.HighestObservedEnrSequence, Is.EqualTo(peerA.NodeRecordProvider.Current.EnrSequence));
+        }
+    }
+
+    [Test]
+    public async Task Ping_CachesEndpointlessSelfRecordSequenceWithoutRefetching()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        NodeRecord reachableRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            endpointB.Address,
+            tcpPort: endpointB.Port,
+            udpPort: endpointB.Port,
+            enrSequence: 1);
+        Node knownNodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB);
+        knownNodeB.SetVerifiedEnr(reachableRecord);
+        BoundedDistanceKademlia tableA = new(TestItem.PrivateKeyA.PublicKey.Hash, capacityPerDistance: 16);
+        tableA.AddOrRefresh(knownNodeB);
+
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA, kademlia: tableA);
+        await using TestPeer peerB = CreatePeer(
+            TestItem.PrivateKeyB,
+            endpointB,
+            includeEndpointInRecord: false,
+            enrSequence: 2);
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task firstPing = peerA.Adapter.Ping(knownNodeB, cancellationSource.Token);
+        await PumpUntilComplete(firstPing, peerA, peerB, cancellationSource.Token);
+        await firstPing;
+        await PumpUntil(
+            () => FindNode(tableA, TestItem.PrivateKeyB.PublicKey).HighestObservedEnrSequence == 2,
+            peerA,
+            peerB,
+            cancellationSource.Token);
+        int requestsAfterFirstPing = peerB.NodeRecordProvider.RequestCount;
+
+        Node cachedNode = FindNode(tableA, TestItem.PrivateKeyB.PublicKey);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cachedNode.Enr, Is.SameAs(reachableRecord));
+            Assert.That(cachedNode.IsVerifiedEnr(reachableRecord), Is.True);
+            Assert.That(cachedNode.HighestObservedEnrSequence, Is.EqualTo(2));
+        }
+
+        Task secondPing = peerA.Adapter.Ping(cachedNode, cancellationSource.Token);
+        await PumpUntilComplete(secondPing, peerA, peerB, cancellationSource.Token);
+        await secondPing;
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerB.NodeRecordProvider.RequestCount, Is.EqualTo(requestsAfterFirstPing + 1));
+            Assert.That(FindNode(tableA, TestItem.PrivateKeyB.PublicKey).HighestObservedEnrSequence, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -342,30 +467,51 @@ public class WireTests
         bool includeEndpointInRecord = true,
         ulong enrSequence = 1,
         IKademlia<PublicKey, Node>? kademlia = null,
-        int bucketSize = 16)
+        int bucketSize = 16,
+        IPAddress? recordIp = null)
     {
         IKademlia<PublicKey, Node> table = kademlia ?? Substitute.For<IKademlia<PublicKey, Node>>();
+        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+        if (table is BoundedDistanceKademlia boundedTable)
+        {
+            routingTable.TryGet(Arg.Any<ValueHash256>(), out _).Returns(callInfo =>
+            {
+                if (!boundedTable.TryGetNode((ValueHash256)callInfo[0], out Node storedNode))
+                {
+                    return false;
+                }
+
+                callInfo[1] = storedNode;
+                return true;
+            });
+        }
+
         NettyDiscoveryV5Handler handler = new(new TestLogManager());
         EmbeddedChannel channel = new();
         OutboundDatagramCapture outbound = new();
         channel.Pipeline.AddLast(outbound);
         handler.InitializeChannel(channel);
 
-        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence);
+        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence, recordIp);
         PacketCodec packetCodec = new(
             new InsecureProtectedPrivateKey(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(endpoint.Address, endpoint.Address)));
         Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
+            routingTable,
             handler,
             packetCodec,
             nodeRecordProvider,
+            ipResolver,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
-            Hash256KademliaDistance.Instance,
+            ValueHash256KademliaDistance.Instance,
             LimboLogs.Instance);
 
         return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
@@ -416,11 +562,24 @@ public class WireTests
 
     private static bool HasEnr(Node node) => node.Enr is not null;
 
+    private static Node FindNode(IKademlia<PublicKey, Node> kademlia, PublicKey publicKey)
+    {
+        foreach (Node node in kademlia.IterateNodes())
+        {
+            if (node.Id.Equals(publicKey))
+            {
+                return node;
+            }
+        }
+
+        throw new InvalidOperationException($"Node {publicKey} was not found in the routing table.");
+    }
+
     private static bool HasReceivedNodeWithEnrSequence(IKademlia<PublicKey, Node> kademlia, PublicKey publicKey, ulong sequence)
     {
         foreach (NSubstitute.Core.ICall call in kademlia.ReceivedCalls())
         {
-            if (call.GetMethodInfo().Name == nameof(IKademlia<PublicKey, Node>.AddOrRefresh) &&
+            if (call.GetMethodInfo().Name == nameof(IKademlia<,>.AddOrRefresh) &&
                 call.GetArguments()[0] is Node node &&
                 node.Id.Equals(publicKey) &&
                 HasEnrSequence(node, sequence))
@@ -448,7 +607,7 @@ public class WireTests
                 continue;
             }
 
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, candidate.PublicKey.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, candidate.PublicKey.Hash.ValueHash256);
             if (!keysByDistance.TryGetValue(distance, out List<PrivateKey>? keys))
             {
                 keys = [];
@@ -502,7 +661,7 @@ public class WireTests
 
         public void AddOrRefresh(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             bool added = false;
             lock (_lock)
             {
@@ -531,9 +690,27 @@ public class WireTests
             }
         }
 
+        public bool TryGetNode(ValueHash256 nodeHash, out Node storedNode)
+        {
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, nodeHash);
+            lock (_lock)
+            {
+                if ((_nodesByDistance.TryGetValue(distance, out List<Node>? nodes) &&
+                     TryGetNode(nodes, nodeHash, out storedNode)) ||
+                    (_replacementsByDistance.TryGetValue(distance, out List<Node>? replacements) &&
+                     TryGetNode(replacements, nodeHash, out storedNode)))
+                {
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
+        }
+
         public void AddReplacement(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             lock (_lock)
             {
                 GetReplacements(distance).Add(node);
@@ -542,7 +719,7 @@ public class WireTests
 
         public void Remove(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             Node? removed = null;
             lock (_lock)
             {
@@ -573,7 +750,7 @@ public class WireTests
 
         public bool Contains(PublicKey publicKey)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, publicKey.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, publicKey.Hash.ValueHash256);
             lock (_lock)
             {
                 if (!_nodesByDistance.TryGetValue(distance, out List<Node>? nodes))
@@ -640,6 +817,21 @@ public class WireTests
             }
 
             return nodes;
+        }
+
+        private static bool TryGetNode(List<Node> nodes, ValueHash256 nodeHash, out Node storedNode)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Id.Hash == nodeHash)
+                {
+                    storedNode = nodes[i];
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
         }
 
         private List<Node> GetReplacements(int distance)
@@ -730,12 +922,25 @@ public class WireTests
         }
     }
 
-    private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint, ulong enrSequence) : INodeRecordProvider
+    private sealed class TestNodeRecordProvider(
+        PrivateKey privateKey,
+        IPEndPoint endpoint,
+        bool includeEndpoint,
+        ulong enrSequence,
+        IPAddress? recordIp) : INodeRecordProvider
     {
         public NodeRecord Current { get; } = includeEndpoint
-            ? TestEnrBuilder.BuildSigned(privateKey, endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port, enrSequence: enrSequence)
+            ? TestEnrBuilder.BuildSigned(privateKey, recordIp ?? endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port, enrSequence: enrSequence)
             : TestEnrBuilder.BuildSignedWithoutEndpoint(privateKey, enrSequence);
 
-        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(Current);
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _requestCount);
+            return new ValueTask<NodeRecord>(Current);
+        }
     }
 }
