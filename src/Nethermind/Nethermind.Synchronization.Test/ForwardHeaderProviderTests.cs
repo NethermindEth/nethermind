@@ -278,7 +278,7 @@ public partial class ForwardHeaderProviderTests
         int allocationTimeout = -1;
         ctx.PeerPool
             .Allocate(Arg.Do<IPeerAllocationStrategy>(s => strategy = s), Arg.Any<AllocationContexts>(), Arg.Do<int>(t => allocationTimeout = t), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(SyncPeerAllocation.FailedAllocation));
+            .Returns(Task.FromResult(new SyncPeerAllocation(AllocationContexts.None)));
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, CancellationToken.None);
         using (Assert.EnterMultipleScope())

@@ -9,8 +9,6 @@ namespace Nethermind.Synchronization.Peers
 {
     public class SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null) : IDisposable
     {
-        public static readonly SyncPeerAllocation FailedAllocation = new(AllocationContexts.None, null);
-
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
@@ -27,10 +25,6 @@ namespace Nethermind.Synchronization.Peers
         public PeerInfo? Current { get; private set; }
 
         public bool HasPeer => Current is not null;
-
-        public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts, Lock? allocationLock = null)
-
-            : this(contexts, allocationLock) => Current = peerInfo;
 
         public void AllocatePeer(PeerInfo? selected)
         {
@@ -50,6 +44,9 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        /// <summary>
+        /// Returns the allocated peer slot. Repeated calls have no effect.
+        /// </summary>
         public void Dispose()
         {
             bool released = false;
@@ -70,6 +67,7 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
+            // A peer-less disposal must not wake every allocator on zero-timeout polling paths.
             if (released)
             {
                 _onDisposed?.Invoke();

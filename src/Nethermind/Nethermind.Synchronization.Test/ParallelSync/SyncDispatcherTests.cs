@@ -35,7 +35,7 @@ public class SyncDispatcherTests
             CancellationToken cancellationToken = default)
         {
             // Mirrors SyncPeerPool.Allocate: a cancelled token reports a failed allocation, it does not throw.
-            if (cancellationToken.IsCancellationRequested) return SyncPeerAllocation.FailedAllocation;
+            if (cancellationToken.IsCancellationRequested) return new SyncPeerAllocation(contexts);
 
             await Task.Yield();
             await _peerSemaphore.WaitAsync(cancellationToken);

@@ -72,26 +72,17 @@ public class SimpleDispatcher<T>(
                 throw;
             }
 
-            try
+            _ = Task.Run(async () =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await DoDispatch(request, peer, allocation, token);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                });
-            }
-            catch
-            {
-                allocation.Dispose();
-                semaphore.Release();
-                throw;
-            }
+                    await DoDispatch(request, peer, allocation, token);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
         }
 
         // Drain with CancellationToken.None so cancellation does not abandon in-flight tasks.
@@ -106,8 +97,8 @@ public class SimpleDispatcher<T>(
         CancellationToken token)
     {
         long dispatchTime = Stopwatch.GetTimestamp();
+        using (allocation)
         {
-            using SyncPeerAllocation ownedAllocation = allocation;
             try
             {
                 await downloader.Dispatch(peer, request, token);

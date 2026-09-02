@@ -168,33 +168,23 @@ namespace Nethermind.Synchronization.ParallelSync
                                 break;
                             }
 
-                            Task task;
-                            try
-                            {
-                                // The lambda must be async so the finally runs after DoDispatch's Task fully completes;
-                                // a non-async `() => DoDispatch(...)` would call SignalActiveTask the moment DoDispatch
-                                // yields (e.g. on the IsMultiFeed semaphore await), dropping the _activeTasks count
-                                // while the dispatch was still in flight. That race is what the flaky
-                                // When_ConcurrentHandleResponseIsRunning_Then_BlockDispose test was catching.
-                                task = Task.Run(
-                                    async () =>
+                            // The lambda must be async so the finally runs after DoDispatch's Task fully completes;
+                            // a non-async `() => DoDispatch(...)` would call SignalActiveTask the moment DoDispatch
+                            // yields (e.g. on the IsMultiFeed semaphore await), dropping the _activeTasks count
+                            // while the dispatch was still in flight. That race is what the flaky
+                            // When_ConcurrentHandleResponseIsRunning_Then_BlockDispose test was catching.
+                            Task task = Task.Run(
+                                async () =>
+                                {
+                                    try
                                     {
-                                        try
-                                        {
-                                            await DoDispatch(cancellationToken, allocatedPeer, request, allocation);
-                                        }
-                                        finally
-                                        {
-                                            SignalActiveTask();
-                                        }
-                                    });
-                            }
-                            catch
-                            {
-                                allocation.Dispose();
-                                SignalActiveTask();
-                                throw;
-                            }
+                                        await DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                    }
+                                    finally
+                                    {
+                                        SignalActiveTask();
+                                    }
+                                });
 
                             if (!Feed.IsMultiFeed)
                             {
@@ -229,8 +219,8 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerAllocation allocation)
         {
             long dispatchTimeStart = Stopwatch.GetTimestamp();
+            using (allocation)
             {
-                using SyncPeerAllocation ownedAllocation = allocation;
                 try
                 {
                     await Downloader.Dispatch(allocatedPeer, request, cancellationToken);
@@ -257,6 +247,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 {
                     if (Feed.IsMultiFeed)
                     {
+                        // Holding the allocation across this wait provides backpressure while responses queue for processing.
                         await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
                     }
                 }

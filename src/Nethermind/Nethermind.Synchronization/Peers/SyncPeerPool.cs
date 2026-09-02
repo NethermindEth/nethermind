@@ -361,9 +361,10 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, SignalPeersChanged);
             if (cancellationToken.IsCancellationRequested)
             {
-                return SyncPeerAllocation.FailedAllocation;
+                return allocation;
             }
 
             int tryCount = 1;
@@ -371,7 +372,6 @@ namespace Nethermind.Synchronization.Peers
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
-            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, SignalPeersChanged);
             while (true)
             {
                 // Snapshot the signal task before attempting allocation so that any
@@ -387,7 +387,7 @@ namespace Nethermind.Synchronization.Peers
                 bool timeoutReached = timeoutMilliseconds == 0
                                       || elapsedMilliseconds < 0
                                       || elapsedMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
+                if (timeoutReached) return allocation;
 
                 int waitTime = GetAllocationWaitTime(tryCount++);
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
@@ -397,7 +397,7 @@ namespace Nethermind.Synchronization.Peers
                     await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
                     if (cts.IsCancellationRequested)
                     {
-                        return SyncPeerAllocation.FailedAllocation;
+                        return allocation;
                     }
                 }
             }

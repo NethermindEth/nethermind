@@ -600,15 +600,6 @@ public class SyncPeerPoolTests
     }
 
     [Test]
-    public async Task Can_return()
-    {
-        await using Context ctx = new();
-        await SetupPeers(ctx, 1);
-
-        using SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-    }
-
-    [Test]
     public async Task Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
     {
         await using Context ctx = new();
@@ -757,19 +748,19 @@ public class SyncPeerPoolTests
                 100);
         }
 
-        await Task.WhenAll(tasks);
+        SyncPeerAllocation[] allocations = await Task.WhenAll(tasks);
 
         int successful = 0;
-        for (int i = 0; i < tasks.Length; i++)
+        foreach (SyncPeerAllocation allocation in allocations)
         {
-            if (tasks[i].Result.HasPeer) successful++;
+            if (allocation.HasPeer) successful++;
         }
 
         Assert.That(successful, Is.EqualTo(3));
 
-        foreach (Task<SyncPeerAllocation> task in tasks)
+        foreach (SyncPeerAllocation allocation in allocations)
         {
-            task.Result.Dispose();
+            allocation.Dispose();
         }
     }
 
