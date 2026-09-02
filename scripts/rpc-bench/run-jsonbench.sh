@@ -64,14 +64,24 @@ mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/jsonbench"
-as_root rm -rf "$work"
+as_root rm -rf "$work/io"
 mkdir -p "$work/io/out"
 
-log "Cloning $JB_REPO@$JB_REF..."
-git init -q "$work/src"
-git -C "$work/src" remote add origin "$JB_REPO"
-git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" || die "failed to fetch $JB_REF from $JB_REPO"
-git -C "$work/src" checkout -q FETCH_HEAD
+# A sweep calls this script once per cell, so re-fetching the tool per cell cost ~100 authenticated
+# fetches of a private repo per run, which the server eventually refuses mid-sweep. Reuse a checkout
+# already parked at the requested commit, restored to pristine (cells write fixtures under it).
+# A non-sha ref cannot be compared this way and still re-fetches, as before.
+if [[ "$(git -C "$work/src" rev-parse HEAD 2>/dev/null)" == "$JB_REF" ]]; then
+  log "Reusing the $JB_REPO@$JB_REF checkout at $work/src"
+  git -C "$work/src" clean -qfdx || die "failed to restore the json-bench checkout to a pristine state"
+else
+  log "Cloning $JB_REPO@$JB_REF..."
+  as_root rm -rf "$work/src"
+  git init -q "$work/src"
+  git -C "$work/src" remote add origin "$JB_REPO"
+  git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" || die "failed to fetch $JB_REF from $JB_REPO"
+  git -C "$work/src" checkout -q FETCH_HEAD
+fi
 runner_dockerfile="$work/src/runner/Dockerfile"
 [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
 tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
