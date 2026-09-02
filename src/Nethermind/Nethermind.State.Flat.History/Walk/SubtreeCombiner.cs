@@ -6,8 +6,10 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class SubtreeCombiner(SeriesReader reader)
+internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartition)
 {
+    private const int RootCursors = BranchRlp.ChildCount * BranchRlp.ChildCount;
+
     public void Combine(
         in SeriesScope scope,
         in TreePath parent,
@@ -24,7 +26,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
         for (int index = 0; index < BranchRlp.ChildCount; index++) keys[index] = childKey(index);
 
         SeriesPublisher publisher = new(scope, parent, own, writer);
-        ChildSeries children = new(reader, keys, from, to, token);
+        ChildSeries children = new(reader, keys, from, to, RowsPerCursor(BranchRlp.ChildCount), token);
         NodeView current = children.Combine();
         emitter?.BeginBlock(from);
         publisher.Publish(from, current, emitter);
@@ -71,6 +73,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
         CommitmentEmitter? emitter,
         SeriesWriter writer,
         RootHeaderCheck root,
+        WalkProgress progress,
         CancellationToken token)
     {
         ChildSeries[] groups = new ChildSeries[BranchRlp.ChildCount];
@@ -81,7 +84,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
             {
                 SeriesKey[] keys = new SeriesKey[BranchRlp.ChildCount];
                 for (int child = 0; child < BranchRlp.ChildCount; child++) keys[child] = grandchildKey(nibble, child);
-                groups[nibble] = new ChildSeries(reader, keys, from, to, token);
+                groups[nibble] = new ChildSeries(reader, keys, from, to, RowsPerCursor(RootCursors), token);
                 groupPublishers[nibble] = new SeriesPublisher(SeriesScope.Accounts, TreePath.FromNibble([(byte)nibble]), key: null, writer);
                 groupViews[nibble] = groups[nibble].Combine();
             }
@@ -107,6 +110,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
 
                 if (block == ulong.MaxValue) break;
 
+                if ((block & (WalkProgress.BlocksPerUpdate - 1)) < (observed & (WalkProgress.BlocksPerUpdate - 1)) || block - observed >= WalkProgress.BlocksPerUpdate) progress.Folding(block);
                 for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = root.OnBlock(quiet, current);
 
                 emitter?.BeginBlock(block);
@@ -140,6 +144,8 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
         }
     }
 
+    private int RowsPerCursor(int cursors) => (int)Math.Clamp(maxRowsPerPartition / cursors, SeriesReader.SeriesCursor.MinRowsBuffered, int.MaxValue);
+
     private sealed class ChildSeries
     {
         private readonly NodeSeriesState[] _states = new NodeSeriesState[BranchRlp.ChildCount];
@@ -147,13 +153,13 @@ internal sealed class SubtreeCombiner(SeriesReader reader)
         private readonly bool[] _hasRow = new bool[BranchRlp.ChildCount];
         private readonly NodeView[] _views = new NodeView[BranchRlp.ChildCount];
 
-        public ChildSeries(SeriesReader reader, SeriesKey[] keys, ulong from, ulong to, CancellationToken token)
+        public ChildSeries(SeriesReader reader, SeriesKey[] keys, ulong from, ulong to, int rowsPerCursor, CancellationToken token)
         {
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
                 _states[index] = reader.ReadStart(keys[index], from);
                 _views[index] = _states[index].ToView();
-                _cursors[index] = reader.Open(keys[index], from, to, token);
+                _cursors[index] = reader.Open(keys[index], from, to, rowsPerCursor, token);
                 _hasRow[index] = _cursors[index].MoveNext();
             }
         }

@@ -372,6 +372,7 @@ public sealed class CommitmentEmitter : IDisposable
         ulong lastBlock = Math.Max(ParentRowCodec.LastBlock(existing), state.LastBlock);
 
         ushort presence;
+        ushort carried;
         if (existingNewer)
         {
             presence = ParentRowCodec.Presence(existing);
@@ -380,14 +381,18 @@ public sealed class CommitmentEmitter : IDisposable
             {
                 if (((existingChanged >> index) & 1) == 0) merged[index] = state.Latest[index];
             }
+
+            carried = (ushort)(existingChanged | PresenceOf(merged));
         }
         else
         {
             presence = state.Presence;
             Array.Copy(state.Latest, merged, BranchRlp.ChildCount);
+            carried = ushort.MaxValue;
         }
 
-        return ParentRowCodec.EncodeBranch(lastBlock, presence, full ? (ushort)(presence | changed) : changed, merged);
+        ushort written = (ushort)((full ? (ushort)(presence | changed) : changed) & carried);
+        return ParentRowCodec.EncodeBranch(lastBlock, presence, written, merged);
     }
 
     private static byte[] Encode(WindowState state, bool full) =>

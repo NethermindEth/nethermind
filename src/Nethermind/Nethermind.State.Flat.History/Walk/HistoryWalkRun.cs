@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,10 +31,7 @@ internal sealed class HistoryWalkRun
     private readonly ILogger _logger;
     private readonly MismatchSink _sink = new();
     private readonly CommitmentMetadata _metadata;
-    private readonly long _startedAt = Stopwatch.GetTimestamp();
-    private int _completedItems;
-    private int _splitSubtrees;
-    private int _streamedKeys;
+    private readonly WalkProgress _progress;
     private readonly HistoryRowScanner _scanner;
     private readonly AccountSubtreeReplayer _accounts;
     private readonly StorageSubtreeReplayer _storages;
@@ -66,10 +62,11 @@ internal sealed class HistoryWalkRun
         _token = token;
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
         _metadata = new CommitmentMetadata(history);
+        _progress = new WalkProgress(_logger, WorkItems, from, to);
         _scanner = new HistoryRowScanner(_accountHistory, _storageHistory, storageClears, rowFormat);
         _accounts = new AccountSubtreeReplayer(_accountHistory, rowFormat, logManager);
         _storages = new StorageSubtreeReplayer(_accountHistory, _storageHistory, rowFormat, rlpWrapSlots, logManager, _sink);
-        _combiner = new SubtreeCombiner(new SeriesReader(history));
+        _combiner = new SubtreeCombiner(new SeriesReader(history), maxRowsPerPartition);
     }
 
     public HistoryWalkVerdict Execute(int workers)
@@ -95,21 +92,23 @@ internal sealed class HistoryWalkRun
         }
 
         List<Action> partitions = [];
+        int previouslyCompleted = 0;
         for (int nibbles = 0; nibbles < AccountPartitions; nibbles++)
         {
             int item = nibbles;
             if (_metadata.IsWalkItemDone(item))
             {
-                _completedItems++;
+                previouslyCompleted++;
+                _progress.PreviouslyCompleted(item);
                 continue;
             }
 
             TreePath prefix = TreePath.FromNibble([(byte)(nibbles >> 4), (byte)(nibbles & 0x0F)]);
             partitions.Add(() =>
             {
-                ProcessAccountPartition(prefix);
+                ProcessAccountPartition(prefix, item);
                 _metadata.MarkWalkItemDone(item);
-                ReportProgress($"account subtree {prefix}");
+                _progress.Completed(item);
             });
         }
 
@@ -118,45 +117,40 @@ internal sealed class HistoryWalkRun
             int item = AccountPartitions + first;
             if (_metadata.IsWalkItemDone(item))
             {
-                _completedItems++;
+                previouslyCompleted++;
+                _progress.PreviouslyCompleted(item);
                 continue;
             }
 
             byte firstByte = (byte)first;
             partitions.Add(() =>
             {
-                ProcessStorageRange(firstByte);
+                ProcessStorageRange(firstByte, item);
                 _metadata.MarkWalkItemDone(item);
-                ReportProgress($"storage range 0x{firstByte:x2}");
+                _progress.Completed(item);
             });
         }
 
-        if (resuming && _logger.IsInfo) _logger.Info($"History walk resuming: {_completedItems} of {WorkItems} subtrees were finished before the restart, {partitions.Count} remain.");
-        RunParallel(partitions, workers);
-
-        if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed in {Stopwatch.GetElapsedTime(_startedAt)}; folding the root and comparing every block in [{_from}, {_to}] to its header.");
-        RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger);
-        using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
-        using (SeriesWriter series = new(_history))
+        if (resuming && _logger.IsInfo) _logger.Info($"History walk resuming: {previouslyCompleted} of {WorkItems} subtrees were finished before the restart, {partitions.Count} remain.");
+        using (_progress)
         {
-            _combiner.CombineRoot((nibble, child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child])), _from, _to, emitter, series, root, _token);
-            emitter?.FlushOpenWindows();
-            series.DeleteAllScratch();
+            _progress.Start();
+            RunParallel(partitions, workers);
+
+            if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
+            RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger);
+            using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+            using (SeriesWriter series = new(_history))
+            {
+                _combiner.CombineRoot((nibble, child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child])), _from, _to, emitter, series, root, _progress, _token);
+                emitter?.FlushOpenWindows();
+                series.DeleteAllScratch();
+            }
+
+            _metadata.ClearWalk(WorkItems);
+            List<HistoryWalkMismatch> mismatches = _sink.Drain();
+            return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
         }
-
-        _metadata.ClearWalk(WorkItems);
-        List<HistoryWalkMismatch> mismatches = _sink.Drain();
-        return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
-    }
-
-    private void ReportProgress(string finished)
-    {
-        int completed = Interlocked.Increment(ref _completedItems);
-        if (!_logger.IsInfo) return;
-
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(_startedAt);
-        TimeSpan remaining = completed == 0 ? TimeSpan.Zero : elapsed * (WorkItems - completed) / completed;
-        _logger.Info($"History walk: {completed}/{WorkItems} subtrees done ({finished}), {Volatile.Read(ref _splitSubtrees)} split, {Volatile.Read(ref _streamedKeys)} keys streamed, {elapsed.TotalMinutes:F0} min elapsed, about {remaining.TotalHours:F1} h left before the root fold, {GC.GetTotalMemory(false) >> 20} MB managed.");
     }
 
     private void RunParallel(List<Action> items, int workers)
@@ -172,7 +166,7 @@ internal sealed class HistoryWalkRun
         }
     }
 
-    private void ProcessAccountPartition(in TreePath prefix)
+    private void ProcessAccountPartition(in TreePath prefix, int item)
     {
         AccountPartitionRows? rows = new();
         StoragePresenceProbe probe = new(_storageHistory);
@@ -181,17 +175,12 @@ internal sealed class HistoryWalkRun
             List<HistoryWalkMismatch> local = [];
             StorageRootMoveCheck check = new(probe, local);
             ScanOutcome outcome = _scanner.ScanAccounts(prefix, _from, _to, _maxRowsPerPartition, rows, check, _token);
-            if (outcome == ScanOutcome.SinglePathOverflow)
-            {
-                Interlocked.Increment(ref _streamedKeys);
-                continue;
-            }
+            if (outcome == ScanOutcome.SinglePathOverflow) continue;
 
             if (outcome == ScanOutcome.Split)
             {
-                Interlocked.Increment(ref _splitSubtrees);
                 rows = null;
-                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) ProcessAccountPartition(prefix.Append(nibble));
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) ProcessAccountPartition(prefix.Append(nibble), item);
                 CombineAccount(prefix);
                 return;
             }
@@ -199,7 +188,7 @@ internal sealed class HistoryWalkRun
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
-                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, check, _token);
+                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, check, _progress, item, _token);
                 emitter?.FlushOpenWindows();
             }
 
@@ -223,41 +212,36 @@ internal sealed class HistoryWalkRun
         return SeriesScope.Accounts.Key(path, scratch: !real);
     }
 
-    private void ProcessStorageRange(byte firstByte) =>
+    private void ProcessStorageRange(byte firstByte, int item) =>
         _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, group =>
         {
-            if (group.Overflow) ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null);
-            else ReplayStorageGroup(TreePath.Empty, group.Rows, group.Clears);
-        }, _token);
+            if (group.Overflow) ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
+            else ReplayStorageGroup(TreePath.Empty, group.Rows, group.Clears, item);
+        }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
 
-    private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities)
+    private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item)
     {
         StoragePartitionRows? rows = new();
         while (true)
         {
             ScanOutcome outcome = _scanner.ScanStorage(storagePrefix, slotPrefix, _from, _to, _maxRowsPerPartition, rows, clears, _token);
-            if (outcome == ScanOutcome.SinglePathOverflow)
-            {
-                Interlocked.Increment(ref _streamedKeys);
-                continue;
-            }
+            if (outcome == ScanOutcome.SinglePathOverflow) continue;
 
             if (outcome == ScanOutcome.Fits)
             {
                 identities?.UnionWith(rows.Identities);
-                ReplayStorageGroup(slotPrefix, rows, clears);
+                ReplayStorageGroup(slotPrefix, rows, clears, item);
                 return;
             }
 
             break;
         }
 
-        Interlocked.Increment(ref _splitSubtrees);
         rows = null;
         HashSet<ValueHash256> seen = [];
         for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
         {
-            ProcessStoragePartition(storagePrefix, slotPrefix.Append(nibble), clears, seen);
+            ProcessStoragePartition(storagePrefix, slotPrefix.Append(nibble), clears, seen, item);
         }
 
         identities?.UnionWith(seen);
@@ -267,11 +251,11 @@ internal sealed class HistoryWalkRun
         }
     }
 
-    private void ReplayStorageGroup(in TreePath slotPrefix, StoragePartitionRows rows, List<ClearRecord> clears)
+    private void ReplayStorageGroup(in TreePath slotPrefix, StoragePartitionRows rows, List<ClearRecord> clears, int item)
     {
         using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
         using SeriesWriter series = new(_history);
-        _storages.Replay(slotPrefix, rows, clears, _from, _to, emitter, series, writeSeries: slotPrefix.Length > 0, _token);
+        _storages.Replay(slotPrefix, rows, clears, _from, _to, emitter, series, slotPrefix.Length > 0, _progress, item, _token);
         emitter?.FlushOpenWindows();
     }
 

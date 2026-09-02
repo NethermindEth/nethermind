@@ -29,8 +29,11 @@ internal sealed class StorageSubtreeReplayer(
         CommitmentEmitter? emitter,
         SeriesWriter series,
         bool writeSeries,
+        WalkProgress progress,
+        int item,
         CancellationToken token)
     {
+        long replayed = 0;
         Contract[] contracts = new Contract[rows.Identities.Count];
         for (int i = 0; i < contracts.Length; i++)
         {
@@ -100,6 +103,12 @@ internal sealed class StorageSubtreeReplayer(
             }
 
             if (block == ulong.MaxValue) break;
+
+            if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
+            {
+                progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
+                progress.Replaying(item, block);
+            }
 
             emitter?.BeginBlock(block);
             touched.Clear();

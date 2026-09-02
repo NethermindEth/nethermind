@@ -503,6 +503,28 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void A_single_block_range_compares_that_block_alone_and_returns()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0));
+        headers.Roots[1] = StateRootOf((AddrA, a1));
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(1, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.True, "a range of one block anchors at that block and compares it; nothing lies above it to scan for");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
     public void A_verify_only_walk_leaves_no_rows_behind_in_the_commitment_columns()
     {
         Account a0 = new(1, 100);

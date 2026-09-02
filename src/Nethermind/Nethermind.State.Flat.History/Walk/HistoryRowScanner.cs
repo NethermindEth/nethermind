@@ -29,6 +29,7 @@ internal sealed class HistoryRowScanner(
 
     public ScanOutcome ScanAccounts(in TreePath prefix, ulong from, ulong to, long maxRows, AccountPartitionRows rows, StorageRootMoveCheck check, CancellationToken token)
     {
+        long scanned = 0;
         Span<byte> lower = stackalloc byte[AccountRowKeyLength];
         Span<byte> upper = stackalloc byte[AccountRowKeyLength + 1];
         WriteAccountBounds(prefix, lower, upper);
@@ -45,7 +46,8 @@ internal sealed class HistoryRowScanner(
 
         while (view.MoveNext())
         {
-            token.ThrowIfCancellationRequested();
+            if ((++scanned & (WalkProgress.RowsPerUpdate - 1)) == 0) token.ThrowIfCancellationRequested();
+
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length != AccountRowKeyLength) continue;
 
@@ -99,8 +101,9 @@ internal sealed class HistoryRowScanner(
         return ScanOutcome.Fits;
     }
 
-    public void ScanStorageGroups(byte firstByte, ulong from, ulong to, long maxRows, Action<StorageGroup> onGroup, CancellationToken token)
+    public void ScanStorageGroups(byte firstByte, ulong from, ulong to, long maxRows, Action<StorageGroup> onGroup, Action<uint> onPosition, CancellationToken token)
     {
+        long scanned = 0;
         byte[] lower = new byte[StorageRowKeyLength];
         lower[0] = firstByte;
         byte[] end = new byte[StorageRowKeyLength + 1];
@@ -118,13 +121,15 @@ internal sealed class HistoryRowScanner(
             {
                 while (view.MoveNext())
                 {
-                    token.ThrowIfCancellationRequested();
+                    if ((++scanned & (WalkProgress.RowsPerUpdate - 1)) == 0) token.ThrowIfCancellationRequested();
+
                     ReadOnlySpan<byte> key = view.CurrentKey;
                     if (key.Length != StorageRowKeyLength) continue;
 
                     ReadOnlySpan<byte> prefix = key[..StoragePrefixLength];
                     if (group is null)
                     {
+                        onPosition((uint)((prefix[1] << 16) | (prefix[2] << 8) | prefix[3]));
                         List<ClearRecord> clears = ScanClears(prefix, to);
                         StoragePartitionRows rows = new();
                         collector = new StorageRowCollector(rows, clears, from, to, maxRows, rowFormat);

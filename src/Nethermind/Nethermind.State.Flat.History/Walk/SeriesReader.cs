@@ -27,21 +27,26 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
         return state;
     }
 
-    public SeriesCursor Open(in SeriesKey key, ulong fromExclusive, ulong toInclusive, CancellationToken token)
+    public SeriesCursor Open(in SeriesKey key, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token)
     {
         ISortedKeyValueStore column = key.Column == FlatHistoryColumns.StorageCommitments ? _storageColumn : _accountColumn;
         byte[] prefix = new byte[SeriesKey.MaxPrefixLength];
         int prefixLength = key.WritePrefix(prefix);
-        return new SeriesCursor(column, prefix[..prefixLength], fromExclusive, toInclusive, token);
+        return new SeriesCursor(column, prefix[..prefixLength], fromExclusive, toInclusive, maxRowsBuffered, token);
     }
 
-    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, CancellationToken token)
+    public sealed class SeriesCursor(ISortedKeyValueStore column, byte[] prefix, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token)
     {
+        public const int MinRowsBuffered = 64;
+        private const ulong MinWindow = 64;
+
         private readonly RowArena _arena = new();
         private readonly List<(ulong Block, int Offset, int Length)> _window = [];
+        private readonly int _maxRows = Math.Max(MinRowsBuffered, maxRowsBuffered);
         private ulong _nextLow = fromExclusive + 1;
+        private ulong _windowSize = Window;
         private int _position = -1;
-        private bool _exhausted;
+        private bool _exhausted = fromExclusive >= toInclusive;
 
         public ulong Block => _window[_position].Block;
 
@@ -65,8 +70,24 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
             while (!_exhausted)
             {
                 token.ThrowIfCancellationRequested();
-                ulong hi = toInclusive - _nextLow < Window - 1 ? toInclusive : _nextLow + Window - 1;
-                ReadDescending(_nextLow, hi);
+                if (_nextLow > toInclusive)
+                {
+                    _exhausted = true;
+                    break;
+                }
+
+                ulong hi = toInclusive - _nextLow < _windowSize - 1 ? toInclusive : _nextLow + _windowSize - 1;
+                if (!ReadDescending(_nextLow, hi))
+                {
+                    if (_windowSize > MinWindow)
+                    {
+                        _windowSize = Math.Max(MinWindow, _windowSize / 2);
+                        continue;
+                    }
+
+                    throw new InvalidDataException("A commitment series holds more rows per block window than the walk may buffer; the column is corrupt.");
+                }
+
                 if (hi == toInclusive) _exhausted = true;
                 else _nextLow = hi + 1;
 
@@ -81,7 +102,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
             return false;
         }
 
-        private void ReadDescending(ulong lo, ulong hi)
+        private bool ReadDescending(ulong lo, ulong hi)
         {
             _window.Clear();
             _arena.Clear();
@@ -98,9 +119,13 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history)
                 ulong block = CommitmentKeyLayout.ReadSuffix(view.CurrentKey);
                 if (block < lo || block > hi) continue;
 
+                if (_window.Count >= _maxRows) return false;
+
                 ReadOnlySpan<byte> row = view.CurrentValue;
                 _window.Add((block, _arena.Append(row), row.Length));
             }
+
+            return true;
         }
     }
 }

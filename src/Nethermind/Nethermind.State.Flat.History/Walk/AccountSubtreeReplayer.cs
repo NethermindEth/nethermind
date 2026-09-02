@@ -22,8 +22,11 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         SeriesKey seriesKey,
         SeriesWriter series,
         StorageRootMoveCheck moveCheck,
+        WalkProgress progress,
+        int item,
         CancellationToken token)
     {
+        long replayed = 0;
         RawScopedTrieStore store = new(new MemDb());
         StateTree state = new(store, logManager);
         TrieChangeCollector? changes = emitter is null ? null : new TrieChangeCollector();
@@ -66,6 +69,12 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
             }
 
             if (block == ulong.MaxValue) break;
+
+            if ((++replayed & ((long)WalkProgress.BlocksPerUpdate - 1)) == 0)
+            {
+                progress.AddReplayedBlocks((long)WalkProgress.BlocksPerUpdate);
+                progress.Replaying(item, block);
+            }
 
             emitter?.BeginBlock(block);
             while (next < rows.Deltas.Count && rows.Deltas[next].Block == block)
