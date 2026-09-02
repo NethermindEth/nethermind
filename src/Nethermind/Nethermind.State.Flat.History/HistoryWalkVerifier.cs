@@ -9,7 +9,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History;
@@ -43,6 +45,7 @@ public sealed class HistoryWalkVerifier
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly long _maxMaterializedRows;
+    private readonly ICommitmentEmitterSource? _emitterSource;
 
     /// <summary>Ceiling on the rows one verification may hold at once, when the caller names none.</summary>
     public const long DefaultMaxMaterializedRows = 20_000_000;
@@ -55,14 +58,16 @@ public sealed class HistoryWalkVerifier
         IHistoryHeaderSource headers,
         HistoryRowFormat rowFormat,
         ILogManager logManager,
-        long maxMaterializedRows = DefaultMaxMaterializedRows)
+        long maxMaterializedRows,
+        ICommitmentEmitterSource? emitterSource)
         : this(
             history,
             headers,
             rowFormat,
             BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<HistoryWalkVerifier>()),
             logManager,
-            maxMaterializedRows)
+            maxMaterializedRows,
+            emitterSource)
     {
     }
 
@@ -72,7 +77,8 @@ public sealed class HistoryWalkVerifier
         HistoryRowFormat rowFormat,
         bool rlpWrapSlots,
         ILogManager logManager,
-        long maxMaterializedRows = DefaultMaxMaterializedRows)
+        long maxMaterializedRows,
+        ICommitmentEmitterSource? emitterSource)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(headers);
@@ -97,6 +103,7 @@ public sealed class HistoryWalkVerifier
         _logManager = logManager;
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
         _maxMaterializedRows = maxMaterializedRows > 0 ? maxMaterializedRows : DefaultMaxMaterializedRows;
+        _emitterSource = emitterSource;
     }
 
     /// <summary>Stops a verification before its partition exhausts the machine. The footprint tracks state size,
@@ -137,15 +144,8 @@ public sealed class HistoryWalkVerifier
         if (fromInclusive > toInclusive)
             throw new ArgumentException($"Range start {fromInclusive} is above its end {toInclusive}.", nameof(fromInclusive));
 
-        ulong span = toInclusive - fromInclusive;
-        int effectiveSegments = (int)Math.Min((ulong)segments, Math.Max(span, 1));
-        (ulong From, ulong To)[] bounds = new (ulong, ulong)[effectiveSegments];
-        for (int i = 0; i < effectiveSegments; i++)
-        {
-            bounds[i] = (
-                fromInclusive + span * (ulong)i / (ulong)effectiveSegments,
-                fromInclusive + span * ((ulong)i + 1) / (ulong)effectiveSegments);
-        }
+        (ulong From, ulong To)[] bounds = Partition(fromInclusive, toInclusive, segments);
+        int effectiveSegments = bounds.Length;
 
         SegmentData[] data = new SegmentData[effectiveSegments];
         for (int i = 0; i < effectiveSegments; i++) data[i] = new SegmentData();
@@ -171,12 +171,65 @@ public sealed class HistoryWalkVerifier
         return new HistoryWalkVerdict(mismatches.Count == 0, compared, mismatches);
     }
 
+    private (ulong From, ulong To)[] Partition(ulong fromInclusive, ulong toInclusive, int segments)
+    {
+        ulong span = toInclusive - fromInclusive;
+        int requested = (int)Math.Min((ulong)segments, Math.Max(span, 1));
+
+        ulong granularity = _emitterSource?.WindowGranularity ?? 1;
+        if (granularity > 1 && fromInclusive % granularity != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"A commitment build must start at a checkpoint window boundary; block {fromInclusive} is not a " +
+                $"multiple of {granularity}.", -1);
+        }
+
+        List<ulong> boundaries = [fromInclusive];
+        for (int i = 1; i < requested; i++)
+        {
+            ulong raw = fromInclusive + span * (ulong)i / (ulong)requested;
+            ulong snapped = raw - raw % granularity;
+            if (snapped > boundaries[^1] && snapped < toInclusive) boundaries.Add(snapped);
+        }
+
+        boundaries.Add(toInclusive);
+
+        (ulong From, ulong To)[] bounds = new (ulong, ulong)[boundaries.Count - 1];
+        for (int i = 0; i < bounds.Length; i++) bounds[i] = (boundaries[i], boundaries[i + 1]);
+        return bounds;
+    }
+
     private HistoryWalkVerdict WalkSegment(
         ulong fromInclusive,
         ulong toInclusive,
         SegmentData data,
         Dictionary<byte[], List<ulong>> clearsByIdentity,
         bool countAnchor,
+        CancellationToken token)
+    {
+        if (_emitterSource is null)
+        {
+            return Walk(fromInclusive, toInclusive, data, clearsByIdentity, countAnchor, emitter: null, token);
+        }
+
+        using CommitmentEmitter emitter = _emitterSource.CreateEmitter();
+        try
+        {
+            return Walk(fromInclusive, toInclusive, data, clearsByIdentity, countAnchor, emitter, token);
+        }
+        finally
+        {
+            emitter.FlushOpenWindows(toInclusive);
+        }
+    }
+
+    private HistoryWalkVerdict Walk(
+        ulong fromInclusive,
+        ulong toInclusive,
+        SegmentData data,
+        Dictionary<byte[], List<ulong>> clearsByIdentity,
+        bool countAnchor,
+        CommitmentEmitter? emitter,
         CancellationToken token)
     {
         List<HistoryWalkMismatch> mismatches = [];
@@ -190,7 +243,8 @@ public sealed class HistoryWalkVerifier
             }
         }
 
-        StateTree state = new(new RawScopedTrieStore(new MemDb()), _logManager);
+        CommitmentRecordingTrieStore? stateStore = CreateRecordingStore(emitter, storageIdentity: null);
+        StateTree state = new(StoreFor(stateStore), _logManager);
         Dictionary<byte[], ValueHash256> lastAccountStorageRoots = new(Bytes.EqualityComparer);
         foreach ((ValueHash256 path, Account account) in data.StartAccounts)
         {
@@ -198,7 +252,9 @@ public sealed class HistoryWalkVerifier
             lastAccountStorageRoots[path.Bytes[..IdentityLength].ToArray()] = new ValueHash256(account.StorageRoot.Bytes);
         }
 
-        state.UpdateRootHash();
+        if (emitter is not null && countAnchor) emitter.BeginBlock(fromInclusive);
+        SealAnchor(state, stateStore, record: countAnchor);
+        if (emitter is not null && countAnchor) emitter.CompleteBlock();
 
         // Adjacent segments share their boundary block: segment i's start is segment i-1's end. The check runs in
         // both (it is what anchors each segment), but only the first counts it, so BlocksCompared stays exact.
@@ -213,6 +269,7 @@ public sealed class HistoryWalkVerifier
         for (ulong block = fromInclusive + 1; block <= toInclusive; block++)
         {
             token.ThrowIfCancellationRequested();
+            emitter?.BeginBlock(block);
 
             HashSet<byte[]>? touched = null;
             if (clearsByBlock.TryGetValue(block, out List<byte[]>? clearedIdentities))
@@ -220,7 +277,7 @@ public sealed class HistoryWalkVerifier
                 touched = new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach (byte[] identity in clearedIdentities)
                 {
-                    storageTries[identity] = new StorageTree(new RawScopedTrieStore(new MemDb()), _logManager);
+                    storageTries[identity] = NewStorageTree(emitter, identity);
                     touched.Add(identity);
                 }
             }
@@ -230,7 +287,7 @@ public sealed class HistoryWalkVerifier
                 touched ??= new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach ((byte[] identity, ValueHash256 slotPath, byte[] value) in slots)
                 {
-                    StorageTree tree = GetOrMaterialize(storageTries, data.StartSlots, identity);
+                    StorageTree tree = GetOrMaterialize(storageTries, data.StartSlots, identity, emitter, recordAnchors: countAnchor);
                     tree.Set(slotPath, value, rlpEncode: !_rlpWrapSlots);
                     touched.Add(identity);
                 }
@@ -252,7 +309,7 @@ public sealed class HistoryWalkVerifier
                 foreach (byte[] identity in touched)
                 {
                     StorageTree tree = storageTries[identity];
-                    tree.UpdateRootHash();
+                    Recompute(tree, emitter is not null);
                     ValueHash256 rebuiltStorageRoot = new(tree.RootHash.Bytes);
 
                     if (accountsAtBlock is null || !accountsAtBlock.TryGetValue(identity, out Account? owner))
@@ -306,7 +363,8 @@ public sealed class HistoryWalkVerifier
                 }
             }
 
-            state.UpdateRootHash();
+            Recompute(state, emitter is not null);
+            emitter?.CompleteBlock();
             if (!CompareStateRoot(block, state, mismatches, ref compared))
             {
                 // Everything after a diverged state root is derivative noise; the block itself names the culprit.
@@ -522,11 +580,14 @@ public sealed class HistoryWalkVerifier
     private StorageTree GetOrMaterialize(
         Dictionary<byte[], StorageTree> tries,
         Dictionary<byte[], List<(ValueHash256 SlotPath, byte[] Value)>> startSlots,
-        byte[] identity)
+        byte[] identity,
+        CommitmentEmitter? emitter,
+        bool recordAnchors)
     {
         if (tries.TryGetValue(identity, out StorageTree? tree)) return tree;
 
-        tree = new StorageTree(new RawScopedTrieStore(new MemDb()), _logManager);
+        CommitmentRecordingTrieStore? store = CreateRecordingStore(emitter, identity);
+        tree = new StorageTree(StoreFor(store), _logManager);
         if (startSlots.TryGetValue(identity, out List<(ValueHash256 SlotPath, byte[] Value)>? slots))
         {
             foreach ((ValueHash256 slotPath, byte[] value) in slots)
@@ -535,8 +596,54 @@ public sealed class HistoryWalkVerifier
             }
         }
 
+        SealAnchor(tree, store, record: recordAnchors);
         tries[identity] = tree;
         return tree;
+    }
+
+    private StorageTree NewStorageTree(CommitmentEmitter? emitter, byte[] identity) =>
+        new(StoreFor(CreateRecordingStore(emitter, identity)), _logManager);
+
+    private static IScopedTrieStore StoreFor(CommitmentRecordingTrieStore? recording) =>
+        recording ?? (IScopedTrieStore)new RawScopedTrieStore(new MemDb());
+
+    private static CommitmentRecordingTrieStore? CreateRecordingStore(CommitmentEmitter? emitter, byte[]? storageIdentity)
+    {
+        if (emitter is null) return null;
+
+        ValueHash256? storageAccount = null;
+        if (storageIdentity is not null)
+        {
+            ValueHash256 padded = default;
+            storageIdentity.CopyTo(padded.BytesAsSpan);
+            storageAccount = padded;
+        }
+
+        return new CommitmentRecordingTrieStore(new RawScopedTrieStore(new MemDb()), emitter, storageAccount);
+    }
+
+    private static void SealAnchor(PatriciaTree tree, CommitmentRecordingTrieStore? store, bool record)
+    {
+        if (store is null)
+        {
+            tree.UpdateRootHash();
+            return;
+        }
+
+        store.Recording = record;
+        tree.Commit();
+        store.Recording = true;
+    }
+
+    private static void Recompute(PatriciaTree tree, bool recording)
+    {
+        if (recording)
+        {
+            tree.Commit();
+            return;
+        }
+
+        tree.UpdateRootHash();
     }
 
     private static Account? DecodeAccount(ReadOnlySpan<byte> value)

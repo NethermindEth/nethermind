@@ -56,7 +56,7 @@ public class HistoryWriterTests
         _repository = _tier.Repository;
         FlatDbConfig config = new() { HistoryEnabled = true };
         (_availability, _rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, _availability, _rowFormat, LimboLogs.Instance);
         _accountHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
@@ -114,7 +114,7 @@ public class HistoryWriterTests
     public void A_capture_walk_publishes_every_row_in_one_batch()
     {
         BatchCountingHistoryColumns counting = new(_historyColumns);
-        HistoryWriter writer = new(_db, counting, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
+        HistoryWriter writer = new(_db, counting, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
 
         // The same key at more than one block of the walk is the shape that goes wrong per batch.
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
@@ -152,7 +152,7 @@ public class HistoryWriterTests
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ThrowingHistoryColumns throwing = new(_historyColumns, throwOnAccountWrite: 3);
-        HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         writer.SeedGenesis([], StateAt(0).StateRoot);
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
@@ -483,7 +483,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
         _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
+        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
         restarted.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Account atBlock3 = new(3, 33);
@@ -687,7 +687,7 @@ public class HistoryWriterTests
     {
         FlatDbConfig disabledConfig = new() { HistoryEnabled = false };
         (HistoryAvailability disabledAvailability, HistoryRowFormat disabledRowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, disabledConfig);
-        HistoryWriter disabled = new(_db, _historyColumns, disabledConfig, disabledAvailability, disabledRowFormat, LimboLogs.Instance);
+        HistoryWriter disabled = new(_db, _historyColumns, disabledConfig, disabledAvailability, disabledRowFormat, LimboLogs.Instance, commitments: null);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
 
         disabled.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -1389,7 +1389,7 @@ public class HistoryWriterTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
     }

@@ -15,6 +15,8 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
+using Nethermind.State.Flat.History.Proofs;
+
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
@@ -56,11 +58,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     private readonly byte _formatVersion;
     private readonly PendingV3Writes? _pendingV3;
+    private readonly ForwardCommitmentCapture? _commitments;
     private bool _formatStamped;
 
-    public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
+    public HistoryWriter(
+        IColumnsDb<FlatDbColumns> db,
+        IColumnsDb<FlatHistoryColumns> history,
+        IFlatDbConfig config,
+        HistoryAvailability availability,
+        HistoryRowFormat rowFormat,
+        ILogManager logManager,
+        ForwardCommitmentCapture? commitments)
     {
         ArgumentNullException.ThrowIfNull(history);
+        _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
         _history = history;
@@ -169,10 +180,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             // Disposing writes, and a refusal disables capture, so nothing would rewrite a half-published walk.
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
+            if (!complete) _commitments?.Discard();
         }
 
         if (connected)
         {
+            _commitments?.Complete();
+
             // The rows are visible from the dispose above; readers must learn that before the caller supersedes the
             // live column, so this stays ahead of everything else here.
             _availability.MarkCapturePublished();
@@ -354,6 +368,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending, in HistoryColumnBatches columns)
     {
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
+        _commitments?.Capture(block, snapshot);
 
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
         {
@@ -412,6 +427,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
+        _commitments?.Capture(block, scanner);
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];

@@ -375,7 +375,7 @@ public class SliceScopeTests
         };
 
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         HistoryWindowPruner pruner = new(
             writer, _historyColumns, config,
             gate ?? new HistoryScopeGate(),

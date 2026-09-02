@@ -6,6 +6,7 @@ using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.State.Flat.History;
 
@@ -23,6 +24,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly HistoryAvailability _availability;
     private readonly IFlatDbConfig _config;
     private readonly HistoryWalkVerifier? _verifier;
+    private readonly ArchiveProofRetrofit? _retrofit;
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
@@ -37,8 +39,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,
+        ArchiveProofRetrofit retrofit,
         ILogManager logManager)
-        : this(db, history, headers, availability, rowFormat, config, logManager, pollDelay: null)
+        : this(db, history, headers, availability, rowFormat, config, retrofit, logManager, pollDelay: null)
     {
     }
 
@@ -49,6 +52,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,
+        ArchiveProofRetrofit retrofit,
         ILogManager logManager,
         TimeSpan? pollDelay)
     {
@@ -58,12 +62,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         _pollDelay = pollDelay ?? DefaultPollDelay;
 
         Started = config.HistoryVerifyEveryBlock;
+        _retrofit = retrofit.Enabled ? retrofit : null;
 
         // Constructed only when the flag is on: the verifier refuses a windowed database in its constructor, and
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
         // never on a windowed node that left the flag alone.
         _verifier = Started
-            ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, config.HistoryVerifyMaxRows)
+            ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, config.HistoryVerifyMaxRows, _retrofit)
             : null;
     }
 
@@ -101,6 +106,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     if (_logger.IsInfo) _logger.Info(
                         $"History walk verification starting: every block in [0, {watermark}] against this node's own headers, {segments} segments.");
 
+                    _retrofit?.Prepare();
+
                     long startedAt = Stopwatch.GetTimestamp();
                     HistoryWalkVerdict verdict = await Task.Run(() => _verifier!.VerifyRangeParallel(0, watermark, segments, token), token);
                     Volatile.Write(ref _verdict, verdict);
@@ -108,6 +115,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (verdict.Verified)
                     {
+                        _retrofit?.PublishCoverage(0, watermark);
                         if (_logger.IsInfo) _logger.Info(
                             $"History walk verification PASSED: {verdict.BlocksCompared} blocks rebuilt from rows and matched against headers in {elapsed}.");
                     }

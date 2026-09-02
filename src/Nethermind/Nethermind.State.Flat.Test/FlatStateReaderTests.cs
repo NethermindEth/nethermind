@@ -19,7 +19,7 @@ public class FlatStateReaderTests
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
     private static FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, LimboLogs.Instance);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [

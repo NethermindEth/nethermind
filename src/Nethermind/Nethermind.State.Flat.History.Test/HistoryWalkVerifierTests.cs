@@ -35,7 +35,7 @@ public class HistoryWalkVerifierTests
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxMaterializedRows);
+        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxMaterializedRows, emitterSource: null);
     }
 
     private sealed class FakeHeaders : IHistoryHeaderSource
@@ -346,7 +346,7 @@ public class HistoryWalkVerifierTests
             _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100 });
 
         Assert.That(
-            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance),
+            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxMaterializedRows, emitterSource: null),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
     }

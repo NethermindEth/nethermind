@@ -46,6 +46,21 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Rows the every-block history verification may hold in memory before it declines the run. Its working set follows state size rather than range length, so a full archive needs a large value and a machine to match. 0 uses the built-in ceiling.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
+    [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
+    bool ArchiveProofServeEnabled { get; set; }
+
+    [ConfigItem(Description = "Emit the archive proof commitments: from the tip as blocks are captured, and, with FlatDb.HistoryVerifyEveryBlock, along the every-block walk that retrofits an already-synced archive. A node syncing from genesis needs only the tip capture.", DefaultValue = "false")]
+    bool ArchiveProofBuildEnabled { get; set; }
+
+    [ConfigItem(Description = "Concurrent child resolutions inside a single historical proof. Each of a node's 16 children is an independent read, so this is the per-request fan-out; 0 uses the processor count. The number of concurrent proofs is capped by the JSON-RPC module pool, not here.", DefaultValue = "8")]
+    int ArchiveProofFanOut { get; set; }
+
+    [ConfigItem(Description = "History rows one historical proof may read before it is refused. A proof that has to scan beyond this is resolving from raw history rather than from commitments, which means the commitment column does not really cover that height. 0 uses the built-in ceiling.", DefaultValue = "0")]
+    long ArchiveProofMaxScannedRows { get; set; }
+
+    [ConfigItem(Description = "Checkpoint interval for the archive proof commitments, as a power of two blocks, the same at every trie depth. Smaller means faster cold proofs and more disk. Accepted range 6..12. Changing it invalidates commitments already built. 0 uses the built-in default of 2^9.", DefaultValue = "0")]
+    int ArchiveProofCheckpointIntervalLog2 { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
