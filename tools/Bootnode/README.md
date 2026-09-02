@@ -39,10 +39,10 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode side releases use `bootnode-*` tags and the `Release Bootnode` GitHub workflow. The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image:
+Bootnode releases use the matching Nethermind version tag, for example `1.39.1`. The `Release Bootnode` workflow reads the same version source as the main release workflow; run it after the matching GitHub release draft has been created and before it is published. It builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For a stable version, select `publish_latest` to also refresh the Bootnode `latest` image tag:
 
 ```powershell
-docker pull nethermind/nethermind-bootnode:bootnode-r1
+docker pull nethermind/nethermind-bootnode:1.39.1
 ```
 
 The default container command stores state in `/nethermind-bootnode/data` and binds REST and Prometheus to all interfaces:
@@ -53,7 +53,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1
+  nethermind/nethermind-bootnode:1.39.1
 ```
 
 Pass CLI options after the image name to override the defaults, for example:
@@ -64,7 +64,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1 `
+  nethermind/nethermind-bootnode:1.39.1 `
   --local-ip :: `
   --external-ip-v4 203.0.113.10 `
   --external-ip-v6 2001:db8::10
