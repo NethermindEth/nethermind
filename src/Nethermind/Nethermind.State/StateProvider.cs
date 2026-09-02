@@ -955,6 +955,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return;
         }
 
+        // Only a change rewrites the account's leaf at commit, so only a change is worth warming its trie path
+        // for, and only the transaction's first change of an account needs to say so. No-op for backends
+        // without trie warm-up.
+        if (changeType != ChangeType.JustCache && (!exists || _changes[head].ChangeType == ChangeType.JustCache))
+        {
+            _tree?.HintWarmAccount(new ValueAddress(address.Bytes));
+        }
+
         int prevIdx = exists ? head : -1;
         head = _changes.Count;
         _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));

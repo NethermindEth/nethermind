@@ -224,12 +224,6 @@ public class PrewarmerScopeProvider(
                     baseScope.HintGet(address, account);
                     _metrics.IncrementPreBlockAccountHits();
                 }
-                else if (storageReadCapture is null)
-                {
-                    // A carried entry spares the read, not the commit: the account's trie path still needs warming, which a
-                    // miss gets from the read itself.
-                    mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
-                }
 
                 _metrics.IncrementStateTreeCacheHits();
             }
@@ -238,7 +232,6 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                if (storageReadCapture is null) mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }

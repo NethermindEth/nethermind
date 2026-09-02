@@ -88,11 +88,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
-        _ = GetOrCreateStorage(storageCell.Address);
+        PerContractState state = GetOrCreateStorage(storageCell.Address);
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
-        _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
+        ValueAddress address = new(storageCell.Address.Bytes);
+        _currentScope.HintWarmSlot(in address, storageCell.Index);
+        // The storage root lives in the account, so anything that moves it rewrites the account's leaf as well,
+        // and the account write path never sees a contract the block only stores to. The same holds for
+        // ResetContractState and ClearStorage, which move the root without writing a slot.
+        if (state.TakeAccountWarmHint()) _currentScope.HintWarmAccount(in address);
     }
 
     /// <summary>
@@ -553,7 +558,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void ResetContractState(Address address)
     {
         _toUpdateRoots.TryAdd(address, true);
-        GetOrCreateStorage(address).Clear();
+        PerContractState state = GetOrCreateStorage(address);
+        state.Clear();
+        if (state.TakeAccountWarmHint()) _currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
     }
 
     public override void ClearStorage(Address address)
@@ -586,8 +593,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
-        DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
+        PerContractState contractState = GetOrCreateStorage(address);
+        DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
+        if (contractState.TakeAccountWarmHint()) _currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
         int journalIndex = _storageClearJournal.Count;
         _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
         PushStorageClear(journalIndex);
@@ -775,6 +784,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private bool _hadStorageBeforeBlock;
         private bool _storageRootSeen;
         private bool _wasCleared;
+        private bool _accountHinted;
         private PersistentStorageProvider _provider;
         private Address _address;
 
@@ -789,6 +799,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
         public bool WasWritten => _wasWritten;
+
+        /// <summary>
+        /// Claims the one account trie warm hint this contract needs for the block.
+        /// </summary>
+        /// <returns><see langword="true"/> for the first caller, <see langword="false"/> for every later one.</returns>
+        public bool TakeAccountWarmHint()
+        {
+            if (_accountHinted) return false;
+            _accountHinted = true;
+            return true;
+        }
 
         /// <summary>The account's fate at block end, resolved by the write-back's clear pass and reused by its slot pass.</summary>
         public AccountFate BlockEndFate { get; set; }
@@ -854,6 +875,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
+            _accountHinted = false;
             // Set by the write-back's clear pass and read by its slot pass, which are no longer adjacent.
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);

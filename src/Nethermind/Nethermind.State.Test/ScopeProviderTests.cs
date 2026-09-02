@@ -1223,43 +1223,132 @@ public class ScopeProviderTests(bool useFlat)
         inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
-    [TestCase(false, TestName = "Test_PopulatorGetMiss_PushesAccountTrieWarmHint")]
-    [TestCase(true, TestName = "Test_PopulatorGetHit_PushesAccountTrieWarmHint")]
-    public void Test_PopulatorGet_PushesAccountTrieWarmHint(bool cached)
+    /// <summary>
+    /// Runs <paramref name="work"/> on a populator world state and returns the consumer scope its hints reached.
+    /// </summary>
+    private static IWorldStateScopeProvider.IScope RunPopulator(Context ctx, Hash256 baseRoot, Action<WorldState> work)
     {
-        using Context ctx = new(useFlat);
-
-        Hash256 stateRoot;
-        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
-        {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-            }
-
-            scope.Commit(1);
-            stateRoot = scope.RootHash;
-        }
-
         PreBlockCaches caches = NewCaches();
-        if (cached)
-        {
-            // A carried entry spares the populator its read, but the commit still needs the account's trie path warmed.
-            AddressAsKey key = TestItem.AddressA;
-            caches.StateCache.Set(in key, new Account(100, 100));
-        }
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        // The wrapper captures it when the scope opens, so it must be in place first.
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        WorldState state = new(populator, LimboLogs.Instance);
 
-        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
-        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
+        using (state.BeginScope(HeaderAt(baseRoot, 1)))
         {
-            caches.MainScope = null;
-            scope.Get(TestItem.AddressA);
+            work(state);
         }
 
+        return mainScope;
+    }
+
+    [Test]
+    public void Test_PopulatorAccountRead_WarmsNothing()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        // A read leaves the account's leaf alone, so the commit never walks its path.
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.GetBalance(TestItem.AddressA));
+
+        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
+    }
+
+    [Test]
+    public void Test_PopulatorAccountWrite_WarmsTheAccount()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot,
+            ws => ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _));
+
         mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        // The storage root lives in the account, so writing a slot rewrites the contract's leaf as well, and
+        // once is enough however many of its slots the block writes.
+        StorageCell slotA2 = new(TestItem.AddressA, 2);
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        {
+            ws.Set(in SlotA1, [7]);
+            ws.Set(in slotA2, [8]);
+        });
+
+        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
+        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorStorageDestroy_WarmsTheContractsAccount()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        // Destroying storage moves the root without writing a slot, so nothing else on the write path hints it.
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+        });
+
+        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorStorageClear_WarmsTheContractsAccount()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.ClearStorage(TestItem.AddressA);
+        });
+
+        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorBlock_WarmsWhatTheCommitRewritesAndNothingElse()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressB);
+            ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _);
+            ws.Set(in SlotC5, [9]);
+            ws.CreateAccount(TestItem.AddressD, 1);
+        });
+
+        // The commit rewrites the leaves of A, C (through its storage root) and D, and leaves B alone.
+        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
+        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressD.Bytes));
+        mainScope.DidNotReceive().HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorStorageRead_WarmsNothing()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1));
+
+        mainScope.DidNotReceive().HintWarmSlot(Arg.Any<ValueAddress>(), Arg.Any<UInt256>());
+        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
     }
 
     [Test]
