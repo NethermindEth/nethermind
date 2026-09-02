@@ -57,6 +57,31 @@ public class GuestMixerTests
         AssertWindowsAreDistributed(hashes, $"{length}-byte keys, entropy at offset {offset}");
     }
 
+    /// <remarks>
+    /// The tail read of a 20-byte key is the zero-extension of the same bytes in a 32-byte one, and
+    /// the unused lane contributes nothing, so before the lane multipliers were seeded per width the
+    /// two forms mixed to an identical value. <c>FastHash_ShortPaddingIncludesLength</c> in the host
+    /// suite names this property but exercises 8 against 9 bytes, which both take the CRC path.
+    /// </remarks>
+    [Test]
+    public void Guest_mixer_separates_an_address_from_its_zero_padded_word()
+    {
+        byte[] address = new byte[20];
+        byte[] padded = new byte[32];
+        for (int i = 0; i < address.Length; i++)
+        {
+            address[i] = (byte)(0xA0 + i);
+            padded[i] = address[i];
+        }
+
+        long addressHash = SpanExtensions.FastHash64For20BytesFallback(
+            ref MemoryMarshal.GetArrayDataReference(address));
+        long paddedHash = SpanExtensions.FastHash64For32BytesFallback(
+            ref MemoryMarshal.GetArrayDataReference(padded));
+
+        Assert.That(addressHash, Is.Not.EqualTo(paddedHash));
+    }
+
     private static void AssertWindowsAreDistributed(long[] hashes, string context)
     {
         HashSet<long> fullHashes = new(hashes.Length);

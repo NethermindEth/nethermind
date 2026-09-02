@@ -28,6 +28,33 @@ namespace Nethermind.Core.Extensions
         private const ulong Lane2 = 0x165667B19E3779F9UL;
         private const ulong Lane3 = 0x85EBCA77C2B2AE63UL;
 
+        /// <summary>Seeds a lane multiplier for one key width.</summary>
+        /// <remarks>
+        /// The seed has to reach the lane products rather than only the accumulated result. Applied
+        /// after the lanes are combined it cancels in the difference between two keys, so any
+        /// colliding pair found for one seed holds for every seed, and the mixer is no harder to
+        /// attack than an unseeded one. Folding it into the multipliers keeps the dependence
+        /// key-dependent at no extra arithmetic -- the same multiplies, against seeded operands.
+        /// Shifting left of the low bit keeps each multiplier odd, so it stays a bijection.
+        /// Seeding by <see cref="ComputeSeed"/> of the width also separates widths, which the shared
+        /// lane constants did not: a 20-byte key and its zero-padded 32-byte form previously mixed
+        /// to the same value, because the tail read of the shorter key is the zero-extension of the
+        /// longer one's and the unused lane contributes nothing.
+        /// </remarks>
+        private static ulong SeededLane(ulong lane, int width) =>
+            lane ^ ((ulong)ComputeSeed(width) << 1);
+
+        private static readonly ulong AddrLane0 = SeededLane(Lane0, Address.Size);
+        private static readonly ulong AddrLane1 = SeededLane(Lane1, Address.Size);
+        private static readonly ulong AddrLane2 = SeededLane(Lane2, Address.Size);
+
+        private static readonly ulong WordLane0 = SeededLane(Lane0, WordWidth);
+        private static readonly ulong WordLane1 = SeededLane(Lane1, WordWidth);
+        private static readonly ulong WordLane2 = SeededLane(Lane2, WordWidth);
+        private static readonly ulong WordLane3 = SeededLane(Lane3, WordWidth);
+
+        private const int WordWidth = 32;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int FastHashFallback(ReadOnlySpan<byte> input)
         {
@@ -35,13 +62,13 @@ namespace Nethermind.Core.Extensions
             // the four-lane CRC-style walk is one of its hottest leaves. Every byte still feeds the
             // result -- folding to the leading word would collide across big-endian UInt256 values,
             // which share leading zeros -- but at four multiplies instead of a lane-at-a-time walk.
-            if (input.Length == 32)
+            if (input.Length == WordWidth)
             {
                 return (int)(uint)Mix32(ref MemoryMarshal.GetReference(input));
             }
 
             // Addresses are the other dominant key width.
-            if (input.Length == 20)
+            if (input.Length == Address.Size)
             {
                 return (int)(uint)MixAddress(ref MemoryMarshal.GetReference(input));
             }
@@ -52,9 +79,10 @@ namespace Nethermind.Core.Extensions
         /// <summary>Mixes the twenty bytes of an address into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixAddress(ref byte b) => Finish(
-            Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * Lane2);
+            Unsafe.ReadUnaligned<ulong>(ref b) * AddrLane0 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * AddrLane1 ^
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16)) * AddrLane2,
+            AddrLane0);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static long FastHash64For32BytesFallback(ref byte start)
@@ -63,10 +91,11 @@ namespace Nethermind.Core.Extensions
         /// <summary>Mixes thirty-two bytes into a well-distributed 64-bit value.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong Mix32(ref byte b) => Finish(
-            Unsafe.ReadUnaligned<ulong>(ref b) * Lane0 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * Lane1 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * Lane2 ^
-            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * Lane3);
+            Unsafe.ReadUnaligned<ulong>(ref b) * WordLane0 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8)) * WordLane1 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 16)) * WordLane2 ^
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)) * WordLane3,
+            WordLane0);
 
         /// <summary>Finishes a lane combination into a well-distributed 64-bit value.</summary>
         /// <remarks>
@@ -78,11 +107,17 @@ namespace Nethermind.Core.Extensions
         /// same failure the AES path documents at <see cref="FastHash64For20Bytes"/>. A second multiply
         /// buys nothing further, and <c>GuestMixerTests</c> covers every aligned offset.
         /// </remarks>
+        /// <param name="mixed">The combined lane products.</param>
+        /// <param name="domain">
+        /// A seeded lane multiplier for the same key width. Avalanche only, since a value applied
+        /// here cannot make a colliding pair diverge -- see <see cref="SeededLane"/> — but it keeps
+        /// an all-zero key off a fixed point.
+        /// </param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong Finish(ulong mixed)
+        private static ulong Finish(ulong mixed, ulong domain)
         {
             mixed ^= mixed >> 32;
-            mixed ^= InstanceRandom;
+            mixed ^= domain;
             mixed *= Lane0;
             return mixed ^ (mixed >> 32);
         }
