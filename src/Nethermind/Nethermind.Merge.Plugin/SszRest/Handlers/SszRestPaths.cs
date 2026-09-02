@@ -106,7 +106,7 @@ public static class SszRestPaths
     public const string PostBlobsV3 = $"POST {BasePath}blobs/v3";
     public const string PostBlobsV4 = $"POST {BasePath}blobs/v4";
     public const string PostPayloadsWitness = $"POST {BasePath}payloads/witness";
-    public const string GetInclusionList = $"GET {BasePath}inclusion_list/{{parent_block_hash}}";
+    public const string GetInclusionList = $"GET {BasePath}inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a

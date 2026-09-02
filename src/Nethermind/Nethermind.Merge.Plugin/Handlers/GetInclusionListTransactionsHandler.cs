@@ -20,6 +20,7 @@ public class GetInclusionListTransactionsHandler(
 {
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
 
+    /// <inheritdoc/>
     /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are
     /// filtered against; the head when omitted. Nonce readiness stays head-relative.</param>
     public ResultWrapper<InclusionListBytes> Handle(Hash256? parentBlockHash)

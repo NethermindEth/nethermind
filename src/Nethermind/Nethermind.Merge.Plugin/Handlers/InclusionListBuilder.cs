@@ -19,7 +19,9 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
     private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
 
+    /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
+    /// <returns>The encoded transactions; the caller owns and disposes them.</returns>
     public InclusionListBytes GetInclusionList(BlockHeader? parent = null)
     {
         using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs(parent);
