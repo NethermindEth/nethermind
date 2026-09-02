@@ -93,10 +93,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
         PerContractState state = GetOrCreateStorage(storageCell.Address);
         base.Set(in storageCell, newValue);
-        // Populator executions never commit, so commit-time hints arrive too late.
+        // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
+        // (populator) executions, which never commit. No-op for backends without trie warm-up.
         ValueAddress address = new(storageCell.Address.Bytes);
         currentScope.HintWarmSlot(in address, storageCell.Index);
-        // Storage-root changes also rewrite the account leaf, including contracts only touched through storage.
+        // The storage root lives in the account, so changing it also rewrites the account leaf.
         if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(in address);
     }
 
@@ -125,11 +126,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
             if (head.CurrentIdx <= currentSnapshot)
             {
-                // An untouched cell's current value is its transaction original.
+                // Untouched this transaction — the current value is the tx original.
                 return head.Value;
             }
 
-            // -1 denotes the block-level original; otherwise use the transaction-start value.
+            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
             return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
@@ -190,11 +191,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         foreach (AddressAsKey address in toUpdateRoots)
         {
-            // EIP-158 can remove empty accounts.
+            // since the accounts could be empty accounts that are removing (EIP-158)
             if (_stateProvider.AccountExists(address))
             {
                 _toUpdateRoots[address] = true;
-                // Create the tree before parallel access because _storages is not concurrent.
+                // Add storage tree, will accessed later, which may be in parallel
+                // As we can't add a new storage tries in parallel to the _storages Dict do it here
                 GetOrCreateStorage(address).EnsureStorageTree();
             }
             else
@@ -202,7 +204,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _toUpdateRoots.Remove(address);
                 if (_storages.TryGetValue(address, out PerContractState? storage))
                 {
-                    // Retain BlockChange so DefaultableDictionary preserves the self-destruct marker.
+                    // BlockChange need to be kept to keep selfdestruct marker (via DefaultableDictionary) working.
                     storage.RemoveStorageTree();
                 }
             }
@@ -343,7 +345,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    // Worker finalizers call this, so it must not use non-atomic per-scope metrics.
+    // Static + atomic on purpose: called from ParallelUnbalancedWork worker finalizers
+    // (see PersistentStorageProvider.std.cs), so it must not touch the non-atomic per-scope LocalMetrics.
     private static void ReportMetrics(int writes, int skipped)
     {
         if (skipped > 0)
@@ -513,8 +516,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     /// <summary>
-    /// Captures the first read value for <see cref="GetOriginal"/> and commit-time
-    /// <see cref="IStorageTracer.ReportStorageRead"/>; reads are not journaled.
+    /// Reads skip the registry/change journal that writes use: repeat reads are served by
+    /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
+    /// no side effects). Only the first-loaded value is captured here, backing
+    /// <see cref="GetOriginal"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
     /// </summary>
     private void CaptureOriginalValue(in StorageCell cell, byte[] value)
     {
@@ -540,7 +545,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Reports reads and clears original values when a read-only round has no journaled changes.
+    /// Reads are not journaled, so a commit round can have an empty change list while cells were
+    /// still read this round: those reads must be reported to storage tracers and the round's
+    /// original-value capture must be cleared, which the change-driven commit otherwise does.
     /// </summary>
     public override void Commit(IStorageTracer tracer)
     {
@@ -753,7 +760,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
             if (!exists && _missingAreDefault)
             {
-                // A known-empty tree needs no database lookup for a missing value.
+                // Where we know the rest of the tree is empty
+                // we can say the value was found but is default
+                // rather than having to check the database
                 value = StorageChangeTrace.ZeroBytes;
                 exists = true;
             }
@@ -878,7 +887,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (isEmpty && !_wasWritten)
             {
-                // Mark all missing cells as zero to avoid tree lookups.
+                // Slight optimization that skips the tree
                 BlockChange.ClearAndSetMissingAsDefault();
             }
         }
@@ -996,7 +1005,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                     else
                     {
-                        // Safe during enumeration: this overwrites an existing key only.
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
                         BlockChange[kvp.Key] = new(after, after);
                         storageWriteBatch.Set(kvp.Key, after);
 
@@ -1074,6 +1083,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 const int PooledDictionaryCapacity = 512;
                 const int MaxPooledCount = 2048;
 
+                // shared pool fallback
                 if (Interlocked.Increment(ref _poolCount) > MaxPooledCount)
                 {
                     Interlocked.Decrement(ref _poolCount);

@@ -72,12 +72,13 @@ public class KademliaAdapter(
     private async Task<bool> EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
     {
         IPEndPoint endpoint = node.DiscoveryAddress;
-        // Their ping and our pong establish the bond from their perspective.
+        // If we received a ping from this endpoint, our pong should have bonded us from their point of view.
         if (nodeSession.NotTooManyFailure && nodeSession.HasReceivedPingFrom(endpoint)) return true;
 
         if (Logger.IsTrace) Logger.Trace($"Ensure session for node {node}");
         if (!await Ping(node, token)) return false;
-        // Wait for the peer to process our pong and ping us back, matching geth's bonding flow.
+        // We send them ping. But expect that eventually they send back another a ping so that we can pong.
+        // Give some time for peer to process pong. Such is the logic from geth codebase.
         await Task.Delay(_waitAfterPongDelay, token);
 
         if (Logger.IsTrace) Logger.Trace($"Node {node} pong sent.");
@@ -570,7 +571,7 @@ public class KademliaAdapter(
         {
             if (messageHandler.Handle(msg))
             {
-                // Neighbor responses may require multiple messages.
+                // Note: We dont remove the handler as in case of neighbour, a handler may need multiple message.
                 return true;
             }
         }

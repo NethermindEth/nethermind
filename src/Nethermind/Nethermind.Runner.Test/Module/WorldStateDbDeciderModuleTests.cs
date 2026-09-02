@@ -35,7 +35,7 @@ public class WorldStateDbDeciderModuleTests
         PatriciaHasData = 8
     }
 
-    // Covers FlatStateActivationPolicy's branches through the DI container.
+    // Mirrors the 5 branches in FlatStateActivationPolicy at the full DI container level.
     [TestCase(Flags.None, false, Description = "Flat disabled → patricia")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → flat")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState → flat")]
@@ -52,7 +52,8 @@ public class WorldStateDbDeciderModuleTests
             })
             .Build();
 
-        // FlatStateActivationPolicy is evaluated only when IWorldStateManager is first resolved.
+        // Populate DBs before FlatStateActivationPolicy is evaluated.
+        // The policy is a lazy singleton — it's only constructed when IWorldStateManager is first resolved.
         if (flags.HasFlag(Flags.FlatHasData))
             WriteFlatCurrentState(container, 1);
 
