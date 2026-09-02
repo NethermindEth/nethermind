@@ -13,10 +13,14 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <param name="cacheCode">When false the env keeps deposited code out of the process-wide
-/// <see cref="ICodeCache"/>, which nothing journals, so a rolled-back deposit cannot outlive its scope.</param>
-public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider, bool cacheCode = true) : IReadOnlyTxProcessingEnvFactory
+/// <param name="shareCodeCache">When false the env gets its own <see cref="ICodeCache"/> rather than the
+/// process-wide one, which nothing journals, so a rolled-back deposit cannot outlive its scope.</param>
+public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider, bool shareCodeCache = true) : IReadOnlyTxProcessingEnvFactory
 {
+    // A validation prefix touches few distinct hashes, and overflow only costs a re-read; an env without a
+    // cache at all would re-copy the whole bytecode on every EXTCODE*/CALL* the prefix runs.
+    private const int IsolatedCodeCacheCapacity = 512;
+
     public IReadOnlyTxProcessorSource Create()
     {
         IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
@@ -29,9 +33,9 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             builder
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
-            if (!cacheCode)
+            if (!shareCodeCache)
             {
-                builder.AddSingleton<ICodeCache>(NoopCodeCache.Instance);
+                builder.AddSingleton<ICodeCache>(new StaticCodeCache(IsolatedCodeCacheCapacity));
             }
 
             if (recordsTransactionDiffs)

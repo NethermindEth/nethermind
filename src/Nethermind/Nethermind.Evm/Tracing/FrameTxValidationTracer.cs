@@ -23,7 +23,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     /// carve-outs let it write state.</summary>
     private bool _inDeployFrame;
 
-    /// <summary>Set between a CREATE/CREATE2 and the creation frame it is expected to open.</summary>
+    /// <summary>Set between a CREATE2 and the creation frame it is expected to open.</summary>
     private bool _createPending;
 
     public override bool IsTracingInstructions => true;
@@ -198,9 +198,9 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         Payer = payer;
     }
 
-    /// <summary>Closes out a CREATE/CREATE2 that opened no creation frame.</summary>
-    /// <remarks>Such a create returned zero on a collision, balance or call-depth condition, none of
-    /// which is an indexed dependency of the transaction, so the prefix must not turn on it.</remarks>
+    /// <summary>Closes out a CREATE2 that opened no creation frame.</summary>
+    /// <remarks>Such a create returned zero on a collision, nonce-overflow or call-depth condition, none
+    /// of which is an indexed dependency of the transaction, so the prefix must not turn on it.</remarks>
     private void SettleCreate()
     {
         if (!_createPending) return;

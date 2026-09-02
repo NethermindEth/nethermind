@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -370,16 +371,19 @@ public class FrameTxValidationPrefixSimulationTests
         FundAccount(deployed, 1.Ether);
         ValueHash256 depositedHash = Keccak.Compute(ApproveCode(TxFrame.ApproveExecutionAndPayment)).ValueHash256;
 
-        StaticCodeCache shared = new(MemoryAllowance.CodeCacheSize);
-        NoopCodeCache isolated = NoopCodeCache.Instance;
+        StaticCodeCache given = new(MemoryAllowance.CodeCacheSize);
+        StaticCodeCache other = new(MemoryAllowance.CodeCacheSize);
 
-        RunUnder(shared, DeployTx(deployed));
-        Assert.That(shared.Get(in depositedHash), Is.Not.Null,
-            "the shared cache is what the simulator must not be given");
+        RunUnder(given, DeployTx(deployed));
 
-        // What the simulator is wired with: the deposit has nowhere to outlive the rollback.
-        RunUnder(isolated, DeployTx(deployed));
-        Assert.That(isolated.Get(in depositedHash), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            // Contained rather than suppressed: the prefix keeps its read memoization, and the deposit is
+            // confined to the env's own instance — which is what wiring the simulator away from the
+            // process-wide one buys, since nothing journals either.
+            Assert.That(given.Get(in depositedHash), Is.Not.Null, "a deposit lands in the cache the env was given");
+            Assert.That(other.Get(in depositedHash), Is.Null, "and in no other, which is what the isolation rests on");
+        }
     }
 
     private void RunUnder(ICodeCache codeCache, Transaction tx)

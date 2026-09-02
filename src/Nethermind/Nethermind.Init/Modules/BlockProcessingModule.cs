@@ -89,11 +89,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
 
-            // Its own env, with code caching off: a deploy frame in a validation prefix deposits code, nothing
+            // Its own env with its own code cache: a deploy frame in a validation prefix deposits code, nothing
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.
             .AddSingleton<IFrameTxPrefixSimulator, ILifetimeScope, IWorldStateManager, ISpecProvider, IBlockFinder, ILogManager>(
                 (lifetime, worldStateManager, specProvider, blockFinder, logManager) => new FrameTxPrefixSimulator(
-                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, cacheCode: false),
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
                     blockFinder, specProvider, logManager))
             .Add<BlockchainProcessorFacade>()
 
