@@ -192,7 +192,7 @@ public class TxPoolSourceTests
     [TestCase(3, 2, false)]
     public void GetTransactions_meters_blob_carrying_frame_tx_against_blob_budget(int blobCount, int blobLimit, bool expectSelected)
     {
-        TestSingleReleaseSpecProvider specProvider = new(Cancun.Instance);
+        TestSingleReleaseSpecProvider specProvider = new(Eip8141Prototype.Instance);
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
         Transaction frameBlobTx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobCount);
@@ -219,7 +219,7 @@ public class TxPoolSourceTests
         {
             Assert.That(result.Contains(frameBlobTx), Is.EqualTo(expectSelected));
             Assert.That(selectedBlobs, Is.EqualTo(expectSelected ? (ulong)blobCount : 0UL));
-            Assert.That(selectedBlobs, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(blobLimit)));
+            Assert.That(selectedBlobs, Is.LessThanOrEqualTo((ulong)Eip8141Prototype.Instance.MaxProductionBlobCount(blobLimit)));
         }
     }
 
@@ -257,7 +257,7 @@ public class TxPoolSourceTests
             ],
             FrameSignatures = [],
             BlobVersionedHashes = versionedHashes,
-            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V0),
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, Eip8141Prototype.Instance.BlobProofVersion),
         };
         tx.Hash = tx.CalculateHash();
         return tx;

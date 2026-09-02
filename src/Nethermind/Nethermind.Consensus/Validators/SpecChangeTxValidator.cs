@@ -15,9 +15,9 @@ namespace Nethermind.Consensus.Validators;
 public sealed class SpecChangeTxValidator(ulong chainId) :
     CompositeTxValidator([
         .. HeadTxValidator.Validators,
-        ContractSizeTxValidator.Instance,
+        new ExceptFrameTxValidator(ContractSizeTxValidator.Instance),
         new SpecChangeSignatureTxValidator(chainId),
-        IntrinsicGasTxValidator.Instance
+        new ExceptFrameTxValidator(IntrinsicGasTxValidator.Instance)
     ]), ILightTxValidator, ISpecChangeTxValidator
 {
     private static readonly HeadTxValidator LightTxValidator = new();
@@ -36,6 +36,15 @@ public sealed class SpecChangeTxValidator(ulong chainId) :
 
     public ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec) =>
         LightTxValidator.IsWellFormed(transaction, releaseSpec);
+
+    /// <summary>Applies <paramref name="inner"/> to every transaction that carries the envelope it judges.</summary>
+    /// <remarks>EIP-8141: a frame transaction has no envelope gas limit and no <c>to</c>, so <see cref="TxValidator"/>
+    /// omits the envelope size and intrinsic-gas rules from its frame composite; revalidation must omit them too.</remarks>
+    private sealed class ExceptFrameTxValidator(ITxValidator inner) : ITxValidator
+    {
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec);
+    }
 
     private sealed class SpecChangeSignatureTxValidator(ulong chainId) : ITxValidator
     {

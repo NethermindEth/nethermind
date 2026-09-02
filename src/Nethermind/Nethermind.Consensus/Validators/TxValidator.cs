@@ -200,6 +200,8 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
         TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
         TxType.Blob => releaseSpec.IsEip4844Enabled,
         TxType.SetCode => releaseSpec.IsEip7702Enabled,
+        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
         _ => true,
     };
 }

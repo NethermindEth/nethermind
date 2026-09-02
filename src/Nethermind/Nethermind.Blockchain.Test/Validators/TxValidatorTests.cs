@@ -663,6 +663,55 @@ public class TxValidatorTests
         }
     }
 
+    // A frame transaction has no envelope gas limit and no `to`, so GasLimit holds the sum of frame budgets
+    // and IsContractCreation is spuriously true; the envelope intrinsic-gas and contract-size rules cannot apply.
+    [Test]
+    public void SpecChangeValidation_AgreesWithFullValidation_ForFrameTx()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(1_000)],
+            FrameSignatures = [],
+        };
+
+        ValidationResult full = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(
+            tx, Eip8141Prototype.Instance, blockGasLimit: 0, TxValidationOptions.SkipBlobProofs);
+        ValidationResult specChange = new SpecChangeTxValidator(TestBlockchainIds.ChainId)
+            .IsWellFormed(tx, Eip8141Prototype.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.AsBool, Is.True, "full validation must accept this frame transaction");
+            Assert.That(specChange.AsBool, Is.True, $"revalidation disagreed with admission: {specChange}");
+        }
+    }
+
+    // Revalidation runs at the new head's spec, so a pooled frame transaction must be evicted at a head
+    // that does not enable EIP-8141, exactly as full validation rejects it there.
+    [Test]
+    public void SpecChangeValidation_EvictsFrameTx_WhenHeadSpecDoesNotEnableEip8141()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new SpecChangeTxValidator(TestBlockchainIds.ChainId)
+                .IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
+            Assert.That(new HeadTxValidator()
+                .IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
+        }
+    }
+
     [Test]
     public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
     {
@@ -1327,7 +1376,8 @@ public class TxValidatorTests
 
     [TestCaseSource(nameof(HeadRevalidationNonceEnvelopeCases))]
     public bool IsWellFormed_HeadRevalidationEvictsPreForkScalarNonceFrameTx(Transaction tx) =>
-        new HeadTxValidator().IsWellFormed(tx, new ReleaseSpec { IsEip8250Enabled = true }).AsBool();
+        new HeadTxValidator().IsWellFormed(
+            tx, new ReleaseSpec { IsEip8250Enabled = true, IsEip1559Enabled = true, IsEip8141Enabled = true }).AsBool();
 
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
