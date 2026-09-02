@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
@@ -756,7 +757,8 @@ public class ScopeProviderTests(bool useFlat)
             consumer.DeleteAccount(TestItem.AddressA);
             consumer.Commit(Cancun.Instance);
             consumer.CommitTree(2);
-            Assert.That(caches.ValidFor, Is.EqualTo(consumer.StateRoot), "precondition");
+            // What the driver does between blocks of a branch, and what joins the first commit's write-back.
+            Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True, "the first commit must carry the caches to its own root");
 
             consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
             consumer.Commit(Cancun.Instance);
@@ -770,6 +772,81 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(CachedAccount(caches, TestItem.AddressA), Is.Null);
             Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
             Assert.That(CachedSlot(caches, in slotD1), Is.EqualTo(new byte[] { 7 }), "the second commit must not replay the first block's removal");
+        }
+    }
+
+    [Test]
+    public void Test_DetachedStorageChanges_SurviveTheNextBlock()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        PreBlockCaches caches = new();
+        caches.PrepareFor(baseRoot);
+        WorldState state = new(ctx.ScopeProvider, LimboLogs.Instance);
+
+        using (state.BeginScope(HeaderAt(baseRoot, 1)))
+        {
+            // Execution always loads an account before writing its storage; without that the contract's fate is
+            // unknown at block end and the write-back clears its slots instead of writing them.
+            state.GetBalance(TestItem.AddressA);
+            state.Set(in SlotA1, [7]);
+            state.Commit(Cancun.Instance);
+
+            // Taken where CommitTree takes it, once the storage roots are flushed, then held while the next block
+            // refills the collections it came from.
+            IWorldStateScopeProvider.IBlockChangeSnapshot detached = state._persistentStorageProvider.DetachBlockChanges();
+
+            state.CommitTree(2);
+            Hash256 firstRoot = state.StateRoot;
+
+            state.GetBalance(TestItem.AddressC);
+            state.Set(in SlotA1, [9]);
+            state.Set(in SlotC5, [9]);
+            state.Commit(Cancun.Instance);
+            state.CommitTree(3);
+
+            caches.WriteBackInBackground(baseRoot, firstRoot, () => detached, LimboLogs.Instance.GetClassLogger<PreBlockCaches>());
+            caches.PrepareFor(firstRoot);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }), "the snapshot must hold the block it was taken from");
+            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False, "and nothing the next block touched");
+        }
+    }
+
+    [Test]
+    public void Test_SecondBlockInAScope_LeavesTheFirstsDetachedChangesAlone()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+
+        StorageCell slotA2 = new(TestItem.AddressA, 2);
+
+        // Nothing joins between the two commits. Whether or not the first write-back is still running when the second
+        // block starts, both must land: Test_DetachedStorageChanges_SurviveTheNextBlock forces the overlap itself.
+        Hash256 secondRoot;
+        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
+        {
+            consumer.Set(in SlotA1, [7]);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(2);
+
+            consumer.Set(in slotA2, [8]);
+            consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(3);
+            secondRoot = consumer.StateRoot;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(secondRoot), Is.True, "both write-backs ran to completion");
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedSlot(caches, in slotA2), Is.EqualTo(new byte[] { 8 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
         }
     }
 
@@ -804,33 +881,6 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_WriteBack_OnlyFromTheStateTheCachesDescribe()
-    {
-        PreBlockCaches caches = new();
-        AddressAsKey key = TestItem.AddressA;
-        caches.PrepareFor(TestItem.KeccakA);
-        caches.StateCache.Set(in key, new Account(1, 100));
-
-        bool ran = false;
-        caches.WriteBack(TestItem.KeccakB, TestItem.KeccakC, _ => ran = true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ran, Is.False, "a block on another state has nothing to bring forward");
-            Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakA));
-        }
-
-        caches.WriteBack(TestItem.KeccakA, TestItem.KeccakC, writeBack => writeBack.Set(TestItem.AddressA, new Account(2, 400)));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakC), "a completed write-back moves the caches to the committed state");
-            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
-            Assert.That(caches.PrepareFor(TestItem.KeccakC), Is.True);
-        }
-    }
-
-    [Test]
     public void Test_WriteBack_UnderContention_ClearsTheCachesAndForgetsTheState()
     {
         PreBlockCaches caches = new();
@@ -842,7 +892,12 @@ public class ScopeProviderTests(bool useFlat)
         // A lock bit left on the entry stands for a writer that got in: the upsert must give up rather than wait.
         LockEntryHolding(caches.StateCache, TestItem.AddressA);
 
-        caches.WriteBack(TestItem.KeccakA, TestItem.KeccakC, writeBack => writeBack.Set(TestItem.AddressA, new Account(2, 400)));
+        caches.WriteBackInBackground(
+            TestItem.KeccakA,
+            TestItem.KeccakC,
+            () => new TestSnapshot(writeBack => writeBack.Set(TestItem.AddressA, new Account(2, 400))),
+            LimboLogs.Instance.GetClassLogger<PreBlockCaches>());
+        caches.EnsureNotStaleFor(TestItem.KeccakC);
 
         using (Assert.EnterMultipleScope())
         {
@@ -851,24 +906,114 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>A snapshot whose write the test drives, so it can observe where and when the write-back runs.</summary>
+    private sealed class TestSnapshot(
+        Action<IWorldStateScopeProvider.IWorldStateWriteBatch> write,
+        Exception disposeFailure = null) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        public int WriteThreadId { get; private set; }
+
+        public bool Disposed { get; private set; }
+
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            WriteThreadId = Environment.CurrentManagedThreadId;
+            write(writeBatch);
+        }
+
+        public void Dispose()
+        {
+            Disposed = true;
+            if (disposeFailure is not null) throw disposeFailure;
+        }
+    }
+
     [Test]
-    public void Test_WriteBack_ThrowingWriter_ClearsTheCachesAndForgetsTheState()
+    public void Test_WriteBackInBackground_LeavesTheCommitThread_AndIsJoinedBeforeTheCachesAreRead()
+    {
+        PreBlockCaches caches = new();
+        caches.PrepareFor(TestItem.KeccakA);
+        using ManualResetEventSlim writing = new();
+        using ManualResetEventSlim release = new();
+        TestSnapshot snapshot = new(writeBack =>
+        {
+            writing.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+            writeBack.Set(TestItem.AddressA, new Account(2, 400));
+        });
+
+        caches.WriteBackInBackground(TestItem.KeccakA, TestItem.KeccakB, () => snapshot, LimboLogs.Instance.GetClassLogger<PreBlockCaches>());
+
+        Assert.That(writing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the write-back runs without the commit thread driving it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakA), "the commit thread returns before the write-back lands");
+            Assert.That(snapshot.WriteThreadId, Is.Not.EqualTo(Environment.CurrentManagedThreadId));
+        }
+
+        release.Set();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(TestItem.KeccakB), Is.True, "preparing for the next block joins the write-back and keeps what it brought");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
+            Assert.That(snapshot.Disposed, Is.True, "the block's collections go back once written");
+        }
+    }
+
+    [Test]
+    public void Test_WriteBackInBackground_ThatFaults_DropsTheCachesInsteadOfFailingTheBlock()
     {
         PreBlockCaches caches = new();
         AddressAsKey key = TestItem.AddressA;
         caches.PrepareFor(TestItem.KeccakA);
         caches.StateCache.Set(in key, new Account(1, 100));
+        TestSnapshot snapshot = new(_ => throw new InvalidOperationException("half way"));
 
-        Assert.That(() => caches.WriteBack(TestItem.KeccakA, TestItem.KeccakC, writeBack =>
-        {
-            writeBack.Set(TestItem.AddressA, new Account(2, 400));
-            throw new InvalidOperationException("half way");
-        }), Throws.InvalidOperationException);
+        // Nothing on the block's path waits for the write-back, so its failure must not reach the block.
+        Assert.DoesNotThrow(() => caches.WriteBackInBackground(TestItem.KeccakA, TestItem.KeccakB, () => snapshot, LimboLogs.Instance.GetClassLogger<PreBlockCaches>()));
+
+        caches.EnsureNotStaleFor(TestItem.KeccakB);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(caches.ValidFor, Is.Null, "a write-back that did not finish vouches for nothing");
             Assert.That(caches.StateCache.TryGetValue(in key, out _), Is.False);
+            Assert.That(snapshot.Disposed, Is.True, "a failed write-back still releases the block's collections");
+        }
+    }
+
+    [Test]
+    public void Test_WriteBackInBackground_ThatFailsToRelease_StillDoesNotFailTheNextBlock()
+    {
+        PreBlockCaches caches = new();
+        caches.PrepareFor(TestItem.KeccakA);
+        TestSnapshot snapshot = new(_ => { }, disposeFailure: new InvalidOperationException("release failed"));
+
+        caches.WriteBackInBackground(TestItem.KeccakA, TestItem.KeccakB, () => snapshot, LimboLogs.Instance.GetClassLogger<PreBlockCaches>());
+
+        // The join is the next block's first act; a write-back that could not let go must not reach it.
+        Assert.DoesNotThrow(() => caches.PrepareFor(TestItem.KeccakB));
+        Assert.DoesNotThrow(() => caches.PrepareFor(TestItem.KeccakB), "nor any block after it");
+    }
+
+    [Test]
+    public void Test_WriteBackInBackground_TakesNoSnapshotWhenTheCachesDescribeAnotherState()
+    {
+        PreBlockCaches caches = new();
+        caches.PrepareFor(TestItem.KeccakA);
+
+        bool taken = false;
+        caches.WriteBackInBackground(TestItem.KeccakB, TestItem.KeccakC, () =>
+        {
+            taken = true;
+            return new TestSnapshot(_ => { });
+        }, LimboLogs.Instance.GetClassLogger<PreBlockCaches>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taken, Is.False, "a block on another state must not pay to snapshot changes that would be dropped");
+            Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakA));
         }
     }
 
@@ -910,12 +1055,16 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(HeaderAt(TestItem.KeccakA, 1)))
         {
             scope.Commit(2);
-            scope.WriteBackCommittedState(_ => ran = true);
+            scope.WriteBackCommittedState(() =>
+            {
+                ran = true;
+                return Substitute.For<IWorldStateScopeProvider.IBlockChangeSnapshot>();
+            });
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ran, Is.False, "post-block values must not be filed under the pre-block root");
+            Assert.That(ran, Is.False, "post-block values must not be filed under the pre-block root, nor a snapshot taken to file them");
             Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
             Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakA));
         }

@@ -70,8 +70,19 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void Commit(ulong blockNumber) => innerScope.Commit(blockNumber);
 
-        public void WriteBackCommittedState(Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges) =>
-            innerScope.WriteBackCommittedState(writeBatch => writeChanges(new WriteBatchWrapper(writeBatch, scopeId, logger)));
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) =>
+            innerScope.WriteBackCommittedState(() => new SnapshotWrapper(takeSnapshot(), scopeId, logger));
+    }
+
+    private sealed class SnapshotWrapper(
+        IWorldStateScopeProvider.IBlockChangeSnapshot innerSnapshot,
+        long scopeId,
+        ILogger logger) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch) =>
+            innerSnapshot.WriteTo(new WriteBatchWrapper(writeBatch, scopeId, logger));
+
+        public void Dispose() => innerSnapshot.Dispose();
     }
 
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree

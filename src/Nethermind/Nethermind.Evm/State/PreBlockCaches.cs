@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -14,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -36,6 +38,10 @@ public class PreBlockCaches
 
     private readonly Lock _reconcileLock = new();
     private readonly WriteBackBatch _writeBack;
+    // The write-back of the block just committed, still running; joined before anything else writes the caches.
+    // Guarded by _joinLock, which is never held by the write-back itself, so a joiner cannot deadlock against it.
+    private readonly Lock _joinLock = new();
+    private Task? _pendingWriteBack;
     // State root the account and storage caches reflect; null until PrepareFor establishes one.
     private Hash256? _validFor;
 
@@ -129,6 +135,7 @@ public class PreBlockCaches
 
     public CacheType ClearCaches()
     {
+        JoinPendingWriteBack();
         lock (_reconcileLock)
         {
             return ClearCachesCore();
@@ -172,6 +179,7 @@ public class PreBlockCaches
     /// <returns><see langword="true"/> when the caches were kept; <see langword="false"/> when they were cleared.</returns>
     public bool PrepareFor(Hash256? stateRoot)
     {
+        JoinPendingWriteBack();
         lock (_reconcileLock)
         {
             if (stateRoot is not null && _validFor == stateRoot) return true;
@@ -193,6 +201,7 @@ public class PreBlockCaches
     /// </remarks>
     public void EnsureNotStaleFor(Hash256? stateRoot)
     {
+        JoinPendingWriteBack();
         lock (_reconcileLock)
         {
             if (stateRoot is null || _validFor != stateRoot) ClearStateCachesCore();
@@ -201,23 +210,102 @@ public class PreBlockCaches
 
     /// <summary>
     /// Brings the account and storage caches from the state at <paramref name="baseStateRoot"/> to the committed
-    /// state at <paramref name="stateRoot"/>: <paramref name="writeChanges"/> puts the final value of every account
-    /// and storage slot the block touched into the batch it is given, after which the caches count as reflecting
+    /// state at <paramref name="stateRoot"/>, on a background thread, after which the caches count as reflecting
     /// <paramref name="stateRoot"/>.
     /// </summary>
     /// <remarks>
     /// Does nothing when the caches do not reflect <paramref name="baseStateRoot"/>: they then have nothing to bring
-    /// forward and stay as they are until the driver prepares them. The batch is a single-writer upsert, which its
-    /// callers guarantee: it runs on the block-processing thread inside CommitTree, after the block's pre-warming has
-    /// been joined, while the open consumer scope keeps any speculative session out, and after the commit's write batch
-    /// has drained the scope's background readers. Detecting a writer that gets in regardless is best effort:
+    /// forward and stay as they are until the driver prepares them.
+    /// <para>
+    /// Running off the block-processing thread keeps the write-back off the response path. The batch is still a
+    /// single-writer upsert: the block's pre-warming has been joined, the commit's write batch has drained the
+    /// scope's background readers, and every other writer reaches the caches through <see cref="PrepareFor"/>,
+    /// <see cref="EnsureNotStaleFor"/> or <see cref="ClearCaches"/>, each of which joins this write-back first.
+    /// Detecting a writer that gets in regardless is best effort:
     /// <see cref="SeqlockCache{TKey,TValue}.TrySetExclusive"/> reports one that overlaps a write, and that, like an
-    /// exception in the writer, leaves the caches cleared rather than half-updated.
-    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the
-    /// whole storage cache, because a contract's pre-block slots cannot be enumerated, so the writer must issue every
-    /// clear before its first slot write.
+    /// exception in the writer, leaves the caches cleared rather than half-updated. A fault clears the caches and is
+    /// logged instead of failing the block that produced it; only a failure of the logging itself reaches a joiner,
+    /// and then just once.
+    /// </para>
+    /// <para>
+    /// The invariant this rests on is not enforced here: it is that <see cref="PrepareFor"/>,
+    /// <see cref="EnsureNotStaleFor"/> and <see cref="ClearCaches"/> are the only ways to the caches for anything but
+    /// the committing scope. In particular a speculative session cannot start while a consumer scope is open, so none
+    /// can begin between this write-back being queued and its join.
+    /// </para>
+    /// <para>
+    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the whole storage cache, because a
+    /// contract's pre-block slots cannot be enumerated, so the snapshot must issue every clear before its first
+    /// slot write.
+    /// </para>
     /// </remarks>
-    public void WriteBack(Hash256? baseStateRoot, Hash256 stateRoot, Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
+    /// <param name="takeSnapshot">
+    /// Called on the calling thread, and only once the caches look like they want the write-back, so a block whose
+    /// changes would be dropped rarely pays to snapshot them. That check is advisory, taken outside the lock that
+    /// guards the identity; the write itself checks again and may still drop what it was given. The snapshot is
+    /// disposed once written.
+    /// </param>
+    public void WriteBackInBackground(
+        Hash256? baseStateRoot,
+        Hash256 stateRoot,
+        Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot,
+        ILogger logger)
+    {
+        lock (_joinLock)
+        {
+            // The previous block's write-back is what moves the caches to this one's base state, so join before asking.
+            JoinPendingWriteBackCore();
+            if (baseStateRoot is null || _validFor != baseStateRoot) return;
+
+            IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = takeSnapshot();
+            // Nothing may escape: a faulted task would be rethrown into whichever block joins it next.
+            _pendingWriteBack = Task.Run(() =>
+            {
+                try
+                {
+                    try
+                    {
+                        WriteBackCore(baseStateRoot, stateRoot, snapshot.WriteTo);
+                    }
+                    finally
+                    {
+                        snapshot.Dispose();
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (logger.IsError) logger.Error($"Pre-block cache write-back for state root {stateRoot} failed; the caches were dropped.", e);
+                }
+            });
+        }
+    }
+
+    /// <summary>Waits for the write-back of the previous block, if one is still running.</summary>
+    private void JoinPendingWriteBack()
+    {
+        lock (_joinLock)
+        {
+            JoinPendingWriteBackCore();
+        }
+    }
+
+    private void JoinPendingWriteBackCore()
+    {
+        Task? pending = _pendingWriteBack;
+        if (pending is null) return;
+
+        try
+        {
+            pending.GetAwaiter().GetResult();
+        }
+        finally
+        {
+            // Dropped even if the wait threw, so one bad write-back cannot fail every block after it.
+            _pendingWriteBack = null;
+        }
+    }
+
+    private void WriteBackCore(Hash256? baseStateRoot, Hash256 stateRoot, Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
     {
         lock (_reconcileLock)
         {

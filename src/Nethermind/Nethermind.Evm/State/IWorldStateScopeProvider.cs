@@ -84,12 +84,16 @@ public interface IWorldStateScopeProvider
         void Commit(ulong blockNumber);
 
         /// <summary>
-        /// Called by the world state right after <see cref="Commit"/> with a writer that puts the final value of every
-        /// account and storage slot the block touched into a write batch. A scope that caches the state it reads runs the
-        /// writer against that cache, bringing it forward to the committed state before the world state discards its own
-        /// record of the block; a scope without such a cache runs nothing.
+        /// Called by the world state right after <see cref="Commit"/>. A scope that caches the state it reads takes a
+        /// snapshot of the block's final values, brings its cache forward to the committed state with it, and disposes
+        /// it; a scope without such a cache takes none, so the snapshot costs nothing.
         /// </summary>
-        void WriteBackCommittedState(Action<IWorldStateWriteBatch> writeChanges) { }
+        /// <remarks>
+        /// The snapshot must be taken before this call returns, because the world state discards its record of the
+        /// block immediately afterwards. Once taken it stands on its own, so the caller may apply it on another thread.
+        /// </remarks>
+        /// <param name="takeSnapshot">Takes the snapshot; the caller owns and must dispose what it returns.</param>
+        void WriteBackCommittedState(Func<IBlockChangeSnapshot> takeSnapshot) { }
 
         /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.
@@ -182,6 +186,23 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index, byte[]? value);
+    }
+
+    /// <summary>
+    /// The final value of every account and storage slot a committed block touched, detached from the world state that
+    /// produced it so it stays readable after the block's own record is gone.
+    /// </summary>
+    /// <remarks>
+    /// Holds the world state's block collections until disposed, so dispose it as soon as it has been written. The
+    /// scope that produced it may be disposed first, so nothing the snapshot reads may reach back into it.
+    /// </remarks>
+    public interface IBlockChangeSnapshot : IDisposable
+    {
+        /// <summary>Writes the snapshot into <paramref name="writeBatch"/>.</summary>
+        /// <remarks>
+        /// Every storage clear precedes every slot write, so a clear can never drop a slot the same write put there.
+        /// </remarks>
+        void WriteTo(IWorldStateWriteBatch writeBatch);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

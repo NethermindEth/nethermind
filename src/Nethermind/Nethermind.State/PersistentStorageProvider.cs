@@ -32,7 +32,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
-    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
+    private const int StoragesInitialCapacity = 4_096;
+
+    private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    // Handed back by a detached write-back once it is done with the map it took.
+    private Dictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
@@ -349,38 +353,82 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Writes the block's final storage values of every contract touched into <paramref name="writeBatch"/>, after a
-    /// clear for every contract whose pre-block storage the block wiped or whose account it removed.
+    /// Hands over the block's storage changes, leaving an empty map in their place, with each contract's block-end
+    /// fate already resolved so the snapshot needs nothing from the state provider afterwards.
     /// </summary>
     /// <remarks>
-    /// Clears come first: each drops every cached slot, so none may follow a slot write of the same write-back. An
-    /// account removed with storage the block never touched has no entry in <see cref="_storages"/>, so the removals
-    /// the state provider recorded are checked as well.
+    /// A handover rather than a copy: <see cref="ClearStorageMap"/> drops the map at the end of every commit anyway.
+    /// The two references that outlive the map are dealt with: the last-contract memo is invalidated here, and the
+    /// storage clear journal is emptied by the commit before this runs.
     /// </remarks>
-    internal void WriteBlockChanges(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    /// <returns>The changes; the caller owns the snapshot and must dispose it.</returns>
+    internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
-        foreach (AddressAsKey removed in _stateProvider.RemovedAccountsWithStorage)
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
-            // Only a block that saw the storage empty before touching it can prove the cache holds none of its slots.
-            if (!_storages.TryGetValue(removed, out PerContractState? state) || state.HadStorageBeforeBlock != false)
+            storage.Value.BlockEndFate = FateOf(storage);
+        }
+
+        Dictionary<AddressAsKey, PerContractState> storages = _storages;
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new Dictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        InvalidateStorageMemo();
+        return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
+    }
+
+    /// <summary>
+    /// The storage half of a committed block's changes, detached from the provider that produced it.
+    /// </summary>
+    /// <remarks>
+    /// Owns the contract states until disposed. The provider drops them once the block is committed, so nothing else
+    /// reads or mutates them and the snapshot may be written on another thread, after the scope that produced it has
+    /// been disposed. Nothing it touches may reach that scope.
+    /// </remarks>
+    private sealed class StorageChangeSnapshot(
+        PersistentStorageProvider provider,
+        Dictionary<AddressAsKey, PerContractState> storages,
+        List<AddressAsKey> removedWithStorage) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        /// <summary>
+        /// Writes the block's final value of every slot touched into <paramref name="writeBatch"/>, after a clear for
+        /// every contract whose pre-block storage the block wiped or whose account it removed.
+        /// </summary>
+        /// <remarks>
+        /// Clears come first: each drops every cached slot, so none may follow a slot write of the same write-back. An
+        /// account removed with storage the block never touched has no contract state, so the removals the state
+        /// provider recorded are checked as well.
+        /// </remarks>
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            foreach (AddressAsKey removed in removedWithStorage)
             {
-                ClearCachedStorage(writeBatch, removed.Value);
+                // Only a block that saw the storage empty before touching it can prove the cache holds none of its slots.
+                if (!storages.TryGetValue(removed, out PerContractState? state) || state.HadStorageBeforeBlock != false)
+                {
+                    ClearCachedStorage(writeBatch, removed.Value);
+                }
+            }
+
+            foreach (KeyValuePair<AddressAsKey, PerContractState> storage in storages)
+            {
+                PerContractState state = storage.Value;
+                if (state.BlockEndFate == AccountFate.Unknown || state.ClearsPreBlockStorage(state.BlockEndFate == AccountFate.Present))
+                {
+                    ClearCachedStorage(writeBatch, storage.Key.Value);
+                }
+            }
+
+            foreach (KeyValuePair<AddressAsKey, PerContractState> storage in storages)
+            {
+                if (storage.Value.BlockEndFate == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
             }
         }
 
-        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        public void Dispose()
         {
-            PerContractState state = storage.Value;
-            state.BlockEndFate = FateOf(storage);
-            if (state.BlockEndFate == AccountFate.Unknown || state.ClearsPreBlockStorage(state.BlockEndFate == AccountFate.Present))
-            {
-                ClearCachedStorage(writeBatch, storage.Key.Value);
-            }
-        }
-
-        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
-        {
-            if (storage.Value.BlockEndFate == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
+            // The contract states go the way a committed block's always do, unpooled; only the containers are reused.
+            storages.Clear();
+            Volatile.Write(ref provider._spareStorages, storages);
+            provider._stateProvider.ReturnRemovedAccounts(removedWithStorage);
         }
     }
 
@@ -805,6 +853,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
+            // Set by the write-back's clear pass and read by its slot pass, which are no longer adjacent.
+            BlockEndFate = AccountFate.Present;
             Pool.Return(this);
         }
 
@@ -926,6 +976,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public bool ClearsPreBlockStorage(bool accountExists) => _hadStorageBeforeBlock && (_wasCleared || !accountExists);
 
         /// <summary>Writes the block's final value of every slot touched, reads included, into <paramref name="writeBatch"/>.</summary>
+        /// <remarks>
+        /// Reads only this contract's address and recorded changes. It must never resolve the storage tree, as
+        /// <see cref="ProcessStorageChanges"/> does: the scope that owns the tree may already have been disposed by
+        /// the time a detached snapshot is written.
+        /// </remarks>
         public void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
             if (BlockChange.Count == 0) return;

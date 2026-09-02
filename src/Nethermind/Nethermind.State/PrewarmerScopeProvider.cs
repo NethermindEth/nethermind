@@ -180,7 +180,7 @@ public class PrewarmerScopeProvider(
         }
 
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
-        public void WriteBackCommittedState(Action<IWorldStateScopeProvider.IWorldStateWriteBatch> writeChanges)
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
         {
             if (isPrewarmer) return;
 
@@ -189,8 +189,9 @@ public class PrewarmerScopeProvider(
             // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
             if (stateRoot == _committedStateRoot) return;
 
-            preBlockCaches.WriteBack(_committedStateRoot, stateRoot, writeChanges);
+            Hash256? baseStateRoot = _committedStateRoot;
             _committedStateRoot = stateRoot;
+            preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
         }
 
         public Hash256 RootHash => baseScope.RootHash;
