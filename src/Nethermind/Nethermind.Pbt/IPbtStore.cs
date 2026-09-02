@@ -12,8 +12,8 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public interface IPbtStore
 {
-    /// <summary>Gets the encoded canonical node at <paramref name="locator"/>, or <see langword="null"/> when absent.</summary>
-    byte[]? GetNode(PbtNodeLocator locator);
+    /// <summary>Gets the encoded canonical node at <paramref name="path"/>, or <see langword="null"/> when absent.</summary>
+    byte[]? GetNode(PbtNodePath path);
 
     /// <summary>Atomically applies leaf and node mutations for <paramref name="newRoot"/>.</summary>
     void Apply(in ValueHash256 newRoot, IReadOnlyList<PbtLeafMutation> leaves, IReadOnlyList<PbtNodeMutation> nodes);
@@ -22,5 +22,5 @@ public interface IPbtStore
 /// <summary>A complete-key leaf replacement; a null value deletes the key.</summary>
 public readonly record struct PbtLeafMutation(PbtFullKey Key, ValueHash256? Value);
 
-/// <summary>A canonical node replacement; a null encoding deletes the locator.</summary>
-public readonly record struct PbtNodeMutation(PbtNodeLocator Locator, byte[]? Encoding);
+/// <summary>A canonical node replacement; a null encoding deletes the path.</summary>
+public readonly record struct PbtNodeMutation(PbtNodePath Path, byte[]? Encoding);

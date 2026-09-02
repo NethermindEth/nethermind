@@ -15,7 +15,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     private readonly Lock _treeLock = new();
 
     internal ConcurrentDictionary<PbtFullKey, ValueHash256?> Leaves = new();
-    internal ConcurrentDictionary<PbtNodeLocator, byte[]?> Nodes = new();
+    internal ConcurrentDictionary<PbtNodePath, byte[]?> Nodes = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
@@ -29,15 +29,15 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock) return Leaves.TryGetValue(key, out value);
     }
 
-    internal void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding)
+    internal void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding)
     {
         byte[]? ownedEncoding = encoding.IsEmpty ? null : encoding.ToArray();
-        lock (_treeLock) Nodes[locator] = ownedEncoding;
+        lock (_treeLock) Nodes[path] = ownedEncoding;
     }
 
-    internal bool TryGetNode(PbtNodeLocator locator, out byte[]? encoding)
+    internal bool TryGetNode(PbtNodePath path, out byte[]? encoding)
     {
-        lock (_treeLock) return Nodes.TryGetValue(locator, out encoding);
+        lock (_treeLock) return Nodes.TryGetValue(path, out encoding);
     }
 
     internal void ApplyTreeMutations(
@@ -47,11 +47,11 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock)
         {
             ConcurrentDictionary<PbtFullKey, ValueHash256?> leaves = new(Leaves);
-            ConcurrentDictionary<PbtNodeLocator, byte[]?> nodes = new(Nodes);
+            ConcurrentDictionary<PbtNodePath, byte[]?> nodes = new(Nodes);
             foreach (PbtLeafMutation mutation in leafMutations)
                 leaves[mutation.Key] = mutation.Value is null || mutation.Value.Value == default ? null : mutation.Value;
             foreach (PbtNodeMutation mutation in nodeMutations)
-                nodes[mutation.Locator] = mutation.Encoding is null ? null : (byte[])mutation.Encoding.Clone();
+                nodes[mutation.Path] = mutation.Encoding is null ? null : (byte[])mutation.Encoding.Clone();
             Leaves = leaves;
             Nodes = nodes;
         }
@@ -81,9 +81,9 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             leafBytes += key.Length + (value is null ? 0 : ValueHash256.MemorySize);
         }
 
-        foreach ((PbtNodeLocator locator, byte[]? node) in Nodes)
+        foreach ((PbtNodePath path, byte[]? node) in Nodes)
         {
-            nodeBytes += locator.Encode().Length + (node?.Length ?? 0);
+            nodeBytes += path.Encode().Length + (node?.Length ?? 0);
         }
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));

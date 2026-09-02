@@ -18,9 +18,9 @@ public class PbtSnapshotCompactorTests
     public void Compact_PreservesNewestCanonicalLeafAndNode()
     {
         PbtFullKey key = new([1]);
-        PbtNodeLocator locator = new([0x80], 1);
-        PbtSnapshotContent older = new(); older.SetLeaf(key, TestItem.KeccakA.ValueHash256); older.SetNode(locator, [1]);
-        PbtSnapshotContent newer = new(); newer.SetLeaf(key, TestItem.KeccakB.ValueHash256); newer.SetNode(locator, [2]);
+        PbtNodePath path = new([0x80], 1);
+        PbtSnapshotContent older = new(); older.SetLeaf(key, TestItem.KeccakA.ValueHash256); older.SetNode(path, [1]);
+        PbtSnapshotContent newer = new(); newer.SetLeaf(key, TestItem.KeccakB.ValueHash256); newer.SetNode(path, [2]);
         using PbtSnapshotPooledList chain = new(2);
         chain.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, older, _pool, PbtResourcePool.Usage.MainBlockProcessing));
         chain.Add(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, newer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
@@ -28,7 +28,7 @@ public class PbtSnapshotCompactorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.Content.TryGetLeaf(key, out ValueHash256? leaf) && leaf == TestItem.KeccakB.ValueHash256, Is.True);
-            Assert.That(compacted.Content.TryGetNode(locator, out byte[]? node) && node.AsSpan().SequenceEqual([(byte)2]), Is.True);
+            Assert.That(compacted.Content.TryGetNode(path, out byte[]? node) && node.AsSpan().SequenceEqual([(byte)2]), Is.True);
         }
     }
 

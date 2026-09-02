@@ -53,7 +53,7 @@ public class PbtFormatInteropTests
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Locator.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }

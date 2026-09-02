@@ -9,7 +9,7 @@ namespace Nethermind.Pbt;
 /// <summary>An in-memory store whose selectable physical grouping preserves exact canonical records.</summary>
 public sealed class PbtPhysicalNodeStore : IPbtStore
 {
-    private Dictionary<PbtNodeLocator, byte[]>? _records;
+    private Dictionary<PbtNodePath, byte[]>? _records;
     private Dictionary<byte, Bucket>? _buckets;
     private PbtNodeLayout _layout;
 
@@ -55,13 +55,13 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         PbtPhysicalNodeStore store = new(layout) { RootHash = rootHash };
         if (layout == PbtNodeLayout.Record)
         {
-            Dictionary<PbtNodeLocator, byte[]> records = store._records!;
+            Dictionary<PbtNodePath, byte[]> records = store._records!;
             foreach (PbtPhysicalPayload payload in payloads)
             {
-                PbtNodeLocator locator = PbtNodeLocator.Decode(payload.Key.Span);
+                PbtNodePath path = PbtNodePath.Decode(payload.Key.Span);
                 byte[] encoding = payload.Payload.ToArray();
                 ValidateNode(encoding);
-                if (!records.TryAdd(locator, encoding)) throw new InvalidDataException("Duplicate PBT node locator.");
+                if (!records.TryAdd(path, encoding)) throw new InvalidDataException("Duplicate PBT node path.");
             }
         }
         else
@@ -78,32 +78,32 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         return store;
     }
 
-    /// <summary>Enumerates owned copies of the canonical locator/node records in locator order.</summary>
+    /// <summary>Enumerates owned copies of the canonical path/node records in path order.</summary>
     public IReadOnlyList<PbtNodeRecord> EnumerateRecords()
     {
-        Dictionary<PbtNodeLocator, byte[]> records = _layout == PbtNodeLayout.Record
+        Dictionary<PbtNodePath, byte[]> records = _layout == PbtNodeLayout.Record
             ? _records!
             : MaterializeRecords(_buckets!);
-        PbtNodeLocator[] locators = [.. records.Keys];
-        Array.Sort(locators);
-        PbtNodeRecord[] result = new PbtNodeRecord[locators.Length];
+        PbtNodePath[] paths = [.. records.Keys];
+        Array.Sort(paths);
+        PbtNodeRecord[] result = new PbtNodeRecord[paths.Length];
         for (int index = 0; index < result.Length; index++)
         {
-            PbtNodeLocator locator = locators[index];
-            result[index] = new PbtNodeRecord(locator, records[locator]);
+            PbtNodePath path = paths[index];
+            result[index] = new PbtNodeRecord(path, records[path]);
         }
         return result;
     }
 
     /// <summary>Gets an owned copy of the encoded canonical node.</summary>
-    public byte[]? GetNode(PbtNodeLocator locator)
+    public byte[]? GetNode(PbtNodePath path)
     {
-        ArgumentNullException.ThrowIfNull(locator);
+        ArgumentNullException.ThrowIfNull(path);
         if (_layout == PbtNodeLayout.Record)
-            return _records!.TryGetValue(locator, out byte[]? encoding) ? (byte[])encoding.Clone() : null;
+            return _records!.TryGetValue(path, out byte[]? encoding) ? (byte[])encoding.Clone() : null;
 
-        byte bucketKey = BucketKey(locator);
-        return _buckets!.TryGetValue(bucketKey, out Bucket? bucket) ? bucket.GetNode(locator) : null;
+        byte bucketKey = BucketKey(path);
+        return _buckets!.TryGetValue(bucketKey, out Bucket? bucket) ? bucket.GetNode(path) : null;
     }
 
     /// <inheritdoc/>
@@ -128,7 +128,7 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
             for (int index = 0; index < payloads.Length; index++)
             {
                 PbtNodeRecord record = records[index];
-                payloads[index] = new PbtPhysicalPayload(record.Locator.Encode(), record.Encoding.Span);
+                payloads[index] = new PbtPhysicalPayload(record.Path.Encode(), record.Encoding.Span);
             }
             return payloads;
         }
@@ -146,14 +146,14 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
 
     private void ApplyRecords(in ValueHash256 newRoot, IReadOnlyList<PbtNodeMutation> nodeMutations)
     {
-        Dictionary<PbtNodeLocator, byte[]> records = new(_records!);
+        Dictionary<PbtNodePath, byte[]> records = new(_records!);
         foreach (PbtNodeMutation mutation in nodeMutations)
         {
-            if (mutation.Encoding is null) records.Remove(mutation.Locator);
+            if (mutation.Encoding is null) records.Remove(mutation.Path);
             else
             {
                 ValidateNode(mutation.Encoding);
-                records[mutation.Locator] = (byte[])mutation.Encoding.Clone();
+                records[mutation.Path] = (byte[])mutation.Encoding.Clone();
             }
         }
         _records = records;
@@ -165,7 +165,7 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         Dictionary<byte, List<PbtNodeMutation>> mutationsByBucket = [];
         foreach (PbtNodeMutation mutation in nodeMutations)
         {
-            byte key = BucketKey(mutation.Locator);
+            byte key = BucketKey(mutation.Path);
             if (!mutationsByBucket.TryGetValue(key, out List<PbtNodeMutation>? mutations))
             {
                 mutations = [];
@@ -177,16 +177,16 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         Dictionary<byte, Bucket> buckets = new(_buckets!);
         foreach ((byte key, List<PbtNodeMutation> mutations) in mutationsByBucket)
         {
-            Dictionary<PbtNodeLocator, byte[]> records = buckets.TryGetValue(key, out Bucket? prior)
+            Dictionary<PbtNodePath, byte[]> records = buckets.TryGetValue(key, out Bucket? prior)
                 ? prior.Materialize()
                 : [];
             foreach (PbtNodeMutation mutation in mutations)
             {
-                if (mutation.Encoding is null) records.Remove(mutation.Locator);
+                if (mutation.Encoding is null) records.Remove(mutation.Path);
                 else
                 {
                     ValidateNode(mutation.Encoding);
-                    records[mutation.Locator] = (byte[])mutation.Encoding.Clone();
+                    records[mutation.Path] = (byte[])mutation.Encoding.Clone();
                 }
             }
             if (records.Count == 0) buckets.Remove(key);
@@ -196,37 +196,37 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         RootHash = newRoot;
     }
 
-    private static Dictionary<byte, Bucket> BuildBuckets(Dictionary<PbtNodeLocator, byte[]> records)
+    private static Dictionary<byte, Bucket> BuildBuckets(Dictionary<PbtNodePath, byte[]> records)
     {
-        Dictionary<byte, Dictionary<PbtNodeLocator, byte[]>> grouped = [];
-        foreach ((PbtNodeLocator locator, byte[] encoding) in records)
+        Dictionary<byte, Dictionary<PbtNodePath, byte[]>> grouped = [];
+        foreach ((PbtNodePath path, byte[] encoding) in records)
         {
-            byte key = BucketKey(locator);
-            if (!grouped.TryGetValue(key, out Dictionary<PbtNodeLocator, byte[]>? bucketRecords))
+            byte key = BucketKey(path);
+            if (!grouped.TryGetValue(key, out Dictionary<PbtNodePath, byte[]>? bucketRecords))
             {
                 bucketRecords = [];
                 grouped.Add(key, bucketRecords);
             }
-            bucketRecords.Add(locator, encoding);
+            bucketRecords.Add(path, encoding);
         }
 
         Dictionary<byte, Bucket> buckets = new(grouped.Count);
-        foreach ((byte key, Dictionary<PbtNodeLocator, byte[]> bucketRecords) in grouped)
+        foreach ((byte key, Dictionary<PbtNodePath, byte[]> bucketRecords) in grouped)
             buckets.Add(key, Bucket.Build(key, bucketRecords));
         return buckets;
     }
 
-    private static Dictionary<PbtNodeLocator, byte[]> MaterializeRecords(Dictionary<byte, Bucket> buckets)
+    private static Dictionary<PbtNodePath, byte[]> MaterializeRecords(Dictionary<byte, Bucket> buckets)
     {
-        Dictionary<PbtNodeLocator, byte[]> records = [];
+        Dictionary<PbtNodePath, byte[]> records = [];
         foreach (Bucket bucket in buckets.Values)
         {
-            foreach ((PbtNodeLocator locator, byte[] encoding) in bucket.Materialize()) records.Add(locator, encoding);
+            foreach ((PbtNodePath path, byte[] encoding) in bucket.Materialize()) records.Add(path, encoding);
         }
         return records;
     }
 
-    private static byte BucketKey(PbtNodeLocator locator) => Blake3Hash.Hash(locator.Encode()).Bytes[0];
+    private static byte BucketKey(PbtNodePath path) => Blake3Hash.Hash(path.Encode()).Bytes[0];
 
     private static void ValidateNode(ReadOnlySpan<byte> encoding) => _ = PbtNodeCodec.Decode(encoding);
 
@@ -238,9 +238,9 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
 
     private sealed class Bucket
     {
-        private readonly Dictionary<PbtNodeLocator, Segment> _index;
+        private readonly Dictionary<PbtNodePath, Segment> _index;
 
-        private Bucket(byte[] payload, Dictionary<PbtNodeLocator, Segment> index)
+        private Bucket(byte[] payload, Dictionary<PbtNodePath, Segment> index)
         {
             Payload = payload;
             _index = index;
@@ -248,36 +248,36 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
 
         internal byte[] Payload { get; }
 
-        internal byte[]? GetNode(PbtNodeLocator locator) =>
-            _index.TryGetValue(locator, out Segment segment)
+        internal byte[]? GetNode(PbtNodePath path) =>
+            _index.TryGetValue(path, out Segment segment)
                 ? Payload.AsSpan(segment.Offset, segment.Length).ToArray()
                 : null;
 
-        internal Dictionary<PbtNodeLocator, byte[]> Materialize()
+        internal Dictionary<PbtNodePath, byte[]> Materialize()
         {
-            Dictionary<PbtNodeLocator, byte[]> records = new(_index.Count);
-            foreach ((PbtNodeLocator locator, Segment segment) in _index)
-                records.Add(locator, Payload.AsSpan(segment.Offset, segment.Length).ToArray());
+            Dictionary<PbtNodePath, byte[]> records = new(_index.Count);
+            foreach ((PbtNodePath path, Segment segment) in _index)
+                records.Add(path, Payload.AsSpan(segment.Offset, segment.Length).ToArray());
             return records;
         }
 
-        internal static Bucket Build(byte bucketKey, Dictionary<PbtNodeLocator, byte[]> records)
+        internal static Bucket Build(byte bucketKey, Dictionary<PbtNodePath, byte[]> records)
         {
-            PbtNodeLocator[] locators = [.. records.Keys];
-            Array.Sort(locators);
+            PbtNodePath[] paths = [.. records.Keys];
+            Array.Sort(paths);
             int length = 0;
-            foreach (PbtNodeLocator locator in locators)
-                length = checked(length + 8 + locator.Encode().Length + records[locator].Length);
+            foreach (PbtNodePath path in paths)
+                length = checked(length + 8 + path.Encode().Length + records[path].Length);
             byte[] payload = GC.AllocateUninitializedArray<byte>(length);
             int offset = 0;
-            foreach (PbtNodeLocator locator in locators)
+            foreach (PbtNodePath path in paths)
             {
-                byte[] locatorEncoding = locator.Encode();
-                byte[] node = records[locator];
-                BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(offset), (uint)locatorEncoding.Length);
+                byte[] pathEncoding = path.Encode();
+                byte[] node = records[path];
+                BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(offset), (uint)pathEncoding.Length);
                 offset += 4;
-                locatorEncoding.CopyTo(payload, offset);
-                offset += locatorEncoding.Length;
+                pathEncoding.CopyTo(payload, offset);
+                offset += pathEncoding.Length;
                 BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(offset), (uint)node.Length);
                 offset += 4;
                 node.CopyTo(payload, offset);
@@ -289,20 +289,20 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
         internal static Bucket Parse(byte bucketKey, ReadOnlySpan<byte> source)
         {
             byte[] payload = source.ToArray();
-            Dictionary<PbtNodeLocator, Segment> index = [];
+            Dictionary<PbtNodePath, Segment> index = [];
             int offset = 0;
             while (offset < payload.Length)
             {
-                int locatorLength = ReadLength(payload, ref offset);
-                if (locatorLength > payload.Length - offset) throw new InvalidDataException("Truncated PBT bucket locator.");
-                PbtNodeLocator locator = PbtNodeLocator.Decode(payload.AsSpan(offset, locatorLength));
-                offset += locatorLength;
-                if (BucketKey(locator) != bucketKey) throw new InvalidDataException("A PBT record is stored in the wrong hash bucket.");
+                int pathLength = ReadLength(payload, ref offset);
+                if (pathLength > payload.Length - offset) throw new InvalidDataException("Truncated PBT bucket path.");
+                PbtNodePath path = PbtNodePath.Decode(payload.AsSpan(offset, pathLength));
+                offset += pathLength;
+                if (BucketKey(path) != bucketKey) throw new InvalidDataException("A PBT record is stored in the wrong hash bucket.");
                 int nodeLength = ReadLength(payload, ref offset);
                 if (nodeLength > payload.Length - offset) throw new InvalidDataException("Truncated PBT bucket node.");
                 ValidateNode(payload.AsSpan(offset, nodeLength));
-                if (!index.TryAdd(locator, new Segment(offset, nodeLength)))
-                    throw new InvalidDataException("Duplicate PBT node locator in a hash bucket.");
+                if (!index.TryAdd(path, new Segment(offset, nodeLength)))
+                    throw new InvalidDataException("Duplicate PBT node path in a hash bucket.");
                 offset += nodeLength;
             }
             return new Bucket(payload, index);
@@ -321,19 +321,19 @@ public sealed class PbtPhysicalNodeStore : IPbtStore
     }
 }
 
-/// <summary>An owned canonical locator/node record.</summary>
+/// <summary>An owned canonical path/node record.</summary>
 public sealed class PbtNodeRecord
 {
     private readonly byte[] _encoding;
 
-    internal PbtNodeRecord(PbtNodeLocator locator, ReadOnlySpan<byte> encoding)
+    internal PbtNodeRecord(PbtNodePath path, ReadOnlySpan<byte> encoding)
     {
-        Locator = locator;
+        Path = path;
         _encoding = encoding.ToArray();
     }
 
-    /// <summary>Gets the complete canonical locator.</summary>
-    public PbtNodeLocator Locator { get; }
+    /// <summary>Gets the complete canonical path.</summary>
+    public PbtNodePath Path { get; }
 
     /// <summary>Gets the exact canonical node encoding.</summary>
     public ReadOnlyMemory<byte> Encoding => _encoding;

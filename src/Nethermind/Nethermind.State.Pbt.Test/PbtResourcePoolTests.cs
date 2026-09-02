@@ -19,14 +19,14 @@ public class PbtResourcePoolTests
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtFullKey key = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         content.SetLeaf(key, TestItem.KeccakA.ValueHash256);
-        content.SetNode(new PbtNodeLocator([0x80], 1), [2]);
+        content.SetNode(new PbtNodePath([0x80], 1), [2]);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
         PbtSnapshotContent rented = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(content));
             Assert.That(rented.TryGetLeaf(key, out _), Is.False);
-            Assert.That(rented.TryGetNode(new PbtNodeLocator([0x80], 1), out _), Is.False);
+            Assert.That(rented.TryGetNode(new PbtNodePath([0x80], 1), out _), Is.False);
         }
     }
 

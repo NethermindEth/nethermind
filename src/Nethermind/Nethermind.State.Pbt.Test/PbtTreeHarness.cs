@@ -36,9 +36,9 @@ internal sealed class PbtTreeHarness(PbtNodeLayout layout = PbtNodeLayout.Record
         return RootHash;
     }
 
-    public bool TryGetNode(PbtNodeLocator locator, out byte[]? encoding)
+    public bool TryGetNode(PbtNodePath path, out byte[]? encoding)
     {
-        encoding = _store.GetNode(locator);
+        encoding = _store.GetNode(path);
         return encoding is not null;
     }
 
@@ -52,7 +52,7 @@ internal sealed class PbtTreeHarness(PbtNodeLayout layout = PbtNodeLayout.Record
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Locator.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }

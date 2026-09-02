@@ -73,7 +73,7 @@ public class PbtPhysicalLayoutTests
     {
         foreach (PbtNodeRecord record in expected.EnumerateRecords())
         {
-            Assert.That(reconstructed.GetNode(record.Locator), Is.EqualTo(record.Encoding.ToArray()));
+            Assert.That(reconstructed.GetNode(record.Path), Is.EqualTo(record.Encoding.ToArray()));
         }
         Assert.That(CanonicalSet(reconstructed), Is.EqualTo(CanonicalSet(expected)));
     }
@@ -82,9 +82,9 @@ public class PbtPhysicalLayoutTests
     {
         Dictionary<byte, byte[]> before = PhysicalPayloads(store);
         PbtNodeRecord changedRecord = store.EnumerateRecords()[0];
-        byte changedBucket = Blake3Hash.Hash(changedRecord.Locator.Encode()).Bytes[0];
+        byte changedBucket = Blake3Hash.Hash(changedRecord.Path.Encode()).Bytes[0];
         byte[] encoding = changedRecord.Encoding.ToArray();
-        store.Apply(store.RootHash, [], [new PbtNodeMutation(changedRecord.Locator, encoding)]);
+        store.Apply(store.RootHash, [], [new PbtNodeMutation(changedRecord.Path, encoding)]);
         Dictionary<byte, byte[]> after = PhysicalPayloads(store);
         foreach ((byte key, byte[] payload) in before)
         {
@@ -115,17 +115,17 @@ public class PbtPhysicalLayoutTests
     {
         string[] recordSet = CanonicalSet(record);
         string[] groupedSet = CanonicalSet(grouped);
-        bool hasCrossBoundaryLocator = false;
+        bool hasCrossBoundaryPath = false;
         foreach (PbtNodeRecord node in record.EnumerateRecords())
         {
-            if (node.Locator.BitDepth > 8 && (node.Locator.BitDepth & 7) != 0) hasCrossBoundaryLocator = true;
+            if (node.Path.BitDepth > 8 && (node.Path.BitDepth & 7) != 0) hasCrossBoundaryPath = true;
         }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(recordRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(groupedRoot, Is.EqualTo(recordRoot));
             Assert.That(groupedSet, Is.EqualTo(recordSet));
-            Assert.That(hasCrossBoundaryLocator, Is.True, "a non-byte-aligned locator crosses physical grouping boundaries");
+            Assert.That(hasCrossBoundaryPath, Is.True, "a non-byte-aligned path crosses physical grouping boundaries");
         }
     }
 
@@ -136,7 +136,7 @@ public class PbtPhysicalLayoutTests
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Locator.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }

@@ -114,7 +114,7 @@ public class PbtRebuilderTests
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and one-batch rebuild must have the same root");
             Assert.That(CanonicalNodes(reader.EnumerateNodes()), Is.EqualTo(CanonicalNodes(incrementalStore.EnumerateRecords())),
-                "incremental replay and one-batch rebuild must have the exact same locator/node graph");
+                "incremental replay and one-batch rebuild must have the exact same path/node graph");
             Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
             Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
         }
@@ -188,11 +188,11 @@ public class PbtRebuilderTests
         Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 
-    private static string[] CanonicalNodes(IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> nodes)
+    private static string[] CanonicalNodes(IEnumerable<KeyValuePair<PbtNodePath, byte[]>> nodes)
     {
         List<string> result = [];
-        foreach ((PbtNodeLocator locator, byte[] encoding) in nodes)
-            result.Add($"{Convert.ToHexString(locator.Encode())}:{Convert.ToHexString(encoding)}");
+        foreach ((PbtNodePath path, byte[] encoding) in nodes)
+            result.Add($"{Convert.ToHexString(path.Encode())}:{Convert.ToHexString(encoding)}");
         result.Sort(StringComparer.Ordinal);
         return [.. result];
     }
@@ -201,7 +201,7 @@ public class PbtRebuilderTests
     {
         List<string> result = new(nodes.Count);
         foreach (PbtNodeRecord node in nodes)
-            result.Add($"{Convert.ToHexString(node.Locator.Encode())}:{Convert.ToHexString(node.Encoding.Span)}");
+            result.Add($"{Convert.ToHexString(node.Path.Encode())}:{Convert.ToHexString(node.Encoding.Span)}");
         result.Sort(StringComparer.Ordinal);
         return [.. result];
     }

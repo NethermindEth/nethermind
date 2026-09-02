@@ -164,14 +164,14 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
             }
         }
 
-        public byte[]? GetNode(PbtNodeLocator locator) => snapshot.GetColumn(PbtColumns.CompressedNodes).Get(locator.Encode());
+        public byte[]? GetNode(PbtNodePath path) => snapshot.GetColumn(PbtColumns.CompressedNodes).Get(path.Encode());
 
-        public IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
+        public IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
         {
             ISortedKeyValueStore nodes = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.CompressedNodes);
             using ISortedView view = nodes.GetViewBetween([], [0xFF, 0xFF]);
             while (view.MoveNext())
-                yield return new KeyValuePair<PbtNodeLocator, byte[]>(PbtNodeLocator.Decode(view.CurrentKey), view.CurrentValue.ToArray());
+                yield return new KeyValuePair<PbtNodePath, byte[]>(PbtNodePath.Decode(view.CurrentKey), view.CurrentValue.ToArray());
         }
 
         public ulong GetCodeReference(in ValueHash256 codeHash)
@@ -201,10 +201,10 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db, IPbtConfig config)
             else leaves.PutSpan(key.Bytes, value.Value.Bytes, flags);
         }
 
-        public void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding)
+        public void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding)
         {
             IWriteBatch nodes = _batch.GetColumnBatch(PbtColumns.CompressedNodes);
-            byte[] key = locator.Encode();
+            byte[] key = path.Encode();
             if (encoding.IsEmpty) nodes.Set(key, null, flags);
             else nodes.PutSpan(key, encoding, flags);
         }

@@ -161,13 +161,13 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Full_key_and_persisted_locator_validate_bounds_and_canonical_padding()
+    public void Full_key_and_persisted_path_validate_bounds_and_canonical_padding()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey([]));
         Assert.DoesNotThrow(() => new PbtFullKey(new byte[8192]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[8193]));
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));
-        Assert.Throws<InvalidDataException>(() => PbtNodeLocator.Decode([0, 0, 0, 1, 0x01]));
+        Assert.Throws<InvalidDataException>(() => PbtNodePath.Decode([0, 0, 0, 1, 0x01]));
 
         PbtTreeHarness tree = new();
         tree.ApplyBatch([([0x12], Value(1))]);

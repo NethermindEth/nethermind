@@ -91,7 +91,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             report.NodeKeyBytes += view.CurrentKey.Length;
             report.NodeBytes += view.CurrentValue.Length;
             if (expectedIndex >= expectedNodes.Count ||
-                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].Locator.Encode()) ||
+                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].Path.Encode()) ||
                 !view.CurrentValue.SequenceEqual(expectedNodes[expectedIndex].Encoding.Span))
             {
                 report.InvalidNodeCount++;

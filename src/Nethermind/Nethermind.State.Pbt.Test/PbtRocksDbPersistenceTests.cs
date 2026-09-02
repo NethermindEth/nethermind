@@ -27,14 +27,14 @@ public class PbtRocksDbPersistenceTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
-        PbtNodeLocator locator = new([0xA0], 3);
+        PbtNodePath path = new([0xA0], 3);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
         StateId state = new(7, TestItem.KeccakB.ValueHash256);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, value, WriteFlags.None))
         {
             batch.SetLeaf(leaf, value);
-            batch.SetNode(locator, [0x11, 0x22]);
+            batch.SetNode(path, [0x11, 0x22]);
             batch.Commit();
         }
 
@@ -45,7 +45,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.CurrentState, Is.EqualTo(state));
             Assert.That(reader.CurrentRoot, Is.EqualTo(value));
             Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
-            Assert.That(reader.GetNode(locator), Is.EqualTo(new byte[] { 0x11, 0x22 }));
+            Assert.That(reader.GetNode(path), Is.EqualTo(new byte[] { 0x11, 0x22 }));
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey), Is.EqualTo(new byte[] { 1 }));
         }
     }
@@ -131,7 +131,7 @@ public class PbtRocksDbPersistenceTests
             new StateId(7, TestItem.KeccakB.ValueHash256),
             TestItem.KeccakA.ValueHash256,
             WriteFlags.None);
-        final.SetNode(new PbtNodeLocator([0x80], 1), [0x11]);
+        final.SetNode(new PbtNodePath([0x80], 1), [0x11]);
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
         final.Dispose();

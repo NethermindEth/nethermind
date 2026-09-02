@@ -27,8 +27,8 @@ public interface IPbtPersistence
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves();
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix);
 
-        byte[]? GetNode(PbtNodeLocator locator);
-        IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes();
+        byte[]? GetNode(PbtNodePath path);
+        IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }
@@ -36,7 +36,7 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetLeaf(PbtFullKey key, ValueHash256? value);
-        void SetNode(PbtNodeLocator locator, ReadOnlySpan<byte> encoding);
+        void SetNode(PbtNodePath path, ReadOnlySpan<byte> encoding);
         void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
         void Commit();
     }

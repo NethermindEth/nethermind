@@ -9,7 +9,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 {
-    public byte[]? GetNode(PbtNodeLocator locator) => bundle.GetNode(locator);
+    public byte[]? GetNode(PbtNodePath path) => bundle.GetNode(path);
 
     public void Apply(
         in ValueHash256 newRoot,

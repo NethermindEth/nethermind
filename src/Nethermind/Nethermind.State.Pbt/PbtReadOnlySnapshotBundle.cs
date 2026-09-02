@@ -37,15 +37,15 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetLeaf(key);
     }
 
-    internal byte[]? GetNode(PbtNodeLocator locator)
+    internal byte[]? GetNode(PbtNodePath path)
     {
         GuardDispose();
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.TryGetNode(locator, out byte[]? encoding)) return encoding;
+            if (snapshots[i].Content.TryGetNode(path, out byte[]? encoding)) return encoding;
         }
 
-        return reader.GetNode(locator);
+        return reader.GetNode(path);
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
@@ -85,19 +85,19 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
+    internal IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
     {
         GuardDispose();
-        SortedDictionary<PbtNodeLocator, byte[]?> visible = [];
-        foreach ((PbtNodeLocator locator, byte[] encoding) in reader.EnumerateNodes()) visible[locator] = encoding;
+        SortedDictionary<PbtNodePath, byte[]?> visible = [];
+        foreach ((PbtNodePath path, byte[] encoding) in reader.EnumerateNodes()) visible[path] = encoding;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach ((PbtNodeLocator locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
+            foreach ((PbtNodePath path, byte[]? encoding) in snapshots[i].Content.Nodes) visible[path] = encoding;
         }
 
-        foreach ((PbtNodeLocator locator, byte[]? encoding) in visible)
+        foreach ((PbtNodePath path, byte[]? encoding) in visible)
         {
-            if (encoding is not null) yield return new KeyValuePair<PbtNodeLocator, byte[]>(locator, encoding);
+            if (encoding is not null) yield return new KeyValuePair<PbtNodePath, byte[]>(path, encoding);
         }
     }
 

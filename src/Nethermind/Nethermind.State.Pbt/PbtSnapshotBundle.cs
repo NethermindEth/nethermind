@@ -57,15 +57,15 @@ public sealed class PbtSnapshotBundle(
         IReadOnlyList<PbtNodeMutation> nodeMutations) =>
         WriteBuffer.ApplyTreeMutations(leafMutations, nodeMutations);
 
-    internal byte[]? GetNode(PbtNodeLocator locator)
+    internal byte[]? GetNode(PbtNodePath path)
     {
-        if (WriteBuffer.TryGetNode(locator, out byte[]? encoding)) return encoding;
+        if (WriteBuffer.TryGetNode(path, out byte[]? encoding)) return encoding;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.TryGetNode(locator, out encoding)) return encoding;
+            if (snapshots[i].Content.TryGetNode(path, out encoding)) return encoding;
         }
 
-        return readOnlyBundle.GetNode(locator);
+        return readOnlyBundle.GetNode(path);
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
@@ -111,18 +111,18 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtNodeLocator, byte[]>> EnumerateNodes()
+    internal IEnumerable<KeyValuePair<PbtNodePath, byte[]>> EnumerateNodes()
     {
-        SortedDictionary<PbtNodeLocator, byte[]?> visible = [];
-        foreach ((PbtNodeLocator locator, byte[] encoding) in readOnlyBundle.EnumerateNodes()) visible[locator] = encoding;
+        SortedDictionary<PbtNodePath, byte[]?> visible = [];
+        foreach ((PbtNodePath path, byte[] encoding) in readOnlyBundle.EnumerateNodes()) visible[path] = encoding;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach ((PbtNodeLocator locator, byte[]? encoding) in snapshots[i].Content.Nodes) visible[locator] = encoding;
+            foreach ((PbtNodePath path, byte[]? encoding) in snapshots[i].Content.Nodes) visible[path] = encoding;
         }
-        foreach ((PbtNodeLocator locator, byte[]? encoding) in WriteBuffer.Nodes) visible[locator] = encoding;
-        foreach ((PbtNodeLocator locator, byte[]? encoding) in visible)
+        foreach ((PbtNodePath path, byte[]? encoding) in WriteBuffer.Nodes) visible[path] = encoding;
+        foreach ((PbtNodePath path, byte[]? encoding) in visible)
         {
-            if (encoding is not null) yield return new KeyValuePair<PbtNodeLocator, byte[]>(locator, encoding);
+            if (encoding is not null) yield return new KeyValuePair<PbtNodePath, byte[]>(path, encoding);
         }
     }
 

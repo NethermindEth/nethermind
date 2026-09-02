@@ -222,7 +222,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
             staging.SetLeaf(PbtStateKey.Account(TestItem.AddressC, PbtKeyDerivation.BasicDataLeafKey), TestItem.KeccakB.ValueHash256);
-            staging.SetNode(new PbtNodeLocator([0x80], 1), [0x7F]);
+            staging.SetNode(new PbtNodePath([0x80], 1), [0x7F]);
             staging.Commit();
         }
         pbtDb.GetColumnDb(PbtColumns.AccountLeaves)[new byte[] { 1 }] = [2];
@@ -273,8 +273,8 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetLeaf(key, value);
             foreach (PbtNodeRecord node in nodeStore.EnumerateRecords())
             {
-                if (corruptNode) batch.SetNode(node.Locator, [0x7F]);
-                else batch.SetNode(node.Locator, node.Encoding.Span);
+                if (corruptNode) batch.SetNode(node.Path, [0x7F]);
+                else batch.SetNode(node.Path, node.Encoding.Span);
             }
             batch.Commit();
         }
