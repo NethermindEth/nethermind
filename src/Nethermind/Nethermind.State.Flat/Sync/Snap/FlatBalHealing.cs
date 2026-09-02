@@ -55,26 +55,19 @@ public class FlatBalHealing(
         if (_logger.IsInfo) _logger.Info($"Applying BALs for blocks {from.Number + 1}..{to.Number} on {baseRoot} to reach {to.StateRoot}.");
 
         int capacity = (int)Math.Min(to.Number.SaturatingSub(from.Number), MaxInitialCapacity);
-        ArrayPoolListRef<(ulong Number, Hash256 Hash)> toApply = new(capacity);
-        try
-        {
-            // Collecting is read-only, so a gap here leaves the state at baseRoot and the range can be retried.
-            if (!TryCollectBals(from, to, ref toApply, token))
-                return (true, null);
+        using ArrayPoolList<(ulong Number, Hash256 Hash)> toApply = new(capacity);
 
-            if (_logger.IsDebug) _logger.Debug($"All {toApply.Count} BALs present for blocks {from.Number + 1}..{to.Number}.");
+        if (!TryCollectBals(from, to, toApply, token))
+            return (true, null);
 
-            return ApplyBals(baseRoot, to, toApply.AsSpan(), token);
-        }
-        finally
-        {
-            toApply.Dispose();
-        }
+        if (_logger.IsDebug) _logger.Debug($"All {toApply.Count} BALs present for blocks {from.Number + 1}..{to.Number}.");
+
+        return ApplyBals(baseRoot, to, toApply.AsSpan(), token);
     }
 
     public void FinalizeSync(BlockHeader pivot) => store.FinalizeSync(pivot);
 
-    private bool TryCollectBals(BlockHeader from, BlockHeader to, ref ArrayPoolListRef<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
+    private bool TryCollectBals(BlockHeader from, BlockHeader to, ArrayPoolList<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
         for (ulong number = from.Number + 1; number <= to.Number; number++)
         {

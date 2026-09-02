@@ -56,7 +56,7 @@ public class StateSyncRunner(
             {
                 if (syncConfig.SnapSync)
                 {
-                    BlockHeader firstPivot = await WaitForPivot(token);
+                    BlockHeader firstPivot = await WaitForStateSyncPivot(token);
                     healingStrategy.SetPivot(firstPivot);
 
                     if (healingStrategy.CanBalHeal)
@@ -83,7 +83,7 @@ public class StateSyncRunner(
         }
     }
 
-    private async Task<BlockHeader> WaitForPivot(CancellationToken token)
+    private async Task<BlockHeader> WaitForStateSyncPivot(CancellationToken token)
     {
         BlockHeader? pivot = stateSyncPivot.GetPivotHeader();
         while (pivot is null)
@@ -118,11 +118,11 @@ public class StateSyncRunner(
             {
                 if (_logger.IsWarn) _logger.Warn($"{e.Message} Discarding the synced state and starting over.");
 
-                pivot = await WaitForPivot(token);
+                pivot = await WaitForStateSyncPivot(token);
                 while (!blockTree.IsMainChain(pivot))
                 {
                     await Task.Delay(1000, token);
-                    pivot = await WaitForPivot(token);
+                    pivot = await WaitForStateSyncPivot(token);
                 }
             }
         }
