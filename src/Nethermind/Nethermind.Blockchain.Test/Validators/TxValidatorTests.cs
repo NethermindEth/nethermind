@@ -689,6 +689,65 @@ public class TxValidatorTests
         }
     }
 
+    // GasLimit holds the sum of frame budgets, so the envelope gas cap cannot judge it. Vacuous on every
+    // shipping fork -- GetTxGasLimitCap is uncapped whenever EIP-8037 is on -- so this pins the one spec that bites.
+    [Test]
+    public void HeadValidation_FrameTx_IsNotJudgedByEnvelopeGasLimitCap()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(Eip7825Constants.DefaultTxGasLimitCap + 1)],
+            FrameSignatures = [],
+        };
+        // The decoder, not the caller, derives GasLimit from the frames; mirror it or the cap is never reached.
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        IReleaseSpec spec = new ReleaseSpec { IsEip8141Enabled = true, IsEip7825Enabled = true, IsEip8037Enabled = false };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.GasLimit, Is.GreaterThan(spec.GetTxGasLimitCap()),
+                "the synthetic envelope limit must exceed the cap, or the case proves nothing");
+            Assert.That(Eip8141Prototype.Instance.GetTxGasLimitCap(), Is.EqualTo(ulong.MaxValue),
+                "records why no shipping fork can exercise this");
+            Assert.That(new HeadTxValidator().IsWellFormed(tx, spec).AsBool(), Is.True);
+        }
+    }
+
+    // A wrapper that forwards only the two-argument overload silently drops the caller's block gas limit.
+    [Test]
+    public void ExceptFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
+    {
+        RecordingTxValidator inner = new();
+        ITxValidator wrapped = new ExceptFrameTxValidator(inner);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).TestObject;
+
+        wrapped.IsWellFormed(tx, Prague.Instance);
+        wrapped.IsWellFormed(tx, Prague.Instance, blockGasLimit: 42);
+        wrapped.IsWellFormed(tx, Prague.Instance, blockGasLimit: 43, TxValidationOptions.SkipBlobProofs);
+
+        Assert.That(inner.SeenBlockGasLimits, Is.EqualTo(new ulong[] { 0, 42, 43 }));
+    }
+
+    private sealed class RecordingTxValidator : ITxValidator
+    {
+        public List<ulong> SeenBlockGasLimits { get; } = [];
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        {
+            SeenBlockGasLimits.Add(blockGasLimit);
+            return ValidationResult.Success;
+        }
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+            IsWellFormed(transaction, releaseSpec, blockGasLimit);
+    }
+
     // Revalidation runs at the new head's spec, so a pooled frame transaction must be evicted at a head
     // that does not enable EIP-8141, exactly as full validation rejects it there.
     [Test]

@@ -4939,6 +4939,38 @@ namespace Nethermind.TxPool.Test
 
         private ChainHeadInfoProvider _headInfo;
 
+        // The marker decides whether a restart may skip revalidation, so it has to move whenever any rule the
+        // spec-change validator reads moves. Name cannot stand in: chainspec-built specs are all "Custom".
+        [TestCaseSource(nameof(SpecChangeMarkerFlagCases))]
+        public async Task Spec_change_marker_distinguishes_every_flag_the_validator_reads(string flag)
+        {
+            static ReleaseSpec BaseSpec() => new() { IsEip4844Enabled = true, IsEip1559Enabled = true };
+
+            ReleaseSpec before = BaseSpec();
+            ReleaseSpec after = BaseSpec();
+            typeof(ReleaseSpec).GetProperty(flag)!.SetValue(after, true);
+
+            Assert.That(before.Name, Is.EqualTo(after.Name), "the fallback must not be what separates these markers");
+            Assert.That(await MarkerFor(after), Is.Not.EqualTo(await MarkerFor(before)));
+        }
+
+        private static IEnumerable<string> SpecChangeMarkerFlagCases()
+        {
+            yield return nameof(ReleaseSpec.IsEip8141Enabled);
+            yield return nameof(ReleaseSpec.IsEip8250Enabled);
+        }
+
+        /// <summary>The marker a pool publishes at construction for <paramref name="spec"/>.</summary>
+        private async Task<string> MarkerFor(IReleaseSpec spec)
+        {
+            BlobTxStorage storage = new();
+            await using TxPool pool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+                new TestSingleReleaseSpecProvider(spec),
+                txStorage: storage);
+            return ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker();
+        }
+
         private TxPool CreatePool(
             ITxPoolConfig config = null,
             ISpecProvider specProvider = null,
