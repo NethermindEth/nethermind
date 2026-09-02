@@ -135,6 +135,41 @@ public class FrameTxFloodMeasurement
 
     private static readonly Address TransferTarget = TestItem.AddressC;
 
+    /// <summary>
+    /// Environment variable naming the directory that holds the Groth16 sweep artifacts.
+    /// </summary>
+    /// <remarks>
+    /// Required rather than defaulted, for the same reason <c>FrameTxMempoolDosMeasurement</c> requires it:
+    /// the artifacts are generated outside this repository, so any built-in path is one machine's. Unset,
+    /// the Groth16 cases skip.
+    /// </remarks>
+    private const string Groth16ArtifactRootVariable = "FRAME_GROTH16_ARTIFACTS";
+
+    /// <summary>One Groth16 sweep point: the artifact directory and the ceiling its frame declares.</summary>
+    /// <remarks>
+    /// Mirrors <c>FrameTxMempoolDosMeasurement.Groth16Sweep</c> without <c>ExpectedFrameGas</c> or the
+    /// revert-vs-returns-false <c>Failure</c> distinction: this harness times admission under flood, not the
+    /// frame's own gas burn or how it fails, so it has no use for either — the guard it relies on
+    /// (<see cref="Admission_flood_actually_reaches_the_simulator"/>) only needs <c>FrameSimulationFailed</c>
+    /// to have fired, not which of the two rejection strings did it.
+    /// </remarks>
+    private readonly record struct Groth16Sweep(string Directory, ulong Ceiling);
+
+    private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
+    {
+        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 510_000),
+        // The plan's named workload, not a synthetic stand-in: soispoke's real spend verifier at ten public
+        // signals. Declares 300,000 because its real burn (248,437, per FrameTxMempoolDosMeasurement) clears
+        // the stock constant, so this is the one privacy point measurable without raise_verify_gas_const.
+        ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000),
+    };
+
+    /// <summary>Payload the flood transactions' calldata starts with, before the per-sample salt. Empty for
+    /// the synthetic shapes.</summary>
+    private byte[] _frameCalldataPrefix = [];
+
     private FloodTestBlockchain _chain = null!;
     private BlockHeader _parent = null!;
     private Block _workloadBlock = null!;
@@ -291,28 +326,40 @@ public class FrameTxFloodMeasurement
     /// would otherwise leave the previous case's already-disposed chain for teardown to dispose again.
     /// </remarks>
     [SetUp]
-    public void Setup() => _chain = null!;
+    public void Setup()
+    {
+        _chain = null!;
+        _frameCalldataPrefix = [];
+    }
 
     [TearDown]
     public void TearDown() => _chain?.Dispose();
 
     /// <summary>
     /// The guard every other case in this fixture rests on: that a submitted frame transaction actually
-    /// reaches the EVM-backed simulator and is rejected there.
+    /// reaches the EVM-backed simulator and is rejected there — for every shape the flood/ramp cases sweep,
+    /// not only the synthetic one.
     /// </summary>
     /// <remarks>
     /// Without this, a flood of transactions dropped by a cheap upstream filter would show a delightful
     /// <c>Δ</c> of nearly zero while measuring nothing at all. No other test in the repository exercises the
     /// simulator that <c>BlockProcessingModule</c> wires into every pool, so its presence is asserted here
-    /// rather than assumed.
+    /// rather than assumed. Carries no <see cref="SkipUnlessSingleCore"/> gate: it proves a correctness
+    /// property, not a contention one.
     /// </remarks>
-    [Test]
-    public async Task Admission_flood_actually_reaches_the_simulator()
+    [TestCase("keccak-wide")]
+    [TestCase("groth16-236k")]
+    [TestCase("groth16-300k")]
+    [TestCase("groth16-500k")]
+    [TestCase("groth16-soispoke")]
+    public async Task Admission_flood_actually_reaches_the_simulator(string shape)
     {
-        await BuildChain("keccak-wide", Eip8141Constants.MaxVerifyGas);
+        ulong ceiling = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.Ceiling : Eip8141Constants.MaxVerifyGas;
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain(shape, ceiling);
 
         long failuresBefore = Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed);
-        AcceptTxResult result = _chain.TxPool.SubmitTx(FrameTx(0, Eip8141Constants.MaxVerifyGas), TxHandlingOptions.None);
+        AcceptTxResult result = _chain.TxPool.SubmitTx(FloodFrameTx(0, ceiling), TxHandlingOptions.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -387,45 +434,19 @@ public class FrameTxFloodMeasurement
         await BuildChain("keccak-wide", ceiling);
 
         using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
+        FloodOutcome outcome = offeredRate > 0
+            ? MeasureProductionUnderFlood(rig, ceiling, offeredRate)
+            : NoFloodProductionOutcome(rig);
 
-        using CancellationTokenSource cts = new();
-        FloodGenerator? flood = offeredRate > 0 ? StartFlood(ceiling, offeredRate, cts) : null;
-        if (flood is not null) Thread.Sleep(FloodSettle);
-
-        rig.RunFor(WarmupWindow);
-
-        // Scoped to the sampled window, like the block-processing cases: a lifetime count spans the settle and
-        // warmup phases too, so it cannot say what rate the reported production time was measured under.
-        int floodSubmittedAtStart = flood is null ? 0 : Volatile.Read(ref flood.Submitted);
-        int floodRejectedAtStart = flood is null ? 0 : Volatile.Read(ref flood.Rejected);
-        long floodWindowStart = Stopwatch.GetTimestamp();
-
-        List<double> passMicros = rig.Measure(MeasureWindow);
-
-        long floodWindowEnd = Stopwatch.GetTimestamp();
-        int floodSubmitted = flood is null ? 0 : Volatile.Read(ref flood.Submitted) - floodSubmittedAtStart;
-        int floodRejected = flood is null ? 0 : Volatile.Read(ref flood.Rejected) - floodRejectedAtStart;
-
-        if (flood is not null)
-        {
-            Assert.That(flood.Stop(cts), Is.True,
-                "the generator did not stop, so its counters are being read while it still writes them");
-        }
-
-        // The generator shares the pinned core with the producer, so it can be starved well below the rate
-        // the row is labelled with. Reporting what it achieved keeps the label from standing in for it.
-        double floodWindowSeconds = (floodWindowEnd - floodWindowStart) / (double)Stopwatch.Frequency;
-        double floodAchieved = floodWindowSeconds > 0 ? floodSubmitted / floodWindowSeconds : 0;
-        bool floodStarved = offeredRate > 0 && floodAchieved < offeredRate * RateHeldFloor;
-
-        double p50 = Percentile(passMicros, 0.50);
-        double p95 = Percentile(passMicros, 0.95);
+        double p50 = Percentile(outcome.ProcessMicros, 0.50);
+        double p95 = Percentile(outcome.ProcessMicros, 0.95);
+        bool floodStarved = offeredRate > 0 && outcome.AchievedRate < offeredRate * RateHeldFloor;
 
         Emit($"case=production_under_flood ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
-             + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={passMicros.Count} "
+             + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
              + $"evictions={rig.Evictions} failing_executions={rig.FailingExecutions} "
-             + $"flood_submitted={floodSubmitted} flood_rejected={floodRejected} "
-             + $"flood_achieved_rate={floodAchieved:F1} flood_starved={(floodStarved ? "yes" : "no")} "
+             + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} "
+             + $"flood_achieved_rate={outcome.AchievedRate:F1} flood_starved={(floodStarved ? "yes" : "no")} "
              + $"production_p50_us={p50:F1} production_p95_us={p95:F1}");
 
         using (Assert.EnterMultipleScope())
@@ -434,23 +455,30 @@ public class FrameTxFloodMeasurement
                 "the producer never re-executed the failing prefix, so this measures an ordinary block");
             Assert.That(rig.Evictions, Is.GreaterThan(0),
                 $"no eviction fired at K_retry={kRetry}, so the retry bound was never exercised");
-            Assert.That(passMicros, Has.Count.GreaterThan(10),
+            Assert.That(outcome.ProcessMicros, Has.Count.GreaterThan(10),
                 "too few production passes for a percentile to mean anything");
-            Assert.That(floodRejected, Is.EqualTo(floodSubmitted).Within(1),
+            Assert.That(outcome.Rejected, Is.EqualTo(outcome.Submitted).Within(1),
                 "flood transactions were dropped before the simulator, so the flood arm measures an idle pool");
             if (offeredRate > 0)
             {
-                Assert.That(floodSubmitted, Is.GreaterThan(10),
+                Assert.That(outcome.Submitted, Is.GreaterThan(10),
                     "the generator barely ran, so any difference against the no-flood arm is not a flood effect");
 
                 // Not an equality with the offered rate: on a saturated core the generator legitimately cannot
                 // keep up, and that is a result rather than a fault. It must still deliver a flood worth the
                 // name, and flood_achieved_rate on the row says what it actually delivered.
-                Assert.That(floodAchieved, Is.GreaterThan(offeredRate * MinDeliveredRateFloor),
-                    $"the generator delivered {floodAchieved:F1} tx/s against {offeredRate} offered, too far "
+                Assert.That(outcome.AchievedRate, Is.GreaterThan(offeredRate * MinDeliveredRateFloor),
+                    $"the generator delivered {outcome.AchievedRate:F1} tx/s against {offeredRate} offered, too far "
                     + "below the label for this row to describe a flood at that rate");
             }
         }
+    }
+
+    /// <summary>The no-flood arm, shaped as a <see cref="FloodOutcome"/> so both arms share one Emit/assert path.</summary>
+    private static FloodOutcome NoFloodProductionOutcome(ProducerRig rig)
+    {
+        rig.RunFor(WarmupWindow);
+        return new FloodOutcome(0, 0, 0, 0, 0, 0, rig.Measure(MeasureWindow));
     }
 
     /// <summary>
@@ -509,17 +537,6 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>Starts the open-loop generator without measuring block processing on this thread.</summary>
-    private FloodGenerator StartFlood(ulong ceiling, int offeredRate, CancellationTokenSource cts)
-    {
-        _floodTxs = BuildFloodTransactions(ceiling, _saltCursor);
-        _saltCursor += FloodPoolSize;
-
-        FloodGenerator generator = new(_chain, _floodTxs, offeredRate, cts);
-        generator.Start();
-        return generator;
-    }
-
     /// <summary>
     /// Proves the block whose processing time is measured actually executes its transactions.
     /// </summary>
@@ -570,11 +587,27 @@ public class FrameTxFloodMeasurement
     [TestCase(300_000ul, 200)]
     [TestCase(500_000ul, 50)]
     [TestCase(500_000ul, 200)]
-    public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate)
+    public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate) =>
+        await MeasureFloodDelay("keccak-wide", ceiling, offeredRate);
+
+    /// <summary>The privacy workload's <c>Δ</c>: the same delay measurement, flooded with the Groth16 shape
+    /// instead of the synthetic one.</summary>
+    [TestCase("groth16-236k", 50)]
+    [TestCase("groth16-236k", 200)]
+    [TestCase("groth16-300k", 50)]
+    [TestCase("groth16-300k", 200)]
+    [TestCase("groth16-500k", 50)]
+    [TestCase("groth16-500k", 200)]
+    [TestCase("groth16-soispoke", 50)]
+    [TestCase("groth16-soispoke", 200)]
+    public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
+
+    private async Task MeasureFloodDelay(string shape, ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling);
+        await BuildChain(shape, ceiling);
 
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         FloodOutcome flooded = MeasureUnderFlood(ceiling, offeredRate);
@@ -590,7 +623,7 @@ public class FrameTxFloodMeasurement
         double w0After = Percentile(baselineAfter, 0.50);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
 
-        Emit($"case=flood_delay shape=keccak-wide ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+        Emit($"case=flood_delay shape={shape} ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"W0_after_p50_us={w0After:F1} baseline_drift_pct={baselineDriftPct:F1} "
              + $"valid={(baselineDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
@@ -638,11 +671,23 @@ public class FrameTxFloodMeasurement
     [TestCase(236_285ul)]
     [TestCase(300_000ul)]
     [TestCase(500_000ul)]
-    public async Task Sustainable_rejection_rate_by_ramp(ulong ceiling)
+    public async Task Sustainable_rejection_rate_by_ramp(ulong ceiling) =>
+        await MeasureSustainableRate("keccak-wide", ceiling);
+
+    /// <summary>The privacy workload's <c>R_max</c>: the same ramp, flooded with the Groth16 shape instead
+    /// of the synthetic one.</summary>
+    [TestCase("groth16-236k")]
+    [TestCase("groth16-300k")]
+    [TestCase("groth16-500k")]
+    [TestCase("groth16-soispoke")]
+    public async Task Sustainable_rejection_rate_by_ramp_groth16(string shape) =>
+        await MeasureSustainableRate(shape, Groth16Sweeps[shape].Ceiling);
+
+    private async Task MeasureSustainableRate(string shape, ulong ceiling)
     {
         SkipUnlessSingleCore();
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling);
+        await BuildChain(shape, ceiling);
 
         // The baseline is reused by every rate point, so one still descending the JIT tiers would surface as
         // a negative delta at low rates.
@@ -650,13 +695,64 @@ public class FrameTxFloodMeasurement
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         double w0 = Percentile(baseline, 0.50);
 
-        // Fine enough to locate the knee; a coarser grid reports the last sustained point, not the ceiling.
+        RunRateRamp(ceiling, shape, "rate_ramp", "r_max", extraFields: "", w0, rate => MeasureUnderFlood(ceiling, rate));
+    }
+
+    /// <summary>
+    /// <c>R_max(C, K_retry)</c>: the campaign's sustainable-rate ramp, crossed with producer-side retry
+    /// contention — the counterpart to <see cref="Sustainable_rejection_rate_by_ramp"/> on the production
+    /// path, the way <see cref="Block_production_delay_under_flood_and_retries"/> is the counterpart to
+    /// <see cref="Block_processing_delay_under_admission_flood"/>.
+    /// </summary>
+    /// <remarks>
+    /// Held at <c>K_retry</c> ∈ {1, 8} rather than the full {1, 2, 4, 8} sweep
+    /// <see cref="FrameTxProducerRetryMeasurement.ProducerRetriesAreBoundedByKRetry"/> uses: this case pays a
+    /// full rate ramp per point, so the extremes are what a first pass affords. Fill in 2 and 4 at whichever
+    /// ceiling the extremes disagree at, rather than paying for the full grid everywhere up front.
+    /// </remarks>
+    [TestCase(100_000ul, 1)]
+    [TestCase(100_000ul, 8)]
+    [TestCase(236_285ul, 1)]
+    [TestCase(236_285ul, 8)]
+    [TestCase(300_000ul, 1)]
+    [TestCase(300_000ul, 8)]
+    [TestCase(500_000ul, 1)]
+    [TestCase(500_000ul, 8)]
+    public async Task Sustainable_rejection_rate_by_ramp_with_retries(ulong ceiling, int kRetry)
+    {
+        SkipUnlessSingleCore();
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain("keccak-wide", ceiling);
+
+        using ProducerRig rig = ProducerRig.Create(_chain.SpecProvider, kRetry, ceiling);
+        rig.RunFor(WarmupWindow);
+        double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
+
+        RunRateRamp(ceiling, "keccak-wide", "rate_ramp_with_retries", "r_max_with_retries", $"k_retry={kRetry} ", w0,
+            rate => MeasureProductionUnderFlood(rig, ceiling, rate));
+    }
+
+    /// <summary>
+    /// Ramps offered rate until a point fails to sustain, emitting one <c>RESULT</c> row per rate point plus
+    /// a summary row — shared by the block-processing and block-production ramps, which differ only in what
+    /// <paramref name="measureAtRate"/> samples against the flood.
+    /// </summary>
+    /// <remarks>
+    /// Fine enough to locate the knee; a coarser grid reports the last sustained point, not the ceiling.
+    /// Reported without reference to <c>B</c>, which the team has not fixed: this is the saturation half of
+    /// <c>R_max</c>'s definition — the rate above which a backlog builds — and it is measurable now; the other
+    /// half, the highest rate keeping <c>Δ ≤ B</c>, follows from the <c>Δ</c> table once <c>B</c> exists.
+    /// </remarks>
+    private void RunRateRamp(
+        ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
+        Func<int, FloodOutcome> measureAtRate)
+    {
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
         double lastSustained = 0;
 
         foreach (int rate in rates)
         {
-            FloodOutcome outcome = MeasureUnderFlood(ceiling, rate);
+            FloodOutcome outcome = measureAtRate(rate);
 
             // Both conditions, because either alone is satisfiable by a node that is not keeping up: the rate
             // test by a generator firing its backlog, the lag test by one that never got going.
@@ -670,7 +766,7 @@ public class FrameTxFloodMeasurement
             bool sustained = rateHeld && lagBounded && queueStable;
             double w = Percentile(outcome.ProcessMicros, 0.50);
 
-            Emit($"case=rate_ramp shape=keccak-wide ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
+            Emit($"case={rateCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
                  + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
                  + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
                  + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
@@ -689,7 +785,7 @@ public class FrameTxFloodMeasurement
         // A ramp whose top rate still sustained has not found R_max, only a lower bound on it.
         bool censored = lastSustained > 0 && Math.Abs(lastSustained - rates[^1]) < rates[^1] * 0.05;
 
-        Emit($"case=r_max shape=keccak-wide ceiling={ceiling} cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+        Emit($"case={summaryCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + $"r_max_sustained_tx_per_s={lastSustained:F1} censored={(censored ? "yes" : "no")} "
              + $"basis=no_backlog_and_bounded_lag note=B_not_fixed");
 
@@ -732,7 +828,29 @@ public class FrameTxFloodMeasurement
     /// <summary>
     /// Runs the open-loop flood on a background thread while block processing is timed on this one.
     /// </summary>
-    private FloodOutcome MeasureUnderFlood(ulong ceiling, int offeredRate)
+    private FloodOutcome MeasureUnderFlood(ulong ceiling, int offeredRate) =>
+        MeasureUnderFloodGeneric(ceiling, offeredRate,
+            warmup: () => { RunFor(FloodSettle); RunFor(WarmupWindow); },
+            measure: window => MeasureBlockProcessing(window, TimeSpan.Zero));
+
+    /// <summary>
+    /// Runs the open-loop flood on a background thread while a producer that is also re-executing a
+    /// never-approving prefix is measured on this one — the production-path counterpart to
+    /// <see cref="MeasureUnderFlood"/>.
+    /// </summary>
+    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, ulong ceiling, int offeredRate) =>
+        MeasureUnderFloodGeneric(ceiling, offeredRate,
+            warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
+            measure: rig.Measure);
+
+    /// <summary>
+    /// Runs the open-loop flood while <paramref name="warmup"/> keeps the core busy through the settle and
+    /// warmup phases and <paramref name="measure"/> samples the timed window — the flood-orchestration
+    /// mechanics shared by every case that runs a flood concurrently with something else, whether that
+    /// something is block processing or block production.
+    /// </summary>
+    private FloodOutcome MeasureUnderFloodGeneric(
+        ulong ceiling, int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure)
     {
         _floodTxs = BuildFloodTransactions(ceiling, _saltCursor);
         _saltCursor += FloodPoolSize;
@@ -741,11 +859,10 @@ public class FrameTxFloodMeasurement
         FloodGenerator generator = new(_chain, _floodTxs, offeredRate, cts);
         generator.Start();
 
-        RunFor(FloodSettle);
-        RunFor(WarmupWindow);
+        warmup();
 
         // Counters are snapshotted around the sampled window only, so the reported rate describes the
-        // period the block-processing distribution came from rather than the whole thread lifetime.
+        // period the sampled distribution came from rather than the whole thread lifetime.
         int submittedAtStart = Volatile.Read(ref generator.Submitted);
         int rejectedAtStart = Volatile.Read(ref generator.Rejected);
         int pendingAtStart = _chain.TxPool.GetPendingTransactionsCount();
@@ -756,7 +873,7 @@ public class FrameTxFloodMeasurement
         generator.ResetMaxLag();
         long windowStart = Stopwatch.GetTimestamp();
 
-        List<double> processMicros = MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero);
+        List<double> sampleMicros = measure(MeasureWindow);
 
         long windowEnd = Stopwatch.GetTimestamp();
         int submittedInWindow = Volatile.Read(ref generator.Submitted) - submittedAtStart;
@@ -769,7 +886,7 @@ public class FrameTxFloodMeasurement
         double windowSeconds = (windowEnd - windowStart) / (double)Stopwatch.Frequency;
         double achieved = windowSeconds > 0 ? submittedInWindow / windowSeconds : 0;
 
-        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, queueGrowth, processMicros);
+        return new FloodOutcome(offeredRate, achieved, submittedInWindow, rejectedInWindow, generator.MaxLagUs, queueGrowth, sampleMicros);
     }
 
     /// <summary>
@@ -800,7 +917,7 @@ public class FrameTxFloodMeasurement
     /// </summary>
     private async Task BuildChain(string shape, ulong ceiling)
     {
-        byte[] attackCode = PrefixCode(shape);
+        byte[] attackCode = LoadAttackCode(shape);
 
         _chain = await FloodTestBlockchain.CreateFlood(builder =>
         {
@@ -876,13 +993,42 @@ public class FrameTxFloodMeasurement
     /// salt in the frame's calldata, without which the already-known filter would short-circuit the flood
     /// after its first transaction.
     /// </remarks>
-    private static Transaction[] BuildFloodTransactions(ulong ceiling, int saltBase)
+    private Transaction[] BuildFloodTransactions(ulong ceiling, int saltBase)
     {
         Transaction[] txs = new Transaction[FloodPoolSize];
-        for (int i = 0; i < txs.Length; i++) txs[i] = FrameTx(saltBase + i, ceiling);
+        for (int i = 0; i < txs.Length; i++) txs[i] = FloodFrameTx(saltBase + i, ceiling);
         return txs;
     }
 
+    /// <summary>
+    /// The flood generator's transaction: <see cref="_frameCalldataPrefix"/> followed by the per-sample salt,
+    /// so a Groth16 payload keeps its selector and arguments byte-for-byte and the verifier ignores the
+    /// trailing surplus.
+    /// </summary>
+    private Transaction FloodFrameTx(int salt, ulong ceiling)
+    {
+        byte[] data = new byte[_frameCalldataPrefix.Length + 32];
+        _frameCalldataPrefix.CopyTo(data, 0);
+        BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(data.Length - 4), salt);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = Attacker,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
+            FrameSignatures = [],
+            GasLimit = 1_000_000,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 1.GWei,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    /// <summary>The single fixed-shape frame transaction <see cref="ProducerRig"/> reuses every pass. Never
+    /// carries a calldata prefix: the producer-retry cases do not sweep the Groth16 shape.</summary>
     private static Transaction FrameTx(int salt, ulong ceiling)
     {
         byte[] data = new byte[32];
@@ -918,6 +1064,58 @@ public class FrameTxFloodMeasurement
             .Done,
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
     };
+
+    /// <summary>
+    /// Resolves the attacker's code for <paramref name="shape"/>, setting <see cref="_frameCalldataPrefix"/>
+    /// as a side effect — empty for the synthetic shapes, the shipped invalid Groth16 payload for the
+    /// privacy ones.
+    /// </summary>
+    /// <returns>The runtime bytecode to seed as the attacker's code.</returns>
+    private byte[] LoadAttackCode(string shape)
+    {
+        if (Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep))
+        {
+            byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
+            _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
+            return verifierCode;
+        }
+
+        _frameCalldataPrefix = [];
+        return PrefixCode(shape);
+    }
+
+    /// <summary>
+    /// Reads one Groth16 artifact file at run time, without re-encoding it: <c>calldata-invalid.hex</c>
+    /// already carries the 4-byte selector, which differs per sweep point because the signature carries the
+    /// input count.
+    /// </summary>
+    private static byte[] Groth16Artifact(Groth16Sweep sweep, string fileName)
+    {
+        string root = Groth16ArtifactRoot();
+        string path = Path.Combine(root, sweep.Directory, fileName);
+        if (!File.Exists(path))
+        {
+            Assert.Ignore($"Groth16 artifact {path} is missing; build it with the artifacts tree's generate.sh, "
+                          + "or point FRAME_GROTH16_ARTIFACTS at a tree that has it.");
+        }
+
+        return Bytes.FromHexString(File.ReadAllText(path).Trim());
+    }
+
+    /// <summary>The Groth16 artifact directory, or a skip when the campaign's artifacts were not supplied.</summary>
+    private static string Groth16ArtifactRoot()
+    {
+        string? root = Environment.GetEnvironmentVariable(Groth16ArtifactRootVariable);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            Assert.Ignore($"{Groth16ArtifactRootVariable} is unset, so the Groth16 sweep artifacts cannot be "
+                          + "located. Set it to the generated artifact directory; the privacy workload is the "
+                          + "one this campaign exists to price, and skipping it silently is the failure mode "
+                          + "that costs the most.");
+        }
+
+        return root!;
+    }
 
     /// <summary>Nearest-rank percentile, so a reported figure is an observation that actually occurred.</summary>
     private static double Percentile(List<double> values, double quantile)
