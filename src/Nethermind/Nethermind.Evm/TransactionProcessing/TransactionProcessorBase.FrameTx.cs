@@ -580,18 +580,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             TxFrame[] frames = tx.Frames!;
+            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
+                bool isDeployFrame = OpensDeployPrefix(frames, i);
 
-                // EIP8141-GAP: deploy-frame carve-outs are unimplemented, so such a prefix is declined.
-                if (OpensDeployPrefix(frames, i))
-                {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
-                }
-
-                // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame ends it.
-                if (frame.Mode != TxFrame.ModeVerify)
+                // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
+                // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
+                if (!isDeployFrame && frame.Mode != TxFrame.ModeVerify)
                 {
                     break;
                 }
@@ -613,7 +610,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                     caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
 
-                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: true, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+                // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
+                // tracer cannot see from opcodes alone.
+                prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
+
+                // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
+                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
 
                 if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
                 {
@@ -643,6 +645,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
 
                 frameContext.MarkFrameSucceeded(i);
+
+                // A deploy frame that leaves tx.sender codeless would have the VERIFY frames behind it
+                // validate against default code instead of the account being deployed.
+                if (isDeployFrame && WorldState.GetCodeHash(sender) == Keccak.OfAnEmptyString)
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame installed no code at tx.sender");
+                }
 
                 // Simulation stops at the first payer, once its frame has completed successfully.
                 if (frameContext.Payer is not null)

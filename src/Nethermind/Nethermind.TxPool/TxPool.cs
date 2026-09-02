@@ -169,13 +169,22 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // Restored records predate the handlers below, so seed the count before subscribing: the startup
-            // UpdatePool evicts, and a removal must decrement a count that already covers what it removes.
+            // Records restored inside the pool's constructor predate the handlers below, so the count and the
+            // payer ledger are seeded before subscribing: UpdatePool evicts during startup, and a removal must
+            // release against a ledger that already covers what it removes.
             if (_blobTransactions.Count > 0)
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
+                    // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
+                    // has to keep counting against its payer. Restored, not re-gated: the reservation was
+                    // granted at admission, and refusing it now would leave a record no removal releases.
+                    // The same predicate the release reads, so the two ends of a ledger entry cannot drift.
+                    if (TryGetPayerReservation(restored, out Address? payer, out UInt256 reserved))
+                    {
+                        _payerExposure.Restore(payer, reserved);
+                    }
                 }
             }
 
@@ -491,8 +500,8 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
-        // A payer or paymaster the pool never resolved — a record restored from storage — prices null here and
-        // at release alike, so it is out of this check's reach rather than verified by it.
+        // A restored record's payer is persisted, so it is inside this check's reach. Its paymaster is not:
+        // LightTxDecoder drops it, so GetPaymaster prices null here and at release alike.
         private static void AccumulateFrameTxBookkeeping(
             Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
         {

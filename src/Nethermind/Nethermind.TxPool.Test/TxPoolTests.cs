@@ -3552,6 +3552,28 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_KeyedNonce_DoesNotPipelineTheNextSequence()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction current = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(current, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction next = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 1, value: UInt256.Zero, maxFee: 1.GWei);
+            AcceptTxResult result = _txPool.SubmitTx(next, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ToString(), Does.Contain(TxPoolErrorMessages.KeyedNonceUnmet),
+                    "a keyed sequence past the current one is rejected outright, not queued the way the account nonce lane queues a future successor");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                    "only the current keyed sequence pends, so the keyed lane admits at most one transaction per key per block");
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);
