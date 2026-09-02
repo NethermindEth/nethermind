@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable annotations
+
 using System;
 using Ethereum.Test.Base;
 using Nethermind.Serialization.Json;
@@ -34,13 +36,15 @@ public class EngineRpcErrorTests
     [TestCase(InvalidParams, null, ExpectedResult = false, TestName = "Status where the fixture demands an error and offers no exception")]
     [TestCase(InvalidParams, "BlockException.INVALID_BLOCK_ACCESS_LIST", ExpectedResult = true, TestName = "Status where the fixture also names the exception")]
     [TestCase(null, "BlockException.INVALID_BLOCK_ACCESS_LIST", ExpectedResult = true, TestName = "Status where the fixture expects rejection only")]
-    public bool Payload_status_is_accepted_unless_the_fixture_demands_an_error(int? expectedErrorCode, string validationError) =>
+    public bool Payload_status_is_accepted_unless_the_fixture_demands_an_error(int? expectedErrorCode, string? validationError) =>
         BlockchainTestBase.DescribeMissingRpcError(expectedErrorCode, validationError, payloadVersion: 5) is null;
 
     // EEST emits errorCode as a quoted string, like newPayloadVersion.
     [TestCase("""{"errorCode": "-32602"}""", ExpectedResult = InvalidParams, TestName = "Expected error code")]
     [TestCase("""{"errorCode": null}""", ExpectedResult = null, TestName = "Explicit null")]
     [TestCase("{}", ExpectedResult = null, TestName = "Absent - the payload must be validated")]
+    // Surrounding whitespace is tolerated, matching how the sibling version fields are parsed.
+    [TestCase("""{"errorCode": " -32602 "}""", ExpectedResult = InvalidParams, TestName = "Padded error code")]
     public int? Fixture_error_code_is_parsed(string json) =>
         JsonToEthereumTest.ParseErrorCode(_serializer.Deserialize<TestEngineNewPayloadsJson>(json));
 

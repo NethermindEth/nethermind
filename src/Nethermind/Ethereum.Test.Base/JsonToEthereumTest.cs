@@ -130,7 +130,7 @@ namespace Ethereum.Test.Base
                 return null;
             }
 
-            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int errorCode)
+            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out int errorCode)
                 ? errorCode
                 : throw new FormatException($"Invalid engine payload errorCode: '{engineNewPayload.ErrorCode}'");
         }
