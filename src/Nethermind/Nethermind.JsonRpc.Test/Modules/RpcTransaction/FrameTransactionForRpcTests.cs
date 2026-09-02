@@ -527,4 +527,47 @@ public class FrameTransactionForRpcTests
 
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
+
+    private const int MaxAggregateLogs = 270_000;
+
+    /// <summary>The frame log union is admitted right up to the wire receipt decoder's log ceiling.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_AdmitsFrameLogsUpToTheWireCeiling()
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(MaxAggregateLogs - 1) },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(1) },
+        ];
+
+        TxReceipt receipt = receiptForRpc.ToReceipt();
+
+        Assert.That(receipt.Logs, Has.Length.EqualTo(MaxAggregateLogs));
+    }
+
+    /// <summary>A frame log union above that ceiling is a caller error, rejected before the receipt store.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_RejectsFrameLogsAboveTheWireCeiling()
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(MaxAggregateLogs) },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(1) },
+        ];
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    private static LogEntry[] RepeatFrameLog(int count)
+    {
+        LogEntry[] logs = new LogEntry[count];
+        for (int i = 0; i < count; i++)
+        {
+            logs[i] = FrameLog;
+        }
+
+        return logs;
+    }
 }

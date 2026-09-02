@@ -755,7 +755,7 @@ public class BlockProcessorTests
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader());
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader(), newBlock.GasUsed, 0);
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
