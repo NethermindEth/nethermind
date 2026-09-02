@@ -25,6 +25,7 @@ public partial class Rlp
 
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
+        EnsureDefaultDecoders();
         using Lock.Scope _ = _decoderLock.EnterScope();
         FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
         if (snapshot is null)
@@ -38,6 +39,8 @@ public partial class Rlp
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
     {
+        EnsureDefaultDecoders();
+
         foreach (Type? type in assembly.GetExportedTypes())
         {
             if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
