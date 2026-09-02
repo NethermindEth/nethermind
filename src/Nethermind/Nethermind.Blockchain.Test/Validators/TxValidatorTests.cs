@@ -1174,6 +1174,27 @@ public class TxValidatorTests
         Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
     }
 
+    [Test]
+    public void IsWellFormed_FrameTxExecutionReservationIsBoundedByEip7825_WhenEip8037Disabled()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.NoEip8037Instance) { IsEip8141Enabled = true };
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, spec).AsBool(), Is.False);
+    }
+
     private static IEnumerable<TestCaseData> NonceKeysEnvelopeCases()
     {
         yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxLegacyNonce_BeforeEip8250_ReturnTrue");
