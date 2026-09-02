@@ -123,7 +123,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             return [];
         }
 
-        if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
+        if (receiptsData[0] == CompactEncoding)
         {
             RlpReader decoderContext = new(receiptsData[1..]);
             return TakeCompletePrefix(CompactDecoder.DecodeArray(
@@ -202,7 +202,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             Array.Resize(ref result, result.Length + 1);
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        if (!includeTrailingItems && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
             decoderContext.Check(declaredEnd);
         }

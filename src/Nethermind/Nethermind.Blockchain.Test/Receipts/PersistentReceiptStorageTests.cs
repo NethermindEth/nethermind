@@ -424,13 +424,10 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         TxReceipt[] receipts = _storage.Get(block, recover);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(receipts, Has.Length.EqualTo(1));
-            _logger.Received(expectedWarnings).Warn(Arg.Is<string>(message =>
-                message.Contains(block.ToString(Block.Format.FullHashAndNumber)) &&
-                message.Contains("decoded 1 for 3 transactions")));
-        }
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        _logger.Received(expectedWarnings).Warn(Arg.Is<string>(message =>
+            message.Contains(block.ToString(Block.Format.FullHashAndNumber)) &&
+            message.Contains("decoded 1 for 3 transactions")));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
