@@ -7,7 +7,7 @@ using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, HistoryRowFormat rowFormat, MismatchSink sink) : ViewObserver
+internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, HistoryRowFormat rowFormat, MismatchSink sink) : ViewObserver, IDisposable
 {
     private const int IdentityLength = CommitmentKeyLayout.IdentityLength;
     private const int AccountRowKeyLength = Hash256.Size + sizeof(ulong);
@@ -51,8 +51,14 @@ internal sealed class ContractRootCheck(ISortedKeyValueStore accountHistory, His
     public void End()
     {
         while (_hasRow) ConsumeRowOnly();
+        Dispose();
+    }
+
+    public void Dispose()
+    {
         _rows?.Dispose();
         _rows = null;
+        _hasRow = false;
     }
 
     private void ConsumeRowOnly()

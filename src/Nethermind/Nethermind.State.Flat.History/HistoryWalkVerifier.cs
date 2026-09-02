@@ -76,7 +76,7 @@ public sealed class HistoryWalkVerifier
         _emitterSource = emitterSource;
     }
 
-    public static void RequireUnwindowed(HistoryRowFormat rowFormat)
+    internal static void RequireUnwindowed(HistoryRowFormat rowFormat)
     {
         if (!rowFormat.IsV3) return;
 
@@ -89,7 +89,10 @@ public sealed class HistoryWalkVerifier
     public HistoryWalkVerdict VerifyRange(ulong fromInclusive, ulong toInclusive, CancellationToken token) =>
         VerifyRangeParallel(fromInclusive, toInclusive, 1, token);
 
-    public HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int workers, CancellationToken token)
+    public HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int workers, CancellationToken token) =>
+        VerifyRangeParallel(fromInclusive, toInclusive, workers, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, token);
+
+    internal HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int workers, ulong checkpointBlocks, Action<int, ulong>? onCheckpoint, CancellationToken token)
     {
         if (workers < 1) throw new ArgumentOutOfRangeException(nameof(workers));
         if (fromInclusive > toInclusive)
@@ -103,7 +106,7 @@ public sealed class HistoryWalkVerifier
                 $"multiple of {granularity}.", -1);
         }
 
-        HistoryWalkRun run = new(_history, _headers, _rowFormat, _rlpWrapSlots, _logManager, _maxRowsPerPartition, _emitterSource, fromInclusive, toInclusive, token);
+        HistoryWalkRun run = new(_history, _headers, _rowFormat, _rlpWrapSlots, _logManager, _maxRowsPerPartition, _emitterSource, fromInclusive, toInclusive, checkpointBlocks, onCheckpoint, token);
         return run.Execute(workers);
     }
 }

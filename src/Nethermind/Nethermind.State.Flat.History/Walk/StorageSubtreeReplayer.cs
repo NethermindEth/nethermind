@@ -147,11 +147,13 @@ internal sealed class StorageSubtreeReplayer(
                 emitter?.CompleteBlock();
             }
 
+
+            foreach (Contract contract in contracts) contract.Finish();
         }
         finally
         {
             foreach (StreamedSlot stream in streams) stream.Rows.Dispose();
-            foreach (Contract contract in contracts) contract?.Finish();
+            foreach (Contract contract in contracts) contract?.Release();
         }
     }
 
@@ -201,9 +203,11 @@ internal sealed class StorageSubtreeReplayer(
             if (publisher is not null && publisher.IsNew(root)) PublishView(block, emitter);
         }
 
-        public void Finish()
+        public void Finish() => check?.End();
+
+        public void Release()
         {
-            check?.End();
+            check?.Dispose();
             publisher?.Dispose();
         }
 

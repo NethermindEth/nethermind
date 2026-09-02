@@ -208,6 +208,7 @@ public sealed class CommitmentEmitter : IDisposable
     public void FlushOpenWindows()
     {
         if (_haveBlock) FlushWindows(_policy.WindowClosingAt(_block));
+        CommitBatch();
     }
 
     public void Dispose()

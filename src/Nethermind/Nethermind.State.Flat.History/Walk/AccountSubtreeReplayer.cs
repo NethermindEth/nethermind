@@ -13,6 +13,8 @@ namespace Nethermind.State.Flat.History.Walk;
 
 internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory, HistoryRowFormat rowFormat, ILogManager logManager)
 {
+    public const ulong DefaultCheckpointBlocks = 4096;
+
     public void Replay(
         in TreePath prefix,
         AccountPartitionRows rows,
@@ -24,9 +26,13 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         StorageRootMoveCheck moveCheck,
         WalkProgress progress,
         int item,
+        ulong? resumeFrom,
+        ulong checkpointBlocks,
+        Action<ulong>? checkpoint,
         CancellationToken token)
     {
         long replayed = 0;
+        ulong replayedUpTo = resumeFrom ?? from;
         RawScopedTrieStore store = new(new MemDb());
         StateTree state = new(store, logManager);
         TrieChangeCollector? changes = emitter is null ? null : new TrieChangeCollector();
@@ -37,7 +43,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         {
             foreach (ValueHash256 path in rows.StreamedPaths)
             {
-                HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, from, to, token);
+                HistoryRowCursor cursor = new(accountHistory, rowFormat, path.Bytes, replayedUpTo, to, token);
                 ValueHash256 startRoot = Keccak.EmptyTreeHash.ValueHash256;
                 if (cursor.TryReadStart(out _, out byte[] start) && start.Length > 0)
                 {
@@ -53,13 +59,27 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
             }
 
-            emitter?.BeginBlock(from);
-            Recompute(state, changes, emitter, prefix.Length);
-            Publish(publisher, from, state, prefix.Length, store, emitter);
-            emitter?.CompleteBlock();
-
             rows.Deltas.Sort(static (a, b) => a.Block.CompareTo(b.Block));
             int next = 0;
+            if (resumeFrom is { } resumed)
+            {
+                while (next < rows.Deltas.Count && rows.Deltas[next].Block <= resumed)
+                {
+                    AccountRowRef row = rows.Deltas[next++];
+                    state.Set(row.Path, HistoryRowScanner.DecodeAccount(rows.Arena.Slice(row.Offset, row.Length)));
+                }
+
+                state.UpdateRootHash();
+            }
+            else
+            {
+                emitter?.BeginBlock(from);
+                Recompute(state, changes, emitter, prefix.Length);
+                Publish(publisher, from, state, prefix.Length, store, emitter);
+                emitter?.CompleteBlock();
+            }
+
+            ulong lastCheckpoint = replayedUpTo;
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -100,6 +120,14 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 Recompute(state, changes, emitter, prefix.Length);
                 if (publisher.IsNew(state.RootHash.ValueHash256)) Publish(publisher, block, state, prefix.Length, store, emitter);
                 emitter?.CompleteBlock();
+
+                if (checkpoint is not null && block - lastCheckpoint >= checkpointBlocks)
+                {
+                    emitter?.FlushOpenWindows();
+                    series.Flush();
+                    checkpoint(block);
+                    lastCheckpoint = block;
+                }
             }
         }
         finally

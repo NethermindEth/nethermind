@@ -110,7 +110,7 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(roomy.Workers, Is.EqualTo(6), "two cores stay with block processing; memory allows the rest");
             Assert.That(roomy.RowsPerPartition, Is.EqualTo(WalkResources.DefaultRowsPerPartition));
-            Assert.That(tight.Workers, Is.EqualTo(1), "with two gigabytes of headroom only one worker fits its budget, never zero");
+            Assert.That(tight.Workers, Is.EqualTo(1), "with four gigabytes of headroom only one worker fits its two and a half, never zero");
             Assert.That((pinned.Workers, pinned.RowsPerPartition), Is.EqualTo((3, 100L)), "explicit settings are honoured as given");
         }
     }

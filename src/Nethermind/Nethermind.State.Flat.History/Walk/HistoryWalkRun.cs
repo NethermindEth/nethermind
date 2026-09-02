@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,8 @@ internal sealed class HistoryWalkRun
     private readonly long _maxRowsPerPartition;
     private readonly ulong _from;
     private readonly ulong _to;
+    private readonly ulong _checkpointBlocks;
+    private readonly Action<int, ulong>? _onCheckpoint;
     private readonly CancellationToken _token;
     private readonly ILogger _logger;
     private readonly MismatchSink _sink = new();
@@ -47,9 +50,13 @@ internal sealed class HistoryWalkRun
         ICommitmentEmitterSource? emitterSource,
         ulong from,
         ulong to,
+        ulong checkpointBlocks,
+        Action<int, ulong>? onCheckpoint,
         CancellationToken token)
     {
         _history = history;
+        _checkpointBlocks = checkpointBlocks;
+        _onCheckpoint = onCheckpoint;
         _accountHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
         _storageHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageHistory);
         ISortedKeyValueStore storageClears = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageClears);
@@ -191,10 +198,12 @@ internal sealed class HistoryWalkRun
                 return;
             }
 
+            ulong? resumeFrom = prefix.Length == AccountPartitionDepth && _metadata.TryGetWalkItemProgress(item, out ulong reached) ? reached : null;
+            Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block) : null;
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
-                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, check, _progress, item, _token);
+                _accounts.Replay(prefix, rows, _from, _to, emitter, AccountSeriesKey(prefix), series, check, _progress, item, resumeFrom, _checkpointBlocks, checkpoint, _token);
                 emitter?.FlushOpenWindows();
             }
 
@@ -218,20 +227,33 @@ internal sealed class HistoryWalkRun
         return SeriesScope.Accounts.Key(path, scratch: !real);
     }
 
-    private void ProcessStorageRange(byte firstByte, int item) =>
-        _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, group =>
+    private void ProcessStorageRange(byte firstByte, int item)
+    {
+        uint? afterPrefix = _metadata.TryGetWalkItemProgress(item, out ulong done) ? (uint)done : null;
+        _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
         {
-            using StoragePartitionRows rows = group.Rows;
-            if (group.Overflow)
+            using (StoragePartitionRows rows = group.Rows)
             {
-                rows.Reset();
-                ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
+                if (group.Overflow)
+                {
+                    rows.Reset();
+                    ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item);
+                }
+                else
+                {
+                    ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item);
+                }
             }
-            else
-            {
-                ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item);
-            }
+
+            Checkpoint(item, BinaryPrimitives.ReadUInt32BigEndian(group.Prefix));
         }, position => _progress.ScanningKeySpace(item, position, 1u << 24), _token);
+    }
+
+    private void Checkpoint(int item, ulong progress)
+    {
+        _metadata.MarkWalkItemProgress(item, progress);
+        _onCheckpoint?.Invoke(item, progress);
+    }
 
     private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item)
     {
@@ -284,6 +306,7 @@ internal sealed class HistoryWalkRun
             check.Begin(identity, _from, _to, _token);
         }
 
+        using ContractRootCheck? release = check;
         using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
         using SeriesWriter series = new(_history);
         _combiner.Combine(scope, slotPrefix, nibble => scope.Key(parent.Append(nibble), scratch: true), slotPrefix.Length == 0 ? null : scope.Key(slotPrefix, scratch: true), _from, _to, emitter, series, check, _token);

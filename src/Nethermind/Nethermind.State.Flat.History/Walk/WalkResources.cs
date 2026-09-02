@@ -5,21 +5,24 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-public readonly record struct WalkResources(int Workers, long RowsPerPartition, long HeadroomBytes)
+internal readonly record struct WalkResources(int Workers, long RowsPerPartition, long HeadroomBytes)
 {
     public const long DefaultRowsPerPartition = 5_000_000;
     public const int CoresReservedForTheNode = 2;
     public const long ReservedBytes = 2L << 30;
     public const long BytesPerRow = 400;
     public const long BytesPerWorkerTrie = 512L << 20;
+    public const long MaxRowsPerPartition = 1L << 31;
+    public const int WalkShareOfMemoryPercent = 50;
 
     public static WalkResources Resolve(IFlatDbConfig config) =>
         Resolve(config, Environment.ProcessorCount, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes, Environment.WorkingSet);
 
     public static WalkResources Resolve(IFlatDbConfig config, int processorCount, long totalMemoryBytes, long workingSetBytes)
     {
-        long rows = config.HistoryVerifyMaxRows > 0 ? config.HistoryVerifyMaxRows : DefaultRowsPerPartition;
-        long headroom = Math.Max(0, totalMemoryBytes - workingSetBytes - ReservedBytes);
+        long rows = config.HistoryVerifyMaxRows > 0 ? Math.Min(config.HistoryVerifyMaxRows, MaxRowsPerPartition) : DefaultRowsPerPartition;
+        long share = totalMemoryBytes / 100 * WalkShareOfMemoryPercent;
+        long headroom = Math.Clamp(totalMemoryBytes - workingSetBytes - ReservedBytes, 0, share);
         long perWorker = rows * BytesPerRow + BytesPerWorkerTrie;
         int byCores = Math.Max(1, processorCount - CoresReservedForTheNode);
         int byMemory = (int)Math.Clamp(headroom / perWorker, 1, int.MaxValue);

@@ -17,6 +17,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     private static ReadOnlySpan<byte> TipSeriesKey => [Marker, 0x03];
     private static ReadOnlySpan<byte> WalkRangeKey => [Marker, 0x04];
     private const byte WalkItemMarker = 0x05;
+    private const byte WalkItemProgressMarker = 0x06;
     public const int MaxWalkItems = 1 << 16;
 
     private readonly IDb _column = history.GetColumnDb(FlatHistoryColumns.AccountCommitments);
@@ -144,9 +145,33 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
     {
         Span<byte> key = stackalloc byte[4];
         WriteWalkItemKey(key, item);
+        Span<byte> progressKey = stackalloc byte[4];
+        WriteWalkItemKey(progressKey, item, WalkItemProgressMarker);
         lock (_lock)
         {
             _column.PutSpan(key, [1]);
+            _column.Remove(progressKey);
+        }
+    }
+
+    public bool TryGetWalkItemProgress(int item, out ulong progress)
+    {
+        Span<byte> key = stackalloc byte[4];
+        WriteWalkItemKey(key, item, WalkItemProgressMarker);
+        byte[]? value = _column.Get(key);
+        progress = value is { Length: sizeof(ulong) } ? BinaryPrimitives.ReadUInt64BigEndian(value) : 0;
+        return value is { Length: sizeof(ulong) };
+    }
+
+    public void MarkWalkItemProgress(int item, ulong progress)
+    {
+        Span<byte> key = stackalloc byte[4];
+        WriteWalkItemKey(key, item, WalkItemProgressMarker);
+        Span<byte> value = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, progress);
+        lock (_lock)
+        {
+            _column.PutSpan(key, value);
         }
     }
 
@@ -166,15 +191,17 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history)
         {
             WriteWalkItemKey(key, item);
             _column.Remove(key);
+            WriteWalkItemKey(key, item, WalkItemProgressMarker);
+            _column.Remove(key);
         }
     }
 
-    private static void WriteWalkItemKey(Span<byte> key, int item)
+    private static void WriteWalkItemKey(Span<byte> key, int item, byte marker = WalkItemMarker)
     {
         if (item < 0 || item >= MaxWalkItems) throw new ArgumentOutOfRangeException(nameof(item));
 
         key[0] = Marker;
-        key[1] = WalkItemMarker;
+        key[1] = marker;
         BinaryPrimitives.WriteUInt16BigEndian(key[2..], (ushort)item);
     }
 

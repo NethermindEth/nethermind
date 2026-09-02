@@ -101,11 +101,18 @@ internal sealed class HistoryRowScanner(
         return ScanOutcome.Fits;
     }
 
-    public void ScanStorageGroups(byte firstByte, ulong from, ulong to, long maxRows, Action<StorageGroup> onGroup, Action<uint> onPosition, CancellationToken token)
+    public void ScanStorageGroups(byte firstByte, ulong from, ulong to, long maxRows, uint? afterPrefix, Action<StorageGroup> onGroup, Action<uint> onPosition, CancellationToken token)
     {
         long scanned = 0;
         byte[] lower = new byte[StorageRowKeyLength];
         lower[0] = firstByte;
+        if (afterPrefix is { } done)
+        {
+            if (done == uint.MaxValue) return;
+
+            BinaryPrimitives.WriteUInt32BigEndian(lower, done + 1);
+        }
+
         byte[] end = new byte[StorageRowKeyLength + 1];
         if (firstByte == byte.MaxValue) end.AsSpan().Fill(0xFF);
         else end[0] = (byte)(firstByte + 1);
@@ -117,8 +124,9 @@ internal sealed class HistoryRowScanner(
             StorageRowCollector? collector = null;
             bool overflow = false;
 
-            using (ISortedView view = storageHistory.GetViewBetween(lower, end, ReadFlags.HintCacheMiss))
+            try
             {
+                using ISortedView view = storageHistory.GetViewBetween(lower, end, ReadFlags.HintCacheMiss);
                 while (view.MoveNext())
                 {
                     if ((++scanned & (WalkProgress.RowsPerUpdate - 1)) == 0) token.ThrowIfCancellationRequested();
@@ -145,6 +153,11 @@ internal sealed class HistoryRowScanner(
                     if (overflow) continue;
                     if (!collector!.TryAdd(key, view.CurrentValue)) overflow = true;
                 }
+            }
+            catch
+            {
+                group?.Rows.Dispose();
+                throw;
             }
 
             if (group is null) return;

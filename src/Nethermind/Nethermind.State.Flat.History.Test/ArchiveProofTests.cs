@@ -89,6 +89,36 @@ public class ArchiveProofTests
             "rows combined upward from single-key partitions must leave the same commitment column a whole-subtree replay leaves");
     }
 
+    [Test]
+    public void A_build_interrupted_inside_a_subtree_resumes_from_its_last_checkpoint_and_yields_the_same_proofs()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        CommitmentMetadata metadata = new(_historyColumns);
+
+        using CancellationTokenSource interrupt = new();
+        int checkpoints = 0;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item < 256 && ++checkpoints == 1) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after an account subtree's first checkpoint");
+
+        bool partial = false;
+        for (int item = 0; item < 256 && !partial; item++) partial = metadata.TryGetWalkItemProgress(item, out _);
+        Assert.That(partial, Is.True, "precondition: at least one subtree left a block-level checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+        Assert.That(resumed.Mismatches, Is.Empty, "the resumed run fast-forwards to the checkpoint without rehashing and finishes the range");
+        retrofit.PublishCoverage(0, _chain.Head);
+
+        foreach (ulong block in (ulong[])[1, 40, 64, 100, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[0], block);
+            AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
     [TestCase(1L)]
     [TestCase(40L)]
     public void A_build_leaves_no_scratch_series_behind(long maxRowsPerPartition)
