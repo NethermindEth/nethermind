@@ -147,5 +147,8 @@ public abstract class TransactionTestBase
         // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
         // signature failures, which the fixtures file under a separate label.
         ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
+        // EIP-7825's per-transaction gas cap under both wordings: a frame transaction reports it
+        // against its own budget, every other type against its envelope gas limit.
+        ["TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM"] = ["exceeds the transaction gas cap of", "TxGasLimitCapExceeded"],
     };
 }
