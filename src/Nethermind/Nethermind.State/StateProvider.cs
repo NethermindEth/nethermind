@@ -173,7 +173,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (account.CodeHash.ValueHash256 != codeHash)
         {
             _needsStateRootUpdate = true;
-            if (_logger.IsDebug) Debug(address, codeHash, account);
+            if (_logger.IsTrace) TraceUpdate(address, codeHash, account);
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
             PushUpdate(address, changedAccount);
@@ -191,8 +191,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return inserted;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Debug(Address address, in ValueHash256 codeHash, Account account)
-            => _logger.Debug($"Update {address} C {account.CodeHash} -> {codeHash}");
+        void TraceUpdate(Address address, in ValueHash256 codeHash, Account account)
+            => _logger.Trace($"Update {address} C {account.CodeHash} -> {codeHash}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
