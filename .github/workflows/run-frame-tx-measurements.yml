@@ -81,7 +81,10 @@ jobs:
           # the measurement.
           projects=()
           case "${HARNESS}" in
-            both)           projects=(Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
+            # FrameTxVerifyDosMeasurement (the `verify` leg) drives the block-production path directly and
+            # never caps a frame at MaxVerifyGas -- it measures a different layer than the campaign's ceiling
+            # sweep, so `both` no longer builds or runs it; dispatch `verify` on its own for that measurement.
+            both)           projects=(Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
             verify)         projects=(Nethermind.Evm.Test) ;;
             mempool)        projects=(Nethermind.TxPool.Test) ;;
             flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
@@ -93,7 +96,10 @@ jobs:
           # shared runner should not spend three builds and a full verify measurement before saying so. The
           # harness only rejects an unset path, and resolves a mistyped one no earlier than File.Exists inside
           # each case, so -d covers unset, whitespace-only and wrong in one test.
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
+          # FrameTxFloodMeasurement sweeps the same Groth16 points as the mempool leg, so a `flood` dispatch
+          # needs the artifacts just as much as `mempool` does -- otherwise the privacy rows self-ignore and
+          # case=flood_delay alone still reports green.
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" || "${HARNESS}" == "flood" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
             if [[ -z "${FRAME_GROTH16_ARTIFACTS//[[:space:]]/}" ]]; then
               echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
             else
@@ -218,14 +224,20 @@ jobs:
 
           # What this run is configured to produce, so a self-ignored case fails the run instead of
           # quietly shrinking the sweep. Groth16 rows are always required because the path is checked above.
+          # groth16-soispoke gets its own marker alongside the generic prefix: it is the plan's actual named
+          # workload, and the generic marker is satisfied by any one of the four sweep points, so soispoke
+          # could be silently absent from an otherwise-green run without a marker naming it specifically.
           # The signature shape is the worst case measured so far and needs neither artifacts nor a raised
           # constant, so a run that produced no signature rows is a broken run rather than a narrower one.
-          mempool_markers=('shape=groth16-' 'case=signature_reject')
+          mempool_markers=('shape=groth16-' 'shape=groth16-soispoke' 'case=signature_reject')
           # Admission_flood_actually_reaches_the_simulator carries no single-core gate and emits
           # case=workload_block regardless, which alone satisfies the RESULT-rows check above. So if
           # ObservedCpuSet cannot read the affinity the four measurement cases self-ignore and the leg still
           # reports green. taskset's presence is checked; this checks its effect.
-          flood_markers=('case=flood_delay')
+          # shape=groth16-/-soispoke and shape=signature-stuffed cover the flood leg's own sweep of the same
+          # workloads -- unguarded until now, so a run missing artifacts or the signature shape's cases would
+          # still pass on case=flood_delay alone.
+          flood_markers=('case=flood_delay' 'shape=groth16-' 'shape=groth16-soispoke' 'shape=signature-stuffed')
           if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             # The synthetic 500k cases declare exactly 500000; both harnesses skip only when the declared
             # ceiling is strictly greater than the constant, so a raise above 300000 unlocks them.
@@ -240,7 +252,7 @@ jobs:
           # Each harness is attempted even when an earlier one fails, so a run never
           # reports a partial set of figures as if it were the whole set.
           status=0
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "verify" ]]; then
+          if [[ "${HARNESS}" == "verify" ]]; then
             run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
@@ -252,7 +264,10 @@ jobs:
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement ${flood_markers[@]+"${flood_markers[@]}"} || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
-            run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement || status=1
+            # Otherwise the 16 case=k_retry_sweep rows could be entirely absent from a green run, satisfied
+            # only by the unrelated case=control_approves/case=never_approves rows this fixture also emits.
+            producer_retry_markers=('case=k_retry_sweep')
+            run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
           fi
           # Not in `both`: it wires no simulator, so it measures pool retention rather than a campaign metric.
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
