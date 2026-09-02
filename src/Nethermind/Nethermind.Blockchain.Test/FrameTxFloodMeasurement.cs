@@ -458,8 +458,12 @@ public class FrameTxFloodMeasurement
     /// </para>
     /// </remarks>
     [TestCase(100_000ul, 1, 0)]
+    [TestCase(100_000ul, 2, 0)]
+    [TestCase(100_000ul, 4, 0)]
     [TestCase(100_000ul, 8, 0)]
     [TestCase(100_000ul, 1, 100)]
+    [TestCase(100_000ul, 2, 100)]
+    [TestCase(100_000ul, 4, 100)]
     [TestCase(100_000ul, 8, 100)]
     [TestCase(236_285ul, 1, 0)]
     [TestCase(236_285ul, 8, 0)]
@@ -491,12 +495,15 @@ public class FrameTxFloodMeasurement
         double p50 = Percentile(outcome.ProcessMicros, 0.50);
         double p95 = Percentile(outcome.ProcessMicros, 0.95);
         bool floodStarved = offeredRate > 0 && outcome.AchievedRate < offeredRate * RateHeldFloor;
+        // Emit runs before the assertions, so without this a row the harness then refuses to stand behind is
+        // indistinguishable from one that passed. Same predicate as the gate below, so the two cannot drift.
+        bool delivered = offeredRate == 0 || outcome.AchievedRate > offeredRate * MinDeliveredRateFloor;
 
         Emit($"case=production_under_flood ceiling={ceiling} k_retry={kRetry} offered_rate={offeredRate} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} passes={outcome.ProcessMicros.Count} "
-             + $"evictions={rig.Evictions} failing_executions={rig.FailingExecutions} "
+             + $"evictions={rig.EvictionsInWindow} failing_executions={rig.ExecutionsInWindow} "
              + $"flood_submitted={outcome.Submitted} flood_rejected={outcome.Rejected} "
-             + $"flood_achieved_rate={outcome.AchievedRate:F1} flood_starved={(floodStarved ? "yes" : "no")} "
+             + $"flood_achieved_rate={outcome.AchievedRate:F1} flood_starved={(floodStarved ? "yes" : "no")} delivered={(delivered ? "yes" : "no")} "
              + $"production_p50_us={p50:F1} production_p95_us={p95:F1}");
 
         using (Assert.EnterMultipleScope())
@@ -528,6 +535,7 @@ public class FrameTxFloodMeasurement
     private static FloodOutcome NoFloodProductionOutcome(ProducerRig rig)
     {
         rig.RunFor(WarmupWindow);
+        rig.MarkWindowStart();
         return new FloodOutcome(0, 0, 0, 0, 0, 0, rig.Measure(MeasureWindow));
     }
 
@@ -630,12 +638,20 @@ public class FrameTxFloodMeasurement
     /// 500k label.
     /// </remarks>
     [TestCase(100_000ul, 50)]
+    [TestCase(100_000ul, 100)]
+    [TestCase(100_000ul, 150)]
     [TestCase(100_000ul, 200)]
     [TestCase(236_285ul, 50)]
+    [TestCase(236_285ul, 100)]
+    [TestCase(236_285ul, 150)]
     [TestCase(236_285ul, 200)]
     [TestCase(300_000ul, 50)]
+    [TestCase(300_000ul, 100)]
+    [TestCase(300_000ul, 150)]
     [TestCase(300_000ul, 200)]
     [TestCase(500_000ul, 50)]
+    [TestCase(500_000ul, 100)]
+    [TestCase(500_000ul, 150)]
     [TestCase(500_000ul, 200)]
     public async Task Block_processing_delay_under_admission_flood(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("keccak-wide", ceiling, offeredRate);
@@ -643,12 +659,20 @@ public class FrameTxFloodMeasurement
     /// <summary>The privacy workload's <c>Δ</c>: the same delay measurement, flooded with the Groth16 shape
     /// instead of the synthetic one.</summary>
     [TestCase("groth16-236k", 50)]
+    [TestCase("groth16-236k", 100)]
+    [TestCase("groth16-236k", 150)]
     [TestCase("groth16-236k", 200)]
     [TestCase("groth16-300k", 50)]
+    [TestCase("groth16-300k", 100)]
+    [TestCase("groth16-300k", 150)]
     [TestCase("groth16-300k", 200)]
     [TestCase("groth16-500k", 50)]
+    [TestCase("groth16-500k", 100)]
+    [TestCase("groth16-500k", 150)]
     [TestCase("groth16-500k", 200)]
     [TestCase("groth16-soispoke", 50)]
+    [TestCase("groth16-soispoke", 100)]
+    [TestCase("groth16-soispoke", 150)]
     [TestCase("groth16-soispoke", 200)]
     public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
         await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
@@ -667,12 +691,20 @@ public class FrameTxFloodMeasurement
     /// well under the label — expected, and visible on the row rather than hidden by it.
     /// </remarks>
     [TestCase(100_000ul, 50)]
+    [TestCase(100_000ul, 100)]
+    [TestCase(100_000ul, 150)]
     [TestCase(100_000ul, 200)]
     [TestCase(236_285ul, 50)]
+    [TestCase(236_285ul, 100)]
+    [TestCase(236_285ul, 150)]
     [TestCase(236_285ul, 200)]
     [TestCase(300_000ul, 50)]
+    [TestCase(300_000ul, 100)]
+    [TestCase(300_000ul, 150)]
     [TestCase(300_000ul, 200)]
     [TestCase(500_000ul, 50)]
+    [TestCase(500_000ul, 100)]
+    [TestCase(500_000ul, 150)]
     [TestCase(500_000ul, 200)]
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
         await MeasureFloodDelay("signature-stuffed", ceiling, offeredRate);
@@ -705,6 +737,7 @@ public class FrameTxFloodMeasurement
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} max_lag_us={flooded.MaxLagUs:F0} "
              + $"queue_growth={flooded.QueueGrowth} "
              + $"saturated={(flooded.AchievedRate < offeredRate * RateHeldFloor ? "yes" : "no")} "
+             + $"delta_per_achieved_tx_us={(flooded.AchievedRate > 0 ? (w - w0) / flooded.AchievedRate : 0):F2} "
              + $"transfers_per_block={TransfersPerBlock} iterations={flooded.ProcessMicros.Count} "
              + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} "
              + $"W_p50_us={w:F1} W_p95_us={wp95:F1} "
@@ -857,6 +890,8 @@ public class FrameTxFloodMeasurement
     {
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
         double lastSustained = 0;
+        bool sustainedEveryRate = true;
+        double firstFailedRate = 0;
 
         foreach (int rate in rates)
         {
@@ -886,15 +921,33 @@ public class FrameTxFloodMeasurement
                 $"at {rate} tx/s only {outcome.Rejected} of {outcome.Submitted} submissions reached the "
                 + "simulator; the rest were dropped upstream, so this point measures an idle node");
 
-            if (sustained) lastSustained = outcome.AchievedRate;
-            else break;
+            if (sustained)
+            {
+                lastSustained = outcome.AchievedRate;
+            }
+            else
+            {
+                sustainedEveryRate = false;
+                firstFailedRate = rate;
+                break;
+            }
         }
 
         // A ramp whose top rate still sustained has not found R_max, only a lower bound on it.
-        bool censored = lastSustained > 0 && Math.Abs(lastSustained - rates[^1]) < rates[^1] * 0.05;
+        // The fact wanted is "the loop never took the break", which is observable. Inferring it from
+        // |lastSustained - rates[^1]| < 5% shares a boundary with the sustained test, which needs
+        // AchievedRate >= 95% of the offered rate: a top point sustaining at exactly 380.0 of 400 satisfies
+        // both and was reported as a located R_max rather than the lower bound it is.
+        bool censored = sustainedEveryRate;
+
+        // The ramp stops at the first failure, so the true R_max lies in [lastSustained, firstFailed).
+        // Publishing the lower end alone reads as a located value; both ends say what was actually learned.
+        double rMaxUpper = censored ? double.PositiveInfinity : firstFailedRate;
 
         Emit($"case={summaryCase} shape={shape} ceiling={ceiling} {extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
-             + $"r_max_sustained_tx_per_s={lastSustained:F1} censored={(censored ? "yes" : "no")} "
+             + $"r_max_sustained_tx_per_s={lastSustained:F1} r_max_lower={lastSustained:F1} "
+             + $"r_max_upper={(censored ? "unbounded" : rMaxUpper.ToString("F1"))} "
+             + $"censored={(censored ? "yes" : "no")} "
              + $"basis=no_backlog_and_bounded_lag note=B_not_fixed");
 
         Assert.That(lastSustained, Is.GreaterThan(0),
@@ -960,7 +1013,8 @@ public class FrameTxFloodMeasurement
     private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, int offeredRate) =>
         MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
-            measure: rig.Measure);
+            measure: rig.Measure,
+            onWindowStart: rig.MarkWindowStart);
 
     /// <summary>
     /// Runs the open-loop flood while <paramref name="warmup"/> keeps the core busy through the settle and
@@ -969,7 +1023,8 @@ public class FrameTxFloodMeasurement
     /// something is block processing or block production.
     /// </summary>
     private FloodOutcome MeasureUnderFloodGeneric(
-        int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure, Func<long>? rejectionCounter = null)
+        int offeredRate, Action warmup, Func<TimeSpan, List<double>> measure, Func<long>? rejectionCounter = null,
+        Action? onWindowStart = null)
     {
         _floodTxs = BuildFloodTransactions(_saltCursor);
         _saltCursor += FloodPoolSize;
@@ -991,9 +1046,21 @@ public class FrameTxFloodMeasurement
         // slowest part of the run, so carrying their spikes into the window would understate the sustainable
         // rate — the quantity this gate exists to protect.
         generator.ResetMaxLag();
+        onWindowStart?.Invoke();
         long windowStart = Stopwatch.GetTimestamp();
 
-        List<double> sampleMicros = measure(MeasureWindow);
+        List<double> sampleMicros;
+        try
+        {
+            sampleMicros = measure(MeasureWindow);
+        }
+        catch
+        {
+            // Without this the generator keeps submitting against a chain TearDown is about to dispose, and
+            // the real failure is buried under whatever that races into.
+            generator.Stop(cts);
+            throw;
+        }
 
         long windowEnd = Stopwatch.GetTimestamp();
         int submittedInWindow = Volatile.Read(ref generator.Submitted) - submittedAtStart;
@@ -1357,6 +1424,27 @@ public class FrameTxFloodMeasurement
         private CountingAdapter _adapter = null!;
 
         public int Evictions { get; private set; }
+
+        private int _evictionsAtWindowStart;
+        private int _executionsAtWindowStart;
+
+        /// <summary>Retry counters scoped to the sampled window, the way the flood counters already are.</summary>
+        /// <remarks>
+        /// The lifetime counters start at construction and span the settle and warmup phases, so dividing one
+        /// by <c>passes</c>, which the row scopes to the window, gives a re-executions-per-pass figure that is
+        /// wrong in both directions: 2.68 at <c>K_retry=1</c> where the true value is 1, and 1.94 at
+        /// <c>K_retry=8</c> where it is 8. The lifetime values stay for the assertions, which only ask whether
+        /// the mechanism fired at all.
+        /// </remarks>
+        public int EvictionsInWindow => Evictions - _evictionsAtWindowStart;
+
+        public int ExecutionsInWindow => FailingExecutions - _executionsAtWindowStart;
+
+        public void MarkWindowStart()
+        {
+            _evictionsAtWindowStart = Evictions;
+            _executionsAtWindowStart = FailingExecutions;
+        }
 
         /// <summary>Transactions the executor actually handed to the processor, not passes attempted.</summary>
         /// <remarks>
