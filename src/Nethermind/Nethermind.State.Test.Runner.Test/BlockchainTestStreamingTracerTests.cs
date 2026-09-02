@@ -87,6 +87,31 @@ public class BlockchainTestStreamingTracerTests
         Assert.DoesNotThrow(tracer.Dispose); // Double dispose should be safe
     }
 
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
+    [TestCase((Instruction)0xd0, "DATALOAD")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
+    public void Tracer_writes_geth_opcode_name(Instruction opcode, string expectedName)
+    {
+        using MemoryStream output = new();
+        using BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        tracer.StartNewBlockTrace(block);
+        GethLikeTxFileTracer txTracer = (GethLikeTxFileTracer)tracer.StartNewTxTrace(null);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, opcode, 100, in environment);
+        txTracer.ReportOperationRemainingGas(100);
+        tracer.EndTxTrace();
+
+        string firstLine = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine)[0];
+        using JsonDocument operation = JsonDocument.Parse(firstLine);
+        Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(expectedName));
+    }
+
     [TestCase(0UL, BeforeTransitionDestroyRefund)]
     [TestCase(9UL, BeforeTransitionDestroyRefund)]
     [TestCase(10UL, AfterTransitionDestroyRefund)]

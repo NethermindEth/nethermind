@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Text.Json;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-internal static class OpcodeJsonNames
+/// <summary>Provides go-ethereum opcode names for JSON trace output.</summary>
+public static class OpcodeJsonNames
 {
     private static readonly JsonEncodedText[] _names = BuildLookup();
 
+    /// <summary>Gets the go-ethereum JSON name for an opcode.</summary>
+    /// <param name="opcode">Opcode byte.</param>
+    /// <returns>The pre-encoded opcode name.</returns>
     public static JsonEncodedText Get(Instruction opcode) => _names[(byte)opcode];
 
     private static JsonEncodedText[] BuildLookup()
@@ -18,7 +23,28 @@ internal static class OpcodeJsonNames
         JsonEncodedText[] table = new JsonEncodedText[256];
         for (int i = 0; i < 256; i++)
         {
-            string name = Enum.GetName((Instruction)i) ?? ((byte)i).ToString("X2");
+            Instruction opcode = (Instruction)i;
+            string name = (byte)opcode switch
+            {
+                0x44 => "DIFFICULTY",
+                0xd0 => "DATALOAD",
+                0xd1 => "DATALOADN",
+                0xd2 => "DATASIZE",
+                0xd3 => "DATACOPY",
+                0xe0 => "RJUMP",
+                0xe1 => "RJUMPI",
+                0xe2 => "RJUMPV",
+                0xe3 => "CALLF",
+                0xe4 => "RETF",
+                0xe5 => "JUMPF",
+                0xec => "EOFCREATE",
+                0xee => "RETURNCONTRACT",
+                0xf7 => "RETURNDATALOAD",
+                0xf8 => "EXTCALL",
+                0xf9 => "EXTDELEGATECALL",
+                0xfb => "EXTSTATICCALL",
+                byte value => Enum.GetName(opcode) ?? string.Create(CultureInfo.InvariantCulture, $"opcode 0x{value:x} not defined"),
+            };
             table[i] = JsonEncodedText.Encode(name);
         }
         return table;

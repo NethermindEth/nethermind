@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,10 +26,8 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     private StateTestTxTraceEntry _traceEntry;
     private readonly StateTestTxTrace _trace = new();
     private readonly RefundTracker _refundTracker = new(destroyRefund);
+    private TopLevelGasTracker _gasTracker = new(standardIntrinsicGas);
     private bool _gasAlreadySetForCurrentOp;
-    private int _actionDepth;
-    private ulong _topLevelActionGas;
-    private bool _hasTopLevelActionResult;
 
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => true;
@@ -71,7 +68,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         {
             Pc = pc,
             Operation = (byte)opcode,
-            OperationName = GetOperationName(opcode),
+            OperationName = OpcodeJsonNames.Get(opcode).Value,
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
             Refund = _refundTracker.Refund,
@@ -205,9 +202,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        if (_actionDepth++ == 0)
-            _topLevelActionGas = gas;
-
+        _gasTracker.StartAction(gas);
         _refundTracker.TakeSnapshot();
     }
 
@@ -234,19 +229,14 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     private void CompleteAction(ulong gas)
     {
-        if (_actionDepth > 0 && --_actionDepth == 0)
-        {
-            _trace.Result.GasUsed = _topLevelActionGas.SaturatingSub(gas);
-            _hasTopLevelActionResult = true;
-        }
+        if (_gasTracker.EndAction(gas) is ulong gasUsed)
+            _trace.Result.GasUsed = gasUsed;
     }
 
     private void SetReceiptGasFallback(in GasConsumed gasSpent)
     {
-        if (_hasTopLevelActionResult)
-            return;
-
-        _trace.Result.GasUsed = gasSpent.SpentGas.SaturatingSub(standardIntrinsicGas);
+        if (_gasTracker.GetReceiptFallback(in gasSpent) is ulong gasUsed)
+            _trace.Result.GasUsed = gasUsed;
     }
 
     public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
@@ -278,26 +268,4 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
 
     public void Dispose() { }
 
-    // Geth's global opcode table names inactive EOF instructions and retains DIFFICULTY for 0x44.
-    private static string GetOperationName(Instruction opcode) => (byte)opcode switch
-    {
-        0x44 => "DIFFICULTY",
-        0xd0 => "DATALOAD",
-        0xd1 => "DATALOADN",
-        0xd2 => "DATASIZE",
-        0xd3 => "DATACOPY",
-        0xe0 => "RJUMP",
-        0xe1 => "RJUMPI",
-        0xe2 => "RJUMPV",
-        0xe3 => "CALLF",
-        0xe4 => "RETF",
-        0xe5 => "JUMPF",
-        0xec => "EOFCREATE",
-        0xee => "RETURNCONTRACT",
-        0xf7 => "RETURNDATALOAD",
-        0xf8 => "EXTCALL",
-        0xf9 => "EXTDELEGATECALL",
-        0xfb => "EXTSTATICCALL",
-        byte value => Enum.GetName(opcode) ?? string.Create(CultureInfo.InvariantCulture, $"opcode 0x{value:x} not defined"),
-    };
 }

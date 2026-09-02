@@ -121,7 +121,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = Enum.GetName(opcode);
+        CurrentTraceEntry.Opcode = OpcodeJsonNames.Get(opcode).Value;
         CurrentTraceEntry.ProgramCounter = pc;
         _gasCostAlreadySetForCurrentOp = false;
     }

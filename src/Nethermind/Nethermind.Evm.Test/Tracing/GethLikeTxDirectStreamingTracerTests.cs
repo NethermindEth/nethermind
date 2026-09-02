@@ -22,6 +22,30 @@ namespace Nethermind.Evm.Test.Tracing;
 [Parallelizable(ParallelScope.Self)]
 public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 {
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
+    [TestCase((Instruction)0xd0, "DATALOAD")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
+    public void Streams_geth_opcode_name(Instruction opcode, string expectedName)
+    {
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartArray();
+            GethLikeTxDirectStreamingTracer tracer = new(
+                null, GethTraceOptions.Default, writer, null, CancellationToken.None);
+            using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+                null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+            tracer.StartOperation(0, opcode, 100, in environment);
+            tracer.ReportOperationRemainingGas(100);
+            tracer.BuildResult();
+            writer.WriteEndArray();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        Assert.That(document.RootElement.EnumerateArray().Single().GetProperty("op").GetString(), Is.EqualTo(expectedName));
+    }
+
     [TestCase(false, TestName = "Refund accumulates and persists after a clearing SSTORE")]
     [TestCase(true, TestName = "Refund is rolled back when the clearing frame reverts")]
     public void Streams_journaled_refund_counter(bool clearingFrameReverts)

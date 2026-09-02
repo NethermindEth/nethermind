@@ -61,9 +61,7 @@ public class BlockchainTestStreamingTracer(
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        ulong? standardIntrinsicGas = tx is null || _currentSpec is null
-            ? null
-            : IntrinsicGasCalculator.Calculate(tx, _currentSpec, _currentBlockGasLimit).Standard;
+        ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _currentSpec, _currentBlockGasLimit);
         _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options, _currentDestroyRefund, standardIntrinsicGas);
         return _currentTxTracer;
     }

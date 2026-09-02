@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -96,9 +95,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _file = _fileSystem.File.OpenWrite(_fileNames.Last());
         _jsonWriter = new(_file);
 
-        ulong? standardIntrinsicGas = tx is null || _spec is null
-            ? null
-            : IntrinsicGasCalculator.Calculate(tx, _spec, _block.Header.GasLimit).Standard;
+        ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
         return new(DumpTraceEntry, _options, _destroyRefund, standardIntrinsicGas);
     }
 

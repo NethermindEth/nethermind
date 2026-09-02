@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -14,10 +13,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
     private readonly Action<GethTxFileTraceEntry> _dumpCallback;
-    private readonly ulong? _standardIntrinsicGas;
-    private int _actionDepth;
-    private ulong _topLevelActionGas;
-    private bool _hasTopLevelActionResult;
+    private TopLevelGasTracker _gasTracker;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -33,7 +29,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         ulong? standardIntrinsicGas = null) : base(options, destroyRefund)
     {
         _dumpCallback = dumpCallback ?? throw new ArgumentNullException(nameof(dumpCallback));
-        _standardIntrinsicGas = standardIntrinsicGas;
+        _gasTracker = new(standardIntrinsicGas);
 
         IsTracingMemory = true;
         IsTracingOpLevelStorage = false;
@@ -63,8 +59,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (_actionDepth++ == 0)
-            _topLevelActionGas = gas;
+        _gasTracker.StartAction(gas);
     }
 
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
@@ -128,18 +123,13 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     private void CompleteAction(ulong gas)
     {
-        if (_actionDepth > 0 && --_actionDepth == 0)
-        {
-            Trace.Gas = _topLevelActionGas.SaturatingSub(gas);
-            _hasTopLevelActionResult = true;
-        }
+        if (_gasTracker.EndAction(gas) is ulong gasUsed)
+            Trace.Gas = gasUsed;
     }
 
     private void SetReceiptGasFallback(in GasConsumed gasSpent)
     {
-        if (_hasTopLevelActionResult || !_standardIntrinsicGas.HasValue)
-            return;
-
-        Trace.Gas = gasSpent.SpentGas.SaturatingSub(_standardIntrinsicGas.Value);
+        if (_gasTracker.GetReceiptFallback(in gasSpent) is ulong gasUsed)
+            Trace.Gas = gasUsed;
     }
 }
