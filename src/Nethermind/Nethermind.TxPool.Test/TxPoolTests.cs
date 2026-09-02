@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -4939,25 +4940,83 @@ namespace Nethermind.TxPool.Test
 
         private ChainHeadInfoProvider _headInfo;
 
-        // The marker decides whether a restart may skip revalidation, so it has to move whenever any rule the
-        // spec-change validator reads moves. Name cannot stand in: chainspec-built specs are all "Custom".
-        [TestCaseSource(nameof(SpecChangeMarkerFlagCases))]
-        public async Task Spec_change_marker_distinguishes_every_flag_the_validator_reads(string flag)
+        // The marker decides whether a restart may skip revalidation, so any spec flag that can change a
+        // validator verdict must change it too. Swept rather than listed, so a new validator cannot slip past.
+        [Test]
+        public async Task Spec_change_marker_moves_with_every_spec_flag_the_validator_can_act_on()
         {
-            static ReleaseSpec BaseSpec() => new() { IsEip4844Enabled = true, IsEip1559Enabled = true };
+            SpecChangeTxValidator validator = new(TestBlockchainIds.ChainId);
+            Transaction[] corpus = SpecChangeMarkerCorpus();
 
-            ReleaseSpec before = BaseSpec();
-            ReleaseSpec after = BaseSpec();
-            typeof(ReleaseSpec).GetProperty(flag)!.SetValue(after, true);
+            // Every type gate on, or a rule behind one is never reached and its flag looks unguarded-but-harmless.
+            ReleaseSpec baseline = SpecChangeMarkerBaseline();
+            string baselineMarker = await MarkerFor(baseline);
+            string baselineVerdicts = Verdicts(validator, baseline, corpus);
 
-            Assert.That(before.Name, Is.EqualTo(after.Name), "the fallback must not be what separates these markers");
-            Assert.That(await MarkerFor(after), Is.Not.EqualTo(await MarkerFor(before)));
+            List<string> unguarded = [];
+            foreach (PropertyInfo flag in typeof(ReleaseSpec).GetProperties()
+                         .Where(p => p.PropertyType == typeof(bool) && p.CanRead && p.CanWrite))
+            {
+                ReleaseSpec flipped = SpecChangeMarkerBaseline();
+                flag.SetValue(flipped, !(bool)flag.GetValue(baseline)!);
+
+                if (Verdicts(validator, flipped, corpus) != baselineVerdicts
+                    && await MarkerFor(flipped) == baselineMarker)
+                {
+                    unguarded.Add(flag.Name);
+                }
+            }
+
+            Assert.That(unguarded, Is.Empty,
+                $"these flags change a validation verdict without moving the marker, so a restart across them skips revalidation: {string.Join(", ", unguarded)}");
         }
 
-        private static IEnumerable<string> SpecChangeMarkerFlagCases()
+        private static ReleaseSpec SpecChangeMarkerBaseline() => new()
         {
-            yield return nameof(ReleaseSpec.IsEip8141Enabled);
-            yield return nameof(ReleaseSpec.IsEip8250Enabled);
+            IsEip1559Enabled = true,
+            IsEip2930Enabled = true,
+            IsEip4844Enabled = true,
+            IsEip7702Enabled = true,
+            IsEip8141Enabled = true,
+            IsEip8250Enabled = true,
+        };
+
+        /// <summary>Transactions spanning the shapes the spec-change validator judges differently.</summary>
+        private static Transaction[] SpecChangeMarkerCorpus() =>
+        [
+            Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(TestBlockchainIds.ChainId).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithShardBlobTxTypeAndFields().WithChainId(TestBlockchainIds.ChainId).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithType(TxType.SetCode).WithChainId(TestBlockchainIds.ChainId).SignedAndResolved().TestObject,
+            new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)],
+                FrameSignatures = [],
+                NonceKeys = [UInt256.One],
+            },
+        ];
+
+        /// <summary>A stable rendering of how <paramref name="validator"/> judges <paramref name="corpus"/>.</summary>
+        private static string Verdicts(ITxValidator validator, IReleaseSpec spec, Transaction[] corpus)
+        {
+            StringBuilder verdicts = new();
+            foreach (Transaction tx in corpus)
+            {
+                try
+                {
+                    ValidationResult result = validator.IsWellFormed(tx, spec);
+                    verdicts.Append(result.AsBool()).Append(':').Append(result.Error).Append('|');
+                }
+                catch (Exception e)
+                {
+                    verdicts.Append(e.GetType().Name).Append('|');
+                }
+            }
+
+            return verdicts.ToString();
         }
 
         /// <summary>The marker a pool publishes at construction for <paramref name="spec"/>.</summary>
